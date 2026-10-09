@@ -15,7 +15,7 @@ test reaches `pack(...)` under a *strong* exact-value oracle whose variable name
 if len(buffer) <= limit:
 
 # oracle observes `buffered_output`, which merely CONTAINS `buffer`
-buffered_output = pack([1, 2], 5)
+buffered_output = list(pack([1, 2], 5))
 assert buffered_output == [1, 2]
 ```
 
@@ -23,6 +23,12 @@ The test genuinely reaches the owner (a real `SyntacticCall` relation) and carri
 a genuinely *strong* `ExactValue` oracle — so the only thing standing between
 ripr and a false `exposed` is sink-token alignment using **identifier
 boundaries**, not substring containment.
+
+The oracle local is `list(pack(...))`, not `pack(...)` itself. Since #4567 a
+local bound once directly from the owner call (`result = pack(...)`) is the
+owner's output and aligns `direct`; wrapping the call keeps this fixture on its
+subject, a changed-sink token that appears only as a substring of an unrelated
+identifier.
 
 ## When
 

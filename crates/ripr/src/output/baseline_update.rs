@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 const SCHEMA_VERSION: &str = "0.1";
 const BASELINE_KIND: &str = "gate_baseline";
-const LIMITS_NOTE: &str = "Shrink-only baseline refresh over static RIPR gate evidence; update removes resolved reviewed debt and never adopts new current debt.";
+const LIMITS_NOTE: &str = "Baseline identity refresh over static RIPR gate evidence; update removes resolved reviewed debt only with --remove-resolved, migrates reviewed legacy identities only with --migrate-legacy-identities, and never adopts new current debt.";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BaselineUpdateInput {
@@ -11,6 +11,15 @@ pub(crate) struct BaselineUpdateInput {
     pub(crate) current_gate_decision_path: String,
     pub(crate) baseline_json: String,
     pub(crate) current_gate_decision_json: String,
+    /// Shrink-only removal of resolved reviewed debt (issue #1964, review):
+    /// without this flag unmatched entries are preserved, so a
+    /// migration-only run cannot silently shrink the reviewed baseline.
+    pub(crate) remove_resolved: bool,
+    /// Deterministic legacy-to-canonical identity migration (issue #1964):
+    /// reviewed fallback-only entries joined unambiguously to a current
+    /// decision that carries a canonical gap id gain that canonical identity.
+    /// Never adopts new current debt; never overwrites a reviewed canonical.
+    pub(crate) migrate_legacy_identities: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -22,7 +31,19 @@ pub(crate) struct BaselineUpdateReport {
     preserved_invalid: usize,
     preserved_stale: usize,
     ignored_new_current: usize,
+    migrated_legacy_identities: usize,
     warnings: Vec<String>,
+}
+
+/// One deterministic legacy migration decision (issue #1964).
+enum LegacyMigration {
+    /// Replace the reviewed legacy identity with this canonical gap id.
+    Apply {
+        canonical_gap_id: String,
+        legacy_identity: String,
+    },
+    /// Preserve the entry unchanged and say why.
+    Refuse(String),
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -88,8 +109,10 @@ struct UpdateBaselineValueInput<'a> {
     valid_entries: usize,
     invalid_entries: usize,
     current_gate_decision_path: &'a str,
+    remove_resolved: bool,
     removed_resolved: usize,
     ignored_new_current: usize,
+    migrated_legacy_identities: &'a [Value],
     warnings: &'a [String],
 }
 
@@ -131,12 +154,14 @@ pub(crate) fn build_baseline_update_remove_resolved(
         .iter()
         .filter_map(current_record_from_value)
         .collect::<Vec<_>>();
+    let current_root = string_field(current.get("root"));
     let indexes = build_current_indexes(&current_records);
     let mut matched_current = BTreeSet::new();
     let mut kept_entries = Vec::new();
     let mut removed_resolved = 0usize;
     let mut preserved_invalid = 0usize;
     let mut preserved_stale = 0usize;
+    let mut migrated = Vec::new();
     let mut warnings = Vec::new();
 
     for entry in baseline_entries {
@@ -161,6 +186,24 @@ pub(crate) fn build_baseline_update_remove_resolved(
                 kept_entries.push(entry.clone());
             }
             MatchResult::Match { index, matched_by } => {
+                // STALE-JOIN REFUSAL (issue #1964, review): the delta surface
+                // refuses diverged and cross-root fallback joins as stale, so
+                // the update must agree instead of consuming the current
+                // decision as historical. The entry is preserved unchanged
+                // and the current index stays unmatched.
+                if matched_by == "fallback"
+                    && let Some(current_record) = current_records.get(index)
+                    && let Some(stale_reason) =
+                        stale_fallback_join_reason(entry, current_record, current_root.as_deref())
+                {
+                    preserved_stale += 1;
+                    warnings.push(format!(
+                        "preserved baseline entry {} unchanged: {stale_reason}",
+                        identity.sort_key()
+                    ));
+                    kept_entries.push(entry.clone());
+                    continue;
+                }
                 if matched_by == "fallback" {
                     warnings.push(format!(
                         "preserved baseline entry {} using fallback path/line/static_class identity",
@@ -168,7 +211,39 @@ pub(crate) fn build_baseline_update_remove_resolved(
                     ));
                 }
                 matched_current.insert(index);
-                kept_entries.push(entry.clone());
+                let mut kept = entry.clone();
+                // DETERMINISTIC MIGRATION (issue #1964): an unambiguous
+                // fallback join against a current decision that carries a
+                // canonical gap id can replace the reviewed legacy identity
+                // with the canonical one. Path, line, decision, evidence, and
+                // review travel untouched; no new current debt is adopted.
+                if input.migrate_legacy_identities
+                    && matched_by == "fallback"
+                    && let Some(current_record) = current_records.get(index)
+                {
+                    match legacy_migration_for(entry, current_record, current_root.as_deref()) {
+                        Some(LegacyMigration::Apply {
+                            canonical_gap_id,
+                            legacy_identity,
+                        }) => {
+                            migrate_entry_identity_to_canonical(&mut kept, &canonical_gap_id);
+                            warnings.push(format!(
+                                "migrated baseline entry {legacy_identity} from legacy fallback identity to canonical gap id `{canonical_gap_id}`"
+                            ));
+                            migrated.push(json!({
+                                "legacy_identity": legacy_identity,
+                                "canonical_gap_id": canonical_gap_id,
+                                "path": string_field(entry.get("path")),
+                            }));
+                        }
+                        Some(LegacyMigration::Refuse(reason)) => warnings.push(format!(
+                            "preserved baseline entry {} without legacy migration: {reason}",
+                            identity.sort_key()
+                        )),
+                        None => {}
+                    }
+                }
+                kept_entries.push(kept);
             }
             MatchResult::Ambiguous { matched_by, count } => {
                 preserved_stale += 1;
@@ -178,7 +253,21 @@ pub(crate) fn build_baseline_update_remove_resolved(
                 ));
                 kept_entries.push(entry.clone());
             }
-            MatchResult::None => removed_resolved += 1,
+            MatchResult::None => {
+                // HONEST SHRINK (issue #1964, review): removal happens only
+                // with --remove-resolved. A migration-only run preserves
+                // unmatched entries instead of silently shrinking the
+                // reviewed baseline.
+                if input.remove_resolved {
+                    removed_resolved += 1;
+                } else {
+                    warnings.push(format!(
+                        "preserved baseline entry {} without --remove-resolved; rerun with --remove-resolved to drop resolved reviewed debt",
+                        identity.sort_key()
+                    ));
+                    kept_entries.push(entry.clone());
+                }
+            }
         }
     }
 
@@ -201,8 +290,10 @@ pub(crate) fn build_baseline_update_remove_resolved(
             valid_entries,
             invalid_entries,
             current_gate_decision_path: &input.current_gate_decision_path,
+            remove_resolved: input.remove_resolved,
             removed_resolved,
             ignored_new_current,
+            migrated_legacy_identities: &migrated,
             warnings: &warnings,
         },
     )?;
@@ -215,6 +306,7 @@ pub(crate) fn build_baseline_update_remove_resolved(
         preserved_invalid,
         preserved_stale,
         ignored_new_current,
+        migrated_legacy_identities: migrated.len(),
         warnings,
     })
 }
@@ -238,6 +330,10 @@ pub(crate) fn baseline_update_removed_resolved_count(report: &BaselineUpdateRepo
 
 pub(crate) fn baseline_update_ignored_new_current_count(report: &BaselineUpdateReport) -> usize {
     report.ignored_new_current
+}
+
+pub(crate) fn baseline_update_migrated_count(report: &BaselineUpdateReport) -> usize {
+    report.migrated_legacy_identities
 }
 
 pub(crate) fn baseline_update_warning_count(report: &BaselineUpdateReport) -> usize {
@@ -289,10 +385,11 @@ fn update_baseline_value(
     object.insert(
         "update".to_string(),
         json!({
-            "remove_resolved": true,
+            "remove_resolved": input.remove_resolved,
             "current_gate_decision": input.current_gate_decision_path,
             "removed_resolved": input.removed_resolved,
             "ignored_new_current": input.ignored_new_current,
+            "migrated_legacy_identities": input.migrated_legacy_identities,
         }),
     );
     object.insert(
@@ -478,6 +575,102 @@ fn fallback_identity(
     }
 }
 
+/// Decide the deterministic legacy migration for one fallback-joined baseline
+/// entry (issue #1964). `None` means no migration applies and the preserved
+/// entry needs no extra warning beyond the standard fallback notice.
+fn legacy_migration_for(
+    entry: &Value,
+    current: &CurrentRecord,
+    current_root: Option<&str>,
+) -> Option<LegacyMigration> {
+    let identity = baseline_identity_from_value(entry);
+    let legacy_identity = identity.fallback?;
+    if let Some(reviewed) = identity.canonical_gap_id {
+        return Some(LegacyMigration::Refuse(format!(
+            "entry already carries reviewed canonical gap id `{reviewed}`; refusing to overwrite it"
+        )));
+    }
+    let canonical_gap_id = current.identity.canonical_gap_id.clone()?;
+    if roots_disagree(string_field(entry.get("root")).as_deref(), current_root) {
+        let entry_root = string_field(entry.get("root")).unwrap_or_default();
+        let current_root = current_root.unwrap_or_default();
+        return Some(LegacyMigration::Refuse(format!(
+            "entry belongs to another repository root ({entry_root} -> {current_root}); cross-root migration is refused"
+        )));
+    }
+    Some(LegacyMigration::Apply {
+        canonical_gap_id,
+        legacy_identity,
+    })
+}
+
+/// True when both roots are present and name different repositories after
+/// spelling normalization (issue #1964, review). Shared by the stale-join
+/// refusal and the migration refusal so delta and update agree.
+fn roots_disagree(entry_root: Option<&str>, current_root: Option<&str>) -> bool {
+    match (entry_root, current_root) {
+        (Some(entry_root), Some(current_root)) => {
+            super::baseline_delta::normalize_root_for_comparison(entry_root)
+                != super::baseline_delta::normalize_root_for_comparison(current_root)
+        }
+        _ => false,
+    }
+}
+
+/// The stale-join reason when a fallback-joined update pair must not consume
+/// the current decision (issue #1964, review): canonical divergence or a
+/// cross-root join. Mirrors the delta refusal so `baseline diff` and
+/// `baseline update` tell the same story about the same evidence.
+fn stale_fallback_join_reason(
+    entry: &Value,
+    current: &CurrentRecord,
+    current_root: Option<&str>,
+) -> Option<String> {
+    let identity = baseline_identity_from_value(entry);
+    match (
+        identity.canonical_gap_id.as_deref(),
+        current.identity.canonical_gap_id.as_deref(),
+    ) {
+        (Some(old), Some(new)) if old != new => {
+            return Some(format!(
+                "canonical identity diverged ({old} -> {new}); refresh the baseline identity instead of treating the current gap as historical"
+            ));
+        }
+        _ => {}
+    }
+    if roots_disagree(string_field(entry.get("root")).as_deref(), current_root) {
+        let entry_root = string_field(entry.get("root")).unwrap_or_default();
+        let current_root = current_root.unwrap_or_default();
+        return Some(format!(
+            "entry belongs to another repository root ({entry_root} -> {current_root}); the current gap is evaluated on this repository's own history"
+        ));
+    }
+    None
+}
+
+/// Write the migrated canonical gap id into a kept baseline entry, preserving
+/// every other field (path, line, decision, evidence, review, and the legacy
+/// fallback string for traceability). Handles both the `identity`-object and
+/// the flat legacy entry shapes.
+fn migrate_entry_identity_to_canonical(entry: &mut Value, canonical_gap_id: &str) {
+    // Explicit object insert, never subscript assignment (review): the
+    // identity object of a legacy entry typically lacks `canonical_gap_id`,
+    // which is exactly what migration adds.
+    if let Some(object) = entry.get_mut("identity").and_then(Value::as_object_mut) {
+        object.insert(
+            "canonical_gap_id".to_string(),
+            Value::String(canonical_gap_id.to_string()),
+        );
+        return;
+    }
+    if let Some(object) = entry.as_object_mut() {
+        object.insert(
+            "canonical_gap_id".to_string(),
+            Value::String(canonical_gap_id.to_string()),
+        );
+    }
+}
+
 fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
     string_field(value.get("canonical_gap_id"))
         .or_else(|| string_field(value.pointer("/identity/canonical_gap_id")))
@@ -495,9 +688,9 @@ fn string_field(value: Option<&Value>) -> Option<String> {
 mod tests {
     use super::{
         BaselineUpdateInput, baseline_update_after_entry_count, baseline_update_before_entry_count,
-        baseline_update_ignored_new_current_count, baseline_update_removed_resolved_count,
-        baseline_update_warning_count, build_baseline_update_remove_resolved,
-        render_baseline_update_json,
+        baseline_update_ignored_new_current_count, baseline_update_migrated_count,
+        baseline_update_removed_resolved_count, baseline_update_warning_count,
+        build_baseline_update_remove_resolved, render_baseline_update_json,
     };
 
     #[test]
@@ -547,6 +740,8 @@ mod tests {
             current_gate_decision_path: "target/ripr/reports/gate-decision.json".to_string(),
             baseline_json: baseline.to_string(),
             current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: false,
         })?;
         let rendered = render_baseline_update_json(&report)?;
         assert_eq!(baseline_update_before_entry_count(&report), 3);
@@ -592,6 +787,8 @@ mod tests {
             current_gate_decision_path: "current.json".to_string(),
             baseline_json: baseline.to_string(),
             current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: false,
         })?;
         let rendered = render_baseline_update_json(&report)?;
         assert_eq!(baseline_update_removed_resolved_count(&report), 0);
@@ -640,6 +837,8 @@ mod tests {
             current_gate_decision_path: "current.json".to_string(),
             baseline_json: baseline.to_string(),
             current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: false,
         })?;
         let rendered = render_baseline_update_json(&report)?;
         assert_eq!(baseline_update_removed_resolved_count(&report), 0);
@@ -666,6 +865,8 @@ mod tests {
             current_gate_decision_path: "current.json".to_string(),
             baseline_json: baseline.to_string(),
             current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: false,
         })?;
         assert_eq!(baseline_update_before_entry_count(&report), 2);
         assert_eq!(baseline_update_after_entry_count(&report), 2);
@@ -712,11 +913,379 @@ mod tests {
                 current_gate_decision_path: "current.json".to_string(),
                 baseline_json: baseline_json.to_string(),
                 current_gate_decision_json: current_json.to_string(),
+                remove_resolved: true,
+                migrate_legacy_identities: false,
             });
             assert!(
                 matches!(result, Err(ref message) if message.contains(expected)),
                 "{result:?}"
             );
         }
+    }
+
+    #[test]
+    fn baseline_update_migrates_legacy_identity_without_adopting_new_debt() -> Result<(), String> {
+        // Issue #1964, fixture 7 + migration route: the update removes
+        // resolved debt, migrates the reviewed legacy identity to the
+        // unambiguously joined canonical gap id, preserves everything else,
+        // and never adopts new current debt.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_baseline",
+          "entries": [
+            {
+              "identity": {"fallback": "src/legacy.rs:7:weakly_gripped"},
+              "path": "src/legacy.rs",
+              "line": 7,
+              "static_class": "weakly_gripped",
+              "decision": "advisory",
+              "evidence": {"missing_discriminator": "legacy == 7"},
+              "review": {"reviewed": true, "owner": "test-platform", "reason": "known debt"}
+            },
+            {
+              "identity": {"seam_id": "gone"},
+              "path": "src/gone.rs",
+              "line": 2,
+              "static_class": "weakly_gripped"
+            },
+            {
+              "identity": {"fallback": "src/plain.rs:9:weakly_gripped"},
+              "path": "src/plain.rs",
+              "line": 9,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/legacy.rs", "line": 7},
+              "evidence_record": {"canonical_gap_id": "legacy::gap::seven"},
+              "evidence": {}
+            },
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/plain.rs", "line": 9},
+              "evidence": {}
+            },
+            {
+              "decision": "blocking",
+              "seam_id": "brand-new",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/new.rs", "line": 1},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: true,
+        })?;
+        let rendered = render_baseline_update_json(&report)?;
+        // Resolved debt removed, legacy entry migrated, plain fallback entry
+        // preserved untouched, brand-new current debt ignored.
+        assert_eq!(baseline_update_before_entry_count(&report), 3);
+        assert_eq!(baseline_update_after_entry_count(&report), 2);
+        assert_eq!(baseline_update_removed_resolved_count(&report), 1);
+        assert_eq!(baseline_update_ignored_new_current_count(&report), 1);
+        assert_eq!(baseline_update_migrated_count(&report), 1);
+        assert!(
+            rendered.contains("\"canonical_gap_id\": \"legacy::gap::seven\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"fallback\": \"src/legacy.rs:7:weakly_gripped\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"owner\": \"test-platform\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"missing_discriminator\": \"legacy == 7\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("migrated baseline entry src/legacy.rs:7:weakly_gripped"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"migrated_legacy_identities\": ["),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"legacy_identity\": \"src/legacy.rs:7:weakly_gripped\""),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("\"seam_id\": \"gone\""), "{rendered}");
+        assert!(
+            !rendered.contains("\"seam_id\": \"brand-new\""),
+            "{rendered}"
+        );
+        // The unmigratable plain entry is preserved as reviewed: the only
+        // canonical gap id in the output is the migrated one (kept entry +
+        // review ledger), and the plain fallback entry is untouched.
+        assert!(
+            rendered.contains("\"fallback\": \"src/plain.rs:9:weakly_gripped\""),
+            "{rendered}"
+        );
+        assert_eq!(
+            rendered
+                .matches("\"canonical_gap_id\": \"legacy::gap::seven\"")
+                .count(),
+            2,
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_update_migration_is_off_by_default() -> Result<(), String> {
+        // Without the explicit compatibility flag the reviewed legacy identity
+        // is preserved as-is: migration is opt-in, never silent default.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_baseline",
+          "entries": [
+            {"identity": {"fallback": "src/legacy.rs:7:weakly_gripped"}, "path": "src/legacy.rs", "line": 7, "static_class": "weakly_gripped"}
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/legacy.rs", "line": 7},
+              "evidence_record": {"canonical_gap_id": "legacy::gap::seven"},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: false,
+        })?;
+        let rendered = render_baseline_update_json(&report)?;
+        assert_eq!(baseline_update_migrated_count(&report), 0);
+        assert!(!rendered.contains("legacy::gap::seven"), "{rendered}");
+        assert!(!rendered.contains("migrated baseline entry"), "{rendered}");
+        assert!(
+            rendered.contains("\"migrated_legacy_identities\": []"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_update_migration_refuses_conflicts_and_foreign_roots() -> Result<(), String> {
+        // A reviewed canonical identity is never overwritten: the conflict
+        // entry joins by fallback (the current candidate names no canonical)
+        // and migration refuses with a loud reason. A foreign root never
+        // joins at all: the stale-join refusal preserves the entry unchanged
+        // and leaves the current decision unmatched.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_baseline",
+          "entries": [
+            {
+              "identity": {
+                "canonical_gap_id": "reviewed::canonical",
+                "fallback": "src/conflict.rs:1:weakly_gripped"
+              },
+              "path": "src/conflict.rs",
+              "line": 1,
+              "static_class": "weakly_gripped"
+            },
+            {
+              "identity": {"fallback": "src/foreign.rs:2:weakly_gripped"},
+              "path": "src/foreign.rs",
+              "line": 2,
+              "static_class": "weakly_gripped",
+              "root": "/other/repo"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "root": ".",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/conflict.rs", "line": 1},
+              "evidence": {}
+            },
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/foreign.rs", "line": 2},
+              "evidence_record": {"canonical_gap_id": "foreign::gap"},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: true,
+        })?;
+        let rendered = render_baseline_update_json(&report)?;
+        assert_eq!(baseline_update_migrated_count(&report), 0);
+        assert_eq!(baseline_update_after_entry_count(&report), 2);
+        assert!(
+            rendered.contains("\"canonical_gap_id\": \"reviewed::canonical\""),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("foreign::gap"), "{rendered}");
+        assert!(rendered.contains("refusing to overwrite it"), "{rendered}");
+        assert!(rendered.contains("another repository root"), "{rendered}");
+        assert!(rendered.contains("/other/repo -> ."), "{rendered}");
+        assert_eq!(baseline_update_ignored_new_current_count(&report), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_update_migrate_only_preserves_unmatched_entries() -> Result<(), String> {
+        // Issue #1964, review: a migration-only run (no --remove-resolved)
+        // migrates what it can and preserves everything else. The reviewed
+        // baseline never shrinks without the explicit shrink flag.
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_baseline",
+          "entries": [
+            {
+              "identity": {"fallback": "src/legacy.rs:7:weakly_gripped"},
+              "path": "src/legacy.rs",
+              "line": 7,
+              "static_class": "weakly_gripped"
+            },
+            {
+              "identity": {"seam_id": "gone"},
+              "path": "src/gone.rs",
+              "line": 2,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/legacy.rs", "line": 7},
+              "evidence_record": {"canonical_gap_id": "legacy::gap::seven"},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+            remove_resolved: false,
+            migrate_legacy_identities: true,
+        })?;
+        let rendered = render_baseline_update_json(&report)?;
+        assert_eq!(baseline_update_before_entry_count(&report), 2);
+        assert_eq!(baseline_update_after_entry_count(&report), 2);
+        assert_eq!(baseline_update_removed_resolved_count(&report), 0);
+        assert_eq!(baseline_update_migrated_count(&report), 1);
+        assert!(
+            rendered.contains("\"canonical_gap_id\": \"legacy::gap::seven\""),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\"seam_id\": \"gone\""), "{rendered}");
+        assert!(
+            rendered.contains("\"remove_resolved\": false"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("without --remove-resolved"), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_update_refuses_diverged_fallback_join_as_stale() -> Result<(), String> {
+        // Issue #1964, review: the update agrees with the delta refusal. A
+        // diverged fallback join preserves the entry unchanged and leaves
+        // the current decision unmatched (ignored, never adopted).
+        let baseline = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_baseline",
+          "entries": [
+            {
+              "identity": {
+                "canonical_gap_id": "pricing::discount::old_rule",
+                "fallback": "src/pricing.rs:88:weakly_gripped"
+              },
+              "path": "src/pricing.rs",
+              "line": 88,
+              "static_class": "weakly_gripped"
+            }
+          ]
+        }"#;
+        let current = r#"{
+          "schema_version": "0.1",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/pricing.rs", "line": 88},
+              "evidence_record": {"canonical_gap_id": "pricing::discount::new_rule"},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report = build_baseline_update_remove_resolved(BaselineUpdateInput {
+            baseline_path: "baseline.json".to_string(),
+            current_gate_decision_path: "current.json".to_string(),
+            baseline_json: baseline.to_string(),
+            current_gate_decision_json: current.to_string(),
+            remove_resolved: true,
+            migrate_legacy_identities: true,
+        })?;
+        let rendered = render_baseline_update_json(&report)?;
+        assert_eq!(baseline_update_after_entry_count(&report), 1);
+        assert_eq!(baseline_update_removed_resolved_count(&report), 0);
+        assert_eq!(baseline_update_ignored_new_current_count(&report), 1);
+        assert_eq!(baseline_update_migrated_count(&report), 0);
+        assert!(
+            rendered.contains("\"canonical_gap_id\": \"pricing::discount::old_rule\""),
+            "{rendered}"
+        );
+        // The new canonical appears only in the disclosure warning, never as
+        // a joined identity: the entry keeps the old canonical.
+        assert!(
+            !rendered.contains("\"canonical_gap_id\": \"pricing::discount::new_rule\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("canonical identity diverged"),
+            "{rendered}"
+        );
+        Ok(())
     }
 }

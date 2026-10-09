@@ -12,7 +12,8 @@ same semantic selector identity as schema 0.2 and adds governance fields.
 
 A schema 0.3 allowlist entry is identified by **path + family + selector**, not by
 line or column number. Line and column are recorded as advisory locator hints
-only (see [last_seen](#last_seen)).
+only (see [last_seen](#last_seen)). The `id` field is a separate governance
+key: it must be unique in the file so PRs and cleanup work can name one row.
 
 When a code change moves an allowed call to a different line, the schema 0.3 entry
 still matches because the selector describes the *structural* call site rather
@@ -60,7 +61,7 @@ column = 17
 |---|---|---|
 | `path` | `[[allow]]` | Repository-relative file path |
 | `family` | `[[allow]]` | Panic family: `unwrap`, `expect`, `panic_macro`, `todo`, `unimplemented`, `unreachable` |
-| `id` | `[[allow]]` | Stable identifier referenced in PRs and cleanup work |
+| `id` | `[[allow]]` | Stable unique identifier referenced in PRs and cleanup work. Duplicate ids fail `check-no-panic-family`. |
 | `classification` | `[[allow]]` | Entry classification, such as `test_only` or `test_helper` |
 | `owner` | `[[allow]]` | Team or area responsible for the exception |
 | `explanation` | `[[allow]]` | Human-readable reason for the exception |

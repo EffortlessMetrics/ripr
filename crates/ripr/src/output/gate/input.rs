@@ -2,13 +2,70 @@ use super::model::*;
 use super::{display_path, read_json_value_with_display, resolve_root_path, string_field};
 use crate::output::gap_decision_ledger::{self, GapRecord};
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Digests of the exact bytes each decision-affecting reader parsed, keyed
+/// by input name for the subject block (#5263 review round 2): a reader that
+/// consumed a file records the hash of those bytes, so the receipt cannot
+/// bind the decision to contents it never evaluated. Warn-only inputs that
+/// no reader parses are absent here and hash from a fresh read at
+/// subject-build time instead.
+#[derive(Default)]
+pub(super) struct ConsumedInputHashes {
+    pub(super) gap_ledger: Option<String>,
+    pub(super) labels_json: Option<String>,
+    pub(super) recommendation_calibration: Option<String>,
+    pub(super) mutation_calibration: Option<String>,
+    pub(super) baseline: Option<String>,
+    pub(super) exception_policy: Option<String>,
+}
+
+impl ConsumedInputHashes {
+    /// Bytes-once helper: reads the file and returns the parsed JSON value
+    /// together with `sha256:<hex>` of the exact bytes parsed. The caller
+    /// records the digest under its own input name.
+    fn read_json_and_record(
+        &self,
+        resolved: &Path,
+        display: &Path,
+    ) -> Result<(Value, String), String> {
+        let bytes = fs::read(resolved).map_err(|err| {
+            if err.kind() == std::io::ErrorKind::NotFound {
+                format!("read {} failed: not found", display_path(display))
+            } else {
+                format!("read {} failed: {err}", display_path(display))
+            }
+        })?;
+        let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let value = serde_json::from_slice(&bytes)
+            .map_err(|err| format!("parse {} failed: {err}", display_path(display)))?;
+        Ok((value, digest))
+    }
+
+    /// Bytes-once helper for the TOML exception ledger: returns the file
+    /// text for the caller's TOML parse together with `sha256:<hex>` of the
+    /// exact bytes read.
+    pub(super) fn read_toml_text_and_record(
+        &self,
+        resolved: &Path,
+        display: &str,
+    ) -> Result<(String, String), String> {
+        let bytes = fs::read(resolved)
+            .map_err(|err| format!("failed to read exception policy `{display}`: {err}"))?;
+        let digest = format!("sha256:{:x}", Sha256::digest(&bytes));
+        let text = String::from_utf8(bytes)
+            .map_err(|err| format!("exception policy `{display}` is not valid UTF-8: {err}"))?;
+        Ok((text, digest))
+    }
+}
+
 pub(super) fn read_labels_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> Vec<String> {
     let mut labels = input
         .labels
@@ -18,8 +75,9 @@ pub(super) fn read_labels_impl(
         .collect::<BTreeSet<_>>();
     if let Some(path) = &input.labels_json {
         let resolved = resolve_root_path(&input.root, path);
-        match read_json_value_with_display(&resolved, path) {
-            Ok(value) => {
+        match consumed.read_json_and_record(&resolved, path) {
+            Ok((value, digest)) => {
+                consumed.labels_json = Some(digest);
                 for label in labels_from_value(&value) {
                     labels.insert(label);
                 }
@@ -53,14 +111,30 @@ pub(super) fn warn_for_optional_json_impl(
 pub(super) fn read_gap_ledger_impl(
     input: &GateEvaluateInput,
     config_errors: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> Option<Vec<GapRecord>> {
     let path = input.gap_ledger.as_ref()?;
     let resolved = resolve_root_path(&input.root, path);
-    let text = match fs::read_to_string(&resolved) {
-        Ok(text) => text,
+    // Read once: the subject hash is computed from exactly the bytes parsed
+    // here, so the receipt cannot bind the decision to other contents
+    // (review round 1, #5263).
+    let bytes = match fs::read(&resolved) {
+        Ok(bytes) => bytes,
         Err(error) => {
             config_errors.push(format!(
                 "required gap decision ledger input {} is invalid: read failed: {error}",
+                display_path(path)
+            ));
+            return Some(Vec::new());
+        }
+    };
+    let consumed_hash = format!("sha256:{:x}", Sha256::digest(&bytes));
+    consumed.gap_ledger = Some(consumed_hash);
+    let text = match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(error) => {
+            config_errors.push(format!(
+                "required gap decision ledger input {} is invalid: not valid UTF-8: {error}",
                 display_path(path)
             ));
             return Some(Vec::new());
@@ -70,6 +144,16 @@ pub(super) fn read_gap_ledger_impl(
     // producer run is not a valid gate input — fail closed rather than gating
     // on a partial denominator.
     if let Ok(value) = serde_json::from_str::<Value>(&text) {
+        // #5203: a ledger built from a findings-bounded run hides omitted
+        // findings — fail closed rather than gating on a bounded denominator.
+        // Checked before the older limited states so a bounded document names
+        // its own budget repair.
+        if let Some(bound_error) =
+            super::findings_bound_input_error(&value, path, "gap decision ledger input")
+        {
+            config_errors.push(format!("required {bound_error}"));
+            return Some(Vec::new());
+        }
         if super::discloses_limited_partial_scope(&value) {
             config_errors.push(format!(
                 "required gap decision ledger input {} discloses a {} analysis run \
@@ -117,14 +201,18 @@ pub(super) fn read_gap_ledger_impl(
 pub(super) fn read_recommendation_calibration_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> CalibrationIndex {
     let mut index = CalibrationIndex::default();
     let Some(path) = &input.recommendation_calibration else {
         return index;
     };
     let resolved = resolve_root_path(&input.root, path);
-    let value = match read_json_value_with_display(&resolved, path) {
-        Ok(v) => v,
+    let value = match consumed.read_json_and_record(&resolved, path) {
+        Ok((v, digest)) => {
+            consumed.recommendation_calibration = Some(digest);
+            v
+        }
         Err(error) => {
             warnings.push(format!(
                 "optional recommendation_calibration {} is unavailable: {error}",
@@ -160,14 +248,18 @@ pub(super) fn read_recommendation_calibration_impl(
 pub(super) fn read_mutation_calibration_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> CalibrationIndex {
     let mut index = CalibrationIndex::default();
     let Some(path) = &input.mutation_calibration else {
         return index;
     };
     let resolved = resolve_root_path(&input.root, path);
-    let value = match read_json_value_with_display(&resolved, path) {
-        Ok(v) => v,
+    let value = match consumed.read_json_and_record(&resolved, path) {
+        Ok((v, digest)) => {
+            consumed.mutation_calibration = Some(digest);
+            v
+        }
         Err(error) => {
             warnings.push(format!(
                 "optional mutation_calibration {} is unavailable: {error}",
@@ -234,6 +326,7 @@ pub(super) fn read_baseline_impl(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
     config_errors: &mut Vec<String>,
+    consumed: &mut ConsumedInputHashes,
 ) -> BaselineIndex {
     if input.mode.requires_baseline() && input.baseline.is_none() {
         config_errors.push(format!(
@@ -246,8 +339,19 @@ pub(super) fn read_baseline_impl(
         return BaselineIndex::default();
     };
     let resolved = resolve_root_path(&input.root, path);
-    match read_json_value_with_display(&resolved, path) {
-        Ok(value) => {
+    match consumed.read_json_and_record(&resolved, path) {
+        Ok((value, digest)) => {
+            consumed.baseline = Some(digest);
+            // #5203: a baseline built from a findings-bounded run is a
+            // bounded denominator — fail closed instead of diffing against
+            // it. Checked before the older limited states so a bounded
+            // document names its own budget repair.
+            if let Some(bound_error) =
+                super::findings_bound_input_error(&value, path, "baseline input")
+            {
+                config_errors.push(bound_error);
+                return BaselineIndex::default();
+            }
             // RIPR-PROP-0019 decision 5: a baseline built from a
             // `limited_partial_scope` run is a partial denominator, never a
             // valid gate baseline — fail closed instead of diffing against it.
@@ -266,6 +370,13 @@ pub(super) fn read_baseline_impl(
                 config_errors.push(format!(
                     "baseline {} discloses an incomplete analysis outcome ({kind}); \
                      an incomplete denominator is never a baseline input",
+                    display_path(path),
+                ));
+                return BaselineIndex::default();
+            }
+            if let Some(defect) = baseline_document_defect(&value) {
+                config_errors.push(format!(
+                    "baseline {} is not a recognized gate baseline: {defect}",
                     display_path(path),
                 ));
                 return BaselineIndex::default();
@@ -339,6 +450,66 @@ fn mutation_confidence_effect(outcome: Option<&str>) -> &'static str {
 fn is_runtime_gap_outcome(outcome: &str) -> bool {
     outcome == "missed" || outcome == "not_caught" || outcome == "uncaught" || outcome == "survived" // ripr-allow: static-language: runtime mutation-calibration import vocabulary, not static output
 }
+/// Kind marker `ripr baseline create` writes on a gate baseline ledger.
+const GATE_BASELINE_KIND: &str = "gate_baseline";
+
+/// Identity-bearing arrays the gate indexes from a baseline file. `entries`
+/// is the `ripr baseline create` ledger shape; `decisions`, `comments`,
+/// `summary_only`, and `suppressed` are the documented compatibility shapes
+/// for reviewed hand-built baselines (docs/CI.md, "Gate baseline workflow").
+const BASELINE_IDENTITY_ARRAYS: [&str; 5] = [
+    "entries",
+    "decisions",
+    "comments",
+    "summary_only",
+    "suppressed",
+];
+
+/// Returns `Some(defect)` when `value` is not a baseline the gate can index:
+/// not a JSON object, a `kind` other than
+/// `gate_baseline` (or a `gate_baseline` without an `entries` array), or no
+/// identity-bearing array at all. Such a file must not silently act as an
+/// empty baseline (every finding new) or as an unrelated document whose ids
+/// happen to be harvested. `schema_version` is not required because the
+/// documented hand-built compatibility baselines may omit it.
+fn baseline_document_defect(value: &Value) -> Option<String> {
+    let Some(object) = value.as_object() else {
+        return Some("expected a JSON object".to_string());
+    };
+    match object.get("kind") {
+        Some(Value::String(kind)) if kind == GATE_BASELINE_KIND => {
+            return if object.get("entries").is_some_and(Value::is_array) {
+                None
+            } else {
+                Some(format!(
+                    "`kind: {GATE_BASELINE_KIND}` requires an `entries` array"
+                ))
+            };
+        }
+        Some(other) => {
+            return Some(format!(
+                "field `kind` is {other}, expected \"{GATE_BASELINE_KIND}\""
+            ));
+        }
+        None => {}
+    }
+    if BASELINE_IDENTITY_ARRAYS
+        .iter()
+        .any(|field| object.get(*field).is_some_and(Value::is_array))
+    {
+        None
+    } else {
+        Some(format!(
+            "no identity array found (expected `kind: {GATE_BASELINE_KIND}` with `entries`, or one of {})",
+            BASELINE_IDENTITY_ARRAYS
+                .iter()
+                .map(|field| format!("`{field}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+}
+
 pub(super) fn baseline_index_from_value(value: &Value) -> BaselineIndex {
     let mut index = BaselineIndex::default();
     for item in value

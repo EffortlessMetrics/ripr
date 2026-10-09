@@ -164,19 +164,27 @@ pub(crate) fn preview_actionability_for(finding: &Finding) -> Option<PreviewActi
 /// concise generic action.
 fn actionable_repair_route(packet: Option<&GapRecord>) -> String {
     if let Some(route) = packet.and_then(|record| record.repair_route.as_ref()) {
-        if let Some(shape) = route.assertion_shape.as_deref().filter(|s| !s.is_empty()) {
-            return format!(
-                "add or strengthen the focused assertion `{shape}` in the related test"
-            );
-        }
+        // The missing discriminator names what the new assertion must pin,
+        // so it leads. The previous wording ("add or strengthen the focused
+        // assertion `<shape>`") read as an instruction to keep an assertion
+        // that, by construction of a weakly-exposed packet, does not pin it.
+        // The projected shape is only built when a discriminator exists.
         if let Some(disc) = route
             .missing_discriminator
             .as_deref()
             .filter(|d| !d.is_empty())
         {
-            return format!(
-                "add a focused assertion for the missing discriminator `{disc}` in the related test"
-            );
+            return match route.assertion_shape.as_deref().filter(|s| !s.is_empty()) {
+                Some(shape) => format!(
+                    "add a focused assertion for the missing discriminator `{disc}` in the related test, shaped like `{shape}`"
+                ),
+                None => format!(
+                    "add a focused assertion for the missing discriminator `{disc}` in the related test"
+                ),
+            };
+        }
+        if let Some(shape) = route.assertion_shape.as_deref().filter(|s| !s.is_empty()) {
+            return format!("add the focused assertion `{shape}` in the related test");
         }
     }
     "add or strengthen a focused assertion in the related test to cover the changed behavior"
@@ -355,7 +363,7 @@ mod tests {
         ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, LanguageId,
         LanguageStatus, MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily,
         ProbeId, RelatedTest, RevealEvidence, RiprEvidence, SourceLocation, StageEvidence,
-        StageState,
+        StageState, SymbolId,
     };
     use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute};
     use std::path::PathBuf;
@@ -380,6 +388,27 @@ mod tests {
         assert!(
             !route.contains("only after"),
             "actionable route must not contain blocked-case text, got {route:?}"
+        );
+    }
+
+    /// The discriminator leads: the borrowed assertion shape is only the
+    /// call pattern, and the old "add or strengthen `<shape>`" wording told
+    /// users to keep an assertion that does not pin the change.
+    #[test]
+    fn actionable_repair_route_leads_with_the_missing_discriminator() {
+        let record = GapRecord {
+            repair_route: Some(GapRepairRoute {
+                assertion_shape: Some("expect(parseLimit('x')).toThrow(expected)".to_string()),
+                missing_discriminator: Some(
+                    "throws TypeError matching 'invalid limit'".to_string(),
+                ),
+                ..GapRepairRoute::default()
+            }),
+            ..GapRecord::default()
+        };
+        assert_eq!(
+            actionable_repair_route(Some(&record)),
+            "add a focused assertion for the missing discriminator `throws TypeError matching 'invalid limit'` in the related test, shaped like `expect(parseLimit('x')).toThrow(expected)`"
         );
     }
 
@@ -503,6 +532,7 @@ mod tests {
             oracle: Some("expect(result).toBe(50)".to_string()),
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         });
         finding.missing.push(
             "TypeScript preview actionability `advisory` / `incomplete_repair_packet`: blocked"
@@ -524,7 +554,9 @@ mod tests {
         assert!(
             projected
                 .iter()
-                .any(|line| line.starts_with("repair_action: add or strengthen")),
+                .any(|line| line.starts_with(
+                    "repair_action: add a focused assertion for the missing discriminator `amount == threshold`"
+                )),
             "{projected:?}"
         );
         assert!(
@@ -548,6 +580,76 @@ mod tests {
                 .any(|line| line.starts_with("TypeScript preview actionability `")),
             "{missing:?}"
         );
+    }
+
+    /// #4105 wrongfam end-to-end: the observed `login('alice')` input provably
+    /// cannot reach the `user.length == 3` boundary, so the packet must fail
+    /// closed (stay `incomplete_repair_packet`) and the reason must name both
+    /// the boundary and the non-reaching observed input.
+    #[test]
+    fn boundary_unreachable_observed_input_fails_packet_closed_with_boundary_reason()
+    -> Result<(), String> {
+        let mut finding = sample_typescript_finding();
+        finding.probe.owner = Some(SymbolId("typescript:src/auth.ts::login".to_string()));
+        for line in [
+            "typescript_package_root: .",
+            "typescript_workspace_root: .",
+            "typescript_framework_hint: jest",
+            "typescript_runner_hint: npm",
+            "typescript_package_confidence: high",
+            "typescript_verify_command: jest tests/auth.test.ts",
+            "typescript_oracle_observed: login('alice')",
+            "typescript_oracle_expected: 'session-for-alice'",
+            "typescript_oracle_confidence: high",
+            "typescript_oracle_evidence_ref: tests/auth.test.ts:4",
+        ] {
+            finding.evidence.push(line.to_string());
+        }
+        finding.activation.missing_discriminators.push(
+            MissingDiscriminatorFact {
+                value: "user.length == 3".to_string(),
+                reason: "changed TypeScript equality-boundary at line 2 lacks a concrete preview discriminator".to_string(),
+                flow_sink: None,
+            },
+        );
+        finding.related_tests.push(RelatedTest {
+            name: "login returns session".to_string(),
+            file: PathBuf::from("tests/auth.test.ts"),
+            line: 4,
+            oracle_strength: OracleStrength::Weak,
+            oracle_kind: OracleKind::ExactValue,
+            oracle: Some("expect(login('alice')).toBeGreaterThan(4)".to_string()),
+            relation_reason: None,
+            relation_confidence: None,
+            miss: None,
+        });
+
+        let Some(actionability) = preview_actionability_for(&finding) else {
+            return Err(
+                "expected structured TypeScript actionability for the wrongfam finding".to_string(),
+            );
+        };
+        assert!(
+            !actionability.repair_packet_ready,
+            "the packet must fail closed when the observed input cannot reach the boundary"
+        );
+        assert_eq!(
+            actionability.actionability_category, "incomplete_repair_packet",
+            "a downgraded packet must stay incomplete"
+        );
+        assert!(
+            actionability
+                .why_not_actionable
+                .contains("user.length == 3"),
+            "why_not_actionable must name the unreachable boundary: {}",
+            actionability.why_not_actionable
+        );
+        assert!(
+            actionability.why_not_actionable.contains("login('alice')"),
+            "why_not_actionable must name the non-reaching observed input: {}",
+            actionability.why_not_actionable
+        );
+        Ok(())
     }
 
     fn sample_typescript_finding() -> Finding {
@@ -595,6 +697,7 @@ mod tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: Vec::new(),
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),

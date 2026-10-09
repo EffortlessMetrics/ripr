@@ -2,7 +2,7 @@ diff --git a/src/profile.ts b/src/profile.ts
 index 0000000..1111111 100644
 --- a/src/profile.ts
 +++ b/src/profile.ts
-@@ -1,5 +1,5 @@
+@@ -1,6 +1,6 @@
  export async function loadProfile(id: string): Promise<string> {
      if (!id) {
 -        return await lookupFallbackProfile(id);
@@ -10,7 +10,7 @@ index 0000000..1111111 100644
      }
      return `profile:${id}`;
  }
-@@ -8,5 +8,5 @@
+@@ -8,6 +8,6 @@
  export async function publishProfile(id: string, sink: { publish(id: string): Promise<void> }): Promise<void> {
      if (!id) {
 -        await sink.publish("missing");

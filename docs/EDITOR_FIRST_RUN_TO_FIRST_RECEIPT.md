@@ -11,9 +11,10 @@ install/open -> diagnose setup -> read status -> inspect one diagnostic
 -> verify -> receipt -> refresh -> inspect first-pr packet
 ```
 
-Rust is the stable default. TypeScript, JavaScript, and Python are opt-in
-preview surfaces; preview findings stay advisory, syntax-first, and
-static-limit bounded.
+Rust is the stable default. TypeScript and JavaScript are opt-in preview
+surfaces; Python preview is enabled automatically for Python-shaped
+repositories without a `ripr.toml`. Preview findings stay advisory,
+syntax-first, and static-limit bounded.
 
 ## 1. Install And Open
 
@@ -43,7 +44,7 @@ Read it as an instrument panel:
 | RIPR server | Found or missing, plus the resolved binary/source when available. |
 | Workspace | The root must be the repository you are editing. |
 | Config | Missing config is normal for Rust default use. |
-| Languages | Rust should be enabled and available. Preview languages must be explicitly enabled. |
+| Languages | Rust should be enabled and available. TypeScript and JavaScript preview must be enabled in `ripr.toml`; Python preview is detected when no `ripr.toml` exists. |
 | Artifacts | Missing artifacts explain why no diagnostics are shown yet. |
 | Freshness | Stale evidence means refresh before acting. |
 | Next safe action | The one command or local step that is safe now. |

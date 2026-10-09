@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9cc2aff..8475284 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Closures in iterator adaptors, one function per test style.
+ 
+ pub fn count_positive(xs: &[i32]) -> usize {
+-    xs.iter().filter(|x| **x > 0).count()
++    xs.iter().filter(|&&x| x > 0).count()
+ }
+ 
+ pub fn doubled(xs: &[u32]) -> Vec<u32> {

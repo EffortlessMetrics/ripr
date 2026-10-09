@@ -1,7 +1,9 @@
 mod allow_attributes;
 mod ci_lane_whitelist;
+pub(crate) mod ci_scratch;
 mod covered_by;
 mod dependency_expiry;
+pub(crate) mod distribution;
 mod doc_roles;
 pub(crate) mod droid_review;
 mod executable_files;
@@ -9,11 +11,14 @@ mod file_policy;
 mod local_context;
 mod network;
 mod no_panic;
+pub(crate) mod phase_diagnostics;
 mod positioning_language;
 mod process;
 mod product_copy;
 pub(crate) mod proof_packs;
 mod release_targets;
+
+pub(crate) use release_targets::{CandidateAuthoritySnapshot, capture_candidate_authority};
 mod static_language;
 mod test_inventory;
 mod workflows;
@@ -25,7 +30,7 @@ pub(crate) use dependency_expiry::check_dependency_suppression_expiry;
 pub(crate) use doc_roles::check_doc_roles;
 pub(crate) use droid_review::check_droid_review_config;
 pub(crate) use executable_files::check_executable_files;
-pub(crate) use file_policy::check_file_policy;
+pub(crate) use file_policy::{check_file_policy, materialized_build_preparation_plan};
 pub(crate) use local_context::check_local_context;
 pub(crate) use network::check_network_policy;
 pub(crate) use no_panic::check_no_panic_family;
@@ -33,6 +38,25 @@ pub(crate) use positioning_language::check_positioning_language;
 pub(crate) use process::check_process_policy;
 pub(crate) use product_copy::check_product_copy;
 pub(crate) use proof_packs::check_proof_packs;
-pub(crate) use release_targets::check_release_targets;
 pub(crate) use static_language::check_static_language;
 pub(crate) use workflows::check_workflows;
+
+pub(crate) fn check_release_targets() -> Result<(), String> {
+    let mut failures = Vec::new();
+    if let Err(error) = release_targets::check_release_targets() {
+        failures.push(error);
+    }
+    if let Err(error) = distribution::check_distribution_contract() {
+        failures.push(error);
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(failures.join("\n"))
+    }
+}
+
+pub(crate) fn qualify_python_wheelhouse(args: &[String]) -> Result<(), String> {
+    distribution::wheelhouse::run(args)
+}

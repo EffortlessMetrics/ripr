@@ -75,7 +75,7 @@ pub(super) fn parse_options(args: &[String]) -> Result<Options, String> {
 
 pub(super) fn run(options: Options) -> Result<(), String> {
     ensure_command_root(&options.root, "swarm queue")?;
-    let contents = std::fs::read_to_string(&options.gap_ledger).map_err(|err| {
+    let contents = crate::bounded_input::read_to_string(&options.gap_ledger).map_err(|err| {
         format!(
             "swarm queue --gap-ledger {} is invalid: read failed: {err}",
             options.gap_ledger.display()
@@ -210,7 +210,7 @@ mod tests {
         );
         assert_eq!(
             parse_options(&args(&["--top", "0"])),
-            Err("invalid swarm queue --top: expected a positive integer".to_string())
+            Err("swarm queue --top requires a positive integer; got \"0\"".to_string())
         );
     }
 

@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/rust_constructor_field_observation/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:6704fae6311d6a6a6aca384b1421a9573e98986f709a40ab528d71f8a9e09860","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:f25f62887a0eb54a382bfebb19f340ff9cfcf2c44815aa7a33ada846fa4c6871","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -24,17 +23,17 @@
         "expression": "storage,"
        },
       "ripr": {
-        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach lower_statement: lower_ast_preserves_storage"},
+        "reach": {"state":"weak","confidence":"low","summary":"No test is seen calling lower_statement; tests share only its file or a name token: lower_ast_preserves_storage"},
         "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
         "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach lower_statement: lower_ast_preserves_storage", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches unknown sink: unknown sink (line 15)", "related test tests/lower.rs:4 lower_ast_preserves_storage uses strong exact value oracle: assert_eq!(statement.storage, Storage::Our);", "observed enum variant value Storage::Our at line 6"],
+      "evidence_path": ["reach weak: No test is seen calling lower_statement; tests share only its file or a name token: lower_ast_preserves_storage", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches unknown sink: unknown sink (line 15)", "related test tests/lower.rs:4 lower_ast_preserves_storage uses strong exact value oracle: assert_eq!(statement.storage, Storage::Our);", "source enum variant value Storage::Our at line 6"],
       "flow_sinks": [
         {"kind":"unknown","text":"unknown sink","line":15}
       ],
-      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach lower_statement: lower_ast_preserves_storage"],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "No test is seen calling lower_statement; tests share only its file or a name token: lower_ast_preserves_storage", "Propagation is not statically obvious from syntax-first analysis", "Reachable tests can plausibly activate this changed behavior"],
       "missing": ["No clear propagation path from changed behavior to an observable sink", "No strong discriminator was detected"],
       "assertion_texts": {
         "6": "assert_eq!(statement.storage, Storage::Our);"

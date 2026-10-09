@@ -3,6 +3,11 @@ name: Qualify source ripr-rs Python wheel (read-only)
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      mcp_evidence_pair:
+        description: "Run the pinned #5407 evidence pair (advisory; no wheel qualification)"
+        type: boolean
+        default: false
   pull_request:
     paths:
       - ".github/workflows/python-wheel-qualification.yml"
@@ -47,7 +52,8 @@ jobs:
     if: >-
       github.repository == 'EffortlessMetrics/ripr' &&
       (github.event_name == 'pull_request' ||
-       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'))
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')) &&
+      !(github.event_name == 'workflow_dispatch' && inputs.mcp_evidence_pair)
     name: build and inspect Linux x64 wheel
     runs-on: ubuntu-22.04
     timeout-minutes: 45
@@ -566,11 +572,49 @@ jobs:
             } >> "${GITHUB_ENV}"
           fi
 
-          resolved="$(env -i HOME="${HOME}" PATH="${consumer_path}" bash -c 'command -v ripr')"
+          printf 'post-install[%s] check=installed-path\n' "${CLIENT}"
+          resolve_status=0
+          resolved="$(env -i HOME="${HOME}" PATH="${consumer_path}" bash -c 'command -v ripr')" \
+            || resolve_status=$?
+          printf 'post-install[%s] installed-path status=%s expected=<%s> actual=<%s>\n' \
+            "${CLIENT}" "${resolve_status}" "${executable}" "${resolved}"
+          # The original assignment under errexit required command resolution to succeed.
+          test "${resolve_status}" -eq 0
           test "${resolved}" = "${executable}"
-          test "$(sha256sum "${resolved}" | awk '{print $1}')" = "${EXPECTED_PAYLOAD_SHA256}"
-          test "$(env -i HOME="${HOME}" PATH="${consumer_path}" ripr --version)" = \
-            "ripr ${RIPR_NATIVE_VERSION}"
+
+          printf 'post-install[%s] check=installed-payload-sha256\n' "${CLIENT}"
+          if installed_payload_sha="$(sha256sum "${resolved}" | awk '{print $1}')"; then
+            digest_status=0
+          else
+            digest_status=$?
+          fi
+          printf 'post-install[%s] installed-payload-sha256 status=%s expected=<%s> actual=<%s>\n' \
+            "${CLIENT}" "${digest_status}" "${EXPECTED_PAYLOAD_SHA256}" "${installed_payload_sha}"
+          test "${installed_payload_sha}" = "${EXPECTED_PAYLOAD_SHA256}"
+
+          printf 'post-install[%s] check=installed-native-version\n' "${CLIENT}"
+          version_stdout="${RUNNER_TEMP}/${CLIENT}-installed-native-version.stdout"
+          version_stderr="${RUNNER_TEMP}/${CLIENT}-installed-native-version.stderr"
+          if env -i HOME="${HOME}" PATH="${consumer_path}" ripr --version \
+            > "${version_stdout}" 2> "${version_stderr}"; then
+            version_status=0
+          else
+            version_status=$?
+          fi
+          installed_native_version="$(cat "${version_stdout}")"
+          printf 'post-install[%s] installed-native-version status=%s expected=<%s> actual=<%s>\n' \
+            "${CLIENT}" "${version_status}" "ripr ${RIPR_NATIVE_VERSION} (${CANDIDATE_SHA,,})" "${installed_native_version}"
+          printf 'post-install[%s] installed-native-version stderr follows\n' "${CLIENT}" >&2
+          cat "${version_stderr}" >&2
+          test "${installed_native_version}" = "ripr ${RIPR_NATIVE_VERSION} (${CANDIDATE_SHA,,})"
+
+          printf 'post-install[%s] check=planted-executable-not-run path=<%s>\n' \
+            "${CLIENT}" "${planted_marker}"
+          if test -e "${planted_marker}"; then
+            printf 'post-install[%s] planted-marker present\n' "${CLIENT}"
+          else
+            printf 'post-install[%s] planted-marker absent\n' "${CLIENT}"
+          fi
           test ! -e "${planted_marker}"
           {
             echo "CLIENT=${CLIENT}"
@@ -709,3 +753,389 @@ jobs:
             "${PLANTED_DIR}/ripr"
           test -f "${PROJECT_FIXTURE}/src/pricing.py"
           test ! -e "${PLANTED_MARKER}"
+
+  # #5301 item 3: a pinned proof run, not another benchmark policy owner.
+  # Both release subjects are built sequentially on this existing hosted runner.
+  # Runtime data describes this runner; it is never 5700X or release qualification.
+  mcp-evidence-pair:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mcp_evidence_pair }}
+    name: pinned MCP evidence before and after (advisory)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      BASELINE_SHA: 9acf0b6630fc21101baa0bbf52cc872dfe3b08a2
+      BASELINE_TREE: 46b1bb84c70628cc7a64e79484c0c37f9a7c47c6
+      PAIR_CANDIDATE_SHA: fab7fd03b478c30faa13db432eccbf0c0a76575f
+      PAIR_CANDIDATE_TREE: 1762a35e687e29f7eaa4dc458d0476b68b876c29
+      CORPUS_SHA: e621bd35ddddcd8b2f39d80b9f5938583571a87d
+      CORPUS_TREE: 7e4a98f93d3d68aa41a10c22ee88ec90317e28dc
+      CORPUS_BASE: 917a16932009c1957f53c2ea325663948add2153
+      CARGO_BUILD_JOBS: 2
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.BASELINE_SHA }}
+          path: pair-source/baseline
+          persist-credentials: false
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ env.PAIR_CANDIDATE_SHA }}
+          path: pair-source/candidate
+          persist-credentials: false
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: dtolnay/anyhow
+          ref: ${{ env.CORPUS_SHA }}
+          fetch-depth: 2
+          path: pair/anyhow
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+          targets: ${{ env.RUST_TARGET }}
+
+      - name: Verify exact subjects and build two release executables sequentially
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REPOSITORY}" = "EffortlessMetrics/ripr-swarm"
+          command -v python3
+          test -x /usr/bin/time
+          command -v strip
+          test -r /proc/self/stat
+          test -r /proc/self/status
+          test "$(git -C pair/anyhow rev-parse HEAD)" = "${CORPUS_SHA}"
+          test "$(git -C pair/anyhow rev-parse 'HEAD^{tree}')" = "${CORPUS_TREE}"
+          test "$(git -C pair/anyhow rev-parse HEAD^)" = "${CORPUS_BASE}"
+          git -C pair/anyhow update-ref refs/remotes/origin/main "${CORPUS_BASE}"
+          test -z "$(git -C pair/anyhow status --porcelain)"
+          for kind in baseline candidate; do
+            if test "${kind}" = baseline; then
+              expected_sha="${BASELINE_SHA}"
+              expected_tree="${BASELINE_TREE}"
+            else
+              expected_sha="${PAIR_CANDIDATE_SHA}"
+              expected_tree="${PAIR_CANDIDATE_TREE}"
+            fi
+            source="${GITHUB_WORKSPACE}/pair-source/${kind}"
+            test "$(git -C "${source}" rev-parse HEAD)" = "${expected_sha}"
+            test "$(git -C "${source}" rev-parse 'HEAD^{tree}')" = "${expected_tree}"
+            test "$(sha256sum "${source}/Cargo.lock" | awk '{print $1}')" = 5d89ada8888aa3a1ee0982548261adcec98d7c44a49b4ab1c45d4b56b9c018e5
+            target="${RUNNER_TEMP}/mcp-evidence-pair/${kind}"
+            mkdir -p "${GITHUB_WORKSPACE}/pair/${kind}"
+            (cd "${source}" && CARGO_TARGET_DIR="${target}" cargo build \
+              --locked --release --target "${RUST_TARGET}" -p ripr --bin ripr \
+              --features lang-python,lang-rust,lang-typescript)
+            cp "${target}/${RUST_TARGET}/release/ripr" "${GITHUB_WORKSPACE}/pair/${kind}/ripr"
+            strip "${GITHUB_WORKSPACE}/pair/${kind}/ripr"
+          done
+          for path in rust-toolchain.toml packaging/python/pyproject.toml Cargo.lock Cargo.toml crates/ripr/Cargo.toml; do
+            cmp "pair-source/baseline/${path}" "pair-source/candidate/${path}"
+          done
+          rustc -vV > pair/rustc-version.txt
+          cargo -vV > pair/cargo-version.txt
+          python3 - <<'PY'
+          import hashlib, json, os, platform
+          from pathlib import Path
+          root = Path('pair')
+          def digest(p): return hashlib.sha256(p.read_bytes()).hexdigest()
+          bindings = {
+              'schema_version': 'mcp-evidence-pair-v1',
+              'workflow_sha': os.environ['GITHUB_SHA'],
+              'workflow_ref': os.environ['GITHUB_WORKFLOW_REF'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'runner': {'os': os.environ['RUNNER_OS'], 'arch': os.environ['RUNNER_ARCH'],
+                         'image': os.environ.get('ImageVersion'), 'platform': platform.platform(),
+                         'cpu_model': next((l.split(':',1)[1].strip() for l in Path('/proc/cpuinfo').read_text().splitlines() if l.startswith('model name')), 'unavailable')},
+              'corpus': {'source': os.environ['CORPUS_SHA'], 'tree': os.environ['CORPUS_TREE'],
+                         'base': os.environ['CORPUS_BASE']},
+              'build': {'rustc': (root/'rustc-version.txt').read_text(),
+                        'cargo': (root/'cargo-version.txt').read_text(),
+                        'target': os.environ['RUST_TARGET'], 'profile': 'release',
+                        'features': ['lang-python','lang-rust','lang-typescript'],
+                        'locked': True, 'stripped': True, 'jobs': 2},
+              'allocation': 'unavailable: no qualified observer',
+              'cache': 'explicit shared app cache, no OS cache flush; first refresh is application-new only',
+          }
+          for kind, prefix in [('baseline','BASELINE'),('candidate','PAIR_CANDIDATE')]:
+              source = Path('pair-source')/kind
+              bindings[kind] = {'source': os.environ[prefix+'_SHA'], 'tree': os.environ[prefix+'_TREE'],
+                  'payload_sha256': digest(root/kind/'ripr'),
+                  'payload_bytes': (root/kind/'ripr').stat().st_size,
+                  'inputs_sha256': {str(p): digest(source/p) for p in [Path('Cargo.lock'),
+                      Path('Cargo.toml'),Path('crates/ripr/Cargo.toml'),
+                      Path('rust-toolchain.toml'),Path('packaging/python/pyproject.toml')]}}
+          (root/'bindings.json').write_text(json.dumps(bindings,indent=2)+'\n')
+          PY
+
+      - name: Prepare bounded paired observer definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > pair/measure.py <<'PY'
+          import os,json,time,threading,queue,subprocess,hashlib,resource,copy,signal
+          from pathlib import Path
+          ROOT=Path(__file__).resolve().parent;CORPUS=ROOT/'anyhow';OUT=ROOT/'measurement';OUT.mkdir(exist_ok=True)
+          HZ=os.sysconf('SC_CLK_TCK');COUNT=3;DEADLINE=float('inf');FIRST_SAMPLE=None;GROUPS=set()
+          def terminated(signum,frame):raise TimeoutError('outer measurement deadline')
+          signal.signal(signal.SIGTERM,terminated)
+          RSS_LIMIT=4*1024**3
+          def clear_group(p):
+              try:os.killpg(p.pid,signal.SIGKILL)
+              except ProcessLookupError:pass
+              p.wait(timeout=5)
+          def live_groups():
+              live=[]
+              for group in GROUPS:
+                  try:os.killpg(group,0)
+                  except ProcessLookupError:continue
+                  live.append(group)
+              return live
+          def host_guard():
+              if time.monotonic()>DEADLINE:raise RuntimeError('20min measurement deadline')
+              heavy=[]
+              for pid in os.listdir('/proc'):
+                  if not pid.isdigit():continue
+                  try:comm=Path('/proc',pid,'comm').read_text().strip()
+                  except OSError:continue
+                  if comm in ['cargo','rustc','clippy-driver','cc1','cc1plus','ld'] or comm.startswith(('ripr','perl-lsp','perl_lsp')):
+                      heavy.append({'pid':int(pid),'comm':comm})
+              available=next(int(l.split()[1])*1024 for l in Path('/proc/meminfo').read_text().splitlines() if l.startswith('MemAvailable:'))
+              fs=os.statvfs(ROOT)
+              h={'available_ram_bytes':available,'disk_free_bytes':fs.f_bavail*fs.f_frsize,'heavy':heavy,'load_average':os.getloadavg()}
+              if available<2*1024**3 or h['disk_free_bytes']<2*1024**3 or heavy:raise RuntimeError('host fence failed: '+json.dumps(h))
+              return h
+
+          def retain(path,data,append=False,critical=False):
+              if isinstance(data,str):data=data.encode('utf-8')
+              used=sum(p.stat().st_size for p in OUT.rglob('*') if p.is_file())
+              replaced=0 if append or not path.exists() else path.stat().st_size
+              cap=(64*1024**2-65536) if critical else 60*1024**2
+              if used-replaced+len(data)>cap:raise RuntimeError('projected evidence cap exceeded')
+              with path.open('ab' if append else 'wb') as f:f.write(data)
+          def emit(x):
+              encoded=json.dumps(x)
+              retain(OUT/'raw.jsonl',encoded+'\n',True,x['type'] in ['block_result','terminal_release'])
+              print(encoded,flush=True)
+
+          def begin_sample():
+              global FIRST_SAMPLE,DEADLINE
+              if FIRST_SAMPLE is None:
+                  FIRST_SAMPLE=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime())
+                  DEADLINE=time.monotonic()+1200
+                  emit({'type':'first_sample','utc':FIRST_SAMPLE,'max_block_seconds':1200})
+          def limit():
+              os.setsid()
+              resource.setrlimit(resource.RLIMIT_AS,(RSS_LIMIT,RSS_LIMIT))
+          def stat(pid):
+              raw=Path('/proc',str(pid),'stat').read_text(); f=raw[raw.rfind(')')+2:].split()
+              st=Path('/proc',str(pid),'status').read_text()
+              hwm=next(int(l.split()[1])*1024 for l in st.splitlines() if l.startswith('VmHWM:'))
+              if hwm>RSS_LIMIT:raise RuntimeError('RSS admission exceeded')
+              return {'pid':pid,'start_ticks':int(f[19]),'user_ticks':int(f[11]),'system_ticks':int(f[12]),'peak_rss_bytes':hwm,'tick_hz':HZ}
+          def canon(x):return json.dumps(x,sort_keys=True,separators=(',',':'),ensure_ascii=False)
+          def capture(p):
+              buffers=[bytearray(),bytearray()];failures=[];error=None
+              def read(stream,index,cap):
+                  for chunk in iter(lambda:stream.read(4096),b''):
+                      room=cap-len(buffers[index]);buffers[index].extend(chunk[:room])
+                      if len(chunk)>room:
+                          failures.append('stdout' if index==0 else 'stderr');clear_group(p);break
+              threads=[threading.Thread(target=read,args=(stream,index,cap),daemon=True) for stream,index,cap in [(p.stdout,0,16*1024**2),(p.stderr,1,1024**2)]]
+              for thread in threads:thread.start()
+              try:p.wait(timeout=30)
+              except BaseException as e:
+                  error=e;clear_group(p)
+              finally:
+                  for thread in threads:thread.join(timeout=2)
+              if any(thread.is_alive() for thread in threads):failures.append('unfinished capture reader');clear_group(p)
+              return bytes(buffers[0]),bytes(buffers[1]),failures,error
+          def cli(kind,args,label):
+              host_guard();t=ROOT/(label+'-'+kind+'-time.json')
+              cmd=['/usr/bin/time','-q','-f','{"user_seconds":%U,"system_seconds":%S,"max_rss_kib":%M}','-o',str(t),str(ROOT/kind/'ripr')]+args
+              begin_sample();start=time.monotonic_ns()
+              p=subprocess.Popen(cmd,stdout=subprocess.PIPE,stderr=subprocess.PIPE,cwd=CORPUS,env=os.environ|{'RIPR_CACHE_DIR':str(ROOT/'cache'),'RIPR_REPO_EXPOSURE_SEAM_LIMIT':'10000'},preexec_fn=limit)
+              GROUPS.add(p.pid)
+              stdout,stderr,overflow,error=capture(p)
+              wall=time.monotonic_ns()-start
+              retain(OUT/(label+'-'+kind+'-stdout'),stdout);retain(OUT/(label+'-'+kind+'-stderr'),stderr)
+              try:
+                  envelope=json.loads(stdout);output_valid=envelope['analysis_outcome']['analysis_complete'] is True and len(envelope['findings'])==6
+              except (ValueError,UnicodeError,KeyError,TypeError):output_valid=False
+              raw=t.read_bytes() if t.exists() else b'';retain(OUT/t.name,raw)
+              try:metrics={'state':'observed','values':json.loads(raw)}
+              except (ValueError,UnicodeError):metrics={'state':'unavailable','reason':'GNU time did not emit valid JSON'}
+              emit({'type':'cli','kind':kind,'label':label,'performance_eligible':metrics['state']=='observed' and output_valid and not overflow and error is None and p.returncode==0,'wall_ns':wall,'exit_code':p.returncode,'output_valid':output_valid,'lifetime':metrics,'capture_overflow':overflow,'capture_error':repr(error) if error else None,'stdout_sha256':hashlib.sha256(stdout).hexdigest(),'stderr_sha256':hashlib.sha256(stderr).hexdigest()})
+              if error:raise error
+              if not output_valid or overflow or p.returncode:raise RuntimeError('invalid CLI sample: '+str((p.returncode,overflow,output_valid)))
+              host_guard();return stdout,stderr,p.returncode
+          class Session:
+              def __init__(self,kind,label):
+                  host_guard()
+                  begin_sample()
+                  self.kind=kind;self.label=label;self.id=0;self.q=queue.Queue(maxsize=128);self.err=bytearray();self.responses=[]
+                  env=os.environ.copy()
+                  env['RIPR_CACHE_DIR']=str(ROOT/'cache')
+                  env['RIPR_REPO_EXPOSURE_SEAM_LIMIT']='10000'
+                  self.p=subprocess.Popen([str(ROOT/kind/'ripr'),'mcp','--stdio','--root',str(CORPUS)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=env,preexec_fn=limit)
+                  self.case_deadline=time.monotonic()+30;self.failed=False
+                  GROUPS.add(self.p.pid)
+                  self.pid=self.p.pid
+                  try:self.bound=stat(self.pid)['start_ticks']
+                  except BaseException:
+                      clear_group(self.p);raise
+                  def readout():
+                      while True:
+                          line=self.p.stdout.readline(128*1024+1)
+                          if not line:break
+                          if len(line)>128*1024:
+                              self.q.put(RuntimeError('MCP response exceeds 128KiB wire bound'));break
+                          try:self.q.put(json.loads(line))
+                          except Exception as e:self.q.put(e)
+                  def readerr():
+                      for b in iter(lambda:self.p.stderr.read(4096),b''):
+                          room=1048576-len(self.err);self.err.extend(b[:room])
+                          if len(b)>room:
+                              clear_group(self.p);break
+                  self.threads=[threading.Thread(target=readout,daemon=True),threading.Thread(target=readerr,daemon=True)]
+                  for t in self.threads:t.start()
+              def call(self,method,params={},label=None,allow_error=False):
+                  if time.monotonic()>DEADLINE:raise RuntimeError('block deadline')
+                  if time.monotonic()>=self.case_deadline:
+                      clear_group(self.p);raise TimeoutError('30s subject case deadline')
+                  self.id+=1;req={'jsonrpc':'2.0','id':self.id,'method':method,'params':params}
+                  before=stat(self.pid);start=time.monotonic_ns()
+                  self.p.stdin.write((json.dumps(req,separators=(',',':'))+'\n').encode());self.p.stdin.flush()
+                  end=min(time.monotonic()+30,self.case_deadline)
+                  while True:
+                      remaining=end-time.monotonic()
+                      if remaining<=0:raise TimeoutError('absolute 30s matching-response deadline')
+                      x=self.q.get(timeout=remaining)
+                      if isinstance(x,Exception):raise x
+                      if x.get('id')==self.id:break
+                  wall=time.monotonic_ns()-start;after=stat(self.pid)
+                  if after['start_ticks']!=self.bound:raise RuntimeError('PID rebound')
+                  self.responses.append(req|{'response':x})
+                  emit({'type':'rpc','kind':self.kind,'session':self.label,'method':method,'label':label or method,'performance_eligible':not allow_error,'wall_ns':wall,'wall_scope':'before-request-write-through-matching-parsed-response','user_ticks':after['user_ticks']-before['user_ticks'],'system_ticks':after['system_ticks']-before['system_ticks'],'peak_rss_bytes':after['peak_rss_bytes'],'rss_scope':'self-process-lifetime-high-water','pid':self.pid,'start_ticks':self.bound,'tick_hz':HZ,'response_sha256':hashlib.sha256(canon(x).encode()).hexdigest()})
+                  if not allow_error and ('error' in x or x.get('result',{}).get('isError',False)):raise RuntimeError('RPC/tool rejection: '+canon(x))
+                  return x
+              def tool(self,name,args={},label=None):return self.call('tools/call',{'name':name,'arguments':args},label or name)
+              def close(self):
+                  failure=None
+                  if self.p.poll() is None and time.monotonic()>=self.case_deadline:clear_group(self.p)
+                  if self.p.poll() is None:self.p.stdin.close()
+                  try:self.p.wait(timeout=max(0.001,min(10,self.case_deadline-time.monotonic())))
+                  except subprocess.TimeoutExpired as e:clear_group(self.p);failure=e
+                  for t in self.threads:t.join(timeout=2)
+                  retain(OUT/(self.label+'-'+self.kind+'-transcript.json'),json.dumps(self.responses,ensure_ascii=False,indent=2))
+                  retain(OUT/(self.label+'-'+self.kind+'-stderr'),self.err)
+                  if failure:raise failure
+                  if self.p.returncode and not self.failed:raise RuntimeError('subject exit '+str(self.p.returncode))
+          PY
+
+      - name: Matched protocol controls and paired CPU wall-time peak-RSS observations
+        shell: bash
+        timeout-minutes: 21
+        run: |
+          set -euo pipefail
+          cat >> pair/measure.py <<'PY'
+          def document(response):
+              r=response['result']
+              if 'structuredContent' in r:return r['structuredContent']
+              if 'contents' in r:return json.loads(next(c['text'] for c in r['contents'] if 'text' in c))
+              return json.loads(next(c['text'] for c in r['content'] if c.get('type')=='text'))
+          def run(kind,label,count=20):
+              s=Session(kind,label)
+              try:
+                  init=s.call('initialize',{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'efficiency-5301','version':'1'}})
+                  s.p.stdin.write(b'{"jsonrpc":"2.0","method":"notifications/initialized"}\n');s.p.stdin.flush()
+                  first=document(s.tool('ripr_refresh',label='first_refresh'))
+                  assert first['attempt']['state']=='completed',first
+                  assert first['snapshot']['finding_count']>0,first
+                  sid=first['snapshot']['snapshot_id']
+                  listing=document(s.tool('ripr_list_gaps',{'snapshot_id':sid}))
+                  assert listing['total']>0,listing
+                  assert listing['snapshot_id']==sid and listing['selected']>0,listing
+                  gap_id=listing['items'][0]['canonical_id']
+                  detail=document(s.tool('ripr_get_gap',{'snapshot_id':sid,'gap_id':gap_id}))
+                  assert detail['snapshot_id']==sid and detail['item']['canonical_id']==gap_id,detail
+                  start=time.monotonic_ns();before=stat(s.pid)
+                  for i in range(count):
+                      r=document(s.tool('ripr_refresh',label='warm_refresh'))
+                      assert r['attempt']['state']=='completed',r
+                      assert r['snapshot']['snapshot_id']==sid
+                  after=stat(s.pid)
+                  emit({'type':'rpc_batch','kind':kind,'session':label,'label':'warm_refresh','count':count,'performance_eligible':True,'wall_ns':time.monotonic_ns()-start,'wall_scope':'batch including wrapper observation/logging overhead','user_ticks':after['user_ticks']-before['user_ticks'],'system_ticks':after['system_ticks']-before['system_ticks'],'tick_hz':HZ,'peak_rss_bytes':after['peak_rss_bytes']})
+                  for i in range(20):
+                      result=document(s.tool('ripr_list_gaps',{'snapshot_id':sid},label='warm_list'))
+                      assert result['snapshot_id']==sid and result['selected']>0,result
+                  snapshot=document(s.call('resources/read',{'uri':'ripr://snapshot/'+sid},label='snapshot_resource'))
+                  assert snapshot['snapshot_id']==sid,snapshot
+                  wrong=s.call('tools/call',{'name':'ripr_list_gaps','arguments':{'snapshot_id':'snapshot:sha256:deliberately-wrong'}},label='wrong_snapshot_rejected',allow_error=True)
+                  assert wrong.get('result',{}).get('isError') is True,wrong
+                  rejection=document(wrong)
+                  assert rejection['failure']['code']=='stale_snapshot',rejection
+                  assert rejection['failure']['data']['current_snapshot_id']==sid,rejection
+                  current=document(s.tool('ripr_list_gaps',{'snapshot_id':sid},label='correct_snapshot_after_rejection'))
+                  assert current['snapshot_id']==sid and current['selected']>0,current
+                  emit({'type':'product_negative_control','kind':kind,'passed':True,'name':'wrong-snapshot-rejected-and-current-retained'})
+                  return s.responses
+              except BaseException:
+                  s.failed=True;clear_group(s.p);raise
+              finally:
+                  s.close()
+                  host_guard()
+          def equivalent(a,b):
+              if canon(a)!=canon(b):
+                  retain(OUT/'parity-diff.json',json.dumps({'baseline':a,'candidate':b},indent=2))
+                  raise RuntimeError('complete transcript parity failed')
+          emit({'type':'bindings','value':json.loads((ROOT/'bindings.json').read_text())})
+          emit({'type':'block_start','utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'baseline':'9acf0b6630fc21101baa0bbf52cc872dfe3b08a2','candidate':'fab7fd03b478c30faa13db432eccbf0c0a76575f','corpus':'anyhow/e621bd35ddddcd8b2f39d80b9f5938583571a87d','scope':'GitHub-hosted Ubuntu22; application-new sessions and persistent warm refresh/list; explicit shared cache; OS cache not dropped'} )
+          try:
+              a=cli('baseline',['check','--format','json'],'control')
+              b=cli('candidate',['check','--format','json'],'control')
+              assert a==b,'CLI complete byte parity failed'
+              for i in range(3):
+                  emit({'type':'pair_start','population':'A/A','pair':i,'host_fence':host_guard()})
+                  first=run('baseline','control'+str(i)+'a',COUNT)
+                  second=run('baseline','control'+str(i)+'b',COUNT)
+                  equivalent(first,second)
+              # Deliberately corrupt retained bytes: the full parity oracle must reject.
+              wrong=copy.deepcopy(first);wrong[-1]['response']['result']['_negative']='wrong-digest-or-length'
+              try:equivalent(first,wrong)
+              except RuntimeError:pass
+              else:raise AssertionError('wrong transcript escaped full parity oracle')
+              emit({'type':'negative_control','name':'changed-response-rejected','passed':True,'scope':'parity-oracle only; not fused Rust implementation mutation'})
+              for pair in range(3):
+                  emit({'type':'pair_start','population':'A/B','pair':pair,'host_fence':host_guard()})
+                  order=['baseline','candidate'] if pair%2==0 else ['candidate','baseline']
+                  values={k:run(k,'pair'+str(pair),COUNT) for k in order}
+                  equivalent(values['baseline'],values['candidate'])
+              emit({'type':'block_result','status':'parity_passed','pairs':3,'allocation':'unavailable; observer not yet qualified'})
+          except Exception as e:
+              emit({'type':'block_result','status':'failed','error':repr(e)})
+              raise
+          finally:
+              live=live_groups()
+              emit({'type':'terminal_release','utc':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),'owned_groups_checked':sorted(GROUPS),'live_owned_groups':live,'released':not live})
+              if live:raise RuntimeError('owned process groups remain; release not established')
+          PY
+          python3 -c "import ast; from pathlib import Path; ast.parse(Path('pair/measure.py').read_text())"
+          timeout --signal=TERM --kill-after=30s 20m python3 pair/measure.py
+
+      - name: Upload bounded paired evidence without publication
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: mcp-evidence-pair-${{ github.run_id }}
+          path: |
+            pair/bindings.json
+            pair/rustc-version.txt
+            pair/cargo-version.txt
+            pair/measure.py
+            pair/measurement/
+          if-no-files-found: warn
+          retention-days: 7

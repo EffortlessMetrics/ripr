@@ -10,7 +10,7 @@ diagnostic -> hover evidence -> related test or context
 
 Lane 3 follows its GitHub issue and PR tracker, this lane tracker, and the
 editor/LSP docs. It does not switch to another campaign merely because
-`.ripr/goals/active.toml` points elsewhere.
+active tracking points elsewhere.
 
 ## Scope
 
@@ -140,9 +140,10 @@ Current dependency state:
 Before starting any future preview-routing follow-up, refresh this audit
 instead of inferring readiness from campaign momentum:
 
-- `.ripr/goals/active.toml` must show the relevant upstream analyzer or
-  projection work complete, or `cargo xtask goals next` must list the follow-up
-  work item as ready;
+- GitHub issues, PRs, and worktree state must show the relevant upstream
+  analyzer or projection work complete per
+  [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701);
 - TypeScript and Python preview outputs must visibly carry preview language
   metadata and explicit static limits in artifacts the editor can project;
 - `static_limit_kind` is available for structured limits after #857; hover and
@@ -799,8 +800,9 @@ validation in one file:
 - campaign-specific plans under [`plans/`](../../plans/) define the PR
   sequence, acceptance, validation commands, and rollback notes for the Lane 3
   slice;
-- `.ripr/goals/active.toml` records current machine-readable execution state
-  only;
+- live execution state is governed by GitHub issues, PRs, and worktree state
+  per [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701);
 - this lane tracker records Lane 3 scope, readiness, blocker state, and
   maintenance evidence;
 - closeout handoffs in [`docs/handoffs/`](../handoffs/) record what landed,
@@ -848,7 +850,7 @@ Completed Campaign 27 PR path:
    - Records where Lane 3 stores why, behavior contracts, architecture
      decisions, PR sequencing, current execution state, lane readiness, and
      final proof.
-   - Does not change behavior, selectors, or `.ripr/goals/active.toml`.
+   - Does not change behavior, selectors, or repository execution tracking.
 2. `docs(proposal): add Lane 3 editor preview routing proposal`
    - Explains why preview evidence should appear in the existing cockpit
      without looking as mature as Rust evidence.
@@ -965,9 +967,9 @@ git diff --check
 
 ## Cross-Lane Rules
 
-- `.ripr/goals/active.toml` is the current Codex Goals manifest, not the whole
-  product board. Its top-level status may be `closed` after campaign closeout
-  until a successor campaign is selected.
+- Live execution state is governed by GitHub issues, PRs, and worktree state
+  per [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).
 - Campaign 24 PR Review Front Panel is a PR/CI composition lane. It explicitly
   excludes editor behavior changes.
 - Lane 3 may project existing first-action or front-panel artifacts in editor

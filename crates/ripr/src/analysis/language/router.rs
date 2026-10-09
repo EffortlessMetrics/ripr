@@ -8,6 +8,45 @@
 use super::LanguageId;
 use std::path::Path;
 
+/// Canonical TypeScript source extensions (RIPR #4116). One owner lists the
+/// routed TS/JS suffixes so downstream consumers (repair route, targeted
+/// rerun, packet projection, first-use output, LSP, doctor) cannot drift
+/// from the router's surface.
+pub(crate) const TYPESCRIPT_SOURCE_EXTENSIONS: &[&str] = &["ts", "tsx", "mts", "cts"];
+
+/// Canonical JavaScript source extensions (RIPR #4116); see
+/// [`TYPESCRIPT_SOURCE_EXTENSIONS`].
+pub(crate) const JAVASCRIPT_SOURCE_EXTENSIONS: &[&str] = &["js", "jsx", "mjs", "cjs"];
+
+/// Which side of the TypeScript/JavaScript source family an extension
+/// belongs to. `.mts`/`.cts` are TypeScript; `.mjs`/`.cjs` are JavaScript.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TsJsSourceKind {
+    TypeScript,
+    JavaScript,
+}
+
+/// Classify an exact file extension into the canonical TypeScript/JavaScript
+/// source family. Matching is exact against the shared lists — never
+/// substring or final-character based — so near-misses such as `.mt`,
+/// `.cj`, `.mjsx`, or `.ctsx` and every non-TS/JS extension return `None`.
+/// Callers that historically folded case normalize before calling.
+pub(crate) fn ts_js_source_kind(extension: &str) -> Option<TsJsSourceKind> {
+    if TYPESCRIPT_SOURCE_EXTENSIONS.contains(&extension) {
+        Some(TsJsSourceKind::TypeScript)
+    } else if JAVASCRIPT_SOURCE_EXTENSIONS.contains(&extension) {
+        Some(TsJsSourceKind::JavaScript)
+    } else {
+        None
+    }
+}
+
+/// Whether an exact file extension is one of the eight routed TS/JS source
+/// extensions; see [`ts_js_source_kind`].
+pub(crate) fn is_ts_js_source_extension(extension: &str) -> bool {
+    ts_js_source_kind(extension).is_some()
+}
+
 /// Map a source-file path to the language adapter that should handle it.
 ///
 /// Returns `None` when no adapter handles the path. Matched paths route to
@@ -19,16 +58,152 @@ pub(crate) fn route(path: &Path) -> Option<LanguageId> {
     let ext = path.extension()?.to_str()?;
     match ext {
         "rs" => Some(LanguageId::Rust),
-        "ts" | "tsx" | "js" | "jsx" => Some(LanguageId::TypeScript),
+        // The whole TS/JS family rides the TypeScript adapter; `.d.ts`
+        // declarations keep routing here incidentally because
+        // `Path::extension` reports "ts" for them.
+        _ if is_ts_js_source_extension(ext) => Some(LanguageId::TypeScript),
         "py" => Some(LanguageId::Python),
         "pm" | "pl" | "t" | "psgi" => Some(LanguageId::Perl),
         _ => None,
     }
 }
 
+/// Programming-language source extensions no ripr adapter reads, with the
+/// language name shown to users. A changed file with one of these carries
+/// behavior ripr did not analyze, unlike documentation or configuration, so
+/// the pipeline records it as a typed limitation instead of calling an empty
+/// result correct. Matching is exact after ASCII case folding.
+const UNANALYZED_SOURCE_LANGUAGES: &[(&str, &str)] = &[
+    ("go", "Go"),
+    ("java", "Java"),
+    ("kt", "Kotlin"),
+    ("kts", "Kotlin"),
+    ("scala", "Scala"),
+    ("groovy", "Groovy"),
+    ("c", "C"),
+    ("h", "C"),
+    ("cc", "C++"),
+    ("cpp", "C++"),
+    ("cxx", "C++"),
+    ("hh", "C++"),
+    ("hpp", "C++"),
+    ("hxx", "C++"),
+    ("cs", "C#"),
+    ("fs", "F#"),
+    ("swift", "Swift"),
+    ("m", "Objective-C or MATLAB"),
+    ("mm", "Objective-C"),
+    ("rb", "Ruby"),
+    ("php", "PHP"),
+    ("lua", "Lua"),
+    ("ex", "Elixir"),
+    ("exs", "Elixir"),
+    ("erl", "Erlang"),
+    ("hs", "Haskell"),
+    ("ml", "OCaml"),
+    ("clj", "Clojure"),
+    ("dart", "Dart"),
+    ("zig", "Zig"),
+    ("jl", "Julia"),
+    ("sol", "Solidity"),
+    ("sh", "Shell"),
+    ("bash", "Shell"),
+    ("zsh", "Shell"),
+    ("ps1", "PowerShell"),
+    ("psm1", "PowerShell"),
+    ("vue", "Vue"),
+    ("svelte", "Svelte"),
+];
+
+/// Unanalyzed languages that are build, CI and automation scripts rather
+/// than product source. A changed script is still named as not analyzed,
+/// but it does not make an otherwise complete analysis partial: nearly every
+/// Rust repository carries CI scripts, and marking each such PR partial
+/// buried the real signal (a changed Go or C file).
+const SCRIPT_LANGUAGES: &[&str] = &["Shell", "PowerShell"];
+
+/// Whether an unanalyzed language name is a script language; see
+/// [`SCRIPT_LANGUAGES`].
+pub(crate) fn is_script_language(language: &str) -> bool {
+    SCRIPT_LANGUAGES.contains(&language)
+}
+
+#[cfg(test)]
+pub(crate) const UNANALYZED_SOURCE_LANGUAGES_FOR_TESTS: &[(&str, &str)] =
+    UNANALYZED_SOURCE_LANGUAGES;
+
+/// The language name of a source file that no ripr adapter reads, or `None`
+/// for routed sources ([`route`]) and for non-source files such as
+/// documentation, configuration and data.
+pub(crate) fn unanalyzed_source_language(path: &Path) -> Option<&'static str> {
+    if route(path).is_some() {
+        return None;
+    }
+    // Case-folded: `B.C` or `Main.JAVA` is still source (unlike `route`,
+    // which only claims what an adapter can actually read).
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    UNANALYZED_SOURCE_LANGUAGES
+        .iter()
+        .find(|(known, _)| *known == ext)
+        .map(|(_, language)| *language)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unanalyzed_source_language_names_code_no_adapter_reads() {
+        let cases = [
+            ("pkg/calc.go", Some("Go")),
+            ("src/main/java/ex/Calc.java", Some("Java")),
+            ("calc.c", Some("C")),
+            ("include/calc.h", Some("C")),
+            ("src/calc.cpp", Some("C++")),
+            ("scripts/build.sh", Some("Shell")),
+            ("legacy/B.C", Some("C")),
+            ("src/Main.JAVA", Some("Java")),
+            ("web/App.vue", Some("Vue")),
+            // Routed sources belong to an adapter, not to this list.
+            ("src/lib.rs", None),
+            ("web/app.ts", None),
+            ("calc.py", None),
+            ("lib/My/App.pm", None),
+            // Documentation, configuration and data are not source.
+            ("README.md", None),
+            ("go.mod", None),
+            ("pom.xml", None),
+            ("Makefile", None),
+            ("Cargo.toml", None),
+            ("data.json", None),
+        ];
+        for (path, expected) in cases {
+            assert_eq!(
+                unanalyzed_source_language(Path::new(path)),
+                expected,
+                "{path}"
+            );
+        }
+    }
+
+    #[test]
+    fn script_languages_are_the_shell_and_powershell_entries() {
+        for language in ["Shell", "PowerShell"] {
+            assert!(is_script_language(language), "{language}");
+        }
+        for language in ["Go", "Java", "C", "C++", "Ruby", "Vue"] {
+            assert!(!is_script_language(language), "{language}");
+        }
+        // Every script language names a real table entry.
+        for language in SCRIPT_LANGUAGES {
+            assert!(
+                UNANALYZED_SOURCE_LANGUAGES
+                    .iter()
+                    .any(|(_, name)| name == language),
+                "{language}"
+            );
+        }
+    }
 
     #[test]
     fn route_rust_and_preview_languages_by_extension() {
@@ -38,6 +213,13 @@ mod tests {
             ("web/app.tsx", LanguageId::TypeScript),
             ("web/app.js", LanguageId::TypeScript),
             ("web/app.jsx", LanguageId::TypeScript),
+            ("web/app.mts", LanguageId::TypeScript),
+            ("web/app.cts", LanguageId::TypeScript),
+            ("web/app.mjs", LanguageId::TypeScript),
+            ("web/app.cjs", LanguageId::TypeScript),
+            // `.d.ts` declarations keep routing via "ts" (`Path::extension`
+            // of `foo.d.ts` is "ts") and must remain accepted.
+            ("web/app.d.ts", LanguageId::TypeScript),
             ("tests/test_retry.py", LanguageId::Python),
         ];
 
@@ -58,5 +240,33 @@ mod tests {
     fn route_ignores_unknown_or_extensionless_paths() {
         assert_eq!(route(Path::new("README.md")), None);
         assert_eq!(route(Path::new("Makefile")), None);
+    }
+
+    #[test]
+    fn ts_js_extension_authority_classifies_exactly_the_routed_surface() {
+        // #4116 removal control: deleting any extension from the shared
+        // authority must flip at least one of these parity rows.
+        let cases = [
+            ("ts", Some(TsJsSourceKind::TypeScript)),
+            ("tsx", Some(TsJsSourceKind::TypeScript)),
+            ("mts", Some(TsJsSourceKind::TypeScript)),
+            ("cts", Some(TsJsSourceKind::TypeScript)),
+            ("js", Some(TsJsSourceKind::JavaScript)),
+            ("jsx", Some(TsJsSourceKind::JavaScript)),
+            ("mjs", Some(TsJsSourceKind::JavaScript)),
+            ("cjs", Some(TsJsSourceKind::JavaScript)),
+        ];
+
+        for (extension, expected) in cases {
+            assert_eq!(ts_js_source_kind(extension), expected, ".{extension}");
+            assert!(is_ts_js_source_extension(extension), ".{extension}");
+        }
+
+        // Near-misses and unrelated extensions stay unknown; matching is
+        // exact, never substring or final-character based.
+        for extension in ["mt", "cj", "mjsx", "ctsx", "ts2", "tsx?", "py", "rs", ""] {
+            assert_eq!(ts_js_source_kind(extension), None, ".{extension}");
+            assert!(!is_ts_js_source_extension(extension), ".{extension}");
+        }
     }
 }

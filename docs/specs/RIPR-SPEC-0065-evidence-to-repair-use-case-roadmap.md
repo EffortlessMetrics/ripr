@@ -212,8 +212,9 @@ cannot fire while an overlapping child spec omits the link.
   badge projection, PR gate advisory behavior, LSP agent packet,
   TypeScript adapter, large-repo diff-first mode, receipt outcome
   quality, route metrics.
-- `.ripr/goals/active.toml` routes through the plan after it lands
-  (separate PR; see the plan).
+- Live execution routes through the plan via GitHub issues and PRs per
+  [Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).
 
 ## Metrics
 

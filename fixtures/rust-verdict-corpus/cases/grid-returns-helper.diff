@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 08239b9..b5f05b3 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn slug(title: &str) -> String {
+ }
+ 
+ pub fn tags(list: &str) -> Vec<String> {
+-    list.split(',').map(|t| t.trim().to_string()).collect()
++    list.split(',').map(str::trim).map(String::from).collect()
+ }
+ 
+ pub fn banner(version: u32) -> String {

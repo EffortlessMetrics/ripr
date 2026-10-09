@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::time::Duration;
 
 pub(crate) const ARTIFACT_IDENTITY_SCHEMA_VERSION: &str = "1";
 /// Version of the repo-exposure analysis input-identity algorithm (#2823).
@@ -20,11 +20,28 @@ pub(crate) const ARTIFACT_IDENTITY_SCHEMA_VERSION: &str = "1";
 /// the concrete checkout root (and any host-specific path spelling) from the
 /// fingerprint: `analysis.input_identity` is portable semantic/configuration
 /// identity, while `repository.root` stays the concrete checkout-instance
-/// evidence validated separately.
-pub(crate) const INPUT_IDENTITY_VERSION: &str = "v3";
+/// evidence validated separately. v4 counts only the Cargo lockfiles Git
+/// tracks: an untracked or ignored `Cargo.lock` is build state that Cargo
+/// writes when it resolves dependencies (a library crate that does not commit
+/// its lockfile gets one from the first `cargo test`), and the static seam
+/// inventory never reads lockfile content, so it cannot move the evidence a
+/// before/after pair compares. A tracked lockfile, and every manifest, still
+/// moves the identity.
+pub(crate) const INPUT_IDENTITY_VERSION: &str = "v4";
 pub(crate) const CONTENT_COMMITMENT_CANONICALIZATION: &str = "raw_json_placeholder_v1";
 pub(crate) const CONTENT_SHA256_PLACEHOLDER: &str =
     "sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+/// `analysis.format` / `analysis.command` token of the repo-exposure identity
+/// envelope. The repo-exposure producer command is part of the validated
+/// identity contract (`validate_repo_exposure_artifact`).
+const REPO_EXPOSURE_ANALYSIS_FORMAT: &str = "repo-exposure-json";
+const REPO_EXPOSURE_PRODUCER_COMMAND: &str = "ripr check --format repo-exposure-json";
+
+/// `analysis.format` / `analysis.command` token of the repo seam inventory
+/// identity envelope (#6609).
+const REPO_SEAMS_ANALYSIS_FORMAT: &str = "repo-seams-json";
+const REPO_SEAMS_PRODUCER_COMMAND: &str = "ripr check --format repo-seams-json";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct RepoExposureArtifactContext {
@@ -37,14 +54,15 @@ pub(crate) struct RepoExposureArtifactContext {
 impl RepoExposureArtifactContext {
     /// Build the portable semantic input identity for one repo-exposure run.
     ///
-    /// The v2 canonical string covers exactly the inputs that affect analysis
+    /// The canonical string covers exactly the inputs that affect analysis
     /// meaning: identity version, mode, profile (this producer binds profile
     /// to mode; both are stated explicitly), base semantics, analysis format,
-    /// manifest and lockfile content identities (root-relative, so equivalent
-    /// checkouts under different roots agree), the repo-exposure
+    /// manifest and tracked-lockfile content identities (root-relative, so
+    /// equivalent checkouts under different roots agree; see
+    /// `git_tracked_lockfiles`), the repo-exposure
     /// producer-consumed configuration boundary
-    /// (`crate::config::repo_exposure_config_identity_hash` — the three
-    /// oracle-strength fields only), and the analyzer version.
+    /// (`crate::config::repo_exposure_config_identity_hash` — oracle
+    /// policy, production-like/harness opt-ins, and generated-file patterns), and the analyzer version.
     /// The concrete checkout root is deliberately absent: it is emitted as
     /// `repository.root` and validated with exact canonical-path equality.
     pub(crate) fn for_repo_exposure(
@@ -53,15 +71,54 @@ impl RepoExposureArtifactContext {
         base_revision: Option<String>,
         config: &crate::config::RiprConfig,
     ) -> Result<Self, String> {
+        Self::for_analysis_format(
+            root,
+            mode,
+            base_revision,
+            config,
+            REPO_EXPOSURE_ANALYSIS_FORMAT,
+        )
+    }
+
+    /// Build the same portable identity for one repo seam inventory run
+    /// (#6609). The analysis format is part of the canonical identity, so a
+    /// `repo-seams-json` artifact never shares an input identity with a
+    /// `repo-exposure-json` artifact even on the same tree.
+    pub(crate) fn for_repo_seams(
+        root: PathBuf,
+        mode: String,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+    ) -> Result<Self, String> {
+        Self::for_analysis_format(
+            root,
+            mode,
+            base_revision,
+            config,
+            REPO_SEAMS_ANALYSIS_FORMAT,
+        )
+    }
+
+    fn for_analysis_format(
+        root: PathBuf,
+        mode: String,
+        base_revision: Option<String>,
+        config: &crate::config::RiprConfig,
+        analysis_format: &str,
+    ) -> Result<Self, String> {
         let canonical_root = canonical_root(&root)?;
         let (manifest_identity, lockfile_identity) =
-            crate::analysis::seam_cache::workspace_named_file_identities_relative(&canonical_root);
+            crate::analysis::seam_cache::workspace_named_file_identities_relative(
+                &canonical_root,
+                |lockfiles| git_tracked_lockfiles(&canonical_root, lockfiles),
+            );
         let input_canonical = format!(
-            "identity_version={};mode={};profile={};base={:?};format=repo-exposure-json;manifest={:?};lockfile={:?};config={};analyzer={}",
+            "identity_version={};mode={};profile={};base={:?};format={};manifest={:?};lockfile={:?};config={};analyzer={}",
             INPUT_IDENTITY_VERSION,
             mode,
             mode,
             base_revision,
+            analysis_format,
             manifest_identity,
             lockfile_identity,
             crate::config::repo_exposure_config_identity_hash(config),
@@ -79,6 +136,40 @@ impl RepoExposureArtifactContext {
             input_identity,
         })
     }
+}
+
+/// Keeps the collected lockfiles that Git tracks (index entries), the
+/// lockfile scope of the v4 input identity. The collector's paths are
+/// root-relative and `git ls-files` answers relative to the same root, with
+/// pathspec magic disabled so a path is matched literally. When Git cannot
+/// answer, every collected lockfile is kept (the v3 scope): that can only make
+/// a pair less comparable, never hide a tracked lockfile change.
+fn git_tracked_lockfiles(
+    root: &Path,
+    lockfiles: Vec<(PathBuf, Vec<u8>)>,
+) -> Vec<(PathBuf, Vec<u8>)> {
+    if lockfiles.is_empty() {
+        return lockfiles;
+    }
+    let spellings = lockfiles
+        .iter()
+        .map(|(path, _)| path.to_string_lossy().replace('\\', "/"))
+        .collect::<Vec<_>>();
+    let mut args = vec!["--literal-pathspecs", "ls-files", "-z", "--cached", "--"];
+    args.extend(spellings.iter().map(String::as_str));
+    let Ok(listing) = git_output(root, &args) else {
+        return lockfiles;
+    };
+    let tracked = listing
+        .split('\0')
+        .filter(|path| !path.is_empty())
+        .collect::<std::collections::BTreeSet<_>>();
+    lockfiles
+        .into_iter()
+        .zip(spellings.iter())
+        .filter(|(_, spelling)| tracked.contains(spelling.as_str()))
+        .map(|(file, _)| file)
+        .collect()
 }
 
 pub(crate) struct Sha256Writer {
@@ -117,6 +208,42 @@ pub(crate) fn repo_exposure_artifact_metadata(
     context: &RepoExposureArtifactContext,
     content_sha256: &str,
 ) -> Result<Value, String> {
+    analysis_artifact_metadata(
+        context,
+        "repo_exposure",
+        REPO_EXPOSURE_ANALYSIS_FORMAT,
+        REPO_EXPOSURE_PRODUCER_COMMAND,
+        content_sha256,
+    )
+}
+
+/// Producer-owned identity envelope for a `repo-seams-json` artifact (#6609).
+/// The same shared projection `repo-exposure-json` carries (ADR 0019): the
+/// only differences are the artifact kind and the analysis format/command
+/// tokens, which also move the input identity.
+pub(crate) fn repo_seams_artifact_metadata(
+    context: &RepoExposureArtifactContext,
+    content_sha256: &str,
+) -> Result<Value, String> {
+    analysis_artifact_metadata(
+        context,
+        "repo_seams",
+        REPO_SEAMS_ANALYSIS_FORMAT,
+        REPO_SEAMS_PRODUCER_COMMAND,
+        content_sha256,
+    )
+}
+
+/// The shared producer identity projection (ADR 0019). `analysis.command` and
+/// `analysis.profile` state the producing operation; `content_sha256` commits
+/// the exact rendered bytes via the fixed placeholder canonicalization.
+fn analysis_artifact_metadata(
+    context: &RepoExposureArtifactContext,
+    artifact_kind: &str,
+    analysis_format: &str,
+    producer_command: &str,
+    content_sha256: &str,
+) -> Result<Value, String> {
     let root = canonical_root(&context.root)?;
     let head = git_output(&root, &["rev-parse", "HEAD"])
         .ok()
@@ -134,7 +261,7 @@ pub(crate) fn repo_exposure_artifact_metadata(
         })
         .unwrap_or("unavailable");
     Ok(json!({
-        "kind": "repo_exposure",
+        "kind": artifact_kind,
         "schema_version": ARTIFACT_IDENTITY_SCHEMA_VERSION,
         "canonicalization": CONTENT_COMMITMENT_CANONICALIZATION,
         "producer": {
@@ -146,11 +273,11 @@ pub(crate) fn repo_exposure_artifact_metadata(
             "head": head,
         },
             "analysis": {
-                "format": "repo-exposure-json",
+                "format": analysis_format,
                 "mode": context.mode,
                 "base_revision": context.base_revision,
                 "input_identity": context.input_identity,
-                "command": "ripr check --format repo-exposure-json",
+                "command": producer_command,
                 "profile": context.mode,
                 "worktree": status,
             },
@@ -174,6 +301,25 @@ pub(crate) fn validate_repo_exposure_artifact(
     label: &str,
 ) -> Result<ValidatedArtifact, String> {
     let document: RepoExposureDocument = serde_json::from_str(raw).map_err(|err| {
+        if is_unversioned_repo_exposure(raw) {
+            let bash_recovery = super::loop_commands::check_repo_exposure_command(
+                &super::loop_commands::bound_root(&root.to_string_lossy()),
+                "draft",
+                "recovered.repo-exposure.json",
+            );
+            let recovery = match crate::output::markdown::powershell_command(&bash_recovery) {
+                Some(powershell) => {
+                    format!("Bash/Git Bash: `{bash_recovery}`; PowerShell: `{powershell}`")
+                }
+                None => format!(
+                    "Bash/Git Bash only: `{bash_recovery}` (PowerShell recovery unavailable)"
+                ),
+            };
+            return format!(
+                "agent verify {label} artifact is not a canonical repo-exposure artifact: no RIPR producer envelope (legacy or unknown producer); expected the current RIPR {} repo-exposure contract. Regenerate with the current installed RIPR executable. {recovery}. Replace this input with the regenerated artifact; the legacy artifact was not accepted",
+                env!("CARGO_PKG_VERSION")
+            );
+        }
         format!("agent verify {label} artifact is not a canonical repo-exposure artifact: {err}")
     })?;
     let RepoExposureDocument {
@@ -342,6 +488,18 @@ pub(crate) fn validate_repo_exposure_artifact(
         analysis_profile: identity.analysis.profile,
         content_sha256: identity.content_sha256,
     })
+}
+
+/// Classify only the old repo-exposure shape after canonical parsing refused it.
+/// This diagnosis never admits an artifact or authenticates a producer version.
+fn is_unversioned_repo_exposure(raw: &str) -> bool {
+    let Ok(Value::Object(document)) = serde_json::from_str::<Value>(raw) else {
+        return false;
+    };
+    !document.contains_key("artifact")
+        && document.get("schema_version").is_some_and(Value::is_string)
+        && document.get("scope").and_then(Value::as_str) == Some("repo")
+        && document.get("seams").is_some_and(Value::is_array)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -565,10 +723,10 @@ fn canonical_root(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn display_root(root: &Path) -> String {
-    root.to_string_lossy().replace('\\', "/")
+    crate::agent::loop_commands::root_path_display(root)
 }
 
-fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
+pub(crate) fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
     let output = git_spawn(root, args)?;
     if !output.status.success() {
         return Err(format!(
@@ -583,13 +741,20 @@ fn git_output(root: &Path, args: &[&str]) -> Result<String, String> {
         .map_err(|err| format!("git {args:?} returned non-UTF-8 output: {err}"))
 }
 
+/// Cooperative deadline for every git adapter spawn in this module (#2303,
+/// #4363). The adapters answer artifact identity and verify questions
+/// (`rev-parse`, `status`, `cat-file`, `merge-base`) on bounded repair/verify
+/// flows: a hung git must not block the flow past the deadline. One minute
+/// matches the `GIT_DEADLINE` family used by the other bounded git consumers.
+const ARTIFACT_GIT_DEADLINE: Duration = Duration::from_mins(1);
+
 /// The single process-spawn site for every git adapter in this module: the
-/// process-policy gate allows exactly one command spawn here.
+/// process-policy gate allows exactly one command spawn here. The spawn goes
+/// through the shared `crate::git` deadline/process-owner authority (#4363);
+/// the adapter-level `Output` contract (exit status inspected by the caller)
+/// is unchanged.
 fn git_spawn(root: &Path, args: &[&str]) -> Result<std::process::Output, String> {
-    Command::new("git")
-        .args(args)
-        .current_dir(root)
-        .output()
+    crate::git::run_git_output_with_deadline(root, args, Some(ARTIFACT_GIT_DEADLINE))
         .map_err(|err| format!("run git {:?} in {} failed: {err}", args, root.display()))
 }
 
@@ -627,7 +792,7 @@ fn git_object_type(root: &Path, revision: &str) -> Result<Option<String>, String
 /// `git merge-base --is-ancestor` as a boolean: exit 0 is "is an ancestor",
 /// exit 1 is "is not", and anything else is an infrastructure error rather
 /// than an ancestry verdict.
-fn git_merge_base_is_ancestor(
+pub(crate) fn git_merge_base_is_ancestor(
     root: &Path,
     ancestor: &str,
     descendant: &str,
@@ -645,7 +810,16 @@ fn git_merge_base_is_ancestor(
     }
 }
 
-fn is_full_sha(value: &str) -> bool {
+/// Whether a value is a full Git object name, which is the only thing
+/// `repo_exposure_artifact_metadata` writes as `artifact.repository.head`.
+///
+/// It is `pub(crate)` so a reader of that field can accept exactly what this
+/// module would have written as a head, rather than excluding the
+/// `"unavailable"` placeholder by string equality. A reader coupled to the
+/// placeholder's spelling starts reporting a sentinel as a commit the moment
+/// this module changes it; a reader that asks "is this a Git object name"
+/// rejects that and any future sentinel without being told about it.
+pub(crate) fn is_full_sha(value: &str) -> bool {
     value.len() == 40 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
@@ -904,6 +1078,17 @@ fn governed_commitment_span(raw: &str) -> Result<(usize, usize), ContentCommitme
     }
 }
 
+/// Recompute the governed content commitment of artifact bytes without any
+/// repository access. Terminal-receipt readers bind a verify document to the
+/// retained before snapshot through this alone: the retained bytes are
+/// already commitment-anchored, so binding needs the recomputed digest, not
+/// full artifact validation (which requires git liveness and would make
+/// issued receipts unreadable at an unknown HEAD). The typed rejection stays
+/// private; callers get the same rendered reasons validation reports.
+pub(crate) fn recompute_content_commitment(raw: &str) -> Result<String, String> {
+    content_sha256_with_placeholder(raw).map_err(|error| error.to_string())
+}
+
 fn content_sha256_with_placeholder(raw: &str) -> Result<String, ContentCommitmentRejection> {
     let (value_start, value_end) = governed_commitment_span(raw)?;
     let declared = &raw[value_start..value_end];
@@ -948,6 +1133,106 @@ fn replace_content_commitment(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn legacy_repo_exposure_has_actionable_rooted_recovery() -> Result<(), String> {
+        // Released v0.10.0 (c08d474a) renders schema 0.3, scope repo and
+        // seams, without the later producer-owned artifact envelope.
+        let raw = r#"{"schema_version":"0.3","scope":"repo","seams":[]}"#;
+        let root = Path::new("selected root");
+        let expected = super::super::loop_commands::check_repo_exposure_command(
+            &super::super::loop_commands::bound_root("selected root"),
+            "draft",
+            "recovered.repo-exposure.json",
+        );
+        let error = validate_repo_exposure_artifact(root, raw, "before")
+            .err()
+            .ok_or("legacy artifact was accepted")?;
+        for text in [
+            "legacy or unknown producer",
+            env!("CARGO_PKG_VERSION"),
+            expected.as_str(),
+            "Replace this input",
+        ] {
+            if !error.contains(text) {
+                return Err(format!("legacy recovery omitted {text}: {error}"));
+            }
+        }
+        if error.contains("missing field") {
+            return Err("legacy recovery exposed an opaque schema error".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_recovery_binds_relative_root_and_does_not_invent_label_flags() -> Result<(), String> {
+        let raw = r#"{"schema_version":"0.3","scope":"repo","seams":[]}"#;
+        let bound = super::super::loop_commands::bound_root("selected root");
+        let expected = super::super::loop_commands::check_repo_exposure_command(
+            &bound,
+            "draft",
+            "recovered.repo-exposure.json",
+        );
+        for label in ["receipt before", "repair attempt before", "packet input"] {
+            let error = validate_repo_exposure_artifact(Path::new("selected root"), raw, label)
+                .err()
+                .ok_or("legacy artifact was accepted")?;
+            if !error.contains(&expected) || error.contains(&format!("--{label}")) {
+                return Err(format!("invalid rooted/shared-consumer recovery: {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_diagnosis_does_not_reclassify_unrelated_or_enveloped_json() -> Result<(), String> {
+        for raw in [
+            "not JSON",
+            r#"{"schema_version":"1","scope":"repo","seams":[]"#,
+            r#"{"scope":"repo","seams":[]}"#,
+            r#"{"schema_version":"1","scope":"file","seams":[]}"#,
+            r#"{"schema_version":"1","scope":"repo","seams":{}}"#,
+            r#"{"schema_version":"1","scope":"repo","seams":[],"artifact":null}"#,
+            r#"{"schema_version":"1","scope":"repo","seams":[],"artifact":{}}"#,
+        ] {
+            let error = validate_repo_exposure_artifact(Path::new("."), raw, "after")
+                .err()
+                .ok_or("invalid artifact was accepted")?;
+            if !error.contains("not a canonical repo-exposure artifact")
+                || error.contains("legacy or unknown producer")
+            {
+                return Err(format!("unrelated/enveloped JSON misclassified: {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_recovery_labels_shells_and_quotes_literal_root_characters() -> Result<(), String> {
+        let raw = r#"{"schema_version":"0.3","scope":"repo","seams":[]}"#;
+        let error = validate_repo_exposure_artifact(Path::new("selected's $root"), raw, "before")
+            .err()
+            .ok_or("legacy artifact was accepted")?;
+        for text in ["Bash/Git Bash:", "PowerShell:", "selected''s $root"] {
+            if !error.contains(text) {
+                return Err(format!(
+                    "shell-labeled literal recovery omitted {text}: {error}"
+                ));
+            }
+        }
+        let unsupported =
+            validate_repo_exposure_artifact(Path::new("selected>root"), raw, "before")
+                .err()
+                .ok_or("legacy artifact was accepted")?;
+        if !unsupported.contains("Bash/Git Bash only:")
+            || !unsupported.contains("PowerShell recovery unavailable")
+        {
+            return Err(format!(
+                "unsupported PowerShell route was advertised: {unsupported}"
+            ));
+        }
+        Ok(())
+    }
+
     use super::*;
 
     fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
@@ -1271,6 +1556,107 @@ mod tests {
                 "({before:?}, {after:?})"
             );
         }
+    }
+
+    /// The published repair-assurance schema is the orchestrator-facing
+    /// contract for the currentness vocabulary, so its enums must stay
+    /// exactly what the live producers emit — no token a production path
+    /// cannot produce, and no missing token either
+    /// (docs/LEARNINGS.md, 2026-07-25 false-confidence gates). This pins
+    /// both fields: `static_movement.currentness` carries the shared pair
+    /// renderer's closed vocabulary above, and `execution_result.currentness`
+    /// carries the vocabulary `VerificationExecutionResultV1` constructs (a
+    /// HEAD move → `historical_noncurrent`, a dirty worktree →
+    /// `dirty_worktree`, an unmoved clean pair → `current`; `unavailable`
+    /// exists only as a value the result validator rejects, so no schema may
+    /// claim it).
+    #[test]
+    fn published_assurance_schema_currentness_enums_match_the_producers() -> Result<(), String> {
+        let schema_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../schemas/ripr/repair-assurance.schema.json");
+        let schema_text = std::fs::read_to_string(&schema_path)
+            .map_err(|error| format!("read {}: {error}", schema_path.display()))?;
+        let schema: serde_json::Value = serde_json::from_str(&schema_text)
+            .map_err(|error| format!("parse repair-assurance schema: {error}"))?;
+
+        let enum_strings = |pointer: &str| -> Result<Vec<String>, String> {
+            schema
+                .pointer(pointer)
+                .and_then(serde_json::Value::as_array)
+                .ok_or_else(|| format!("schema must define {pointer} as an array"))?
+                .iter()
+                .map(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .ok_or_else(|| format!("{pointer} must contain only strings"))
+                })
+                .collect()
+        };
+
+        let pair_pointer = "/$defs/static_movement/properties/currentness/enum";
+        let pair_enum = enum_strings(pair_pointer)?;
+        // Derive the expected vocabulary from the producer itself — the
+        // distinct labels of the full 3x3 matrix, in match-arm order — so
+        // this expectation cannot drift from `pair_currentness_label`.
+        use ArtifactCurrentness::{Current, DirtyWorktree, Historical};
+        let mut pair_distinct: Vec<&str> = Vec::new();
+        for (before, after) in [
+            (Current, Current),
+            (Historical, Historical),
+            (Historical, Current),
+            (Current, Historical),
+            (DirtyWorktree, Current),
+            (DirtyWorktree, Historical),
+            (Current, DirtyWorktree),
+            (Historical, DirtyWorktree),
+            (DirtyWorktree, DirtyWorktree),
+        ] {
+            let label = pair_currentness_label(&before, &after);
+            if !pair_distinct.contains(&label) {
+                pair_distinct.push(label);
+            }
+        }
+        assert_eq!(
+            pair_enum, pair_distinct,
+            "{pair_pointer} drifted from pair_currentness_label; \
+             the schema must not claim tokens the producer cannot emit"
+        );
+
+        let execution_pointer = "/$defs/execution_result/properties/currentness/enum";
+        let execution_enum = enum_strings(execution_pointer)?;
+        // Derive the expectation from the producer type's own serialization,
+        // exactly the three variants a live execution constructs; `Unavailable`
+        // exists only as a value `validate_against` rejects, so it is absent.
+        let mut execution_distinct: Vec<String> = Vec::new();
+        for variant in [
+            crate::domain::VerificationCurrentnessV1::Current,
+            crate::domain::VerificationCurrentnessV1::DirtyWorktree,
+            crate::domain::VerificationCurrentnessV1::HistoricalNoncurrent,
+        ] {
+            let value = serde_json::to_value(variant)
+                .map_err(|error| format!("serialize currentness variant: {error}"))?;
+            execution_distinct.push(
+                value
+                    .as_str()
+                    .map(str::to_string)
+                    .ok_or_else(|| "currentness variant must serialize to a string".to_string())?,
+            );
+        }
+        assert_eq!(
+            execution_enum, execution_distinct,
+            "{execution_pointer} drifted from the VerificationExecutionResultV1 vocabulary"
+        );
+
+        for pointer in [pair_pointer, execution_pointer] {
+            assert!(
+                !enum_strings(pointer)?
+                    .iter()
+                    .any(|token| token == "unavailable"),
+                "{pointer} claims `unavailable`, which no production path emits"
+            );
+        }
+        Ok(())
     }
 
     #[test]
@@ -1661,6 +2047,79 @@ mod tests {
         cleanup?;
         cleanup_foreign?;
         Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn repo_exposure_literal_unix_root_is_admitted_only_at_its_producer() -> Result<(), String> {
+        use std::os::unix::{ffi::OsStrExt, fs::MetadataExt};
+
+        struct OwnedRoot(PathBuf);
+        impl Drop for OwnedRoot {
+            fn drop(&mut self) {
+                if let Err(error) = std::fs::remove_dir_all(&self.0) {
+                    eprintln!(
+                        "remove owned artifact fixture {}: {error}",
+                        self.0.display()
+                    );
+                }
+            }
+        }
+        let parent = temporary_git_root()?;
+        let _owned = OwnedRoot(parent.clone());
+        (|| -> Result<(), String> {
+            let root = parent.join("team\\repo 'quoted'");
+            std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&root, &["init"])?;
+            run_git(&root, &["config", "user.name", "RIPR test"])?;
+            run_git(
+                &root,
+                &["config", "user.email", "ripr-test@example.invalid"],
+            )?;
+            commit_fixture_file(&root)?;
+            let decoy_parent = parent.join("team");
+            std::fs::create_dir(&decoy_parent).map_err(|error| error.to_string())?;
+            let decoy = decoy_parent.join("repo 'quoted'");
+            crate::testing::fixture_git::fixture_git_ok(
+                &parent,
+                &[
+                    "clone",
+                    "--quiet",
+                    "--no-hardlinks",
+                    root.to_str()
+                        .ok_or_else(|| "fixture root is not UTF-8".to_string())?,
+                    decoy
+                        .to_str()
+                        .ok_or_else(|| "fixture decoy is not UTF-8".to_string())?,
+                ],
+            )?;
+            let actual = std::fs::metadata(&root).map_err(|error| error.to_string())?;
+            let other = std::fs::metadata(&decoy).map_err(|error| error.to_string())?;
+            assert_ne!((actual.dev(), actual.ino()), (other.dev(), other.ino()));
+            assert_eq!(current_git_head(&root)?, current_git_head(&decoy)?);
+
+            // Real producer metadata and exact governed content commitment;
+            // neither repository.root nor its digest is edited by this test.
+            let raw = commit_content(&repo_exposure_raw_with_placeholder(&root)?)?;
+            let bytes_before = raw.as_bytes().to_vec();
+            let admitted = validate_repo_exposure_artifact(&root, &raw, "literal-root positive")
+                .map_err(|error| format!("producer artifact failed root admission: {error}"))?;
+            assert_eq!(admitted.currentness, ArtifactCurrentness::Current);
+            let document: Value = serde_json::from_str(&raw).map_err(|error| error.to_string())?;
+            let declared = document["artifact"]["repository"]["root"]
+                .as_str()
+                .ok_or_else(|| "producer omitted its repository root".to_string())?;
+            let canonical = root.canonicalize().map_err(|error| error.to_string())?;
+            assert_eq!(declared.as_bytes(), canonical.as_os_str().as_bytes());
+            let refusal = validate_repo_exposure_artifact(&decoy, &raw, "slash-decoy control")
+                .err()
+                .ok_or_else(|| {
+                    "producer artifact was admitted in its slash-path decoy".to_string()
+                })?;
+            assert!(refusal.contains("repository root") && refusal.contains("does not match"));
+            assert_eq!(raw.as_bytes(), bytes_before);
+            Ok(())
+        })()
     }
 
     #[test]
@@ -2238,6 +2697,61 @@ mod tests {
             )?;
             expect_drift("manifest content movement", &moved_manifest)?;
 
+            // v4 scope: an untracked lockfile (what the first `cargo test`
+            // writes in a crate that does not commit one) is build state, not
+            // an analysis input, so creating or rewriting it keeps the
+            // identity. Assert the precondition: Git does not track it.
+            std::fs::write(
+                root.join("Cargo.lock"),
+                "# generated lockfile\nversion = 4\n",
+            )
+            .map_err(|error| format!("write untracked lockfile: {error}"))?;
+            if !run_git(&root, &["ls-files", "--", "Cargo.lock"])?
+                .trim()
+                .is_empty()
+            {
+                return Err("the generated lockfile must start untracked".to_string());
+            }
+            let manifest_only = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            let untracked_lockfile = |case: &str| -> Result<(), String> {
+                let context = RepoExposureArtifactContext::for_repo_exposure(
+                    root.clone(),
+                    "draft".to_string(),
+                    None,
+                    &config,
+                )?;
+                if context.input_identity != manifest_only.input_identity {
+                    return Err(format!("{case} must not change the input identity"));
+                }
+                Ok(())
+            };
+            std::fs::remove_file(root.join("Cargo.lock"))
+                .map_err(|error| format!("remove untracked lockfile: {error}"))?;
+            untracked_lockfile("removing an untracked lockfile")?;
+            std::fs::write(
+                root.join("Cargo.lock"),
+                "# regenerated lockfile\nversion = 4\n",
+            )
+            .map_err(|error| format!("rewrite untracked lockfile: {error}"))?;
+            untracked_lockfile("rewriting an untracked lockfile")?;
+
+            // Tracking the lockfile makes it an analysis input: staging it,
+            // and then changing its content, each move the identity.
+            run_git(&root, &["add", "Cargo.lock"])?;
+            let tracked_lockfile = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            if tracked_lockfile.input_identity == manifest_only.input_identity {
+                return Err("tracking the lockfile must change the input identity".to_string());
+            }
             std::fs::write(root.join("Cargo.lock"), "# moved lockfile\nversion = 4\n")
                 .map_err(|error| format!("move lockfile: {error}"))?;
             let moved_lockfile = RepoExposureArtifactContext::for_repo_exposure(
@@ -2246,7 +2760,11 @@ mod tests {
                 None,
                 &config,
             )?;
-            expect_drift("lockfile content movement", &moved_lockfile)?;
+            if moved_lockfile.input_identity == tracked_lockfile.input_identity {
+                return Err(
+                    "tracked lockfile content movement must change the input identity".to_string(),
+                );
+            }
             Ok(())
         })();
         let cleanup =
@@ -2357,7 +2875,127 @@ mod tests {
         Ok(())
     }
 
-    /// (#2823 test 5) A rerun at the same root and same revision is
+    /// #4788: generated-file patterns now change the seam population, so they
+    /// are consumed config. A before/after pair that differs only in those
+    /// patterns must not pass comparability.
+    #[test]
+    fn repo_exposure_input_identity_tracks_generated_file_patterns() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let baseline = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            let moved = crate::config::tests_only_parse(
+                "[languages.rust]\ngenerated_file_patterns = [\"src/ffi.rs\"]\n",
+            )?;
+            if crate::config::check_artifact_config_identity_hash(&moved)
+                == crate::config::check_artifact_config_identity_hash(&config)
+            {
+                return Err(
+                    "generated_file_patterns fixture must move the diff-check config hash"
+                        .to_string(),
+                );
+            }
+            if crate::config::repo_exposure_config_identity_hash(&moved)
+                == crate::config::repo_exposure_config_identity_hash(&config)
+            {
+                return Err(
+                    "generated_file_patterns is consumed by seam inventory and must move the repo-exposure config identity"
+                        .to_string(),
+                );
+            }
+            let moved_context = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &moved,
+            )?;
+            if moved_context.input_identity == baseline.input_identity {
+                return Err(
+                    "generated_file_patterns must move the repo-exposure input identity"
+                        .to_string(),
+                );
+            }
+            let mut before = comparable_artifact();
+            before.input_identity = baseline.input_identity.clone();
+            let mut after = before.clone();
+            after.input_identity = moved_context.input_identity.clone();
+            match validate_comparable_pair(&before, &after) {
+                Err(error) if error.contains("analysis input identities differ") => Ok(()),
+                other => Err(format!(
+                    "pattern-changed pair must be incomparable, got {other:?}"
+                )),
+            }
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
+    #[test]
+    fn repo_exposure_input_identity_tracks_handwritten_files() -> Result<(), String> {
+        let root = temporary_git_root()?;
+        let result = (|| -> Result<(), String> {
+            commit_fixture_file(&root)?;
+            let config = crate::config::RiprConfig::default();
+            let baseline = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &config,
+            )?;
+            let moved = crate::config::tests_only_parse(
+                "[languages.rust]\nhandwritten_files = [\"src/schema.rs\"]\n",
+            )?;
+            if crate::config::check_artifact_config_identity_hash(&moved)
+                == crate::config::check_artifact_config_identity_hash(&config)
+            {
+                return Err(
+                    "handwritten_files fixture must move the diff-check config hash".to_string(),
+                );
+            }
+            if crate::config::repo_exposure_config_identity_hash(&moved)
+                == crate::config::repo_exposure_config_identity_hash(&config)
+            {
+                return Err(
+                    "handwritten_files is consumed by seam inventory and must move the repo-exposure config identity"
+                        .to_string(),
+                );
+            }
+            let moved_context = RepoExposureArtifactContext::for_repo_exposure(
+                root.clone(),
+                "draft".to_string(),
+                None,
+                &moved,
+            )?;
+            if moved_context.input_identity == baseline.input_identity {
+                return Err(
+                    "handwritten_files must move the repo-exposure input identity".to_string(),
+                );
+            }
+            let mut before = comparable_artifact();
+            before.input_identity = baseline.input_identity.clone();
+            let mut after = before.clone();
+            after.input_identity = moved_context.input_identity.clone();
+            match validate_comparable_pair(&before, &after) {
+                Err(error) if error.contains("analysis input identities differ") => Ok(()),
+                other => Err(format!(
+                    "inclusion-changed pair must be incomparable, got {other:?}"
+                )),
+            }
+        })();
+        let cleanup =
+            std::fs::remove_dir_all(&root).map_err(|error| format!("remove temp root: {error}"));
+        result?;
+        cleanup?;
+        Ok(())
+    }
     /// byte-stable in both identities.
     #[test]
     fn repo_exposure_identity_is_byte_stable_across_equivalent_reruns() -> Result<(), String> {
@@ -2453,8 +3091,8 @@ mod tests {
         Ok(())
     }
 
-    /// (#2823 test 7) A previous-version input identity — the v1 and v2
-    /// `input:<digest>` shape, or any non-`input:v3:` value — never validates
+    /// (#2823 test 7) A previous-version input identity — the v1, v2, and v3
+    /// `input:<digest>` shape, or any non-`input:v4:` value — never validates
     /// as current evidence, even when the artifact is otherwise internally
     /// consistent; nor does a current-version identity whose digest is not
     /// exactly `fnv1a64:<16 lowercase hex>`.
@@ -2475,6 +3113,7 @@ mod tests {
                 "input:legacy-unversioned",
                 "input:v1:fnv1a64:0123456789abcdef",
                 "input:v2:fnv1a64:0123456789abcdef",
+                "input:v3:fnv1a64:0123456789abcdef",
             ];
             for legacy in legacy_identities {
                 let legacy_snapshot = repo_exposure_snapshot_identity(legacy, &head);
@@ -2501,11 +3140,11 @@ mod tests {
             // exactly `fnv1a64:<16 lowercase hex>` is malformed, not merely
             // an unknown version, and gets its own bounded reason.
             let malformed_identities = [
-                "input:v3:garbage",
-                "input:v3:fnv1a64:",
-                "input:v3:fnv1a64:0123456789abcde",
-                "input:v3:fnv1a64:0123456789abcdef0",
-                "input:v3:fnv1a64:0123456789ABCDEF",
+                "input:v4:garbage",
+                "input:v4:fnv1a64:",
+                "input:v4:fnv1a64:0123456789abcde",
+                "input:v4:fnv1a64:0123456789abcdef0",
+                "input:v4:fnv1a64:0123456789ABCDEF",
             ];
             for malformed in malformed_identities {
                 let malformed_snapshot = repo_exposure_snapshot_identity(malformed, &head);
@@ -2532,7 +3171,7 @@ mod tests {
             // well-formed foreign digest reaches the later checks (here: the
             // snapshot mismatch), proving the shape gate does not reject
             // well-formed identities.
-            let well_formed = "input:v3:fnv1a64:fedcba9876543210";
+            let well_formed = "input:v4:fnv1a64:fedcba9876543210";
             let mutated = validate_mutated_identity(&root, &document, |document| {
                 document["artifact"]["analysis"]["input_identity"] = json!(well_formed);
             })?;

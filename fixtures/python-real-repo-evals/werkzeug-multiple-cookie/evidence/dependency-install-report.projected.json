@@ -1,0 +1,524 @@
+{
+  "version": "1",
+  "pip_version": "25.0.1",
+  "install": [
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c",
+          "hashes": {
+            "sha256": "37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "pytest",
+        "version": "9.1.1",
+        "dynamic": [
+          "license-file"
+        ],
+        "summary": "pytest: simple powerful testing with Python",
+        "description_content_type": "text/x-rst",
+        "keywords": [
+          "test",
+          "unittest"
+        ],
+        "author": "Brianna Laugher, Bruno Oliveira, Floris Bruynooghe, Freya Bruhin, Holger Krekel, Others (See AUTHORS), Ronny Pfannschmidt",
+        "license_expression": "MIT",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 6 - Mature",
+          "Intended Audience :: Developers",
+          "Operating System :: MacOS",
+          "Operating System :: Microsoft :: Windows",
+          "Operating System :: POSIX",
+          "Operating System :: Unix",
+          "Programming Language :: Python :: 3 :: Only",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: 3.15",
+          "Topic :: Software Development :: Libraries",
+          "Topic :: Software Development :: Testing",
+          "Topic :: Utilities"
+        ],
+        "requires_dist": [
+          "colorama>=0.4; sys_platform == \"win32\"",
+          "exceptiongroup>=1; python_version < \"3.11\"",
+          "iniconfig>=1.0.1",
+          "packaging>=22",
+          "pluggy<2,>=1.5",
+          "pygments>=2.7.2",
+          "tomli>=1; python_version < \"3.11\"",
+          "argcomplete; extra == \"dev\"",
+          "attrs>=19.2; extra == \"dev\"",
+          "hypothesis>=3.56; extra == \"dev\"",
+          "mock; extra == \"dev\"",
+          "requests; extra == \"dev\"",
+          "setuptools; extra == \"dev\"",
+          "xmlschema; extra == \"dev\""
+        ],
+        "requires_python": ">=3.10",
+        "project_url": [
+          "Changelog, https://docs.pytest.org/en/stable/changelog.html",
+          "Contact, https://docs.pytest.org/en/stable/contact.html",
+          "Funding, https://docs.pytest.org/en/stable/sponsor.html",
+          "Homepage, https://docs.pytest.org/en/latest/",
+          "Source, https://github.com/pytest-dev/pytest",
+          "Tracker, https://github.com/pytest-dev/pytest/issues"
+        ],
+        "provides_extra": [
+          "dev"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/63/cf/91b94238c843bfbae0a6674df45015aa3908b91454c496b2eb29e7991255/pytest_xprocess-1.0.2-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=0b0444d1f789fd9b4ba8b6b38b1d0139f226ab14091db2698a0521c1770523dd",
+          "hashes": {
+            "sha256": "0b0444d1f789fd9b4ba8b6b38b1d0139f226ab14091db2698a0521c1770523dd"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": true,
+      "metadata": {
+        "metadata_version": "2.1",
+        "name": "pytest-xprocess",
+        "version": "1.0.2",
+        "summary": "A pytest plugin for managing processes across test runs.",
+        "description_content_type": "text/x-rst",
+        "home_page": "https://github.com/pytest-dev/pytest-xprocess/",
+        "author": "Holger Krekel",
+        "author_email": "holger@merlinux.eu",
+        "license": "MIT",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Framework :: Pytest",
+          "Development Status :: 4 - Beta",
+          "Intended Audience :: Developers",
+          "License :: OSI Approved :: MIT License",
+          "Operating System :: OS Independent",
+          "Programming Language :: Python :: 3.8",
+          "Programming Language :: Python :: 3.9",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Topic :: Software Development :: Testing",
+          "Topic :: Software Development :: Libraries",
+          "Topic :: Utilities"
+        ],
+        "requires_dist": [
+          "pytest >=2.8",
+          "psutil"
+        ],
+        "requires_python": ">=3.8"
+      }
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12",
+          "hashes": {
+            "sha256": "f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": false,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "iniconfig",
+        "version": "2.3.0",
+        "dynamic": [
+          "license-file"
+        ],
+        "summary": "brain-dead simple config-ini parsing",
+        "description_content_type": "text/x-rst",
+        "author_email": "Ronny Pfannschmidt <opensource@ronnypfannschmidt.de>, Holger Krekel <holger.krekel@gmail.com>",
+        "license_expression": "MIT",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 4 - Beta",
+          "Intended Audience :: Developers",
+          "Operating System :: MacOS :: MacOS X",
+          "Operating System :: Microsoft :: Windows",
+          "Operating System :: POSIX",
+          "Programming Language :: Python :: 3 :: Only",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Topic :: Software Development :: Libraries",
+          "Topic :: Utilities"
+        ],
+        "requires_python": ">=3.10",
+        "project_url": [
+          "Homepage, https://github.com/pytest-dev/iniconfig"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c",
+          "hashes": {
+            "sha256": "d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": false,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "packaging",
+        "version": "26.3",
+        "summary": "Core utilities for Python packages",
+        "description_content_type": "text/x-rst",
+        "author_email": "Donald Stufft <donald@stufft.io>",
+        "license_expression": "Apache-2.0 OR BSD-2-Clause",
+        "license_file": [
+          "LICENSE",
+          "LICENSE.APACHE",
+          "LICENSE.BSD"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Intended Audience :: Developers",
+          "Programming Language :: Python",
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: 3 :: Only",
+          "Programming Language :: Python :: 3.9",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: 3.15",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Programming Language :: Python :: Free Threading :: 4 - Resilient",
+          "Typing :: Typed"
+        ],
+        "requires_python": ">=3.9",
+        "project_url": [
+          "Documentation, https://packaging.pypa.io/",
+          "Source, https://github.com/pypa/packaging"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/54/20/4d324d65cc6d9205fabedc306948156824eb9f0ee1633355a8f7ec5c66bf/pluggy-1.6.0-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746",
+          "hashes": {
+            "sha256": "e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": false,
+      "metadata": {
+        "metadata_version": "2.4",
+        "name": "pluggy",
+        "version": "1.6.0",
+        "dynamic": [
+          "license-file"
+        ],
+        "summary": "plugin and hook calling mechanisms for python",
+        "description_content_type": "text/x-rst",
+        "author_email": "Holger Krekel <holger@merlinux.eu>",
+        "license": "MIT",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 6 - Mature",
+          "Intended Audience :: Developers",
+          "License :: OSI Approved :: MIT License",
+          "Operating System :: POSIX",
+          "Operating System :: Microsoft :: Windows",
+          "Operating System :: MacOS :: MacOS X",
+          "Topic :: Software Development :: Testing",
+          "Topic :: Software Development :: Libraries",
+          "Topic :: Utilities",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: 3 :: Only",
+          "Programming Language :: Python :: 3.9",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13"
+        ],
+        "requires_dist": [
+          "pre-commit; extra == \"dev\"",
+          "tox; extra == \"dev\"",
+          "pytest; extra == \"testing\"",
+          "pytest-benchmark; extra == \"testing\"",
+          "coverage; extra == \"testing\""
+        ],
+        "requires_python": ">=3.9",
+        "provides_extra": [
+          "dev",
+          "testing"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl",
+        "archive_info": {
+          "hash": "sha256=2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9",
+          "hashes": {
+            "sha256": "2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": false,
+      "metadata": {
+        "metadata_version": "2.5",
+        "name": "Pygments",
+        "version": "2.21.0",
+        "summary": "Pygments is a syntax highlighting package written in Python.",
+        "description_content_type": "text/x-rst",
+        "keywords": [
+          "syntax",
+          "highlighting"
+        ],
+        "author_email": "Georg Brandl <georg@python.org>",
+        "maintainer": "Matth\u00e4us G. Chajdas",
+        "maintainer_email": "Georg Brandl <georg@python.org>, Jean Abou Samra <jean@abou-samra.fr>",
+        "license_expression": "BSD-2-Clause",
+        "license_file": [
+          "AUTHORS",
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 6 - Mature",
+          "Intended Audience :: Developers",
+          "Intended Audience :: End Users/Desktop",
+          "Intended Audience :: System Administrators",
+          "Operating System :: OS Independent",
+          "Programming Language :: Python",
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: 3.9",
+          "Programming Language :: Python :: 3.10",
+          "Programming Language :: Python :: 3.11",
+          "Programming Language :: Python :: 3.12",
+          "Programming Language :: Python :: 3.13",
+          "Programming Language :: Python :: 3.14",
+          "Programming Language :: Python :: 3.15",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Topic :: Text Processing :: Filters",
+          "Topic :: Utilities"
+        ],
+        "requires_dist": [
+          "colorama>=0.4.6; extra == 'windows-terminal'"
+        ],
+        "requires_python": ">=3.9",
+        "project_url": [
+          "Homepage, https://pygments.org",
+          "Documentation, https://pygments.org/docs",
+          "Source, https://github.com/pygments/pygments",
+          "Bug Tracker, https://github.com/pygments/pygments/issues",
+          "Changelog, https://github.com/pygments/pygments/blob/master/CHANGES"
+        ],
+        "provides_extra": [
+          "plugins",
+          "windows-terminal"
+        ]
+      }
+    },
+    {
+      "download_info": {
+        "url": "https://files.pythonhosted.org/packages/b5/70/5d8df3b09e25bce090399cf48e452d25c935ab72dad19406c77f4e828045/psutil-7.2.2-cp36-abi3-manylinux2010_x86_64.manylinux_2_12_x86_64.manylinux_2_28_x86_64.whl",
+        "archive_info": {
+          "hash": "sha256=076a2d2f923fd4821644f5ba89f059523da90dc9014e85f8e45a5774ca5bc6f9",
+          "hashes": {
+            "sha256": "076a2d2f923fd4821644f5ba89f059523da90dc9014e85f8e45a5774ca5bc6f9"
+          }
+        }
+      },
+      "is_direct": false,
+      "is_yanked": false,
+      "requested": false,
+      "metadata": {
+        "metadata_version": "2.1",
+        "name": "psutil",
+        "version": "7.2.2",
+        "platform": [
+          "Platform Independent"
+        ],
+        "summary": "Cross-platform lib for process and system monitoring.",
+        "description_content_type": "text/x-rst",
+        "keywords": [
+          "ps",
+          "top",
+          "kill",
+          "free",
+          "lsof",
+          "netstat",
+          "nice",
+          "tty",
+          "ionice",
+          "uptime",
+          "taskmgr",
+          "process",
+          "df",
+          "iotop",
+          "iostat",
+          "ifconfig",
+          "taskset",
+          "who",
+          "pidof",
+          "pmap",
+          "smem",
+          "pstree",
+          "monitoring",
+          "ulimit",
+          "prlimit",
+          "smem",
+          "performance",
+          "metrics",
+          "agent",
+          "observability"
+        ],
+        "home_page": "https://github.com/giampaolo/psutil",
+        "author": "Giampaolo Rodola",
+        "author_email": "g.rodola@gmail.com",
+        "license": "BSD-3-Clause",
+        "license_file": [
+          "LICENSE"
+        ],
+        "classifier": [
+          "Development Status :: 5 - Production/Stable",
+          "Environment :: Console",
+          "Intended Audience :: Developers",
+          "Intended Audience :: Information Technology",
+          "Intended Audience :: System Administrators",
+          "Operating System :: MacOS :: MacOS X",
+          "Operating System :: Microsoft :: Windows :: Windows 10",
+          "Operating System :: Microsoft :: Windows :: Windows 11",
+          "Operating System :: Microsoft :: Windows :: Windows 7",
+          "Operating System :: Microsoft :: Windows :: Windows 8",
+          "Operating System :: Microsoft :: Windows :: Windows 8.1",
+          "Operating System :: Microsoft :: Windows :: Windows Server 2003",
+          "Operating System :: Microsoft :: Windows :: Windows Server 2008",
+          "Operating System :: Microsoft :: Windows :: Windows Vista",
+          "Operating System :: Microsoft :: Windows",
+          "Operating System :: Microsoft",
+          "Operating System :: OS Independent",
+          "Operating System :: POSIX :: AIX",
+          "Operating System :: POSIX :: BSD :: FreeBSD",
+          "Operating System :: POSIX :: BSD :: NetBSD",
+          "Operating System :: POSIX :: BSD :: OpenBSD",
+          "Operating System :: POSIX :: BSD",
+          "Operating System :: POSIX :: Linux",
+          "Operating System :: POSIX :: SunOS/Solaris",
+          "Operating System :: POSIX",
+          "Programming Language :: C",
+          "Programming Language :: Python :: 3",
+          "Programming Language :: Python :: Implementation :: CPython",
+          "Programming Language :: Python :: Implementation :: PyPy",
+          "Programming Language :: Python",
+          "Topic :: Software Development :: Libraries :: Python Modules",
+          "Topic :: Software Development :: Libraries",
+          "Topic :: System :: Benchmark",
+          "Topic :: System :: Hardware",
+          "Topic :: System :: Monitoring",
+          "Topic :: System :: Networking :: Monitoring :: Hardware Watchdog",
+          "Topic :: System :: Networking :: Monitoring",
+          "Topic :: System :: Networking",
+          "Topic :: System :: Operating System",
+          "Topic :: System :: Systems Administration",
+          "Topic :: Utilities"
+        ],
+        "requires_dist": [
+          "psleak ; extra == 'dev'",
+          "pytest ; extra == 'dev'",
+          "pytest-instafail ; extra == 'dev'",
+          "pytest-xdist ; extra == 'dev'",
+          "setuptools ; extra == 'dev'",
+          "abi3audit ; extra == 'dev'",
+          "black ; extra == 'dev'",
+          "check-manifest ; extra == 'dev'",
+          "coverage ; extra == 'dev'",
+          "packaging ; extra == 'dev'",
+          "pylint ; extra == 'dev'",
+          "pyperf ; extra == 'dev'",
+          "pypinfo ; extra == 'dev'",
+          "pytest-cov ; extra == 'dev'",
+          "requests ; extra == 'dev'",
+          "rstcheck ; extra == 'dev'",
+          "ruff ; extra == 'dev'",
+          "sphinx ; extra == 'dev'",
+          "sphinx-rtd-theme ; extra == 'dev'",
+          "toml-sort ; extra == 'dev'",
+          "twine ; extra == 'dev'",
+          "validate-pyproject[all] ; extra == 'dev'",
+          "virtualenv ; extra == 'dev'",
+          "vulture ; extra == 'dev'",
+          "wheel ; extra == 'dev'",
+          "colorama ; (os_name == \"nt\") and extra == 'dev'",
+          "pyreadline3 ; (os_name == \"nt\") and extra == 'dev'",
+          "pywin32 ; (os_name == \"nt\" and implementation_name != \"pypy\") and extra == 'dev'",
+          "wheel ; (os_name == \"nt\" and implementation_name != \"pypy\") and extra == 'dev'",
+          "wmi ; (os_name == \"nt\" and implementation_name != \"pypy\") and extra == 'dev'",
+          "psleak ; extra == 'test'",
+          "pytest ; extra == 'test'",
+          "pytest-instafail ; extra == 'test'",
+          "pytest-xdist ; extra == 'test'",
+          "setuptools ; extra == 'test'",
+          "pywin32 ; (os_name == \"nt\" and implementation_name != \"pypy\") and extra == 'test'",
+          "wheel ; (os_name == \"nt\" and implementation_name != \"pypy\") and extra == 'test'",
+          "wmi ; (os_name == \"nt\" and implementation_name != \"pypy\") and extra == 'test'"
+        ],
+        "requires_python": ">=3.6",
+        "provides_extra": [
+          "dev",
+          "test"
+        ]
+      }
+    }
+  ],
+  "environment": {
+    "implementation_name": "cpython",
+    "implementation_version": "3.12.14",
+    "os_name": "posix",
+    "platform_machine": "x86_64",
+    "platform_release": "6.18.44",
+    "platform_system": "Linux",
+    "platform_version": "#1 SMP Sat Sep 26 20:02:31 UTC 2026",
+    "python_full_version": "3.12.14",
+    "platform_python_implementation": "CPython",
+    "python_version": "3.12",
+    "sys_platform": "linux"
+  }
+}

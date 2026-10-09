@@ -46,6 +46,7 @@ interface FakeRuntimeHarness {
   warningItems: string[][];
   quickPickItems: WorkspaceRootPickItem[][];
   serverCwds: string[];
+  serverFolders: Array<string | undefined>;
   startedClients: number;
   resolverCalls: number;
   setRoots(roots: string[]): void;
@@ -64,6 +65,7 @@ function makeHarness(roots: string[], folders: vscode.WorkspaceFolder[]): FakeRu
     warningItems: [],
     quickPickItems: [],
     serverCwds: [],
+    serverFolders: [],
     startedClients: 0,
     resolverCalls: 0,
     pickResponse: undefined,
@@ -97,9 +99,10 @@ function makeHarness(roots: string[], folders: vscode.WorkspaceFolder[]): FakeRu
         compatibilityResult: compatibleLspEvidence
       };
     },
-    createLanguageClient: (serverOptions) => {
+    createLanguageClient: (serverOptions, clientOptions) => {
       const cwd = (serverOptions as { options?: { cwd?: string } }).options?.cwd;
       harness.serverCwds.push(String(cwd));
+      harness.serverFolders.push(clientOptions.workspaceFolder?.uri.fsPath);
       return {
         onNotification: () => ({ dispose: () => undefined }),
         sendRequest: async () => undefined,
@@ -167,7 +170,25 @@ suite('Workspace Root Picker', () => {
     );
     assert.strictEqual(harness.resolverCalls, 1, 'picking a folder should start the server');
     assert.deepStrictEqual(harness.serverCwds, ['/ws/beta'], 'the server should start for the picked root');
+    assert.deepStrictEqual(
+      harness.serverFolders,
+      ['/ws/beta'],
+      'the client should report only the picked folder, or the server sees an ambiguous multi-root workspace'
+    );
     assert.strictEqual(harness.startedClients, 1);
+  });
+
+  test('removing the bound folder is detected; removing another folder is not', async () => {
+    const harness = makeHarness(['/ws/alpha', '/ws/beta'], [alpha, beta]);
+    harness.pickResponse = workspaceRootPickItems([alpha, beta])[1];
+    const controller = makeController(harness);
+
+    assert.strictEqual(controller.sessionRootRemoved([beta]), false, 'no session is bound before start');
+    await controller.selectWorkspaceRoot();
+
+    assert.strictEqual(controller.sessionRootRemoved([alpha]), false);
+    assert.strictEqual(controller.sessionRootRemoved([beta]), true);
+    assert.strictEqual(controller.awaitingWorkspaceRoot(), false, 'a running session is not waiting for a root');
   });
 
   test('ambiguous start warns with a picker action, and accepting it starts the server for the picked root', async () => {
@@ -203,6 +224,7 @@ suite('Workspace Root Picker', () => {
     assert.strictEqual(harness.warningMessages.length, 1);
     assert.strictEqual(harness.quickPickItems.length, 0, 'a dismissed warning must not show the picker');
     assert.strictEqual(harness.resolverCalls, 0, 'a dismissed warning must not start the server');
+    assert.strictEqual(controller.awaitingWorkspaceRoot(), true, 'opening a folder file should be able to start it');
     assert.ok(
       harness.outputLines.some((line) => line.includes('multi-root workspace is ambiguous')),
       harness.outputLines.join('\n')

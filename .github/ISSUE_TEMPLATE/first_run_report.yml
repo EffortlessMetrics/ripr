@@ -1,0 +1,62 @@
+name: First run report
+description: Tell us how installing and running ripr went, good or bad.
+title: "first run: "
+labels: ["adoption", "first-run"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: ripr version
+      description: Output of `ripr --version`. Leave blank if installation failed, and say what failed below.
+    validations:
+      required: false
+  - type: dropdown
+    id: channel
+    attributes:
+      label: How you installed it
+      options:
+        - cargo install
+        - cargo binstall
+        - GitHub release archive
+        - npm
+        - PyPI
+        - VS Code extension
+        - Generated GitHub CI workflow
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS and architecture
+      placeholder: "macOS 15 arm64, Windows 11 x64, Ubuntu 24.04 x64"
+    validations:
+      required: true
+  - type: input
+    id: time_to_first_result
+    attributes:
+      label: Time from install start to the first `ripr check` result
+      placeholder: "about 40 seconds"
+    validations:
+      required: false
+  - type: textarea
+    id: relevance
+    attributes:
+      label: Was the first finding about code you changed, and would you add the suggested test?
+      description: If not, say what was wrong or missing. If install or the first check failed, paste the error here instead.
+    validations:
+      required: false
+  - type: textarea
+    id: unclear
+    attributes:
+      label: Anything that said "unknown" or refused without telling you what to do next
+    validations:
+      required: false
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`ripr doctor` output"
+      description: Remove anything private. Do not paste source code you cannot share.
+      render: text
+    validations:
+      required: false

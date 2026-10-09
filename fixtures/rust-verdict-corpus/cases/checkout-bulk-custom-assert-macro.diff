@@ -1,0 +1,13 @@
+diff --git a/src/limits.rs b/src/limits.rs
+index 577ecb3..6e5b05f 100644
+--- a/src/limits.rs
++++ b/src/limits.rs
+@@ -28,7 +28,7 @@ macro_rules! assert_flag {
+ }
+ 
+ pub fn bulk(count: u32) -> bool {
+-    count >= 100
++    100 <= count
+ }
+ 
+ #[cfg(test)]

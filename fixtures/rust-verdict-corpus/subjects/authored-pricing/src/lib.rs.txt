@@ -1,0 +1,134 @@
+//! Order pricing for a small web shop: loyalty tiers, tier discounts,
+//! shipping fees and quotes. All amounts are integer cents.
+
+/// Flat shipping fee charged below the free-shipping threshold.
+pub const FLAT_SHIPPING_CENTS: u64 = 499;
+
+/// Subtotal at which shipping becomes free.
+pub const FREE_SHIPPING_CENTS: u64 = 5000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Tier {
+    Standard,
+    Silver,
+    Gold,
+}
+
+/// Loyalty tier earned by a customer's accumulated points.
+pub fn tier_for_points(points: u32) -> Tier {
+    if points >= 5000 {
+        Tier::Gold
+    } else if points >= 1000 {
+        Tier::Silver
+    } else {
+        Tier::Standard
+    }
+}
+
+/// Percentage discount granted to each tier.
+pub fn discount_percent(tier: Tier) -> u64 {
+    match tier {
+        Tier::Standard => 0,
+        Tier::Silver => 5,
+        Tier::Gold => 10,
+    }
+}
+
+/// Price after the tier discount, rounding the discount down.
+pub fn discounted_cents(price_cents: u64, tier: Tier) -> u64 {
+    let discount = price_cents * discount_percent(tier) / 100;
+    price_cents - discount
+}
+
+/// Whether an order subtotal ships for free.
+pub fn free_shipping(subtotal_cents: u64) -> bool {
+    subtotal_cents >= FREE_SHIPPING_CENTS
+}
+
+/// Shipping fee for an order subtotal.
+pub fn shipping_cents(subtotal_cents: u64) -> u64 {
+    if free_shipping(subtotal_cents) {
+        0
+    } else {
+        FLAT_SHIPPING_CENTS
+    }
+}
+
+/// Display label used on invoices and in the account page.
+pub fn tier_label(tier: Tier) -> String {
+    match tier {
+        Tier::Standard => String::from("standard"),
+        Tier::Silver => String::from("silver"),
+        Tier::Gold => String::from("gold"),
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Quote {
+    pub tier: Tier,
+    pub subtotal_cents: u64,
+    pub shipping_cents: u64,
+    pub total_cents: u64,
+}
+
+/// Quote an order of `quantity` items at `unit_cents` for a customer with
+/// `points` loyalty points.
+pub fn quote(unit_cents: u64, quantity: u64, points: u32) -> Quote {
+    let tier = tier_for_points(points);
+    let subtotal = discounted_cents(unit_cents * quantity, tier);
+    let shipping = shipping_cents(subtotal);
+    Quote {
+        tier,
+        subtotal_cents: subtotal,
+        shipping_cents: shipping,
+        total_cents: subtotal + shipping,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tiers_change_exactly_at_their_thresholds() {
+        assert_eq!(tier_for_points(0), Tier::Standard);
+        assert_eq!(tier_for_points(999), Tier::Standard);
+        assert_eq!(tier_for_points(1000), Tier::Silver);
+        assert_eq!(tier_for_points(4999), Tier::Silver);
+        assert_eq!(tier_for_points(5000), Tier::Gold);
+    }
+
+    #[test]
+    fn discounts_apply_per_tier() {
+        assert_eq!(discounted_cents(10_000, Tier::Standard), 10_000);
+        assert_eq!(discounted_cents(10_000, Tier::Silver), 9_500);
+        assert_eq!(discounted_cents(10_000, Tier::Gold), 9_000);
+    }
+
+    #[test]
+    fn large_orders_ship_free() {
+        assert_eq!(free_shipping(12_000), true);
+        assert_eq!(free_shipping(1_500), false);
+    }
+
+    #[test]
+    fn small_orders_pay_shipping() {
+        assert_eq!(shipping_cents(20_000), 0);
+        assert!(shipping_cents(1_000) > 0);
+    }
+
+    #[test]
+    fn tier_labels_are_lowercase_names() {
+        assert_eq!(tier_label(Tier::Standard), "standard");
+        assert_eq!(tier_label(Tier::Silver), "silver");
+        assert_eq!(tier_label(Tier::Gold), "gold");
+    }
+
+    #[test]
+    fn quote_combines_discount_and_shipping() {
+        let q = quote(2_500, 4, 6_000);
+        assert_eq!(q.tier, Tier::Gold);
+        assert_eq!(q.subtotal_cents, 9_000);
+        assert_eq!(q.total_cents, 9_000);
+    }
+}

@@ -1,18 +1,24 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::fs;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use ripr::analysis::cache_layer_names;
 use serde_json::{Value, json};
 
 const DEFAULT_MAX_SIZE_GB: u64 = 20;
 const DEFAULT_TTL_DAYS: u64 = 14;
 const BYTES_PER_GB: u64 = 1_000_000_000;
 const SECONDS_PER_DAY: u64 = 86_400;
+const CACHE_DIR_ENV: &str = "RIPR_CACHE_DIR";
 const SHARDED_CACHE_FAMILY_SUFFIX: &str = "-sharded";
 const SHARD_MANIFEST_FILE: &str = "manifest.json";
 const SHARD_FILE_PREFIX: &str = "shard-";
 const MAX_REPORT_ROWS: usize = 20;
+
+const DEFAULT_CACHE_ROOT_SUFFIX: &[&str] = &["target", "ripr", "cache"];
 
 pub(crate) fn run(args: &[String]) -> Result<(), String> {
     let Some((subcommand, rest)) = args.split_first() else {
@@ -34,7 +40,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
 }
 
 fn cache_report(root: &Path) -> Result<(), String> {
-    let report = build_cache_report(root)?;
+    let report = build_cache_report_from_env(root, std::env::var(CACHE_DIR_ENV))?;
     let markdown = cache_report_markdown(&report);
     write_report("cache-report.md", &markdown)?;
     write_report("cache-report.json", &cache_report_json(&report)?)?;
@@ -45,10 +51,10 @@ fn cache_report(root: &Path) -> Result<(), String> {
 fn cache_gc(root: &Path, args: &[String]) -> Result<(), String> {
     let options = parse_gc_options(args)?;
     let started_at = SystemTime::now();
-    let plan = build_gc_plan(root, &options, started_at)?;
+    let plan = build_gc_plan_from_env(root, std::env::var(CACHE_DIR_ENV), &options, started_at)?;
     if !options.dry_run {
         for deletion in &plan.deletions {
-            let path = root.join(&deletion.relative_path);
+            let path = deletion_path(root, &deletion.relative_path);
             fs::remove_file(&path)
                 .map_err(|err| format!("failed to delete {}: {err}", path.display()))?;
         }
@@ -68,7 +74,11 @@ fn cache_usage() -> String {
         "  cargo xtask cache gc [--dry-run] [--max-size-gb <n>] [--ttl-days <n>]",
         "",
         "Scope:",
-        "  Only target/ripr/cache is scanned or deleted.",
+        "  Scans and deletes only under the resolved cache root:",
+        "  RIPR_CACHE_DIR when set to a non-empty absolute path that looks like a",
+        "  ripr cache, otherwise target/ripr/cache.",
+        "  Relative paths, parent-directory traversal, symlink roots, near-root",
+        "  paths, and ordinary directories are refused before any walk or delete.",
         "  Reports, receipts, PR/review artifacts, workflow artifacts, build output, and source files are ignored.",
         "",
         "Defaults:",
@@ -264,9 +274,18 @@ fn parse_days(value: &str) -> Result<u64, String> {
         .map_err(|err| format!("invalid --ttl-days `{value}`: {err}"))
 }
 
+#[cfg(test)]
 fn build_cache_report(root: &Path) -> Result<CacheReport, String> {
-    let cache_root = cache_root(root);
-    let files = collect_cache_files(root)?;
+    build_cache_report_from_env(root, Err(std::env::VarError::NotPresent))
+}
+
+fn build_cache_report_from_env(
+    root: &Path,
+    env_value: Result<String, std::env::VarError>,
+) -> Result<CacheReport, String> {
+    let cache_root = cache_root_from_env(root, env_value);
+    validate_scan_cache_root(&cache_root)?;
+    let files = collect_cache_files(root, &cache_root)?;
     let mut families = BTreeMap::<String, CacheFamily>::new();
     let mut total_bytes = 0u64;
     for file in &files {
@@ -328,7 +347,7 @@ fn build_shard_summary(files: &[CacheFile]) -> CacheShardSummary {
         if !is_manifest && !is_shard {
             continue;
         }
-        let Some(set_path) = file.relative_path.parent().map(Path::to_path_buf) else {
+        let Some(set_path) = shard_set_path(&file.relative_path, is_shard) else {
             continue;
         };
         let builder = builders
@@ -407,6 +426,44 @@ fn build_shard_summary(files: &[CacheFile]) -> CacheShardSummary {
     summary
 }
 
+/// The shard set a cache file belongs to. A manifest names its own
+/// directory. A shard sits either beside the manifest (pre-RIPR-SPEC-0222
+/// layout, `<entry>/shard-NNNNN.json`) or in a publication generation
+/// directory (`<entry>/g<publication-id>/shard-NNNNN.json`); both belong to
+/// `<entry>`, so the report compares them with the manifest's `file` entries.
+fn shard_set_path(relative_path: &Path, is_shard: bool) -> Option<PathBuf> {
+    let parent = relative_path.parent()?;
+    if is_shard
+        && parent
+            .file_name()
+            .is_some_and(|name| is_generation_dir_name(&name.to_string_lossy()))
+        && let Some(entry) = parent.parent()
+    {
+        return Some(entry.to_path_buf());
+    }
+    Some(parent.to_path_buf())
+}
+
+/// `g<pid>-<nanos>-<seq>`, as written by the classified-cache store.
+fn is_generation_dir_name(name: &str) -> bool {
+    name.strip_prefix('g').is_some_and(|rest| {
+        !rest.is_empty()
+            && rest.chars().any(|c| c.is_ascii_digit())
+            && rest.chars().all(|c| c.is_ascii_digit() || c == '-')
+    })
+}
+
+/// A shard's name relative to its set, with `/` separators, matching the
+/// manifest's `file` spelling on every host.
+fn shard_key(set_path: &Path, shard: &Path) -> Option<String> {
+    let relative = shard.strip_prefix(set_path).ok()?;
+    let parts = relative
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    (!parts.is_empty()).then(|| parts.join("/"))
+}
+
 fn cache_shard_set_from_builder(mut builder: CacheShardSetBuilder) -> CacheShardSet {
     builder.shards.sort_by(|left, right| {
         left.relative_path
@@ -425,8 +482,7 @@ fn cache_shard_set_from_builder(mut builder: CacheShardSetBuilder) -> CacheShard
     let actual_shards = builder
         .shards
         .iter()
-        .filter_map(|shard| shard.relative_path.file_name())
-        .map(|name| name.to_string_lossy().into_owned())
+        .filter_map(|shard| shard_key(&builder.relative_path, &shard.relative_path))
         .collect::<BTreeSet<_>>();
 
     let mut manifest_declared_shards = None;
@@ -512,13 +568,29 @@ fn read_shard_manifest(path: &Path) -> Result<ShardManifestInfo, String> {
     })
 }
 
+#[cfg(test)]
 fn build_gc_plan(
     root: &Path,
     options: &GcOptions,
     started_at: SystemTime,
 ) -> Result<GcPlan, String> {
-    let cache_root = cache_root(root);
-    let files = collect_cache_files(root)?;
+    build_gc_plan_from_env(
+        root,
+        Err(std::env::VarError::NotPresent),
+        options,
+        started_at,
+    )
+}
+
+fn build_gc_plan_from_env(
+    root: &Path,
+    env_value: Result<String, std::env::VarError>,
+    options: &GcOptions,
+    started_at: SystemTime,
+) -> Result<GcPlan, String> {
+    let cache_root = cache_root_from_env(root, env_value);
+    validate_scan_cache_root(&cache_root)?;
+    let files = collect_cache_files(root, &cache_root)?;
     let total_bytes = files
         .iter()
         .fold(0u64, |sum, file| sum.saturating_add(file.size_bytes));
@@ -616,19 +688,40 @@ fn modified_sort_key(file: &CacheFile) -> (u64, u32) {
         })
 }
 
-fn collect_cache_files(root: &Path) -> Result<Vec<CacheFile>, String> {
-    let cache_root = cache_root(root);
-    if !cache_root.exists() {
-        return Ok(Vec::new());
+fn collect_cache_files(root: &Path, cache_root: &Path) -> Result<Vec<CacheFile>, String> {
+    match fs::symlink_metadata(cache_root) {
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(err) => {
+            return Err(format!("failed to inspect {}: {err}", cache_root.display()));
+        }
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(format!(
+                "refusing to scan {}: it is a symlink, not a cache directory",
+                cache_root.display()
+            ));
+        }
+        Ok(metadata) if !metadata.is_dir() => {
+            return Err(format!("{} is not a directory", cache_root.display()));
+        }
+        Ok(_) => {}
     }
-    let metadata = fs::metadata(&cache_root)
-        .map_err(|err| format!("failed to inspect {}: {err}", cache_root.display()))?;
-    if !metadata.is_dir() {
-        return Err(format!("{} is not a directory", cache_root.display()));
+
+    if !is_recognized_cache_root(cache_root) {
+        let mut entries = fs::read_dir(cache_root)
+            .map_err(|err| format!("failed to read {}: {err}", cache_root.display()))?;
+        if entries.next().is_some() {
+            return Err(format!(
+                "refusing to scan {}: it holds files but does not look like a ripr cache root \
+                 (expected a path ending in target/ripr/cache, or a ripr cache directory such as \
+                 `repo-seam-facts` inside it). Check {CACHE_DIR_ENV}.",
+                cache_root.display()
+            ));
+        }
+        return Ok(Vec::new());
     }
 
     let mut files = Vec::new();
-    let mut stack = vec![cache_root.clone()];
+    let mut stack = vec![cache_root.to_path_buf()];
     while let Some(dir) = stack.pop() {
         for entry in
             fs::read_dir(&dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?
@@ -650,7 +743,7 @@ fn collect_cache_files(root: &Path) -> Result<Vec<CacheFile>, String> {
             }
             let relative_path = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
             files.push(CacheFile {
-                family: cache_family(&cache_root, &path),
+                family: cache_family(cache_root, &path),
                 path,
                 relative_path,
                 size_bytes: metadata.len(),
@@ -661,8 +754,76 @@ fn collect_cache_files(root: &Path) -> Result<Vec<CacheFile>, String> {
     Ok(files)
 }
 
-fn cache_root(root: &Path) -> PathBuf {
-    root.join("target").join("ripr").join("cache")
+fn cache_root_from_env(root: &Path, env_value: Result<String, std::env::VarError>) -> PathBuf {
+    match env_value {
+        Ok(value) if !value.trim().is_empty() => PathBuf::from(value.trim()),
+        _ => root.join("target").join("ripr").join("cache"),
+    }
+}
+
+fn validate_scan_cache_root(cache_dir: &Path) -> Result<(), String> {
+    if is_default_cache_layout(cache_dir) {
+        return Ok(());
+    }
+    let display = cache_dir.display();
+    if cache_dir.as_os_str().is_empty() {
+        return Err(format!(
+            "refusing to scan an empty cache path; set {CACHE_DIR_ENV} to the cache directory or unset it"
+        ));
+    }
+    if !cache_dir.is_absolute() {
+        return Err(format!(
+            "refusing to scan relative cache path {display}; set {CACHE_DIR_ENV} to an absolute path"
+        ));
+    }
+    if cache_dir
+        .components()
+        .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
+    {
+        return Err(format!(
+            "refusing to scan {display}: it contains a `..` or `.` component; \
+             set {CACHE_DIR_ENV} to an absolute cache path without parent-directory traversal"
+        ));
+    }
+    if normal_components(cache_dir).len() < 2 {
+        return Err(format!(
+            "refusing to scan {display}: a cache root must sit at least two directories below the filesystem root"
+        ));
+    }
+    Ok(())
+}
+
+fn is_default_cache_layout(cache_dir: &Path) -> bool {
+    let components = normal_components(cache_dir);
+    components.len() >= DEFAULT_CACHE_ROOT_SUFFIX.len()
+        && components[components.len() - DEFAULT_CACHE_ROOT_SUFFIX.len()..]
+            .iter()
+            .zip(DEFAULT_CACHE_ROOT_SUFFIX)
+            .all(|(actual, expected)| *actual == OsStr::new(expected))
+}
+
+fn is_recognized_cache_root(cache_dir: &Path) -> bool {
+    is_default_cache_layout(cache_dir)
+        || cache_layer_names()
+            .iter()
+            .any(|marker| cache_dir.join(marker).is_dir())
+}
+
+fn normal_components(path: &Path) -> Vec<&OsStr> {
+    path.components()
+        .filter_map(|component| match component {
+            Component::Normal(name) => Some(name),
+            _ => None,
+        })
+        .collect()
+}
+
+fn deletion_path(root: &Path, relative_path: &Path) -> PathBuf {
+    if relative_path.is_absolute() {
+        relative_path.to_path_buf()
+    } else {
+        root.join(relative_path)
+    }
 }
 
 fn cache_family(cache_root: &Path, path: &Path) -> String {
@@ -827,7 +988,7 @@ fn cache_report_json(report: &CacheReport) -> Result<String, String> {
     serde_json::to_string_pretty(&json!({
         "schema_version": "0.2",
         "status": "pass",
-        "scope": "target/ripr/cache",
+        "scope": report.cache_root,
         "cache_root": report.cache_root,
         "total_files": report.total_files,
         "total_bytes": report.total_bytes,
@@ -880,7 +1041,7 @@ fn cache_gc_json(plan: &GcPlan, options: &GcOptions) -> Result<String, String> {
         "schema_version": "0.1",
         "status": "pass",
         "mode": if options.dry_run { "dry_run" } else { "delete" },
-        "scope": "target/ripr/cache",
+        "scope": plan.cache_root,
         "cache_root": plan.cache_root,
         "max_size_bytes": options.max_size_bytes,
         "ttl_days": options.ttl_days,
@@ -964,11 +1125,14 @@ fn human_bytes(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        GcOptions, ShardSetStatus, build_cache_report, build_gc_plan, cache_gc_markdown,
-        cache_report_json, cache_report_markdown, parse_gc_options,
+        GcOptions, ShardSetStatus, build_cache_report, build_cache_report_from_env, build_gc_plan,
+        build_gc_plan_from_env, cache_gc_markdown, cache_report_json, cache_report_markdown,
+        cache_root_from_env, deletion_path, is_generation_dir_name, is_recognized_cache_root,
+        parse_gc_options,
     };
+    use ripr::analysis::cache_layer_names;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -1106,6 +1270,73 @@ mod tests {
     }
 
     #[test]
+    fn cache_report_groups_generation_shards_with_their_manifest() -> Result<(), String> {
+        let root = temp_root("sharded-generation-report")?;
+        let entry =
+            root.join("target/ripr/cache/repo-seam-facts-sharded/0.2/0.1/generation-cache-key");
+        write_text(
+            &entry.join("manifest.json"),
+            r#"{
+  "total_seams": 3,
+  "shard_count": 2,
+  "shards": [
+    { "index": 0, "file": "g41-1700000000-7/shard-00000.json", "seams": 2 },
+    { "index": 1, "file": "g41-1700000000-7/shard-00001.json", "seams": 1 }
+  ]
+}"#,
+        )?;
+        write_bytes(&entry.join("g41-1700000000-7/shard-00000.json"), 11)?;
+        write_bytes(&entry.join("g41-1700000000-7/shard-00001.json"), 13)?;
+
+        let report = build_cache_report(&root)?;
+        assert_eq!(report.sharded_cache.shard_sets, 1);
+        assert_eq!(report.sharded_cache.complete_sets, 1);
+        assert_eq!(report.sharded_cache.orphan_sets, 0);
+        assert_eq!(report.sharded_cache.incomplete_sets, 0);
+        assert_eq!(report.sharded_cache.shard_files, 2);
+        let set = report
+            .sharded_cache
+            .largest_sets
+            .first()
+            .ok_or_else(|| "generation shard set should be reported".to_string())?;
+        assert!(set.relative_path.ends_with("generation-cache-key"));
+        assert_eq!(set.status, ShardSetStatus::Complete);
+        assert_eq!(set.bytes, 24 + set.manifest_bytes);
+
+        // A leaked generation the manifest no longer names is still visible,
+        // attributed to its entry rather than reported as a separate orphan set.
+        write_bytes(&entry.join("g41-1600000000-3/shard-00000.json"), 17)?;
+        let report = build_cache_report(&root)?;
+        assert_eq!(report.sharded_cache.shard_sets, 1);
+        assert_eq!(report.sharded_cache.orphan_sets, 0);
+        assert_eq!(report.sharded_cache.incomplete_sets, 1);
+        let leaked = report
+            .sharded_cache
+            .problem_sets
+            .first()
+            .ok_or_else(|| "leaked generation should be a problem set".to_string())?;
+        assert_eq!(leaked.status, ShardSetStatus::Incomplete);
+        assert_eq!(
+            leaked.extra_shards,
+            vec!["g41-1600000000-3/shard-00000.json".to_string()]
+        );
+        assert!(leaked.missing_shards.is_empty());
+
+        cleanup(root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn generation_dir_names_require_the_store_spelling() {
+        assert!(is_generation_dir_name("g41-1700000000-7"));
+        assert!(is_generation_dir_name("g7"));
+        assert!(!is_generation_dir_name("g"));
+        assert!(!is_generation_dir_name("g-"));
+        assert!(!is_generation_dir_name("generation-cache-key"));
+        assert!(!is_generation_dir_name("complete-cache-key"));
+    }
+
+    #[test]
     fn cache_gc_dry_run_selects_only_cache_files() -> Result<(), String> {
         let root = temp_root("gc-dry-run")?;
         let cache_file = root.join("target/ripr/cache/repo-seam-facts/v1/a.json");
@@ -1190,6 +1421,180 @@ mod tests {
         assert_eq!(explicit.max_size_bytes, Some(1_000_000_000));
         assert_eq!(explicit.ttl_days, Some(2));
         Ok(())
+    }
+
+    #[test]
+    fn cache_root_honors_ripr_cache_dir() {
+        let root = PathBuf::from("/workspace/ripr");
+        assert_eq!(
+            cache_root_from_env(&root, Ok("/tmp/ripr-reloc-cache".into())),
+            PathBuf::from("/tmp/ripr-reloc-cache")
+        );
+        assert_eq!(
+            cache_root_from_env(&root, Ok("  /var/cache/ripr  ".into())),
+            PathBuf::from("/var/cache/ripr")
+        );
+        assert_eq!(
+            cache_root_from_env(&root, Ok(String::new())),
+            root.join("target").join("ripr").join("cache")
+        );
+        assert_eq!(
+            cache_root_from_env(&root, Ok("   ".into())),
+            root.join("target").join("ripr").join("cache")
+        );
+        assert_eq!(
+            cache_root_from_env(&root, Err(std::env::VarError::NotPresent)),
+            root.join("target").join("ripr").join("cache")
+        );
+    }
+
+    #[test]
+    fn deletion_path_keeps_relocated_absolute_paths() {
+        let root = PathBuf::from("/workspace/ripr");
+        let relocated = PathBuf::from("/tmp/ripr-reloc-cache/repo-seam-facts/v1/live.json");
+        assert_eq!(deletion_path(&root, &relocated), relocated);
+        assert_eq!(
+            deletion_path(&root, Path::new("target/ripr/cache/a.json")),
+            root.join("target/ripr/cache/a.json")
+        );
+    }
+
+    #[test]
+    fn cache_report_from_env_scans_relocated_root_not_default() -> Result<(), String> {
+        let workspace = temp_root("reloc-workspace")?;
+        let relocated = temp_root("reloc-cache")?;
+        write_bytes(&relocated.join("repo-seam-facts/v1/live.json"), 7)?;
+        write_bytes(
+            &workspace.join("target/ripr/cache/repo-seam-facts/v1/stale.json"),
+            99,
+        )?;
+
+        let report = build_cache_report_from_env(&workspace, Ok(relocated.display().to_string()))?;
+        assert_eq!(report.cache_root, relocated);
+        assert_eq!(report.total_files, 1);
+        assert_eq!(report.total_bytes, 7);
+        assert_eq!(report.families[0].name, "repo-seam-facts");
+        let markdown = cache_report_markdown(&report).replace('\\', "/");
+        assert!(markdown.contains("live.json"), "{markdown}");
+        assert!(!markdown.contains("stale.json"), "{markdown}");
+
+        cleanup(workspace)?;
+        cleanup(relocated)?;
+        Ok(())
+    }
+
+    #[test]
+    fn cache_gc_from_env_plans_relocated_root_not_default() -> Result<(), String> {
+        let workspace = temp_root("gc-reloc-workspace")?;
+        let relocated = temp_root("gc-reloc-cache")?;
+        write_bytes(&relocated.join("repo-seam-facts/v1/live.json"), 11)?;
+        write_bytes(
+            &workspace.join("target/ripr/cache/repo-seam-facts/v1/stale.json"),
+            99,
+        )?;
+
+        let plan = build_gc_plan_from_env(
+            &workspace,
+            Ok(relocated.display().to_string()),
+            &GcOptions {
+                dry_run: true,
+                max_size_bytes: Some(0),
+                ttl_days: None,
+            },
+            SystemTime::now() + Duration::from_secs(1),
+        )?;
+        assert_eq!(plan.cache_root, relocated);
+        assert_eq!(plan.selected_files, 1);
+        let deletion = plan.deletions[0]
+            .relative_path
+            .to_string_lossy()
+            .replace('\\', "/");
+        assert!(deletion.ends_with("live.json"), "{deletion}");
+        assert!(!deletion.ends_with("stale.json"), "{deletion}");
+
+        cleanup(workspace)?;
+        cleanup(relocated)?;
+        Ok(())
+    }
+
+    #[test]
+    fn cache_scan_refuses_relative_and_parent_dir_paths() {
+        let root = PathBuf::from("/workspace/ripr");
+        let relative = build_cache_report_from_env(&root, Ok("tmp/cache".into()));
+        assert!(
+            relative.is_err(),
+            "relative RIPR_CACHE_DIR must be refused before any walk: {relative:?}"
+        );
+        let traversal = build_gc_plan_from_env(
+            &root,
+            Ok("/tmp/ripr-reloc-cache/../..".into()),
+            &GcOptions {
+                dry_run: true,
+                max_size_bytes: None,
+                ttl_days: None,
+            },
+            SystemTime::now(),
+        );
+        assert!(
+            traversal.is_err(),
+            "parent-directory RIPR_CACHE_DIR must be refused before any delete: {traversal:?}"
+        );
+    }
+
+    /// A relocated root holding any single producer layer is recognized, and
+    /// the same directory without layers is not. Driven by the product
+    /// registry, so a layer the reporter stops deriving goes red here.
+    #[test]
+    fn relocated_root_recognizes_each_producer_layer() -> Result<(), String> {
+        let root = temp_root("registry-layers")?;
+        let mut unrecognized = Vec::new();
+        for &layer in cache_layer_names() {
+            let path = root.join(layer);
+            fs::create_dir_all(&path).map_err(|error| error.to_string())?;
+            if !is_recognized_cache_root(&root) {
+                unrecognized.push(layer);
+            }
+            fs::remove_dir(&path).map_err(|error| error.to_string())?;
+        }
+        let empty_recognized = is_recognized_cache_root(&root);
+        cleanup(root)?;
+        assert!(
+            unrecognized.is_empty(),
+            "relocated root not recognized for {unrecognized:?}"
+        );
+        assert!(!empty_recognized, "empty relocated root was recognized");
+        Ok(())
+    }
+
+    #[test]
+    fn cache_scan_refuses_unrecognized_nonempty_root() -> Result<(), String> {
+        let workspace = temp_root("gc-unrecog-workspace")?;
+        let relocated = temp_root("gc-unrecog-cache")?;
+        write_bytes(&relocated.join("notes.txt"), 4)?;
+        let result = build_gc_plan_from_env(
+            &workspace,
+            Ok(relocated.display().to_string()),
+            &GcOptions {
+                dry_run: false,
+                max_size_bytes: Some(0),
+                ttl_days: None,
+            },
+            SystemTime::now() + Duration::from_secs(1),
+        );
+        let notes = relocated.join("notes.txt");
+        let still_present = notes.exists();
+        cleanup(workspace)?;
+        if still_present {
+            cleanup(relocated)?;
+        }
+        match result {
+            Ok(_) => Err("gc planned deletions inside an ordinary directory".into()),
+            Err(_) if !still_present => Err("gc deleted a non-cache file".into()),
+            Err(message) if !message.contains("does not look like a ripr cache root") => {
+                Err(format!("unexpected refusal: {message}"))
+            }
+            Err(_) => Ok(()),
+        }
     }
 
     fn temp_root(label: &str) -> Result<PathBuf, String> {

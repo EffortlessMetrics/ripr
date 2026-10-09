@@ -7,28 +7,40 @@
 # than embed complex shell programs. This file allows known workflow blocks
 # while keeping the budget visible.
 
+# Largest run blocks measured against the accepted engineering composition.
+.github/actions/ci-scratch-lease/action.yml|86|Shared self-hosted scratch ownership authority (#3841): acquire/release a kernel flock lease per job, self-check it at reclaim and release, and reclaim only terminal trees this repository owns while holding that lease. It must run before the Rust toolchain exists and on the toolchain-free scheduled GC lane, so it cannot be an xtask command; the executed behavior harness lives in xtask/src/policy/ci_scratch/tests.rs.
+.github/actions/ripr-check/action.yml|7|Adoption composite action installs ripr when missing and runs one ripr check command (#2626).
 .github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation to cargo xtask and opens a PR.
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
 .github/workflows/coverage.yml|11|Coverage Generate coverage runs the supported show-env/clean/build/bind/test/report recipe with strict instrumented-analyzer identity in one 11-line run block, capturing show-env output before eval so a producer failure propagates under set -e.
-.github/workflows/droid-review.yml|20|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.
-.github/workflows/droid-security-scan.yml|20|Droid scheduled security scan writes local Factory BYOK settings, then uses reusable actions.
-.github/workflows/droid.yml|20|Droid tag-response workflow writes local Factory BYOK settings, then uses reusable actions.
+.github/workflows/droid-review.yml|16|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.
+.github/workflows/droid-security-scan.yml|16|Droid scheduled security scan writes local Factory BYOK settings, then uses reusable actions.
+.github/workflows/droid.yml|19|Droid tag-response workflow writes local Factory BYOK settings, then uses reusable actions.
+.github/workflows/dx-scoreboard.yml|1|Nightly developer-experience scoreboard delegates corpus measurement, ingest, and the regression gate to one cargo xtask dx-scoreboard command.
 .github/workflows/future-clippy.yml|1|Advisory future-Clippy lane keeps each run block to one shell command.
+.github/workflows/npm-launcher.yml|1|Script-free npm launcher workflow delegates behavior and package-content proof to two single-command npm invocations.
+.github/workflows/npm-package-qualification.yml|6|Read-only npm preparation, two checkout-free clients, pinned workflow-schema validation and real staging CLI loopback transport; no external registry write or OIDC permission.
+.github/workflows/pilot-ranking.yml|4|Pilot ranking answer key lane: one-command build, fetch and score steps, then one folded cargo xtask dx-scoreboard gate command.
 .github/workflows/pr-plan.yml|1|Advisory PR Plan workflow keeps each run block to one shell command (mkdir/git, ls, printf).
-.github/workflows/publish-extension.yml|20|Release workflow includes marketplace packaging and publishing orchestration.
+.github/workflows/pr-staleness-watchdog.yml|52|Scheduled watchdog finds open PR heads with no Ripr Rust Small Result check run on the head (#4937) and dispatches the workflow within a per-run cap; the sweep is pure gh api orchestration with its audit table, not product logic.
+.github/workflows/printed-command-paste.yml|1|Printed-command paste lane keeps each run block to one shell command; the harness and its verdict live in the printed_command_paste test.
+.github/workflows/public-proof.yml|9|Public proof drift lane: one cargo xtask public-proof --check command, then a failure-only step that copies its output into the job summary.
+.github/workflows/publish-extension.yml|13|Release workflow includes marketplace packaging and publishing orchestration.
 .github/workflows/publish-npm.yml|13|Manual exact-artifact admission precedes isolated stage-only OIDC; a trusted inline anonymous registry recheck after environment approval rejects existing public versions without executing artifact code.
-.github/workflows/publish-pypi.yml|9|Source-owned prerelease publisher admits exact successful main-run wheel bytes, then isolates explicitly requested OIDC upload from build and source execution.
+.github/workflows/publish-pypi.yml|5|Source-owned prerelease publisher admits exact successful main-run wheel bytes, then isolates explicitly requested OIDC upload from build and source execution.
+.github/workflows/python-wheel-qualification.yml|218|Canonical reusable Linux wheel build, auditwheel compliance, explicit feature/source identity and installed pip/uv journey proof; read-only with bounded native evidence and five-day retention.
+.github/workflows/python-wheelhouse-qualification.yml|45|On-demand local-wheelhouse pip/uv qualification writes isolation facts and a fail-closed aggregate; credential-free, artifact-only, no publication.
 .github/workflows/release-server-binaries.yml|1|Release workflow delegates server archive packaging, manifest generation, and release upload branching to Rust xtask commands.
-.github/workflows/routed-rust.yml|44|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the normalized verdict is decided by the typed ci-routed-rust-result command rather than in shell, so the run blocks only gather inputs.
-.github/workflows/rust-gates.yml|31|Reusable Rust gate implementation preserves scratch tempfail fallback, required proof, bounded PR evidence, and failure-only ordinary artifacts.
-.github/workflows/scratch-gc.yml|4|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + hard-fail guard) on a timer so disk recovery does not depend on PR traffic (#1028).
+.github/workflows/routed-rust.yml|43|Source routed Rust workflow proves pull requests on GitHub-hosted runners only; the normalized verdict is decided by the typed ci-routed-rust-result command rather than in shell, so the run blocks only gather inputs.
+.github/workflows/rust-gates.yml|30|Reusable Rust gate implementation preserves scratch tempfail fallback, required proof, bounded PR evidence, and failure-only ordinary artifacts.
+.github/workflows/scratch-gc.yml|3|Scheduled scratch-GC lane reuses the existing inline cleanup (age-gated find + sccache trim + disk report + hard-fail guard) on a timer so disk recovery does not depend on PR traffic (#1028).
+.github/workflows/rust-corpus.yml|4|Shared Rust corpus lane: one-command build, fetch and smoke steps, then one folded cargo xtask dx-scoreboard gate command.
 .github/workflows/security.yml|1|Security workflow installs cargo-deny as a normal binary, then runs the standard cargo-deny command without requiring Docker.
-.github/workflows/server-archive-qualification.yml|82|Exact measured largest run block after preserving curl transport status, bounded rate-limit tokens, response digests, and strict public ruleset shape diagnostics; credential-free, artifact-only qualification delegates packaging and manifest generation to Rust xtask commands.
+.github/workflows/server-archive-qualification.yml|90|Exact measured largest run block after preserving curl transport status, bounded rate-limit tokens, response digests, and strict public ruleset shape diagnostics; credential-free, artifact-only qualification delegates packaging and manifest generation to Rust xtask commands.
 .github/workflows/source-of-truth.yml|15|Advisory source-of-truth workflow runs two xtask doc checks, publishes the bounded spec maintenance digest, and annotates an instrument failure as a failed advisory observation (#3467).
 .github/workflows/source-promotion-admission.yml|44|Trusted read-only admission workflow binds the pre-producer request and exact identities, retains runner-owned evidence before enforcement, and delegates deterministic admission and dry-run semantics to the source-owned Rust harness.
-.github/workflows/source-promotion-contract.yml|170|Source-promotion contract keeps exact-head receipt binding, fail-closed validation diagnostics, complete receipt-shape validation, and manual post-merge verification in one bounded, read-only workflow.
+.github/workflows/source-promotion-contract.yml|143|Source-promotion contract keeps exact-head receipt binding, fail-closed validation diagnostics, complete receipt-shape validation, and manual post-merge verification in one bounded, read-only workflow.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
-.github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.
-.github/workflows/windows-packaged-qualification.yml|50|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.
-.github/workflows/python-wheel-qualification.yml|218|Canonical reusable Linux wheel build, auditwheel compliance, explicit feature/source identity and installed pip/uv journey proof; read-only with bounded native evidence and five-day retention.
-.github/workflows/npm-package-qualification.yml|6|Read-only npm preparation, two checkout-free clients, pinned workflow-schema validation and real staging CLI loopback transport; no external registry write or OIDC permission.
+.github/workflows/windows-advisory.yml|337|Advisory Windows log-to-verdict orchestration plus bounded exact-head native PowerShell selector consumer (#5252/#5581): inline stdlib Win32 process ownership is confined to Actions, captures actual CLI producer/source and real printed-command replay, and has no dependency-change, credential, registry or release authority; outcomes remain advisory and missing evidence fails.
+.github/workflows/windows-packaged-qualification.yml|37|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.
+.github/workflows/zed-extension.yml|1|Zed extension workflow keeps each run block to one Cargo command.

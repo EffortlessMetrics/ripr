@@ -167,8 +167,8 @@
     },
     {
       "id": "heuristic_related_test_link",
-      "source_fixture": "fixtures/typescript_related_test_name_proximity",
-      "source_finding_id": "probe:src_pricing.ts:typescript_preview:bd772dc8",
+      "source_fixture": "fixtures/ts_heuristic_relation",
+      "source_finding_id": "probe:src_formatter.ts:typescript_preview:bf26bc95",
       "language": "typescript",
       "language_status": "preview",
       "risk_class": "heuristic related-test link",
@@ -186,7 +186,7 @@
       "must_remain_non_actionable": true,
       "required_evidence_fragment": "related-test link is heuristic-only",
       "raw_evidence_refs": [
-        "fixtures/typescript_related_test_name_proximity/expected/check.json#probe:src_pricing.ts:typescript_preview:bd772dc8"
+        "fixtures/ts_heuristic_relation/expected/check.json#probe:src_formatter.ts:typescript_preview:bf26bc95"
       ],
       "non_claims": [
         "no provider calls",
@@ -200,7 +200,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "Heuristic related-test proximity is useful uncertainty evidence, not activation proof."
+      "reason": "Heuristic related-test proximity ranks a test that references the owner without a recognized call; it is useful uncertainty evidence, not activation proof."
     },
     {
       "id": "owner_name_in_test_title_only",
@@ -212,16 +212,16 @@
       "evidence_kind": "test_name_proximity",
       "oracle_kind": "unknown",
       "gap_state": "advisory",
-      "actionability_category": "ambiguous_related_test",
+      "actionability_category": "missing_context",
       "static_limit_kind": null,
       "disposition": "must_remain_non_actionable",
       "repair_packet_ready": false,
       "authority_boundary": "preview_advisory_only",
-      "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof",
-      "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
-      "future_support": "test title tokens can remain ranking context, but they cannot supply related-test proof without a real owner-call relation",
+      "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route",
+      "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
+      "future_support": "test title, describe title, and file-stem tokens never relate a test that does not reference the owner; they only rank tests that already reference it",
       "must_remain_non_actionable": true,
-      "required_evidence_fragment": "related_test_relation: test_name",
+      "required_evidence_fragment": "No test references `applyDiscount(`",
       "raw_evidence_refs": [
         "fixtures/typescript_related_test_name_proximity/expected/check.json#probe:src_pricing.ts:typescript_preview:bd772dc8"
       ],
@@ -237,7 +237,7 @@
         "no RIPR Zero authority",
         "no support-tier promotion"
       ],
-      "reason": "A test title that names the owner is not enough to prove the test executes changed behavior."
+      "reason": "A test title that names the owner is not a reference to the owner, so the test is not related and the finding stays no_static_path."
     },
     {
       "id": "method_receiver_ambiguity",
@@ -534,6 +534,43 @@
         "no support-tier promotion"
       ],
       "reason": "Computed dispatch syntax is a named limitation until the target behavior is resolved safely."
+    },
+    {
+      "id": "exposed_with_dynamic_assertion_named_limitation",
+      "source_fixture": "fixtures/ts_dynamic_oracle",
+      "source_finding_id": "probe:src_pricing.ts:typescript_preview:0335115b",
+      "language": "typescript",
+      "language_status": "preview",
+      "risk_class": "strong exact oracle with a dynamically resolved expected side held at weakly_exposed",
+      "evidence_kind": "named_oracle_limitation",
+      "oracle_kind": "exact_value",
+      "gap_state": "advisory",
+      "actionability_category": "incomplete_repair_packet",
+      "static_limit_kind": null,
+      "disposition": "candidate_future_support",
+      "repair_packet_ready": false,
+      "authority_boundary": "preview_advisory_only",
+      "why_not_actionable": "TypeScript preview has owner, related-test, oracle, and probe evidence but lacks a complete repair packet contract",
+      "repair_route": "project canonical TypeScript repair packet fields only after verify, receipt, evidence refs, and edit boundaries are available",
+      "future_support": "dynamic-argument resolution must bind the non-literal matcher argument to a concrete expected value before the named limitation can clear",
+      "must_remain_non_actionable": true,
+      "required_evidence_fragment": "typescript_limitation: typescript_dynamic_assertion_unresolved",
+      "raw_evidence_refs": [
+        "fixtures/ts_dynamic_oracle/expected/check.json#probe:src_pricing.ts:typescript_preview:0335115b"
+      ],
+      "non_claims": [
+        "no provider calls",
+        "no source edits",
+        "no generated tests",
+        "no runtime Jest/Vitest execution",
+        "no mutation execution",
+        "no default gates",
+        "no public badge contribution",
+        "no baseline authority",
+        "no RIPR Zero authority",
+        "no support-tier promotion"
+      ],
+      "reason": "A dynamically resolved expected side (toBe(getExpectedValue())) cannot statically pin the boundary outcome (#4102 expected-side liveness guard), so the finding holds at weakly_exposed with an advisory incomplete-packet gap; the exact_value/strong oracle classification of the assertion survives and the named dynamic-assertion limitation still blocks any repair packet. The prior already_observed/strong_oracle_observed pin was the dishonest state: it claimed an exact observation the dynamic expected side cannot establish."
     }
   ]
 }

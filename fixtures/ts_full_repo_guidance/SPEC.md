@@ -26,7 +26,7 @@ The disclosure carries:
   `source_file_count`: 2, `test_file_count`: 0, `package_root_count`: 1,
   `package_confidence`: `medium`, `runner_status`: `no_tests_detected`, and
   `top_blocker`: `typescript_tests_not_detected`
-- `repair_route`: pointing to `ripr check --base origin/main` or `--diff <file>`
+- `repair_route`: pointing to `ripr check` or `--diff <file>`
 
 The `seams` array is empty — no fabricated TypeScript seams are emitted.
 

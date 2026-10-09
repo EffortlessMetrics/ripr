@@ -253,7 +253,8 @@ The JSON report uses schema version `0.1`:
       "suggested_test": "Add an equality-boundary assertion.",
       "related_test": "tests/pricing.rs::applies_discount_above_threshold",
       "verify_command": "ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json",
-      "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow"
+      "repair_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before",
+      "agent_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before"
     }
   ],
   "warnings": [
@@ -369,6 +370,19 @@ with a warning rather than invented.
 Given a baseline debt delta with zero visible unresolved gaps, no
 new policy-eligible gaps, no stale metadata, and no missing inputs, the report
 sets `ripr_zero.state = "achieved"`.
+
+Given a baseline debt delta with a missing delta section, missing counts,
+malformed (non-integer) counts, items whose bucket cardinalities contradict
+counts, or a disclosed partial-scope, findings-bounded, or otherwise
+incomplete producer run, the report sets `ripr_zero.state = "unknown"` with
+the reason in warnings; it must not report `achieved` from a denominator it
+cannot validate. Visible debt keeps `not_yet` only when the counts are valid
+and items do not contradict them; a disclosed partial producer denominator
+stays visible in warnings but does not erase the debt signal, while missing
+or malformed counts, or items contradicting counts, yield `unknown` even
+when other counts show debt (#5251). A supplied gate decision reporting
+`config_error` likewise withholds `achieved`: its blocking count is forced
+to 0 and a zero-count delta reports `unknown` (#6095 review).
 
 Given a baseline debt delta with existing baseline gaps still present, the
 report sets `ripr_zero.state = "not_yet"` and counts them as visible unresolved

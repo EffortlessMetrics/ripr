@@ -1,2 +1,6 @@
 [languages]
 enabled = ["rust", "typescript", "python"]
+
+[languages.rust]
+# This handwritten integration test exercises generated workflow output.
+handwritten_files = ["crates/ripr/tests/generated_review_workflow.rs"]

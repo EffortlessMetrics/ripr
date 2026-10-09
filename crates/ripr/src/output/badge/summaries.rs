@@ -8,12 +8,11 @@ use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::CheckOutput;
 #[cfg(test)]
 use crate::config::{ConfigSeverity, RiprConfig};
-use crate::domain::ExposureClass;
+use crate::domain::{ExposureClass, Finding, LanguageStatus};
 use crate::output::evidence_record::evidence_record_for;
 use crate::output::gap_decision_ledger;
 use crate::output::suppressions::{
     CheckSuppressionCandidate, SuppressionEntry, apply_check_suppressions,
-    root_relative_finding_path,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -83,6 +82,81 @@ pub(super) fn apply_analysis_outcome_disclosure(
     )
 }
 
+/// Preview evidence cannot count against calibrated RIPR 0
+/// (`docs/BLOCKING_READINESS.md` Preview Evidence Boundary, RIPR-SPEC-0030).
+/// The badge authority is `language_status = preview`, not a language-name
+/// table: Python, TypeScript, JavaScript, and Perl share this status today,
+/// and a later language keeps the same exclusion until an explicit promotion
+/// policy says otherwise.
+fn is_preview_evidence(finding: &Finding) -> bool {
+    finding.language_status == Some(LanguageStatus::Preview)
+}
+
+/// Candidate-actionable unknown Finding classes that may count against
+/// calibrated RIPR 0. Preview evidence is counted in `BadgeCounts.unknowns`
+/// (native audit) and omitted here (headline).
+pub(crate) fn calibrated_unknown_count<'a>(
+    findings: impl IntoIterator<Item = &'a Finding>,
+) -> usize {
+    findings
+        .into_iter()
+        .filter(|finding| {
+            finding.is_candidate_actionable()
+                && !is_preview_evidence(finding)
+                && matches!(
+                    calibrated_ripr_zero_bucket(&finding.class),
+                    CalibratedRiprZeroBucket::Unknown
+                )
+        })
+        .count()
+}
+
+/// RIPR 0 / ripr+ unknown headline contribution. `calibrated_unknowns` must
+/// already exclude preview evidence; `unknowns_test_efficiency` is the
+/// seam-native opaque axis and is independent of Finding language status.
+pub(crate) fn unknown_headline_contribution(
+    calibrated_unknowns: usize,
+    unknowns_test_efficiency: usize,
+    include_unknowns: bool,
+) -> usize {
+    if include_unknowns {
+        calibrated_unknowns.saturating_add(unknowns_test_efficiency)
+    } else {
+        0
+    }
+}
+
+/// Headline bucket for one calibrated finding. Exhaustive over
+/// `ExposureClass` so a new variant cannot silently skip both gap and
+/// unknown accounting.
+fn calibrated_ripr_zero_bucket(class: &ExposureClass) -> CalibratedRiprZeroBucket {
+    match class {
+        ExposureClass::WeaklyExposed
+        | ExposureClass::ReachableUnrevealed
+        | ExposureClass::NoStaticPath => CalibratedRiprZeroBucket::ExposureGap,
+        ExposureClass::InfectionUnknown
+        | ExposureClass::PropagationUnknown
+        | ExposureClass::StaticUnknown => CalibratedRiprZeroBucket::Unknown,
+        ExposureClass::Exposed => CalibratedRiprZeroBucket::NotHeadline,
+    }
+}
+
+enum CalibratedRiprZeroBucket {
+    ExposureGap,
+    Unknown,
+    NotHeadline,
+}
+
+fn record_related_tests(unique_tests: &mut BTreeSet<(String, String, usize)>, finding: &Finding) {
+    for test in &finding.related_tests {
+        unique_tests.insert((
+            test.file.to_string_lossy().into_owned(),
+            test.name.clone(),
+            test.line,
+        ));
+    }
+}
+
 /// Builds the `ripr` badge summary from a `CheckOutput`, applying any
 /// `kind = "exposure_gap"` suppression whose `finding_id` or root-relative
 /// `path`/`static_class` selector matches a currently-counted exposure gap.
@@ -97,55 +171,51 @@ pub fn ripr_badge_summary_with_suppressions(
     today: &str,
     policy: BadgePolicy,
 ) -> BadgeSummary {
-    let mut candidates: Vec<CheckSuppressionCandidate> = Vec::new();
+    let mut calibrated_gap_findings = Vec::new();
+    let mut present_gap_findings = Vec::new();
     let mut unknowns = 0usize;
     let mut unique_tests: BTreeSet<(String, String, usize)> = BTreeSet::new();
 
     for finding in &output.findings {
-        // Candidate-actionable eligibility (#3281): base-side evidence
-        // (base_deleted / moved_or_renamed) and unresolved subjects never
-        // count as exposure gaps or unknowns in the badge; the analyzed
-        // denominator below keeps every finding.
+        // Analyzed-test and analyzed-finding denominators keep every finding,
+        // including preview and base-side evidence that the headline omits.
+        record_related_tests(&mut unique_tests, finding);
         if !finding.is_candidate_actionable() {
-            for test in &finding.related_tests {
-                unique_tests.insert((
-                    test.file.to_string_lossy().into_owned(),
-                    test.name.clone(),
-                    test.line,
-                ));
-            }
             continue;
         }
-        match finding.class {
-            ExposureClass::WeaklyExposed
-            | ExposureClass::ReachableUnrevealed
-            | ExposureClass::NoStaticPath => {
-                candidates.push(CheckSuppressionCandidate {
-                    finding_id: finding.id.clone(),
-                    path: root_relative_finding_path(&output.root, &finding.probe.location.file),
-                    class: finding.class.as_str().to_string(),
-                });
+        match calibrated_ripr_zero_bucket(&finding.class) {
+            CalibratedRiprZeroBucket::ExposureGap => {
+                // Presence includes preview evidence so a valid preview
+                // suppression is not a stale unmatched selector. Calibrated
+                // RIPR 0 counts still exclude it (#6761).
+                present_gap_findings.push(finding);
+                if !is_preview_evidence(finding) {
+                    calibrated_gap_findings.push(finding);
+                }
             }
-            ExposureClass::InfectionUnknown
-            | ExposureClass::PropagationUnknown
-            | ExposureClass::StaticUnknown => {
+            CalibratedRiprZeroBucket::Unknown => {
+                // Native `counts.unknowns` is the schema audit of static
+                // unknown Finding classes, including preview. Only the
+                // calibrated headline omits preview (#6761 / RIPR-SPEC-0030).
                 unknowns += 1;
             }
-            ExposureClass::Exposed => {}
-        }
-        for test in &finding.related_tests {
-            unique_tests.insert((
-                test.file.to_string_lossy().into_owned(),
-                test.name.clone(),
-                test.line,
-            ));
+            CalibratedRiprZeroBucket::NotHeadline => {}
         }
     }
 
-    let (suppressed_findings, warnings) =
-        apply_check_suppressions(&candidates, suppressions, today);
-    let suppressed = suppressed_findings.len();
-    let unsuppressed_exposure_gaps = candidates.len().saturating_sub(suppressed);
+    let presence =
+        CheckSuppressionCandidate::for_findings(&output.root, present_gap_findings, suppressions);
+    let (suppressed_findings, warnings) = apply_check_suppressions(&presence, suppressions, today);
+    let calibrated_ids: BTreeSet<&str> = calibrated_gap_findings
+        .iter()
+        .map(|finding| finding.id.as_str())
+        .collect();
+    let suppressed = suppressed_findings
+        .keys()
+        .filter(|id| calibrated_ids.contains(id.as_str()))
+        .count();
+    let unsuppressed_exposure_gaps = calibrated_gap_findings.len().saturating_sub(suppressed);
+    let calibrated_unknowns = calibrated_unknown_count(&output.findings);
 
     let counts = BadgeCounts {
         unsuppressed_exposure_gaps,
@@ -167,11 +237,7 @@ pub fn ripr_badge_summary_with_suppressions(
     }
 
     let headline = counts.unsuppressed_exposure_gaps
-        + if policy.include_unknowns {
-            counts.unknowns
-        } else {
-            0
-        };
+        + unknown_headline_contribution(calibrated_unknowns, 0, policy.include_unknowns);
     let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
 
     // Check for preview-language files that were detected but NOT analyzed
@@ -287,11 +353,7 @@ pub(crate) fn ripr_seam_badge_summary_from_counts(
     }
 
     let headline = counts.unsuppressed_exposure_gaps
-        + if policy.include_unknowns {
-            counts.unknowns
-        } else {
-            0
-        };
+        + unknown_headline_contribution(counts.unknowns, 0, policy.include_unknowns);
     let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
 
     BadgeSummary {
@@ -364,11 +426,7 @@ pub(crate) fn ripr_canonical_actionable_gap_badge_summary(
     }
 
     let headline = counts.unsuppressed_exposure_gaps
-        + if policy.include_unknowns {
-            counts.unknowns
-        } else {
-            0
-        };
+        + unknown_headline_contribution(counts.unknowns, 0, policy.include_unknowns);
     let (status, color) = badge_status_color(headline, policy.fail_on_nonzero);
 
     BadgeSummary {

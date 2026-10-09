@@ -20,6 +20,13 @@ The corpus intentionally covers:
 
 - advisory-only PR with no actionable seam;
 - actionable PR-local weak seam;
+- fresh PR whose review card carries the repair start (`repair-start/`): the
+  top issue and Repair block lead with that exact command. The panel carries
+  `repair_command` from first-action `commands.repair`, a review card's
+  `llm_guidance.repair_command`, or a gate route's `repair_command`, and never
+  synthesizes an `agent start` or `agent repair` command from a bare seam id;
+  without a carried command `agent_command` is a carried read-only inspection
+  command or `null`;
 - summary-only guidance;
 - acknowledged or waived policy candidate;
 - suppressed candidate;
@@ -35,6 +42,7 @@ Case directories:
 
 - `advisory-only/`
 - `actionable/`
+- `repair-start/`
 - `summary-only/`
 - `acknowledged/`
 - `suppressed/`

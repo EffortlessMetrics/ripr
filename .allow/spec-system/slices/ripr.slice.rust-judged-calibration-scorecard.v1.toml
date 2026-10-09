@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.rust-judged-calibration-scorecard.v1"
+generation = 1
+
+source_issue = "issue:4795"
+design_reference = "metrics/rust-judged-behavior-panel/README.md#runtime-calibration-scorecard"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds exact targeted runtime calibration receipts and one denominator-bearing
+JSON/Markdown scorecard for independently judged Rust panel rows (#4795).
+Joins by exact case/selection/judgment/behavior identity. Runtime results
+cannot rewrite #3806 structural judgments. Unauthorized repositories stay
+not_run. Rates never invent a zero percent. Analyzer behavior, #4796
+feedback fixtures, #3164 parent closure, #3076 route-yield, and support
+tiers are out of scope.
+"""
+
+non_goals = [
+  "analyzer repairs or judgment packet rewrites",
+  "issue #4796 honesty-fixture / feedback-ledger lifecycle",
+  "issue #3164 parent closure",
+  "broad mutation campaigns or default product mutation execution",
+  "merging #3076 route-yield denominators",
+  "support-tier, release, or publication claims",
+]
+
+return_conditions = [
+  "Return to root if runtime results can rewrite release-judgments.json bytes.",
+  "Return to root if a live mutant is auto-labeled false_exposed.",
+  "Return to root if zero executed subjects can become caught or a completed-live result.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:rust-judged-panel-calibration",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:rust-judged-panel-release-judgments",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis:classifier",
+  "seam:ripr:xtask:python-judged-panel-feedback",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:4795#calibration-scorecard"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

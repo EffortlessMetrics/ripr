@@ -1,0 +1,70 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/property_macro_noop_proptest/input",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:288193aa50b8f3dbd50292a2e493fe393d57785cf076b7c38e557bef64f42ee4","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:c80557eb",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:c80557eb",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/property_macro_noop_proptest/input/src/lib.rs",
+        "line": 2,
+        "expression": "amount >= discount_threshold"
+       },
+      "ripr": {
+        "reach": {"state":"unknown","confidence":"low","summary":"Property macro expansion and owner execution are unresolved"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Property macro expansion and owner execution are unresolved"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Property macro expansion and owner execution are unresolved"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach unknown: Property macro expansion and owner execution are unresolved", "infection unknown: Property macro expansion and owner execution are unresolved", "propagation unknown: Property macro expansion and owner execution are unresolved", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches returned value: amount - 10 (line 3)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"amount - 10","line":3}
+      ],
+      "evidence": ["No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "Opaque property macro `proptest!` at src/lib.rs:10 lexically mentions `discounted_total`; macro provenance, test collection and execution are unresolved.", "limitation_last_established_edge: source invocation `proptest!` at src/lib.rs:10", "limitation_first_unresolved_edge: property macro expansion, executable-test collection and owner reach", "limitation_analyzer_route: analysis/rust-property-macro-provenance", "limitation_non_claim: lexical mention only; no test existence, absence, execution, reach or assertion discrimination is established"],
+      "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": ["macro_reach_unresolved"],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Inspect the property macro's definition and collected tests, then run its existing test suite; this limitation does not establish a missing test.",
+      "suggested_next_action": "Inspect the property macro's definition and collected tests, then run its existing test suite; this limitation does not establish a missing test.",
+      "language": "rust",
+      "static_limit_kind": "rust_macro_reach_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/rust-property-macro-provenance",
+        "first_unresolved_edge": "property macro expansion, executable-test collection and owner reach",
+        "kind": "rust_macro_reach_unresolved",
+        "last_established_edge": "source invocation `proptest!` at src/lib.rs:10",
+        "non_claim": "lexical mention only; no test existence, absence, execution, reach or assertion discrimination is established"
+      },
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

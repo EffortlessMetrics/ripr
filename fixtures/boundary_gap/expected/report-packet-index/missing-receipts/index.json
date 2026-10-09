@@ -4,15 +4,19 @@
   "kind": "report_packet_index",
   "status": "warn",
   "root": ".",
-  "generated_at": "2026-05-10T12:00:00Z",
+  "generated_at": "unix_ms:0",
   "inputs": {
     "reports_dir": "target/ripr/reports",
     "review_dir": "target/ripr/review",
-    "receipts_dir": "target/ripr/receipts"
+    "receipts_dir": "target/ripr/receipts",
+    "workflow_dir": "target/ripr/workflow",
+    "agent_dir": "target/ripr/agent",
+    "pilot_dir": "target/ripr/pilot",
+    "ci_dir": "target/ci"
   },
   "summary": {
-    "entries": 5,
-    "available": 3,
+    "entries": 7,
+    "available": 5,
     "missing_expected": 2,
     "warnings": 2,
     "failures": 0,
@@ -32,7 +36,7 @@
           "kind": "markdown",
           "path": "target/ripr/reports/pr-review-front-panel.md",
           "json_path": "target/ripr/reports/pr-review-front-panel.json",
-          "status": "available",
+          "status": "warn",
           "available": true,
           "required": true,
           "authority": false,
@@ -44,7 +48,7 @@
     {
       "group": "pr_review_story",
       "label": "PR review story",
-      "summary": "Guidance exists.",
+      "summary": "Guidance and first useful action.",
       "entries": [
         {
           "id": "first_useful_action",
@@ -75,9 +79,42 @@
       ]
     },
     {
+      "group": "repair_agent_handoff",
+      "label": "Repair and agent handoff",
+      "summary": "Proof, health, and repair routing.",
+      "entries": [
+        {
+          "id": "assistant_proof",
+          "label": "Assistant proof",
+          "kind": "markdown",
+          "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+          "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Joined repair proof packet.",
+          "next_command": null
+        },
+        {
+          "id": "assistant_loop_health",
+          "label": "Assistant loop health",
+          "kind": "markdown",
+          "path": "target/ripr/reports/assistant-loop-health.md",
+          "json_path": "target/ripr/reports/assistant-loop-health.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Repair loop health over assistant proof inputs.",
+          "next_command": null
+        }
+      ]
+    },
+    {
       "group": "validation_receipts",
       "label": "Validation receipts",
-      "summary": "Receipts are missing.",
+      "summary": "Receipts and local readiness reports.",
       "entries": [
         {
           "id": "agent_receipt",
@@ -89,8 +126,8 @@
           "available": false,
           "required": false,
           "authority": false,
-          "description": "Focused repair receipt is absent.",
-          "next_command": "ripr agent receipt --out target/ripr/reports/agent-receipt.json"
+          "description": "Focused repair receipt.",
+          "next_command": "ripr agent status --root ."
         },
         {
           "id": "check_pr",
@@ -102,8 +139,8 @@
           "available": false,
           "required": false,
           "authority": false,
-          "description": "Local review-ready gate receipt is absent.",
-          "next_command": "cargo xtask check-pr"
+          "description": "Local review-ready gate receipt.",
+          "next_command": null
         }
       ]
     }
@@ -116,7 +153,7 @@
       "path": "target/ripr/reports/agent-receipt.json",
       "required": false,
       "reason": "not_generated",
-      "next_command": "ripr agent receipt --out target/ripr/reports/agent-receipt.json"
+      "next_command": "ripr agent status --root ."
     },
     {
       "id": "check_pr",
@@ -125,18 +162,18 @@
       "path": "target/ripr/reports/check-pr.md",
       "required": false,
       "reason": "not_generated",
-      "next_command": "cargo xtask check-pr"
+      "next_command": null
     }
   ],
   "warnings": [
     {
       "kind": "missing_expected",
-      "message": "Agent receipt was not generated.",
+      "message": "Agent receipt is missing.",
       "source_artifact": null
     },
     {
       "kind": "missing_expected",
-      "message": "check-pr receipt was not generated.",
+      "message": "Check PR is missing.",
       "source_artifact": null
     }
   ],

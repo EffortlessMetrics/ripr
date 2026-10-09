@@ -1,0 +1,18 @@
+
+running 1 test
+test hir::translate::tests::analysis_is_match_empty ... FAILED
+
+failures:
+
+---- hir::translate::tests::analysis_is_match_empty stdout ----
+
+thread 'hir::translate::tests::analysis_is_match_empty' (413) panicked at regex-syntax/src/hir/translate.rs:3160:9:
+assertion failed: !t(r"\b").is_match_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    hir::translate::tests::analysis_is_match_empty
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 321 filtered out; finished in 0.00s
+

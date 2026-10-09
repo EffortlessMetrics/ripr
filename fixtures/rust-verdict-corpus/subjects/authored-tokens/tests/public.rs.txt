@@ -1,0 +1,4 @@
+#[test]
+fn public_total_adds_the_fee() {
+    assert_eq!(tokens::public_total(3), 45);
+}

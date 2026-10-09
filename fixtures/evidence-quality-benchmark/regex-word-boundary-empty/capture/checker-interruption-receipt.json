@@ -1,0 +1,614 @@
+{
+  "kind": "actual_upstream_native_experiment",
+  "started_utc": "2026-10-03T08:45:12Z",
+  "phase": "resolved-fixed_original-frozen-test",
+  "pid": 2,
+  "source_candidate": "f37ce8b2a0bd530abe25835090374b94cebe7448",
+  "source_candidate_tested": false,
+  "limits": {
+    "mutable": 536870912,
+    "witnesses": 268435456,
+    "cache_growth": 134217728,
+    "source_logs_temp": 134217728,
+    "total_growth": 1073741824
+  },
+  "reserve_floor_bytes": 3221225472,
+  "workspace": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+  "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+  "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+  "commands": [
+    {
+      "label": "resolved-selected-dependency-download-and-compile",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "test",
+        "--locked",
+        "--manifest-path",
+        "Cargo.toml",
+        "-p",
+        "regex-syntax",
+        "--lib",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:12Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 15,
+      "exit_code": 0,
+      "duration_seconds": 9.494,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-selected-dependency-download-and-compile.stdout",
+        "bytes": 5270,
+        "sha256": "35c1214a3ce03d902c77bdf2fc8b3e068d38793768d8bfd6832f755b6ae0664b"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-selected-dependency-download-and-compile.stderr",
+        "bytes": 367,
+        "sha256": "71841466040069fc41e4d118869aa4fb1df40ab250bf296ceb765a10e68c8819"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 4096,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11444224,
+        "total_growth": 38404096,
+        "free_bytes": 5184880640
+      }
+    },
+    {
+      "label": "resolved-broken_original-compile",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "Cargo.toml",
+        "-p",
+        "regex-syntax",
+        "--lib",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:36Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 187,
+      "exit_code": 0,
+      "duration_seconds": 0.386,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-compile.stdout",
+        "bytes": 5269,
+        "sha256": "0b9e46b492527b22f07597121fd695687955ef636b45566afc28139ec74fc657"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-compile.stderr",
+        "bytes": 73,
+        "sha256": "3be63a270c1475ea545697ad53d42d734acbfff283f0af9d1d518cc2dca9992c"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 4096,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11505664,
+        "total_growth": 38465536,
+        "free_bytes": 5184819200
+      }
+    },
+    {
+      "label": "resolved-broken_original-list",
+      "argv": [
+        "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/0d67ef5f2b17706733aca84aa7a3afdec057dc572519c01b8cedacdd7fd58027.bin",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--exact",
+        "--list"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:37Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 219,
+      "exit_code": 0,
+      "duration_seconds": 0.372,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-list.stdout",
+        "bytes": 75,
+        "sha256": "034aaad39cdbff3a11adbd4e49566db4af8d83d2019dfd428bd2118f89b858cf"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-list.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 17158144,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11513856,
+        "total_growth": 55627776,
+        "free_bytes": 5167656960
+      }
+    },
+    {
+      "label": "resolved-broken_original-cargo-test",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "Cargo.toml",
+        "-p",
+        "regex-syntax",
+        "--lib",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--",
+        "--exact"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:37Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 235,
+      "exit_code": 0,
+      "duration_seconds": 0.376,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-cargo-test.stdout",
+        "bytes": 173,
+        "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-cargo-test.stderr",
+        "bytes": 1120,
+        "sha256": "f65e10c46ab0385b2ad42593d50d625e5ab64794a8b8ab3b5c3ff8b9fb0c2e75"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 17158144,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11522048,
+        "total_growth": 55635968,
+        "free_bytes": 5167648768
+      }
+    },
+    {
+      "label": "resolved-broken_original-frozen-test",
+      "argv": [
+        "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/0d67ef5f2b17706733aca84aa7a3afdec057dc572519c01b8cedacdd7fd58027.bin",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--exact"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:38Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 254,
+      "exit_code": 0,
+      "duration_seconds": 0.374,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-frozen-test.stdout",
+        "bytes": 173,
+        "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-broken_original-frozen-test.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 17158144,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11530240,
+        "total_growth": 55644160,
+        "free_bytes": 5167640576
+      }
+    },
+    {
+      "label": "resolved-fixed_original-compile",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "Cargo.toml",
+        "-p",
+        "regex-syntax",
+        "--lib",
+        "--no-run",
+        "--message-format=json"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:39Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 271,
+      "exit_code": 0,
+      "duration_seconds": 4.193,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-compile.stdout",
+        "bytes": 5270,
+        "sha256": "35c1214a3ce03d902c77bdf2fc8b3e068d38793768d8bfd6832f755b6ae0664b"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-compile.stderr",
+        "bytes": 193,
+        "sha256": "1dc76266c6b73e774f5acc1e30fef2f9fec757e18737ccb35183b9248f5fc63f"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 17158144,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11632640,
+        "total_growth": 55746560,
+        "free_bytes": 5167538176
+      }
+    },
+    {
+      "label": "resolved-fixed_original-list",
+      "argv": [
+        "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/05df958d2441e844045e34221e22de0e3d7251244b6cb4b5e8f63c1ea1ffe557.bin",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--exact",
+        "--list"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:43Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 389,
+      "exit_code": 0,
+      "duration_seconds": 0.376,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-list.stdout",
+        "bytes": 75,
+        "sha256": "034aaad39cdbff3a11adbd4e49566db4af8d83d2019dfd428bd2118f89b858cf"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-list.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 34312192,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11640832,
+        "total_growth": 72908800,
+        "free_bytes": 5150375936
+      }
+    },
+    {
+      "label": "resolved-fixed_original-cargo-test",
+      "argv": [
+        "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "test",
+        "--locked",
+        "--offline",
+        "--manifest-path",
+        "Cargo.toml",
+        "-p",
+        "regex-syntax",
+        "--lib",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--",
+        "--exact"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:44Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 405,
+      "exit_code": 101,
+      "duration_seconds": 0.38,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-cargo-test.stdout",
+        "bytes": 560,
+        "sha256": "1071e6a4c61bcba7c24d2821ff8615988229668ff95ac0180f3ef48cc65e56f8"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-cargo-test.stderr",
+        "bytes": 1178,
+        "sha256": "cc24675f54c490722d4fa9dea2ae278ca51250996ae9bca16ac2619b0729e5a5"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 34312192,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11653120,
+        "total_growth": 72921088,
+        "free_bytes": 5150363648
+      }
+    },
+    {
+      "label": "resolved-fixed_original-frozen-test",
+      "argv": [
+        "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/05df958d2441e844045e34221e22de0e3d7251244b6cb4b5e8f63c1ea1ffe557.bin",
+        "hir::translate::tests::analysis_is_match_empty",
+        "--exact"
+      ],
+      "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+      "started_utc": "2026-10-03T08:45:44Z",
+      "timed_out": false,
+      "budget_abort": false,
+      "pid": 424,
+      "exit_code": 101,
+      "duration_seconds": 0.381,
+      "stdout": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-frozen-test.stdout",
+        "bytes": 560,
+        "sha256": "cd53a7b5516d7056a8b580b79d2615a33987de99ec1c8948c50ec284d2d7760d"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/logs/resolved-fixed_original-frozen-test.stderr",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "usage_after": {
+        "mutable": 17231872,
+        "witnesses": 34312192,
+        "cache_growth": 9723904,
+        "source_logs_temp": 11657216,
+        "total_growth": 72925184,
+        "free_bytes": 5150359552
+      }
+    }
+  ],
+  "variants": [
+    {
+      "variant": "broken_original",
+      "production": "broken",
+      "test_variant": "original",
+      "expected_exit": 0,
+      "production_source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/hir/mod.rs",
+        "bytes": 82549,
+        "sha256": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7"
+      },
+      "test_source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/hir/translate.rs",
+        "bytes": 109140,
+        "sha256": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55"
+      },
+      "lock": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/Cargo.lock",
+        "bytes": 12299,
+        "sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d"
+      },
+      "inputs_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/broken_original-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "8b979ff8f2ba074f0c3edd409825e31b3a61f3fd72e6a245389f99269d477c5a"
+      },
+      "compiler_artifact": {
+        "reason": "compiler-artifact",
+        "package_id": "path+file:///workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax#0.6.25",
+        "manifest_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/Cargo.toml",
+        "target": {
+          "kind": [
+            "lib"
+          ],
+          "crate_types": [
+            "lib"
+          ],
+          "name": "regex_syntax",
+          "src_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/lib.rs",
+          "edition": "2018",
+          "doc": true,
+          "doctest": true,
+          "test": true
+        },
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 2,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "unicode",
+          "unicode-age",
+          "unicode-bool",
+          "unicode-case",
+          "unicode-gencat",
+          "unicode-perl",
+          "unicode-script",
+          "unicode-segment"
+        ],
+        "filenames": [
+          "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b"
+        ],
+        "executable": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b",
+        "fresh": true
+      },
+      "artifact": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b",
+        "bytes": 17152792,
+        "sha256": "0d67ef5f2b17706733aca84aa7a3afdec057dc572519c01b8cedacdd7fd58027",
+        "retained": {
+          "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/0d67ef5f2b17706733aca84aa7a3afdec057dc572519c01b8cedacdd7fd58027.bin",
+          "bytes": 17152792,
+          "sha256": "0d67ef5f2b17706733aca84aa7a3afdec057dc572519c01b8cedacdd7fd58027"
+        },
+        "hardlinked": false
+      },
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "cargo_execution": "resolved-broken_original-cargo-test",
+      "frozen_execution": "resolved-broken_original-frozen-test",
+      "inputs_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/broken_original-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "8b979ff8f2ba074f0c3edd409825e31b3a61f3fd72e6a245389f99269d477c5a"
+      },
+      "observed_exit": 0,
+      "status": "observed_expected_behavior"
+    },
+    {
+      "variant": "fixed_original",
+      "production": "fixed",
+      "test_variant": "original",
+      "expected_exit": 101,
+      "production_source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/hir/mod.rs",
+        "bytes": 82841,
+        "sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15"
+      },
+      "test_source": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/hir/translate.rs",
+        "bytes": 109140,
+        "sha256": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55"
+      },
+      "lock": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/Cargo.lock",
+        "bytes": 12299,
+        "sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d"
+      },
+      "inputs_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/fixed_original-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "compiler_artifact": {
+        "reason": "compiler-artifact",
+        "package_id": "path+file:///workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax#0.6.25",
+        "manifest_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/Cargo.toml",
+        "target": {
+          "kind": [
+            "lib"
+          ],
+          "crate_types": [
+            "lib"
+          ],
+          "name": "regex_syntax",
+          "src_path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/regex-syntax/src/lib.rs",
+          "edition": "2018",
+          "doc": true,
+          "doctest": true,
+          "test": true
+        },
+        "profile": {
+          "opt_level": "0",
+          "debuginfo": 2,
+          "debug_assertions": true,
+          "overflow_checks": true,
+          "test": true
+        },
+        "features": [
+          "default",
+          "unicode",
+          "unicode-age",
+          "unicode-bool",
+          "unicode-case",
+          "unicode-gencat",
+          "unicode-perl",
+          "unicode-script",
+          "unicode-segment"
+        ],
+        "filenames": [
+          "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b"
+        ],
+        "executable": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b",
+        "fresh": false
+      },
+      "artifact": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build/debug/deps/regex_syntax-01ddbc8b65b6541b",
+        "bytes": 17151936,
+        "sha256": "05df958d2441e844045e34221e22de0e3d7251244b6cb4b5e8f63c1ea1ffe557",
+        "retained": {
+          "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/05df958d2441e844045e34221e22de0e3d7251244b6cb4b5e8f63c1ea1ffe557.bin",
+          "bytes": 17151936,
+          "sha256": "05df958d2441e844045e34221e22de0e3d7251244b6cb4b5e8f63c1ea1ffe557"
+        },
+        "hardlinked": false
+      },
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 0,
+        "failed": 1,
+        "ignored": 0
+      }
+    }
+  ],
+  "prior_setup_receipt": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/resolution-and-offline-compile-receipt.json",
+    "bytes": 7123,
+    "sha256": "53b23722085f90ded5647dac2a9bb6c13796087139c80191c303e3d72ecfad04"
+  },
+  "cache_initial_allocated_bytes": 592052224,
+  "environment": {
+    "RUSTUP_HOME": "/workspace/shared/cloud-rustup",
+    "CARGO_HOME": "/workspace/shared/cloud-cargo",
+    "CARGO_TARGET_DIR": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+    "CARGO_BUILD_BUILD_DIR": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+    "CARGO_BUILD_JOBS": "2",
+    "CARGO_INCREMENTAL": "0",
+    "RUSTC": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustc",
+    "RUSTDOC": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustdoc",
+    "RUSTUP_TOOLCHAIN": "1.95.0-x86_64-unknown-linux-gnu"
+  },
+  "cargo_binary": {
+    "path": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+    "bytes": 42185192,
+    "sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66"
+  },
+  "rustc_binary": {
+    "path": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/rustc",
+    "bytes": 644784,
+    "sha256": "bff349e72704ff70bc08a234a3847338e797065bbedde5e556808bc87b7bf7c6"
+  },
+  "generated_lock": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace/Cargo.lock",
+    "bytes": 12299,
+    "sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d"
+  },
+  "lock": {
+    "path": "/workspace/shared/cloud-cargo.lock",
+    "open_mode": "rb",
+    "exclusive": true,
+    "pid": 2,
+    "acquired_utc": "2026-10-03T08:45:12Z",
+    "released_utc": "2026-10-03T08:45:45Z"
+  },
+  "admission_usage": {
+    "mutable": 12288,
+    "witnesses": 4096,
+    "cache_growth": 253952,
+    "source_logs_temp": 11390976,
+    "total_growth": 11661312,
+    "free_bytes": 5211611136
+  },
+  "terminal_status": "stopped",
+  "error": "AssertionError('not the intended boundary assertion: \\nrunning 1 test\\ntest hir::translate::tests::analysis_is_match_empty ... FAILED\\n\\nfailures:\\n\\n---- hir::translate::tests::analysis_is_match_empty stdout ----\\n\\nthread \\'hir::translate::tests::analysis_is_match_empty\\' (413) panicked at regex-syntax/src/hir/translate.rs:3160:9:\\nassertion failed: !t(r\"\\\\b\").is_match_empty()\\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\\n\\n\\nfailures:\\n    hir::translate::tests::analysis_is_match_empty\\n\\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 321 filtered out; finished in 0.00s\\n\\n')",
+  "terminal_usage": {
+    "mutable": 17231872,
+    "witnesses": 34312192,
+    "cache_growth": 9723904,
+    "source_logs_temp": 11657216,
+    "total_growth": 72925184,
+    "free_bytes": 5150359552
+  },
+  "peak_observed_usage": {
+    "mutable": 35115008,
+    "witnesses": 34312192,
+    "cache_growth": 9723904,
+    "source_logs_temp": 12701696,
+    "total_growth": 73629696,
+    "free_bytes": 5147000832
+  }
+}

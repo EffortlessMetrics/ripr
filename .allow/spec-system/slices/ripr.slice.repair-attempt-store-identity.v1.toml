@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.repair-attempt-store-identity.v1"
+generation = 1
+
+source_issue = "issue:4797"
+design_reference = "RIPR-SPEC-0195"
+change_class = "behavior_change"
+
+claim_boundary = """
+One typed resolver owns RepairAttempt store location. The default
+repository-local store stays byte/behavior compatible; an explicit --store
+is resolved against --root for before, status, after, and verify. Containment,
+alias, UNC, and missing-explicit cases fail closed. Does not add status UX,
+crash/retry, catalog/help --json, or a second store per language.
+"""
+
+non_goals = [
+  "complete attempt-list or status UX (issue 4798)",
+  "crash/retry matrix (issue 4799)",
+  "help --json or workflow catalog (issue 1613)",
+  "migration of historical attempts between stores",
+  "support-tier or release promotion",
+]
+
+return_conditions = [
+  "Return to root if a command guesses a store by CWD, mtime, or parent search.",
+  "Return to root if a missing explicit store falls back to the default.",
+  "Return to root if default-store manifests serialize a store field.",
+]
+
+owned_seams = [
+  "seam:ripr:app:repair-attempt-store",
+]
+
+shared_seams = [
+  "seam:ripr:app:repair-attempt",
+]
+
+forbidden_seams = [
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:cli:help-json",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0195"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+commands = [
+  "cargo test -p ripr --lib repair_attempt",
+  "cargo test -p ripr --lib agent_status",
+]
+
+[support_claim]
+state = "unchanged"

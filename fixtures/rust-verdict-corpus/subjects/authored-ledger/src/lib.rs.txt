@@ -1,0 +1,192 @@
+//! A small warehouse inventory ledger: stock levels per SKU, an event log,
+//! a running shipped total and a low-stock watch list.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Event {
+    Received { sku: String, qty: u32 },
+    Shipped { sku: String, qty: u32 },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StockError {
+    UnknownSku(String),
+    Insufficient {
+        sku: String,
+        requested: u32,
+        available: u32,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Receipt {
+    pub sku: String,
+    pub qty: u32,
+    pub remaining: u32,
+}
+
+/// Product family of a SKU such as `BOLT-M8`: everything before the first `-`.
+pub fn sku_family(sku: &str) -> &str {
+    let end = sku.find('-').unwrap_or(sku.len());
+    // SAFETY: `find` returns a char boundary and `end` never exceeds the length.
+    unsafe { sku.get_unchecked(..end) }
+}
+
+/// Variant part of a SKU such as `BOLT-M8`: everything after the first `-`.
+pub fn sku_variant(sku: &str) -> &str {
+    let start = sku.find('-').map_or(sku.len(), |i| i + 1);
+    // SAFETY: `start` is the length or one byte past an ASCII `-`.
+    unsafe { sku.get_unchecked(start..) }
+}
+
+#[derive(Debug, Default)]
+pub struct Inventory {
+    stock: BTreeMap<String, u32>,
+    log: Vec<Event>,
+    shipped_total: u64,
+    low_stock: BTreeSet<String>,
+    low_threshold: u32,
+}
+
+impl Inventory {
+    pub fn new(low_threshold: u32) -> Self {
+        Self {
+            low_threshold,
+            ..Self::default()
+        }
+    }
+
+    pub fn receive(&mut self, sku: &str, qty: u32) {
+        *self.stock.entry(sku.to_string()).or_insert(0) += qty;
+        self.log.push(Event::Received { sku: sku.to_string(), qty });
+    }
+
+    pub fn ship(&mut self, sku: &str, qty: u32) -> Result<Receipt, StockError> {
+        let available = match self.stock.get(sku) {
+            Some(n) => *n,
+            None => return Err(StockError::UnknownSku(sku.to_string())),
+        };
+        if qty > available {
+            return Err(StockError::Insufficient {
+                sku: sku.to_string(),
+                requested: qty,
+                available,
+            });
+        }
+        let remaining = available - qty;
+        self.stock.insert(sku.to_string(), remaining);
+        self.shipped_total += u64::from(qty);
+        self.log.push(Event::Shipped { sku: sku.to_string(), qty });
+        self.refresh_low_stock(sku);
+        Ok(Receipt {
+            sku: sku.to_string(),
+            qty,
+            remaining,
+        })
+    }
+
+    fn refresh_low_stock(&mut self, sku: &str) {
+        if self.on_hand(sku) < self.low_threshold {
+            self.low_stock.insert(sku.to_string());
+        } else {
+            self.low_stock.remove(sku);
+        }
+    }
+
+    pub fn on_hand(&self, sku: &str) -> u32 {
+        self.stock.get(sku).copied().unwrap_or(0)
+    }
+
+    pub fn history(&self) -> &[Event] {
+        &self.log
+    }
+
+    pub fn shipped_total(&self) -> u64 {
+        self.shipped_total
+    }
+
+    pub fn is_low(&self, sku: &str) -> bool {
+        self.low_stock.contains(sku)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shipping_returns_a_receipt_and_lowers_stock() {
+        let mut inv = Inventory::new(2);
+        inv.receive("BOLT-M8", 10);
+        let receipt = inv.ship("BOLT-M8", 3).unwrap();
+        assert_eq!(
+            receipt,
+            Receipt {
+                sku: "BOLT-M8".to_string(),
+                qty: 3,
+                remaining: 7,
+            }
+        );
+        assert_eq!(inv.on_hand("BOLT-M8"), 7);
+    }
+
+    #[test]
+    fn history_records_every_movement_in_order() {
+        let mut inv = Inventory::new(0);
+        inv.receive("NUT-M8", 5);
+        inv.ship("NUT-M8", 2).unwrap();
+        assert_eq!(
+            inv.history(),
+            &[
+                Event::Received { sku: "NUT-M8".to_string(), qty: 5 },
+                Event::Shipped { sku: "NUT-M8".to_string(), qty: 2 },
+            ]
+        );
+    }
+
+    #[test]
+    fn shipping_more_than_on_hand_is_refused() {
+        let mut inv = Inventory::new(0);
+        inv.receive("WASHER", 4);
+        let err = inv.ship("WASHER", 9).unwrap_err();
+        assert!(matches!(err, StockError::Insufficient { .. }));
+        assert_eq!(inv.on_hand("WASHER"), 4);
+    }
+
+    #[test]
+    fn unknown_sku_cannot_ship() {
+        let mut inv = Inventory::new(0);
+        assert_eq!(
+            inv.ship("GHOST", 1),
+            Err(StockError::UnknownSku("GHOST".to_string()))
+        );
+    }
+
+    #[test]
+    fn shipments_count_towards_the_total() {
+        let mut inv = Inventory::new(0);
+        inv.receive("BOLT-M8", 10);
+        inv.ship("BOLT-M8", 3).unwrap();
+        assert!(inv.shipped_total() > 0);
+    }
+
+    #[test]
+    fn shipping_below_threshold_flags_low_stock() {
+        let mut inv = Inventory::new(5);
+        inv.receive("BOLT-M8", 10);
+        inv.ship("BOLT-M8", 8).unwrap();
+        assert!(inv.is_low("BOLT-M8"));
+    }
+
+    #[test]
+    fn sku_family_is_the_text_before_the_first_dash() {
+        assert_eq!(sku_family("BOLT-M8"), "BOLT");
+        assert_eq!(sku_family("WASHER"), "WASHER");
+    }
+
+    #[test]
+    fn dashed_skus_have_a_variant() {
+        assert!(!sku_variant("BOLT-M8").is_empty());
+    }
+}

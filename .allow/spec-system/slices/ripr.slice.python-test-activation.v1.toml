@@ -1,0 +1,46 @@
+schema_version = "2.0"
+id = "ripr.slice.python-test-activation.v1"
+generation = 1
+source_issue = "issue:5389"
+design_reference = "RIPR-SPEC-0028"
+change_class = "behavior_change"
+
+claim_boundary = """
+Known unittest controls in runner-honored placements and pytest skip/skipif/xfail
+controls, resolved in the decorator declaration scope, withhold Python preview
+oracle and boundary credit while retaining a related-test pointer. Ordinary
+pytest tests retain credit when unittest metadata does not affect their runner;
+explicit non-framework import bindings cannot act as framework controls. Known local class
+controls include overridden/inherited tests. Independent active tests retain
+their own evidence. Native ItsDangerous bug/fix and weakened/disabled controls
+remain outside analyzer metrics until exact-source analyzer proof exists.
+Oracle refusal does not establish absence of body side effects; conservative
+whole-module constant-rebinding limits remain in force for active boundaries.
+"""
+non_goals = [
+  "runtime condition evaluation or arbitrary decorator rebinding",
+  "module pytestmark, dynamic skipTest or imported-base activation",
+  "execution-effect proof that a marked body cannot run or mutate constants",
+  "async framework activation or support-tier promotion",
+  "changing goldens without independent observed outcomes",
+  "Rust/TypeScript/Perl corpus owner replacement",
+]
+return_conditions = [
+  "Return if an independent active oracle loses its existing credit.",
+  "Return if controlled tests supply assertions, boundary inputs or observer identity.",
+  "Return if native execution or a zero-test verification is represented as analyzer proof.",
+]
+owned_seams = ["seam:ripr:python:test-activation-oracle-admission"]
+shared_seams = ["seam:ripr:python:source-facts", "seam:ripr:fixtures:python-real-repo-evals"]
+forbidden_seams = ["seam:ripr:fixtures:goldens", "seam:ripr:release:publishing"]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0028"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+[evidence]
+state = "outstanding"
+[support_claim]
+state = "unchanged"

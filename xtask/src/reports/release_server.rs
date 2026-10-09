@@ -1,3 +1,7 @@
+mod payload;
+mod producer;
+mod qualification;
+
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -9,86 +13,90 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tar::Builder;
 
-use crate::{command_success_owned, run_output, run_owned};
+use crate::{command_success_owned, run_owned};
 
 pub(crate) fn release_server_archive(args: &[String]) -> Result<(), String> {
+    if let Some(rows_dir) = optional_release_arg(args, "terminal-receipt-dir") {
+        let out_dir = required_release_arg(args, "out-dir", "TERMINAL_RECEIPT_OUT_DIR")?;
+        let candidate_sha = required_release_arg(args, "candidate-sha", "CANDIDATE_SHA")?;
+        let version = required_release_arg(args, "version", "QUALIFICATION_VERSION")?;
+        let verify_result = required_release_arg(args, "verify-result", "VERIFY_RESULT")?;
+        let build_result = required_release_arg(args, "build-result", "BUILD_RESULT")?;
+        let manifest_result = required_release_arg(args, "manifest-result", "MANIFEST_RESULT")?;
+        let receipt = qualification::write_terminal_receipt(
+            Path::new(&rows_dir),
+            Path::new(&out_dir),
+            &candidate_sha,
+            &version,
+            &verify_result,
+            &build_result,
+            &manifest_result,
+        )?;
+        eprintln!(
+            "wrote terminal qualification receipt: status={} selected={} executed={} failed={} cancelled={} not_run={}",
+            receipt.status,
+            receipt.execution.selected,
+            receipt.execution.executed,
+            receipt.execution.failed,
+            receipt.execution.cancelled,
+            receipt.execution.not_run
+        );
+        return Ok(());
+    }
+
+    if let Some(payload_dir) = optional_release_arg(args, "verify-payload-dir") {
+        let identity_path = required_release_arg(args, "payload-identity", "PAYLOAD_IDENTITY")?;
+        let identity = payload::verify_final_native_payload(
+            Path::new(&payload_dir),
+            Path::new(&identity_path),
+        )?;
+        eprintln!(
+            "verified final native payload {} {} ({})",
+            identity.version, identity.target, identity.payload_aggregate_sha256
+        );
+        return Ok(());
+    }
+
     let version = required_release_arg(args, "version", "RAW_VERSION")?;
     let target = required_release_arg(args, "target", "TARGET")?;
     let executable = required_release_arg(args, "executable", "EXECUTABLE")?;
     let archive = required_release_arg(args, "archive", "ARCHIVE")?;
+    if !matches!(archive.as_str(), "zip" | "tar.gz") {
+        return Err(format!(
+            "unsupported release server archive format `{archive}`"
+        ));
+    }
     let version = normalize_product_version(&version)?;
-    let asset_name = format!("ripr-server-v{version}-{target}.{archive}");
-    let package_dir = Path::new("package");
-    let dist_dir = Path::new("dist");
+    let producer = producer::build_release_executable(&version, &target, &executable)?;
+    let staged = payload::stage_final_native_payload(&version, &target, &executable, &archive)?;
+    producer::bind_to_payload_identity(&producer, &staged.identity)?;
+    let payload_root = staged
+        .identity_json
+        .parent()
+        .ok_or_else(|| "payload identity path has no parent directory".to_string())?;
+    let producer_receipt = producer::write_receipt(payload_root, &producer)?;
+    let producer_receipt_sha256 = sha256_file(&producer_receipt)?;
+    let identity_sha256 = payload::payload_identity_sha256(&staged)?;
 
-    if package_dir.exists() {
-        fs::remove_dir_all(package_dir)
-            .map_err(|err| format!("failed to remove {}: {err}", package_dir.display()))?;
-    }
-    fs::create_dir_all(package_dir)
-        .map_err(|err| format!("failed to create {}: {err}", package_dir.display()))?;
-    fs::create_dir_all(dist_dir)
-        .map_err(|err| format!("failed to create {}: {err}", dist_dir.display()))?;
-
-    let built_executable = Path::new("target")
-        .join(&target)
-        .join("release")
-        .join(&executable);
-    fs::copy(&built_executable, package_dir.join(&executable)).map_err(|err| {
-        format!(
-            "failed to copy {} into {}: {err}",
-            built_executable.display(),
-            package_dir.display()
-        )
-    })?;
-    copy_release_file("LICENSE-MIT", package_dir)?;
-    copy_release_file("LICENSE-APACHE", package_dir)?;
-    fs::write(
-        package_dir.join("README-server.txt"),
-        release_server_readme(&version),
-    )
-    .map_err(|err| {
-        format!(
-            "failed to write {}: {err}",
-            package_dir.join("README-server.txt").display()
-        )
-    })?;
-
-    let asset_path = dist_dir.join(&asset_name);
-    if asset_path.exists() {
-        fs::remove_file(&asset_path)
-            .map_err(|err| format!("failed to remove {}: {err}", asset_path.display()))?;
-    }
-    match archive.as_str() {
-        "zip" => create_zip_archive(package_dir, &asset_path)?,
-        "tar.gz" => create_tar_gz_archive(package_dir, &asset_path)?,
-        other => {
-            return Err(format!(
-                "unsupported release server archive format `{other}`"
-            ));
-        }
-    }
-
-    let sha = sha256_file(&asset_path)?;
-    write_release_server_receipt(
+    let identity = release_server_build_identity(&producer)?;
+    let asset_path = archive_release_server_payload(
         &version,
         &target,
         &executable,
         &archive,
-        package_dir,
-        &asset_path,
+        &staged.payload_dir,
+        identity,
     )?;
-    fs::write(
-        dist_dir.join(format!("{asset_name}.sha256")),
-        format!("{sha}\n"),
-    )
-    .map_err(|err| {
-        format!(
-            "failed to write {}: {err}",
-            dist_dir.join(format!("{asset_name}.sha256")).display()
-        )
-    })?;
     eprintln!("wrote {}", asset_path.display());
+    eprintln!("wrote {}", staged.identity_json.display());
+    eprintln!("wrote {}", staged.identity_markdown.display());
+    eprintln!("wrote {}", producer_receipt.display());
+    eprintln!(
+        "final native payload aggregate SHA-256: {}",
+        staged.identity.payload_aggregate_sha256
+    );
+    eprintln!("final native payload identity SHA-256: {identity_sha256}");
+    eprintln!("producer build receipt SHA-256: {producer_receipt_sha256}");
     Ok(())
 }
 
@@ -326,6 +334,49 @@ pub(crate) fn render_release_server_assembly(
     })
 }
 
+/// Compatibility-only source renderer for the older core-version descriptor.
+/// Current manifest/catalog production has no descriptor filesystem side effect.
+#[cfg(test)]
+pub(crate) fn editor_distribution_descriptor_source(
+    generation: &str,
+    manifest_sha256: &str,
+) -> String {
+    format!(
+        r#"/**
+ * Release-admitted distribution descriptors for managed server downloads
+ * (#3798).
+ *
+ * GENERATED by `cargo xtask release-server-manifest` from the built
+ * distribution; the release cut commits the refresh before the extension is
+ * packaged. One raw-byte manifest SHA-256 per distribution generation admits
+ * both the exact stable placement and the one predeclared exact RC placement,
+ * because a generation's manifest bytes are placement-neutral and identical
+ * on both placements.
+ *
+ * A generation without an admitted descriptor has no fallback row: stable
+ * absence stays terminal and no RC manifest is fetched (#3798, control 7).
+ * Never edit a digest by hand — regenerate the module from the built
+ * distribution so the digest names real manifest bytes.
+ */
+export interface ServerDistributionDescriptor {{
+  /** Distribution generation, e.g. `0.11.0`: no prerelease or build metadata. */
+  readonly generation: string;
+  /**
+   * Raw-byte SHA-256 of the generation's
+   * `ripr-server-manifest-v<generation>.json` as published to both placements.
+   */
+  readonly manifestSha256: string;
+}}
+
+export const SERVER_DISTRIBUTION_DESCRIPTORS: readonly ServerDistributionDescriptor[] = [
+  {{ generation: "{generation}", manifestSha256: "{manifest_sha256}" }},
+];
+"#,
+        generation = generation,
+        manifest_sha256 = manifest_sha256
+    )
+}
+
 pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
     let version = normalize_release_version(&required_release_arg(args, "version", "RAW_VERSION")?);
     let tag = format!("v{version}");
@@ -458,23 +509,27 @@ pub(crate) fn validate_configured_release_server_targets(
     Ok(())
 }
 
+pub(crate) fn optional_release_arg(args: &[String], flag: &str) -> Option<String> {
+    let flag_name = format!("--{flag}");
+    for window in args.windows(2) {
+        if window[0] == flag_name {
+            return Some(window[1].clone());
+        }
+    }
+    let inline_prefix = format!("{flag_name}=");
+    args.iter()
+        .find_map(|arg| arg.strip_prefix(&inline_prefix).map(str::to_string))
+}
+
 pub(crate) fn required_release_arg(
     args: &[String],
     flag: &str,
     env_name: &str,
 ) -> Result<String, String> {
+    if let Some(value) = optional_release_arg(args, flag) {
+        return Ok(value);
+    }
     let flag_name = format!("--{flag}");
-    for window in args.windows(2) {
-        if window[0] == flag_name {
-            return Ok(window[1].clone());
-        }
-    }
-    let inline_prefix = format!("{flag_name}=");
-    for arg in args {
-        if let Some(value) = arg.strip_prefix(&inline_prefix) {
-            return Ok(value.to_string());
-        }
-    }
     std::env::var(env_name).map_err(|err| format!("missing {flag_name} or {env_name}: {err}"))
 }
 
@@ -545,6 +600,7 @@ pub(crate) fn release_distribution_generation(
     )
 }
 
+#[cfg(test)]
 fn copy_release_file(file_name: &str, package_dir: &Path) -> Result<(), String> {
     fs::copy(file_name, package_dir.join(file_name)).map_err(|err| {
         format!(
@@ -689,6 +745,98 @@ struct ReleaseServerMember {
     mode: u32,
 }
 
+/// Archive already-staged bytes and emit the public schema-0.2 subject receipt.
+/// Production reaches this helper only after actual producer/payload binding.
+fn archive_release_server_payload(
+    version: &str,
+    target: &str,
+    executable: &str,
+    archive: &str,
+    package_dir: &Path,
+    identity: ReleaseServerBuildIdentity,
+) -> Result<PathBuf, String> {
+    let asset_name = server_asset_name(version, target, archive);
+    let dist_dir = Path::new("dist");
+    fs::create_dir_all(dist_dir)
+        .map_err(|err| format!("failed to create {}: {err}", dist_dir.display()))?;
+    let asset_path = dist_dir.join(&asset_name);
+    if asset_path.exists() {
+        fs::remove_file(&asset_path)
+            .map_err(|err| format!("failed to remove {}: {err}", asset_path.display()))?;
+    }
+    match archive {
+        "zip" => create_zip_archive(package_dir, &asset_path)?,
+        "tar.gz" => create_tar_gz_archive(package_dir, &asset_path)?,
+        other => {
+            return Err(format!(
+                "unsupported release server archive format `{other}`"
+            ));
+        }
+    }
+    write_release_server_receipt(
+        version,
+        target,
+        executable,
+        archive,
+        package_dir,
+        &asset_path,
+        identity,
+    )?;
+    let sha = sha256_file(&asset_path)?;
+    let sidecar = dist_dir.join(format!("{asset_name}.sha256"));
+    fs::write(&sidecar, format!("{sha}\n"))
+        .map_err(|err| format!("failed to write {}: {err}", sidecar.display()))?;
+    Ok(asset_path)
+}
+
+/// Synthetic archive/receipt proof only: deliberately bypasses native building
+/// and qualification while executing the same deterministic archive writer.
+#[cfg(test)]
+pub(crate) fn release_server_archive_from_synthetic_payload(args: &[String]) -> Result<(), String> {
+    let version =
+        normalize_product_version(&required_release_arg(args, "version", "RAW_VERSION")?)?;
+    let target = required_release_arg(args, "target", "TARGET")?;
+    let executable = required_release_arg(args, "executable", "EXECUTABLE")?;
+    let archive = required_release_arg(args, "archive", "ARCHIVE")?;
+    let package_dir = Path::new("synthetic-release-payload").join(&target);
+    fs::create_dir_all(&package_dir).map_err(|err| format!("create synthetic payload: {err}"))?;
+    fs::copy(
+        Path::new("target")
+            .join(&target)
+            .join("release")
+            .join(&executable),
+        package_dir.join(&executable),
+    )
+    .map_err(|err| format!("copy synthetic executable: {err}"))?;
+    copy_release_file("LICENSE-MIT", &package_dir)?;
+    copy_release_file("LICENSE-APACHE", &package_dir)?;
+    fs::write(
+        package_dir.join("README-server.txt"),
+        release_server_readme(&version),
+    )
+    .map_err(|err| format!("write synthetic readme: {err}"))?;
+    let identity = ReleaseServerBuildIdentity {
+        repository: "synthetic/archive-receipt-proof".to_string(),
+        candidate_sha: "a".repeat(40),
+        candidate_tree: "b".repeat(40),
+        toolchain: ReleaseServerToolchain {
+            rustc: "synthetic-rustc\nhost: x86_64-unknown-linux-gnu\nrelease: synthetic-release\ncommit-hash: synthetic-commit-hash".to_string(),
+            cargo: "synthetic-cargo".to_string(),
+        },
+        toolchain_file_sha256: "c".repeat(64),
+        cargo_lock_sha256: "d".repeat(64),
+    };
+    archive_release_server_payload(
+        &version,
+        &target,
+        &executable,
+        &archive,
+        &package_dir,
+        identity,
+    )?;
+    Ok(())
+}
+
 fn write_release_server_receipt(
     version: &str,
     target: &str,
@@ -696,6 +844,7 @@ fn write_release_server_receipt(
     archive: &str,
     package_dir: &Path,
     archive_path: &Path,
+    identity: ReleaseServerBuildIdentity,
 ) -> Result<(), String> {
     let executable_path = package_dir.join(executable);
     let executable_file = release_server_file(executable, &executable_path)?;
@@ -707,7 +856,6 @@ fn write_release_server_receipt(
         archive_path,
     )?;
     let members = archive_member_inventory(archive_path, archive, executable)?;
-    let identity = release_server_build_identity()?;
     let receipt = ReleaseServerBuildReceipt {
         schema_version: "0.2".to_string(),
         repository: identity.repository,
@@ -750,46 +898,19 @@ struct ReleaseServerBuildIdentity {
     cargo_lock_sha256: String,
 }
 
-fn release_server_build_identity() -> Result<ReleaseServerBuildIdentity, String> {
-    let candidate_sha = std::env::var("CANDIDATE_SHA")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            std::env::var("GITHUB_SHA")
-                .ok()
-                .filter(|value| !value.trim().is_empty())
-        })
-        .or_else(|| run_output("git", &["rev-parse", "HEAD"]).ok())
-        .unwrap_or_else(|| "unavailable".to_string());
-    let candidate_tree = run_output("git", &["rev-parse", "HEAD^{tree}"])
-        .unwrap_or_else(|_| "unavailable".to_string())
-        .trim()
-        .to_string();
-    let rustc = run_output("rustc", &["-vV"])
-        .map(|value| value.trim().to_string())
-        .unwrap_or_else(|_| "unavailable".to_string());
-    let cargo = run_output("cargo", &["--version"])
-        .map(|value| value.trim().to_string())
-        .unwrap_or_else(|_| "unavailable".to_string());
-    let toolchain_file = Path::new("rust-toolchain.toml");
-    let lockfile = Path::new("Cargo.lock");
-    let toolchain_file_sha256 = if toolchain_file.is_file() {
-        sha256_file(toolchain_file)?
-    } else {
-        "unavailable".to_string()
-    };
-    let cargo_lock_sha256 = if lockfile.is_file() {
-        sha256_file(lockfile)?
-    } else {
-        "unavailable".to_string()
-    };
+fn release_server_build_identity(
+    producer: &producer::ProducerBuildReceipt,
+) -> Result<ReleaseServerBuildIdentity, String> {
     Ok(ReleaseServerBuildIdentity {
         repository: std::env::var("GITHUB_REPOSITORY").unwrap_or_else(|_| "local".to_string()),
-        candidate_sha: candidate_sha.trim().to_string(),
-        candidate_tree,
-        toolchain: ReleaseServerToolchain { rustc, cargo },
-        toolchain_file_sha256,
-        cargo_lock_sha256,
+        candidate_sha: producer.source_commit.clone(),
+        candidate_tree: producer.source_tree.clone(),
+        toolchain: ReleaseServerToolchain {
+            rustc: producer.rustc_verbose_version.clone(),
+            cargo: producer.cargo_verbose_version.clone(),
+        },
+        toolchain_file_sha256: sha256_file(Path::new("rust-toolchain.toml"))?,
+        cargo_lock_sha256: producer.cargo_lock_sha256.clone(),
     })
 }
 
@@ -1346,3 +1467,13 @@ pub(crate) fn read_trimmed(path: &Path) -> Result<String, String> {
         .map(|text| text.trim().to_string())
         .map_err(|err| format!("failed to read {}: {err}", path.display()))
 }
+
+/// Release asset name for one server archive. `[package.metadata.binstall]` in
+/// `crates/ripr/Cargo.toml` spells the same shape; `binstall_metadata` tests
+/// fail when the two drift.
+pub(crate) fn server_asset_name(version: &str, target: &str, archive: &str) -> String {
+    format!("ripr-server-v{version}-{target}.{archive}")
+}
+
+#[cfg(test)]
+mod binstall_metadata;

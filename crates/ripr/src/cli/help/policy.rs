@@ -16,7 +16,7 @@ testing, edit source files, configure CI policy, or make gate decisions.
 "#;
 pub(super) const REVIEW_COMMENTS_HELP: &str = r#"Write advisory PR test guidance on changed lines (does not post to GitHub).
 
-Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH | --check-output PATH] [--out PATH] [--timeout-ms MS]
+Usage: ripr review-comments [--root PATH] --base SHA --head SHA [--gap-ledger PATH | --check-output PATH [--enrich-repair-guidance]] [--out PATH] [--timeout-ms MS]
 
 Options:
   --root PATH    Workspace root. Defaults to current directory.
@@ -27,13 +27,46 @@ Options:
                  repair cards come only from `projection_eligibility.pr_comment`
                  GapRecord targets.
   --check-output PATH
-                 Optional producer-generated `ripr check --json` artifact.
-                 Its typed analysis outcome is projected without rerunning the
-                 producer; incomplete input remains incomplete guidance.
+                  Optional PR-evidence producer packet's check.json path.
+                  Strict subject and review-input admission is required. By
+                  default only its compact projection is reused; compact cards
+                  do not establish actionable repair semantics.
+  --enrich-repair-guidance
+                  Requires --check-output. Run fresh bounded repair guidance
+                  from the clean admitted HEAD after strict producer admission.
+                  Requires the enabled Rust adapter for genuine seam analysis.
+                  Requires a clean tracked workspace and tracked selected Rust
+                  sources, changed-owner files, Cargo files, intent, suppression
+                  and project markers. Current configuration must match the
+                  producer's admitted settings and stay stable during analysis;
+                  its path is not required to be tracked just because it is the
+                  configuration source. Reject selected-input drift.
+                  Keep the admitted compact packet as producer_review_input;
+                  fresh classified guidance is not recorded as reused analysis.
   --out PATH     JSON output path. Defaults to target/ripr/review/comments.json.
   --timeout-ms MS
-                 Configured operator bound recorded in the run receipt. The
-                 outer orchestration wrapper enforces the process bound.
+                 Cooperative analysis budget (default 120000ms), checked at
+                 safe boundaries. Non-preemptible operations can overrun it.
+                 Use an outer orchestration wrapper for a hard process bound.
+
+Environment variables:
+  RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES
+                                 Maximum unique input files: analyzable workspace
+                                 plus present changed owner-attribution inputs.
+                                 Refuses as review_guidance_oversized before
+                                 owner indexing or loading the workspace corpus.
+                                 Receipt status is failed with the named
+                                 limitation; no guidance artifacts are published.
+                                 Default: 1200. Must be a positive integer.
+  RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES
+                                 Byte budget for those inputs plus changed diff
+                                 text. Same named refusal; default: 268435456
+                                 (256 MiB). Must be a positive integer.
+
+These are input-admission limits, not an RSS or completion guarantee. Raise
+only on a measured, sufficiently resourced runner, or reduce the workspace
+inputs. Narrowing only the diff does not reduce the workspace file count.
+Help remains available when either environment override is malformed.
 
 The review-comments command writes a bounded advisory PR guidance report as
 JSON plus a sibling Markdown file. It joins existing static seam evidence with
@@ -91,7 +124,8 @@ pub(super) const BASELINE_HELP: &str = r#"Create, diff, and shrink a reviewed ba
 Usage:
   ripr baseline create --from PATH [--out PATH] [--dry-run] [--force]
   ripr baseline diff --baseline PATH --current PATH [--out PATH] [--out-md PATH]
-  ripr baseline update --baseline PATH --current PATH --remove-resolved [--out PATH]
+  ripr baseline update --baseline PATH --current PATH --remove-resolved [--migrate-legacy-identities] [--out PATH]
+  ripr baseline update --baseline PATH --current PATH --migrate-legacy-identities [--out PATH]
 
 Create options:
   --from PATH    Gate-decision JSON from `ripr gate evaluate`.
@@ -106,10 +140,14 @@ Diff options:
   --out-md PATH      Markdown output path. Defaults to target/ripr/reports/baseline-debt-delta.md.
 
 Update options:
-  --baseline PATH       Reviewed baseline ledger to refresh.
-  --current PATH        Current gate-decision JSON from `ripr gate evaluate`.
-  --remove-resolved     Required shrink-only mode; remove identities absent from current evidence.
-  --out PATH            Updated baseline path. Defaults to --baseline.
+  --baseline PATH               Reviewed baseline ledger to refresh.
+  --current PATH                Current gate-decision JSON from `ripr gate evaluate`.
+  --remove-resolved             Shrink-only mode; remove identities absent from current evidence.
+  --migrate-legacy-identities   Replace reviewed legacy fallback identities with the
+                                unambiguously joined current canonical gap id. One of
+                                --remove-resolved or --migrate-legacy-identities is
+                                required; adopting new debt is never supported.
+  --out PATH                    Updated baseline path. Defaults to --baseline.
 
 The baseline create command writes a stable reviewed historical-debt ledger
 from existing gate-decision evidence. It includes advisory, acknowledged, and
@@ -125,10 +163,17 @@ stale, invalid, and missing-input identities. It does not update baselines,
 edit source, run analysis, run mutation testing, generate tests, change gate
 policy, or make CI blocking by default.
 
-The baseline update command refreshes a reviewed baseline ledger in shrink-only
-mode. `--remove-resolved` removes reviewed identities that are absent from the
-current gate-decision evidence, preserves malformed or ambiguous entries for
-manual review, and never adopts new current debt. Generated CI should not use
+The baseline update command refreshes a reviewed baseline ledger.
+`--remove-resolved` enables shrink-only removal of reviewed identities that
+are absent from the current gate-decision evidence; without it, unmatched
+entries are preserved with a warning, so a migration-only run never shrinks
+the reviewed baseline. Malformed, ambiguous, canonically diverged, and
+cross-root entries are always preserved for manual review, and new current
+debt is never adopted. `--migrate-legacy-identities` deterministically
+replaces a reviewed legacy `path:line:static_class` identity with the
+unambiguously joined current canonical gap id, records each replacement under
+the `update` section for independent review, and refuses cross-root or
+conflicting migrations. Generated CI should not use
 this command to rewrite checked-in baselines automatically.
 
 Output discipline: report-producing subcommands write their JSON or Markdown
@@ -165,7 +210,7 @@ pub(super) const POLICY_HELP: &str = r#"Summarize which RIPR policy posture is s
 
 Usage: ripr policy readiness [--root PATH] [--gate-decision PATH] [--baseline-delta PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--waiver-aging PATH] [--suppression-health PATH] [--repo-config PATH] [--previous-readiness PATH] [--out PATH] [--out-md PATH]
        ripr policy operations [--root PATH] --policy-readiness PATH [--waiver-aging PATH] [--suppression-health PATH] [--baseline-delta PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--preview-boundary PATH] [--out PATH] [--out-md PATH]
-       ripr policy history [--root PATH] --current PATH [--history PATH] [--commit REV] [--pr-number NUMBER] [--out PATH] [--out-md PATH]
+       ripr policy history [--root PATH] --current PATH [--history PATH] [--commit REV] [--pr-number NUMBER] [--out PATH] [--out-md PATH] [--out-jsonl PATH]
        ripr policy promote [--root PATH] --to MODE --operations PATH [--history PATH] [--out PATH] [--out-md PATH]
        ripr policy preview-promote [--root PATH] --language LANGUAGE --class CLASS [--evidence PATH] [--out PATH] [--out-md PATH]
        ripr policy waiver-aging [--root PATH] [--ledger PATH] [--history PATH] [--out PATH] [--out-md PATH]
@@ -205,6 +250,7 @@ History options:
   --pr-number NUMBER                    Optional current snapshot PR number.
   --out PATH                            JSON output path. Defaults to target/ripr/reports/policy-history.json.
   --out-md PATH                         Markdown output path. Defaults to target/ripr/reports/policy-history.md.
+  --out-jsonl PATH                      Optional append-only JSONL producer. Writes one compact snapshot line per run (`example_append_record`). Generated CI does not pass this flag.
 
 Promotion options:
   --root PATH                           Display root for the report. Defaults to current directory.
@@ -243,10 +289,11 @@ report composes existing policy artifacts into current ceiling, next safe
 action, safe/not-safe promotion modes, blockers, and input health without
 promoting anything. The policy history report shows whether readiness, waivers,
 suppressions, baseline debt, calibration, and preview boundaries are improving
-or decaying without appending history. The policy promotion packet reads policy
-operations plus optional policy history and writes manual-review promotion
-evidence without changing config. The preview promotion packet writes default
-blocked evidence accounting for TypeScript and Python preview classes while
+or decaying without appending history unless `--out-jsonl` is supplied. The
+policy promotion packet reads policy operations plus optional policy history
+and writes manual-review promotion evidence without changing config. The preview
+promotion packet writes default blocked evidence accounting for TypeScript and
+Python preview classes while
 keeping preview evidence visible, advisory, non-gating, outside RIPR Zero, and
 outside calibrated confidence until a later explicit policy is reviewed. The
 waiver-aging report keeps repeated waivers visible as repair or policy-review

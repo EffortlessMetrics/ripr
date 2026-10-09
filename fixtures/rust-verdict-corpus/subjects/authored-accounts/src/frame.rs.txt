@@ -1,0 +1,46 @@
+/// The fixed header in front of every frame body.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Header {
+    pub kind: u8,
+    pub len: u32,
+}
+
+/// The trailer after every frame body.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Trailer {
+    pub len: u32,
+    pub crc: u8,
+}
+
+fn crc(body: &[u8]) -> u8 {
+    body.iter().fold(0u8, |acc, byte| acc.rotate_left(1) ^ byte)
+}
+
+pub fn header(kind: u8, body: &[u8]) -> Header {
+    Header {
+        kind,
+        len: body.len() as u32,
+    }
+}
+
+pub fn trailer(body: &[u8]) -> Trailer {
+    Trailer {
+        len: body.len() as u32,
+        crc: crc(body),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn header_names_kind_and_length() {
+        assert_eq!(header(7, b"abc"), Header { kind: 7, len: 3 });
+    }
+
+    #[test]
+    fn trailer_repeats_the_length() {
+        assert_eq!(trailer(b"abcd").len, 4);
+    }
+}

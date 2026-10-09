@@ -4938,5 +4938,63 @@
       ],
       "repair_route": "calibration/runtime-fixtures-v3"
     }
+  ],
+  "semantic_oracle_controls": [
+    {
+      "id": "regex-word-boundary-empty",
+      "fixture_reference": "regex-word-boundary-empty/README.md",
+      "semantic_oracle": {
+        "status": "valid",
+        "variant": "corrected",
+        "answer_key": {
+          "path": "regex-word-boundary-empty/answer-key.json",
+          "bytes": 3566,
+          "sha256": "7596cfac9cb66705d52767990973a17c572186f71f20fafc14fe850f7f4f1d49"
+        },
+        "native_pairing": {
+          "path": "regex-word-boundary-empty/native-pairing.json",
+          "bytes": 20853,
+          "sha256": "31f0a05ab1a5840f7e5ac69ca5ae1dd82d173beae07e0f4858402897d457eda3"
+        },
+        "independent_review": {
+          "path": "regex-word-boundary-empty/reviews/independent-review-corrected.json",
+          "bytes": 2938,
+          "sha256": "a874e6ca83f1185565d01345c9f43ffd7746e6a5685e9fd6523b4e5e042e0ad1"
+        }
+      },
+      "observed_static": {
+        "path": "regex-word-boundary-empty/static-observation.json",
+        "bytes": 7434,
+        "sha256": "d05f7fbde426e33be8433dbc8ef0006e802c72fa3097228143eeea08124babf9"
+      }
+    },
+    {
+      "id": "regex-word-boundary-empty",
+      "fixture_reference": "regex-word-boundary-empty/README.md",
+      "semantic_oracle": {
+        "status": "invalid",
+        "variant": "original",
+        "answer_key": {
+          "path": "regex-word-boundary-empty/answer-key.json",
+          "bytes": 3566,
+          "sha256": "7596cfac9cb66705d52767990973a17c572186f71f20fafc14fe850f7f4f1d49"
+        },
+        "native_pairing": {
+          "path": "regex-word-boundary-empty/native-pairing.json",
+          "bytes": 20853,
+          "sha256": "31f0a05ab1a5840f7e5ac69ca5ae1dd82d173beae07e0f4858402897d457eda3"
+        },
+        "independent_review": {
+          "path": "regex-word-boundary-empty/reviews/independent-review-original.json",
+          "bytes": 2989,
+          "sha256": "395e27d8f01ca4d9cf354d0ccfccdb4cc4589c0f17667c1efc2ee5196f5d6c94"
+        }
+      },
+      "observed_static": {
+        "path": "regex-word-boundary-empty/static-observation.json",
+        "bytes": 7434,
+        "sha256": "d05f7fbde426e33be8433dbc8ef0006e802c72fa3097228143eeea08124babf9"
+      }
+    }
   ]
 }

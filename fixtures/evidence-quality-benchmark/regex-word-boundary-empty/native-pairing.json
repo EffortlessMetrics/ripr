@@ -1,0 +1,482 @@
+{
+  "case_id": "regex-word-boundary-empty",
+  "answer_key_sha256": "7596cfac9cb66705d52767990973a17c572186f71f20fafc14fe850f7f4f1d49",
+  "lock": {
+    "path": "regex-word-boundary-empty/generated-Cargo.lock",
+    "bytes": 12299,
+    "sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d"
+  },
+  "observations": [
+    {
+      "variant": "broken_original",
+      "phase": "completed",
+      "timed_out": false,
+      "compile_failed": false,
+      "process_failed": false,
+      "source_sha256": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "source_sha256_after": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "test_sha256": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55",
+      "test_sha256_after": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55",
+      "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "test_ids": [
+        "hir::translate::tests::analysis_is_match_empty"
+      ],
+      "exit_code": 0,
+      "runner": {
+        "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+        "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+        "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+        "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+        "artifact_sha256": "0d67ef5f2b17706733aca84aa7a3afdec057dc572519c01b8cedacdd7fd58027",
+        "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+        "argv": [
+          "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "Cargo.toml",
+          "-p",
+          "regex-syntax",
+          "--lib",
+          "hir::translate::tests::analysis_is_match_empty",
+          "--",
+          "--exact"
+        ]
+      },
+      "stdout": {
+        "path": "regex-word-boundary-empty/outputs/broken_original.cargo.stdout",
+        "bytes": 173,
+        "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/outputs/broken_original.cargo.stderr",
+        "bytes": 1120,
+        "sha256": "f65e10c46ab0385b2ad42593d50d625e5ab64794a8b8ab3b5c3ff8b9fb0c2e75"
+      },
+      "capture": {
+        "path": "regex-word-boundary-empty/captures/broken_original.json",
+        "bytes": 6920,
+        "sha256": "5a43c559ef80d660411c67937d95f88ec8278169206792b34b92c43f6cea7e6b"
+      }
+    },
+    {
+      "variant": "fixed_original",
+      "phase": "completed",
+      "timed_out": false,
+      "compile_failed": false,
+      "process_failed": false,
+      "source_sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "source_sha256_after": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "test_sha256": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55",
+      "test_sha256_after": "cee557e068927ef028fdd0c8b673b948aa52397ed7bd5500f1a38a51bc29ec55",
+      "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 0,
+        "failed": 1,
+        "ignored": 0
+      },
+      "test_ids": [
+        "hir::translate::tests::analysis_is_match_empty"
+      ],
+      "exit_code": 101,
+      "runner": {
+        "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+        "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+        "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+        "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+        "artifact_sha256": "05df958d2441e844045e34221e22de0e3d7251244b6cb4b5e8f63c1ea1ffe557",
+        "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+        "argv": [
+          "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "Cargo.toml",
+          "-p",
+          "regex-syntax",
+          "--lib",
+          "hir::translate::tests::analysis_is_match_empty",
+          "--",
+          "--exact"
+        ]
+      },
+      "stdout": {
+        "path": "regex-word-boundary-empty/outputs/fixed_original.cargo.stdout",
+        "bytes": 560,
+        "sha256": "1071e6a4c61bcba7c24d2821ff8615988229668ff95ac0180f3ef48cc65e56f8"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/outputs/fixed_original.cargo.stderr",
+        "bytes": 1178,
+        "sha256": "cc24675f54c490722d4fa9dea2ae278ca51250996ae9bca16ac2619b0729e5a5"
+      },
+      "capture": {
+        "path": "regex-word-boundary-empty/captures/fixed_original.json",
+        "bytes": 6915,
+        "sha256": "c9e6fe9e4bada1b291b49d111e4a22b83639f3cb4b1737b8d984bd616c378021"
+      }
+    },
+    {
+      "variant": "fixed_corrected",
+      "phase": "completed",
+      "timed_out": false,
+      "compile_failed": false,
+      "process_failed": false,
+      "source_sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "source_sha256_after": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "test_sha256": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199",
+      "test_sha256_after": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199",
+      "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "test_ids": [
+        "hir::translate::tests::analysis_is_match_empty"
+      ],
+      "exit_code": 0,
+      "runner": {
+        "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+        "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+        "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+        "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+        "artifact_sha256": "34ecc19c42dcd9b3abc08be2792514a4032a6dc56a0f25fd2b135491ed957e3a",
+        "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+        "argv": [
+          "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "Cargo.toml",
+          "-p",
+          "regex-syntax",
+          "--lib",
+          "hir::translate::tests::analysis_is_match_empty",
+          "--",
+          "--exact"
+        ]
+      },
+      "stdout": {
+        "path": "regex-word-boundary-empty/outputs/fixed_corrected.cargo.stdout",
+        "bytes": 173,
+        "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/outputs/fixed_corrected.cargo.stderr",
+        "bytes": 1120,
+        "sha256": "f65e10c46ab0385b2ad42593d50d625e5ab64794a8b8ab3b5c3ff8b9fb0c2e75"
+      },
+      "capture": {
+        "path": "regex-word-boundary-empty/captures/fixed_corrected.json",
+        "bytes": 6921,
+        "sha256": "d310f8e1131bf88cd918ab68be9086d0d1f2044a26396072790205ceac5af6bd"
+      }
+    },
+    {
+      "variant": "broken_corrected",
+      "phase": "completed",
+      "timed_out": false,
+      "compile_failed": false,
+      "process_failed": false,
+      "source_sha256": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "source_sha256_after": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "test_sha256": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199",
+      "test_sha256_after": "de10ee2928001567f80c6ab602de0e280a8e3a1e615cf73def91d2dcc4f9f199",
+      "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 0,
+        "failed": 1,
+        "ignored": 0
+      },
+      "test_ids": [
+        "hir::translate::tests::analysis_is_match_empty"
+      ],
+      "exit_code": 101,
+      "runner": {
+        "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+        "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+        "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+        "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+        "artifact_sha256": "460fb6f322189d60821ea1cf32c2b917a5e6614aef10c0b0fb872bd41a0974f2",
+        "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+        "argv": [
+          "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "Cargo.toml",
+          "-p",
+          "regex-syntax",
+          "--lib",
+          "hir::translate::tests::analysis_is_match_empty",
+          "--",
+          "--exact"
+        ]
+      },
+      "stdout": {
+        "path": "regex-word-boundary-empty/outputs/broken_corrected.cargo.stdout",
+        "bytes": 559,
+        "sha256": "956dadf233334d15e636d53aadc0138880d447b3a88a12c56dbd74d532cf97be"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/outputs/broken_corrected.cargo.stderr",
+        "bytes": 1178,
+        "sha256": "cc24675f54c490722d4fa9dea2ae278ca51250996ae9bca16ac2619b0729e5a5"
+      },
+      "capture": {
+        "path": "regex-word-boundary-empty/captures/broken_corrected.json",
+        "bytes": 6935,
+        "sha256": "954d6284590adec9a2d9380812ceb87da53a8967d4a3631063a9518520fcd4a0"
+      }
+    },
+    {
+      "variant": "broken_weak",
+      "phase": "completed",
+      "timed_out": false,
+      "compile_failed": false,
+      "process_failed": false,
+      "source_sha256": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "source_sha256_after": "325dc1e42eb8fb9daeb7a8a5e7f967fdee745a7a7c5e26c20dec0b6c66109ad7",
+      "test_sha256": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169",
+      "test_sha256_after": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169",
+      "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "test_ids": [
+        "hir::translate::tests::analysis_is_match_empty"
+      ],
+      "exit_code": 0,
+      "runner": {
+        "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+        "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+        "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+        "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+        "artifact_sha256": "cff9571c1f9c4b4ae617bdbb090b3be0a4d144d8627d307f605b1ff44231ad92",
+        "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+        "argv": [
+          "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "Cargo.toml",
+          "-p",
+          "regex-syntax",
+          "--lib",
+          "hir::translate::tests::analysis_is_match_empty",
+          "--",
+          "--exact"
+        ]
+      },
+      "stdout": {
+        "path": "regex-word-boundary-empty/outputs/broken_weak.cargo.stdout",
+        "bytes": 173,
+        "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/outputs/broken_weak.cargo.stderr",
+        "bytes": 1120,
+        "sha256": "f65e10c46ab0385b2ad42593d50d625e5ab64794a8b8ab3b5c3ff8b9fb0c2e75"
+      },
+      "capture": {
+        "path": "regex-word-boundary-empty/captures/broken_weak.json",
+        "bytes": 6881,
+        "sha256": "0505dc3ff5e404aa8ebfaa9e220ff7de731f594744089f8dc747c2d6052b1a89"
+      }
+    },
+    {
+      "variant": "fixed_weak",
+      "phase": "completed",
+      "timed_out": false,
+      "compile_failed": false,
+      "process_failed": false,
+      "source_sha256": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "source_sha256_after": "51f1642b75e298b0847855d7f490eca2e8f445c9039dd3aa91491f533ec83f15",
+      "test_sha256": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169",
+      "test_sha256_after": "9150ff57bf007f523ef1dc8f4c9680ea2edfd3fe55fca47f83b36b1b5834e169",
+      "lock_sha256": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "lock_sha256_after": "9cbfc6b8b6b2c132365dd31fc3b66d6f6caf964fdb7214a28e2435fa7367ab2d",
+      "counts": {
+        "intended": 1,
+        "discovered": 1,
+        "selected": 1,
+        "executed": 1,
+        "passed": 1,
+        "failed": 0,
+        "ignored": 0
+      },
+      "test_ids": [
+        "hir::translate::tests::analysis_is_match_empty"
+      ],
+      "exit_code": 0,
+      "runner": {
+        "version": "cargo 1.95.0 (f2d3ce0bd 2026-03-21)",
+        "compiler_version": "rustc 1.95.0 (59807616e 2026-04-14)",
+        "cwd": "/workspace/shared/ripr-regex-case-evidence/native-experiment/workspace",
+        "target_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/target",
+        "build_dir": "/workspace/shared/ripr-regex-case-evidence/native-experiment/build",
+        "artifact_sha256": "b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c",
+        "executable": "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+        "executable_sha256": "841072d1d92f9e841d9ba5b0814182a0adf064acf4527cd120967b7bc49dcb66",
+        "argv": [
+          "/workspace/shared/cloud-rustup/toolchains/1.95.0-x86_64-unknown-linux-gnu/bin/cargo",
+          "test",
+          "--locked",
+          "--offline",
+          "--manifest-path",
+          "Cargo.toml",
+          "-p",
+          "regex-syntax",
+          "--lib",
+          "hir::translate::tests::analysis_is_match_empty",
+          "--",
+          "--exact"
+        ]
+      },
+      "stdout": {
+        "path": "regex-word-boundary-empty/outputs/fixed_weak.cargo.stdout",
+        "bytes": 173,
+        "sha256": "aa06c2b318e421c03becbbf1896887a3d1c4067812fe97842463c7a4f5f8d946"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/outputs/fixed_weak.cargo.stderr",
+        "bytes": 1120,
+        "sha256": "f65e10c46ab0385b2ad42593d50d625e5ab64794a8b8ab3b5c3ff8b9fb0c2e75"
+      },
+      "capture": {
+        "path": "regex-word-boundary-empty/captures/fixed_weak.json",
+        "bytes": 6871,
+        "sha256": "fcda11b2fd1efd70754c60e57424d19a88f38c6282207355cffefa844f31fba7"
+      }
+    }
+  ],
+  "capture_scope": "Historical native capture; source-only checks validate compact identities. External executable bytes are NOT_REVERIFIED.",
+  "original_workspace": {
+    "parent_commit": "72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4",
+    "fixed_commit": "88a2a62d861d189faae539990f63cb9cf195bd8c",
+    "archives": {
+      "parent": {
+        "path": "regex-word-boundary-empty/upstream/regex-72f09f1.tar.gz",
+        "bytes": 3317228,
+        "sha256": "8d73a0ebb84927de0fb6df939720a8cc7328cbe7972449ac06097db7af7d4dc2"
+      },
+      "fixed": {
+        "path": "regex-word-boundary-empty/upstream/regex-88a2a62.tar.gz",
+        "bytes": 3317664,
+        "sha256": "4baf4cec952ef02a9eaa66a3c7d72514cd9cfef7cba36cf9fcda08a89559db6b"
+      }
+    },
+    "provenance": {
+      "parent-git-commit.json": {
+        "path": "regex-word-boundary-empty/upstream/parent-git-commit.json",
+        "bytes": 2001,
+        "sha256": "4d3cd0f4900c7ecf59b3d016f8e98746dd9e13a2f406cca3d1943585a51bbe4c"
+      },
+      "fixed-git-commit.json": {
+        "path": "regex-word-boundary-empty/upstream/fixed-git-commit.json",
+        "bytes": 1992,
+        "sha256": "bcf8d60dbc1e805f5368a26959fa92e6176b3353dd692d9a6ceb71d2e950db1e"
+      },
+      "parent-git-tree.json": {
+        "path": "regex-word-boundary-empty/upstream/parent-git-tree.json",
+        "bytes": 81990,
+        "sha256": "0cb0fae21a0344e7b5d24da852d99147d4bfbefeab5f7b0e45b19de6b4022bfa"
+      },
+      "fixed-git-tree.json": {
+        "path": "regex-word-boundary-empty/upstream/fixed-git-tree.json",
+        "bytes": 81990,
+        "sha256": "e6ae330a4b938b1e536ce3aa34d7e1e587e84f4377cb32b7d2d58d55853193e7"
+      }
+    },
+    "inventories": {
+      "parent": {
+        "path": "regex-word-boundary-empty/upstream/parent-archive-files.json",
+        "bytes": 64504,
+        "sha256": "81029ea5e7fdc20c842a782547841247a22b76c0d66cbed100c025e34dc0222f"
+      },
+      "fixed": {
+        "path": "regex-word-boundary-empty/upstream/fixed-archive-files.json",
+        "bytes": 64504,
+        "sha256": "be21d5bf82723f6819d83f1a11518d1ff786c89230e72af582d0cd7d63b1de0a"
+      }
+    },
+    "member_and_manifest_changes": [],
+    "resolution": "Original upstream had no Cargo.lock. Cargo 1.95 generated this lock for all original workspace members; 56 total packages include 5 local and 51 registry packages. Offline cache misses were setup failures, not test outcomes.",
+    "reduction": "NONE",
+    "replay": "One fixed source root; only full mod.rs and translate.rs variant transitions after original parent archive materialization. Parent CHANGELOG.md stayed unchanged."
+  },
+  "native_packet": {
+    "path": "regex-word-boundary-empty/capture/original-native-result-packet.json",
+    "bytes": 50067,
+    "sha256": "b910ec9fafcdca9e1783218df877f8900313362a7741c51716d1c950a9045a0b"
+  },
+  "native_receipt": {
+    "path": "regex-word-boundary-empty/capture/original-native-receipt.json",
+    "bytes": 87202,
+    "sha256": "8dca1d09ece7506e6f32302e310c55f0efc0eb6dcacb105e5cbdff88d74fe6b8"
+  },
+  "resolution_receipt": {
+    "path": "regex-word-boundary-empty/capture/resolution-and-offline-compile-receipt.json",
+    "bytes": 7123,
+    "sha256": "53b23722085f90ded5647dac2a9bb6c13796087139c80191c303e3d72ecfad04"
+  },
+  "offline_setup_receipt": {
+    "path": "regex-word-boundary-empty/capture/offline-setup-receipt.json",
+    "bytes": 6454,
+    "sha256": "03bbc87f7105db3376605c05ebfdf014ce8ac5bdde0299250b52c795e0979ec6"
+  },
+  "capture_checker_interruption": {
+    "path": "regex-word-boundary-empty/capture/checker-interruption-receipt.json",
+    "bytes": 23673,
+    "sha256": "a47592ed1dde8e45ca8d8a45fc16a53c85e1c3dc9845df329f8c0da5622966bd"
+  },
+  "no_per_assertion_coverage_claim": "Failing whole tests stop at first Unicode boundary assertion; later ASCII assertion is not established by the failing runs."
+}

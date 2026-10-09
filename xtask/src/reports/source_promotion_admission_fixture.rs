@@ -454,6 +454,8 @@ fn configure_fixture_repository(repo: &Path) -> Result<(), String> {
         ("commit.gpgsign", "false"),
         ("tag.gpgSign", "false"),
         ("core.autocrlf", "false"),
+        // This configuration belongs only to the disposable fixture repository.
+        ("core.longpaths", "true"),
     ] {
         run_git(repo, &["config", key, value])?;
     }

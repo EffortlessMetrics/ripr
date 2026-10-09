@@ -1,0 +1,64 @@
+schema_version = "2.0"
+id = "ripr.slice.repair-loop-dirty-production-premise.v1"
+generation = 1
+
+source_issue = "issue:5262"
+design_reference = "RIPR-SPEC-0011#behavior"
+change_class = "behavior_change"
+
+claim_boundary = """
+The agent repair loop refuses a dirty production premise at the before phase:
+tracked content that already differs from HEAD outside the allowed test
+surface refuses attempt publication with commit-first guidance before any
+workflow artifact or attempt exists. The boundary is the receipt's own
+trusted-surface inventory, so a dirty focused test file inside the allowed
+surface stays allowed — the loop expects the test edit. When the receipt's
+trusted-surface refusal still fires mid-loop (a premise that became dirty
+between the gate and the baseline, or a production edit made during the
+loop), the after phase narrates the same cause and a `to recover:` restart
+route like its sibling refusal families, and the narration rides into the
+attempt record `agent status` reports. Claims no change to the receipt's
+admission rule, the edit cage verdict, exit-code vocabulary for other
+refusals, or analysis behavior.
+"""
+
+non_goals = [
+  "accepting or cleaning dirty production content on the agent's behalf",
+  "changing the receipt trusted-surface admission rule or its message",
+  "changing the edit cage verdict or its recovery narration",
+  "mutation execution, merge, or release authority",
+  "worktree-wide cleanliness requirements (untracked scratch files stay legal)",
+]
+
+return_conditions = [
+  "Return to root if a dirty production premise again starts an attempt.",
+  "Return to root if a dirty allowed-surface test file refuses the before phase.",
+  "Return to root if the late trusted-surface refusal carries no recovery narration.",
+]
+
+owned_seams = [
+  "seam:ripr:agent:repair-premise-gate",
+  "seam:ripr:agent:repair-trusted-surface-recovery-narration",
+]
+
+shared_seams = [
+  "seam:ripr:agent:receipt-issuer",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0011#behavior"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

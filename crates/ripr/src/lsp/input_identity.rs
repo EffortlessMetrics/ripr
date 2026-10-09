@@ -2,7 +2,7 @@ use super::config::LspAnalysisConfig;
 use crate::app::Mode;
 use crate::domain::LanguageId;
 use serde_json::Value;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Versioned semantic inputs that identify one LSP analysis session state.
 ///
@@ -153,9 +153,22 @@ impl LspAnalysisInputIdentity {
     /// published value is deliberately bounded and does not expose config
     /// contents or absolute paths.
     pub(super) fn stable_id(&self) -> String {
-        let canonical = format!(
+        format!(
+            "input:{}",
+            crate::config::config_fingerprint(&self.canonical_identity_text())
+        )
+    }
+
+    fn canonical_root_spelling(root: &Path) -> String {
+        root.to_string_lossy().replace('\\', "/")
+    }
+
+    /// Semantic identity text. Deadlines, position encoding, PID, client
+    /// name, and wall-clock time are not inputs.
+    fn canonical_identity_text(&self) -> String {
+        format!(
             "root={};saved_revision={};repo_config={:?};session_options={:?};requested_base={:?};resolved_base={:?};mode={};profile={};languages={};manifest={:?};lockfile={:?};analyzer={};schema={}",
-            self.effective_root.to_string_lossy().replace('\\', "/"),
+            Self::canonical_root_spelling(&self.effective_root),
             self.saved_workspace_revision,
             self.repository_config_identity,
             self.session_options_identity,
@@ -168,8 +181,7 @@ impl LspAnalysisInputIdentity {
             self.lockfile_identity,
             self.analyzer_version,
             self.schema_version,
-        );
-        format!("input:{}", crate::config::config_fingerprint(&canonical))
+        )
     }
 
     /// The Git input resolution state derived from the identity's own
@@ -191,7 +203,7 @@ impl LspAnalysisInputIdentity {
     /// status. This is metadata for lifecycle recovery, not a replacement for
     /// the opaque stable identity used by semantic consumers.
     pub(super) fn status_payload(&self) -> Value {
-        let root = self.effective_root.to_string_lossy().replace('\\', "/");
+        let root = Self::canonical_root_spelling(&self.effective_root);
         serde_json::json!({
             "input_identity": self.stable_id(),
             "root_identity": format!("root:{}", crate::config::config_fingerprint(&root)),
@@ -240,6 +252,24 @@ mod tests {
             "ripr:0.10.0",
             "lsp-input-v1",
         )
+    }
+
+    fn committed_git_root(name: &str) -> Result<crate::lsp::tests::TempLspRoot, String> {
+        let root = crate::lsp::tests::unique_lsp_test_root(name)?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["init"])?;
+        crate::lsp::tests::run_lsp_scope_git(
+            root.path(),
+            &["config", "user.email", "ripr@example.invalid"],
+        )?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
+        std::fs::write(
+            root.path().join("lib.rs"),
+            "pub fn gate() -> bool {\n    true\n}\n",
+        )
+        .map_err(|error| format!("write fixture: {error}"))?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["add", "lib.rs"])?;
+        crate::lsp::tests::run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+        Ok(root)
     }
 
     #[test]
@@ -339,20 +369,7 @@ mod tests {
 
     #[test]
     fn record_built_identity_matches_legacy_resolution_byte_for_byte() -> Result<(), String> {
-        let root = crate::lsp::tests::unique_lsp_test_root("input-identity-git-parity")?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["init"])?;
-        crate::lsp::tests::run_lsp_scope_git(
-            root.path(),
-            &["config", "user.email", "ripr@example.invalid"],
-        )?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
-        std::fs::write(
-            root.path().join("lib.rs"),
-            "pub fn gate() -> bool {\n    true\n}\n",
-        )
-        .map_err(|error| format!("write fixture: {error}"))?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["add", "lib.rs"])?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+        let root = committed_git_root("input-identity-git-parity")?;
 
         let config = LspAnalysisConfig {
             base_ref: Some("HEAD".to_string()),
@@ -390,20 +407,7 @@ mod tests {
         // record-consuming constructor and the compatibility constructor
         // produce byte-identical identities, and the identity carries the
         // loader's resolved default-base commit.
-        let root = crate::lsp::tests::unique_lsp_test_root("input-identity-default-base-parity")?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["init"])?;
-        crate::lsp::tests::run_lsp_scope_git(
-            root.path(),
-            &["config", "user.email", "ripr@example.invalid"],
-        )?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["config", "user.name", "RIPR Test"])?;
-        std::fs::write(
-            root.path().join("lib.rs"),
-            "pub fn gate() -> bool {\n    true\n}\n",
-        )
-        .map_err(|error| format!("write fixture: {error}"))?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["add", "lib.rs"])?;
-        crate::lsp::tests::run_lsp_scope_git(root.path(), &["commit", "-m", "base"])?;
+        let root = committed_git_root("input-identity-default-base-parity")?;
         // Pin the default branch name so the loader's default-base fallback
         // resolves deterministically regardless of host git defaults.
         crate::lsp::tests::run_lsp_scope_git(root.path(), &["branch", "-M", "main"])?;
@@ -595,5 +599,91 @@ mod tests {
             LspAnalysisInputIdentity::from_refresh_inputs(PathBuf::from("/workspace"), 1, &second);
 
         assert_eq!(first_identity, second_identity);
+    }
+
+    #[test]
+    fn stable_id_normalizes_host_separator_spelling() {
+        let slash = identity("workspace/root", [LanguageId::Rust]);
+        let mut backslash = identity("workspace/root", [LanguageId::Rust]);
+        backslash.effective_root = PathBuf::from("workspace\\root");
+        assert_eq!(slash.stable_id(), backslash.stable_id());
+        assert_eq!(
+            slash.canonical_identity_text(),
+            backslash.canonical_identity_text()
+        );
+    }
+
+    #[test]
+    fn canonical_identity_text_excludes_volatile_process_and_client_facts() {
+        let id = identity("workspace-root", [LanguageId::Rust]);
+        let canonical = id.canonical_identity_text().to_ascii_lowercase();
+        for needle in [
+            "pid=",
+            "client_name",
+            "clientname",
+            "generated_at",
+            "timestamp",
+            "wall_clock",
+        ] {
+            assert!(
+                !canonical.contains(needle),
+                "canonical identity leaked volatile needle `{needle}`: {canonical}"
+            );
+        }
+    }
+
+    #[test]
+    fn deadlines_and_position_encoding_do_not_enter_refresh_identity() {
+        use std::time::Duration;
+        use tower_lsp_server::ls_types::PositionEncodingKind;
+
+        let root = PathBuf::from("/workspace");
+        let first = LspAnalysisConfig::default();
+        let mut second = first.clone();
+        second.git_timeout = Duration::from_millis(1);
+        second.refresh_deadline = Duration::from_millis(2);
+        second.position_encoding = PositionEncodingKind::UTF8;
+
+        let first_identity = LspAnalysisInputIdentity::from_refresh_inputs(root.clone(), 1, &first);
+        let second_identity = LspAnalysisInputIdentity::from_refresh_inputs(root, 1, &second);
+        assert_eq!(first_identity, second_identity);
+        assert_eq!(first_identity.stable_id(), second_identity.stable_id());
+    }
+
+    #[test]
+    fn session_option_semantic_flags_participate_in_identity() {
+        let include_unchanged = LspAnalysisConfig::from_repo_config_and_options(
+            crate::config::RiprConfig::default(),
+            Some(&json!({
+                "baseRef": "origin/main",
+                "checkMode": "fast",
+                "includeUnchangedTests": true,
+            })),
+        );
+        let exclude_unchanged = LspAnalysisConfig::from_repo_config_and_options(
+            crate::config::RiprConfig::default(),
+            Some(&json!({
+                "baseRef": "origin/main",
+                "checkMode": "fast",
+                "includeUnchangedTests": false,
+            })),
+        );
+        let without_seams = LspAnalysisConfig::from_repo_config_and_options(
+            crate::config::RiprConfig::default(),
+            Some(&json!({
+                "baseRef": "origin/main",
+                "checkMode": "fast",
+                "includeUnchangedTests": true,
+                "seamDiagnostics": false,
+            })),
+        );
+        let root = PathBuf::from("/workspace");
+        let include_identity =
+            LspAnalysisInputIdentity::from_refresh_inputs(root.clone(), 1, &include_unchanged);
+        let exclude_identity =
+            LspAnalysisInputIdentity::from_refresh_inputs(root.clone(), 1, &exclude_unchanged);
+        let seams_identity = LspAnalysisInputIdentity::from_refresh_inputs(root, 1, &without_seams);
+        assert_ne!(include_identity.stable_id(), exclude_identity.stable_id());
+        assert_ne!(include_identity.stable_id(), seams_identity.stable_id());
     }
 }

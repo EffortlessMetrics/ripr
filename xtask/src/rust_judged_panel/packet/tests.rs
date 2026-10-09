@@ -1174,16 +1174,19 @@ fn on_disk_host_fixture(name: &str) -> Result<HostDiskFixture, String> {
     // Build identity: exactly the owned locked/offline dev build shape.
     let binary_bytes = b"ripr judged-panel fixture retained binary\n";
     let binary_sha256 = sha256_hex(binary_bytes);
+    let target =
+        std::path::absolute(staging.join("build-target")).map_err(|error| error.to_string())?;
+    fs::create_dir_all(target.join("debug")).map_err(|error| error.to_string())?;
     fs::create_dir_all(staging.join("build")).map_err(|error| error.to_string())?;
-    fs::write(staging.join("build/retained-ripr.bin"), binary_bytes)
-        .map_err(|error| error.to_string())?;
+    fs::write(target.join("debug/ripr"), binary_bytes).map_err(|error| error.to_string())?;
     let build_stdout = b"fixture cargo build stdout\n";
     let build_stderr = b"";
     fs::write(staging.join("build/stdout.bin"), build_stdout).map_err(|error| error.to_string())?;
     fs::write(staging.join("build/stderr.bin"), build_stderr).map_err(|error| error.to_string())?;
     let build = serde_json::json!({
         "command": ["cargo", "build", "-p", "ripr", "--locked", "--offline",
-                    "--target-dir", "fixture-target"],
+                    "--target-dir", target.display().to_string(), "--config",
+                    format!("build.build-dir={}", toml::Value::String(target.display().to_string()))],
         "package": "ripr",
         "profile": "dev",
         "features": ["default"],
@@ -1193,8 +1196,8 @@ fn on_disk_host_fixture(name: &str) -> Result<HostDiskFixture, String> {
         "rustc_verbose_version": "rustc fixture-version",
         "host_target": "fixture-host-target",
         "cargo_home": null,
-        "executed_binary_path": "fixture-target/debug/retained-ripr.bin",
-        "retained_binary_path": "build/retained-ripr.bin",
+        "executed_binary_path": target.join("debug/ripr").display().to_string(),
+        "retained_binary_path": "build-target/debug/ripr",
         "binary_sha256": binary_sha256,
         "binary_bytes": binary_bytes.len() as u64,
         "binary_version": "ripr 0.0.0-judged-panel-fixture",
@@ -1360,6 +1363,11 @@ fn on_disk_host_fixture(name: &str) -> Result<HostDiskFixture, String> {
         ],
     });
     let index_bytes = write_json_bytes(&staging.join("run-index.json"), &index)?;
+    crate::rust_judged_panel::host_run::validate_generation(
+        &staging,
+        &run_id,
+        crate::rust_judged_panel::host_run::BuildLocation::Attempt(&staging),
+    )?;
 
     // Publish the staged attempt as the immutable final generation, exactly
     // like a real host-run transaction: the retained reports keep their
@@ -1383,6 +1391,239 @@ fn on_disk_host_fixture(name: &str) -> Result<HostDiskFixture, String> {
         host_current: format!("{OUTPUT_RELATIVE}/current.json"),
         run_id,
     })
+}
+
+#[test]
+fn packet_build_identity_survives_staging_publication_and_checkout_relocation() -> Result<(), String>
+{
+    // The fixture validates the actual staging generation, then renames it to
+    // runs/{run_id} without changing any recorded execution paths.
+    let mut fixture = on_disk_host_fixture("build-relocation")?;
+    super::publish(&fixture._root.0, &fixture.manifest, &fixture.host_current)?;
+    super::validate_at(&fixture._root.0, &fixture.manifest)?;
+    let output_relative = Path::new(&fixture.host_current)
+        .parent()
+        .ok_or("fixture output has no parent")?;
+    let raw_before = snapshot_tree(&fixture._root.0.join(output_relative))?;
+    let portable_before = snapshot_tree(&fixture._root.0.join(PORTABLE_ROOT))?;
+    let current: PortableCurrent =
+        read_strict_json(&fixture._root.0.join(CURRENT_PATH), "portable current")?;
+    let index: PortableIndex =
+        read_strict_json(&fixture._root.0.join(current.index_path), "portable index")?;
+    if index.packets.len() != 3 {
+        return Err("relocation control did not publish all three subjects".to_string());
+    }
+    let relocated = fixture._root.0.with_extension("relocated");
+    if relocated.exists() {
+        return Err("relocation control destination already exists".to_string());
+    }
+    fs::rename(&fixture._root.0, &relocated).map_err(|error| error.to_string())?;
+    fixture._root.0 = relocated;
+    // Identical logical suffix under a new root is intentionally admissible.
+    // These unsigned receipts do not authenticate the old root or execution.
+    super::publish(&fixture._root.0, &fixture.manifest, &fixture.host_current)?;
+    super::validate_at(&fixture._root.0, &fixture.manifest)?;
+    assert_tree_unchanged(
+        &fixture._root.0.join(output_relative),
+        &raw_before,
+        "relocated raw evidence",
+    )?;
+    assert_tree_unchanged(
+        &fixture._root.0.join(PORTABLE_ROOT),
+        &portable_before,
+        "relocated semantic generation",
+    )
+}
+
+#[test]
+fn packet_publish_rejects_coherent_unowned_build_paths() -> Result<(), String> {
+    let fixture = on_disk_host_fixture("build-ownership")?;
+    super::publish(&fixture._root.0, &fixture.manifest, &fixture.host_current)?;
+    let current_path = fixture._root.0.join(&fixture.host_current);
+    let output = current_path.parent().ok_or("host current has no parent")?;
+    let run_root = output.join("runs").join(&fixture.run_id);
+    let index_path = run_root.join("run-index.json");
+    let original: serde_json::Value = read_strict_json(&index_path, "fixture host index")?;
+    let original_current: serde_json::Value =
+        read_strict_json(&current_path, "fixture host current")?;
+    let target = output
+        .join(format!(".staging-{}", fixture.run_id))
+        .join("build-target");
+    let retained = "build-target/debug/ripr";
+    // Wrong retained paths carry the exact same valid bytes, so only ownership
+    // can reject them; missing files or digest mismatches are not the oracle.
+    fs::copy(run_root.join(retained), run_root.join("build/copied-ripr"))
+        .map_err(|error| error.to_string())?;
+    fs::copy(
+        run_root.join(retained),
+        run_root.join("build-target/debug/other"),
+    )
+    .map_err(|error| error.to_string())?;
+    let alternatives = [
+        ("relative", PathBuf::from("build-target"), retained, "ripr"),
+        (
+            "shared",
+            fixture._root.0.join("shared/build-target"),
+            retained,
+            "ripr",
+        ),
+        (
+            "other-output",
+            fixture
+                ._root
+                .0
+                .join("target/ripr/other")
+                .join(format!(".staging-{}", fixture.run_id))
+                .join("build-target"),
+            retained,
+            "ripr",
+        ),
+        (
+            "sibling-run",
+            output.join(".staging-another-run/build-target"),
+            retained,
+            "ripr",
+        ),
+        (
+            "traversal",
+            output
+                .join("ignored/..")
+                .join(format!(".staging-{}", fixture.run_id))
+                .join("build-target"),
+            retained,
+            "ripr",
+        ),
+        (
+            "dot-segment",
+            output
+                .join(".")
+                .join(format!(".staging-{}", fixture.run_id))
+                .join("build-target"),
+            retained,
+            "ripr",
+        ),
+        (
+            "final-path",
+            run_root.join("build-target"),
+            retained,
+            "ripr",
+        ),
+        (
+            "retained-directory",
+            target.clone(),
+            "build/copied-ripr",
+            "ripr",
+        ),
+        (
+            "retained-name",
+            target.clone(),
+            "build-target/debug/other",
+            "ripr",
+        ),
+        ("executed-name", target, retained, "other"),
+    ];
+    let mut admitted = Vec::new();
+    for (label, target, retained_path, executable) in alternatives {
+        let mut index = original.clone();
+        index["build"]["command"][7] = serde_json::json!(target.display().to_string());
+        index["build"]["command"][9] = serde_json::json!(format!(
+            "build.build-dir={}",
+            toml::Value::String(target.display().to_string())
+        ));
+        index["build"]["executed_binary_path"] =
+            serde_json::json!(target.join("debug").join(executable).display().to_string());
+        index["build"]["retained_binary_path"] = serde_json::json!(retained_path);
+        let index_bytes = write_json_bytes(&index_path, &index)?;
+        let mut current = original_current.clone();
+        current["index_sha256"] = serde_json::json!(sha256_hex(&index_bytes));
+        write_json_bytes(&current_path, &current)?;
+        let raw_before = snapshot_tree(output)?;
+        let portable = fixture._root.0.join(PORTABLE_ROOT);
+        let portable_before = snapshot_tree(&portable)?;
+        let error = match super::publish(&fixture._root.0, &fixture.manifest, &fixture.host_current)
+        {
+            Ok(()) => {
+                admitted.push(label);
+                continue;
+            }
+            Err(error) => error,
+        };
+        if !error.contains("build path is not bound") {
+            return Err(format!("wrong {label} ownership discriminator: {error}"));
+        }
+        assert_tree_unchanged(output, &raw_before, label)?;
+        assert_tree_unchanged(&portable, &portable_before, label)?;
+        println!("rejected coherent {label} build paths before packet writes");
+    }
+    if admitted.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "packet admitted coherent unowned build paths: {}",
+            admitted.join(", ")
+        ))
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn packet_build_membership_does_not_replace_retained_binary_confinement() -> Result<(), String> {
+    let fixture = on_disk_host_fixture("build-confinement")?;
+    let current = fixture._root.0.join(&fixture.host_current);
+    let output = current.parent().ok_or("host current has no parent")?;
+    let binary = output
+        .join("runs")
+        .join(&fixture.run_id)
+        .join("build-target/debug/ripr");
+    let outside = fixture._root.0.join("same-bytes-outside-generation");
+    fs::rename(&binary, &outside).map_err(|error| error.to_string())?;
+    std::os::unix::fs::symlink(&outside, &binary).map_err(|error| error.to_string())?;
+    let raw_before = snapshot_tree(output)?;
+    let portable = fixture._root.0.join(PORTABLE_ROOT);
+    let portable_before = snapshot_tree(&portable)?;
+    let error = super::publish(&fixture._root.0, &fixture.manifest, &fixture.host_current)
+        .err()
+        .ok_or("matching logical path admitted an escaping retained binary")?;
+    if !error.contains("retained binary escapes") {
+        return Err(format!("wrong retained-confinement discriminator: {error}"));
+    }
+    assert_tree_unchanged(output, &raw_before, "retained confinement")?;
+    assert_tree_unchanged(&portable, &portable_before, "retained confinement")
+}
+
+#[test]
+fn packet_publish_requires_rebuild_for_historical_host_recipe() -> Result<(), String> {
+    let fixture = on_disk_host_fixture("historical-build-recipe")?;
+    let current_path = fixture._root.0.join(&fixture.host_current);
+    let output = current_path.parent().ok_or("host current has no parent")?;
+    let index_path = output
+        .join("runs")
+        .join(&fixture.run_id)
+        .join("run-index.json");
+    let mut index: serde_json::Value = read_strict_json(&index_path, "fixture host index")?;
+    index["build"]["command"]
+        .as_array_mut()
+        .ok_or("fixture build command is not an array")?
+        .truncate(8);
+    let index_bytes = write_json_bytes(&index_path, &index)?;
+    let mut current: serde_json::Value = read_strict_json(&current_path, "fixture host current")?;
+    current["index_sha256"] = serde_json::Value::String(sha256_hex(&index_bytes));
+    write_json_bytes(&current_path, &current)?;
+    let retained_before = snapshot_tree(output)?;
+    let portable = fixture._root.0.join(PORTABLE_ROOT);
+    let portable_before = snapshot_tree(&portable)?;
+    let error = super::publish(&fixture._root.0, &fixture.manifest, &fixture.host_current)
+        .err()
+        .ok_or("packet publication silently promoted a historical build recipe")?;
+    if !error.contains("historical host build receipt")
+        || !error.contains("cargo xtask rust-judged-panel replay")
+    {
+        return Err(format!(
+            "historical host run did not request a rebuild: {error}"
+        ));
+    }
+    assert_tree_unchanged(output, &retained_before, "historical retained evidence")?;
+    assert_tree_unchanged(&portable, &portable_before, "historical packet publication")
 }
 
 #[test]

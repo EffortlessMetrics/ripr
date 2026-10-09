@@ -53,6 +53,22 @@ top-level `fixtures/` tree so repo-scoped public signals describe the published
 `ripr` package, not its harness. Passing a fixture workspace itself as `--root`
 still analyzes that fixture normally.
 
+Generated Rust that `ripr check` skips is also outside the seam surface.
+Inventory reuses `GeneratedRustSources::for_repo`: conventional generated names
+and directories, additive `[languages.rust] generated_file_patterns`, generator
+headers and `cargo vendor` markers. Exact normalized `handwritten_files` paths
+exempt naming conventions only; explicit patterns, headers and vendor markers
+retain precedence. Default exclusions remain unchanged.
+
+Skipped files do not emit seams or supply test-grip evidence. The corpus
+fingerprint covers the analyzed set, so toggling inclusion and editing included
+source invalidate the cache, while edits confined to excluded bytes do not.
+Repo-exposure discloses `generated_rust_source_skipped` without changing
+`run_status` to a truncated scan. Both generated patterns and handwritten-file
+inclusions are consumed config for its artifact input identity, including when
+diff adapter selection excludes Rust: the inventory producer remains Rust-only.
+A before/after pair with different inclusion policy is not comparable.
+
 ### Stable Seam ID Rules
 
 Seam IDs must be stable across runs and across input file walk reorderings.
@@ -100,6 +116,17 @@ determined by the badge policy (currently non-headline for `ripr`,
 The mapping table is versioned and lives in the spec, not in the badge
 renderer.
 
+### Weak Grip Requires Established Activation
+
+`weakly_gripped` claims that tests which run the seam have a weak oracle or
+pass activation values that miss a needed discriminator. That claim needs
+activation evidence. When the activate stage is `unknown` (for example a
+same-file relation only, or a boundary predicate with no observed activation
+value), weak discriminate evidence or a missing-discriminator hint does not
+produce `weakly_gripped`; the seam classifies `activation_unknown` and keeps
+its missing-discriminator guidance. A seam with established activation and
+the same evidence stays `weakly_gripped`.
+
 ### Static-Language Boundaries
 
 All static output must use the conservative vocabulary defined in
@@ -134,7 +161,10 @@ what test is missing and why:
 - related tests (name, file, line, oracle kind/strength)
 - observed activation values when known
 - missing discriminator hypothesis (e.g. "boundary value 100 never tested")
-- reach evidence: does any test call the owner?
+- reach evidence: does any test call the owner? With no related test, reach
+  is `no` only when ripr established that no test path exists; an unresolved
+  transitive, macro or trait-dispatch path makes it `opaque`, so the seam
+  classifies `opaque`, not `ungripped` (RIPR-SPEC-0230)
 - activate evidence: does any test supply the triggering input?
 - propagate evidence: does the test observe the changed state downstream?
 - observe evidence: does the test assert on the visible sink?
@@ -177,6 +207,33 @@ owner, activation remains unknown and the
 evidence record names `constructor_field_owner_ambiguous` with repair route
 `analysis/constructor-field-observation`. RIPR must not choose one owner or
 promote the seam from the ambiguous path.
+
+A `field_construction` seam whose related test already activates the owner and
+weakly observes one constructed field on a parser-backed *direct* owner-result
+binding emits a compatible `RequiredDiscriminator::FieldValue` missing fact
+after that activation decision is known. The fact value is the seam's existing
+field identity; the producer must not invent a concrete expected value. The
+binding's initializer must *be* a captured call of the exact owner (a bare
+identifier callee), not a wrapper, method, qualified path, helper-transfer, or
+an expression that merely contains the call. Credit a later field read only in
+the same supported function scope and only before shadow, reassignment, field
+overwrite, or mutable escape — including a mutable borrow of the observed
+field. The field must appear in the assertion's parser-backed condition or
+compared operands, not only in a message or format argument, and not on an
+assertion-local shadow of the binding. A same-name function defined or
+imported in the test's module is not the production owner, and neither is a
+local binding of that name unless that binding is itself the parser-backed
+direct owner-result. A grouped nested-`super` import (`use super::diagnostics::{owner}`)
+is the production owner only when the resolved module path uniquely matches
+this seam's owner file; the same local name from a different module, an
+unresolved import, or two cfg-ambiguous same-name owners stay non-ready. A
+leading `::` path is the extern prelude, not a local module. Do
+not treat every `super::` prefix as local. Exact owner-result
+field equality stays
+already-gripped and must not grow a missing fact. A name-related or
+proximity-related test with unknown owner activation must not receive a missing
+fact that would reclassify the seam as weakly gripped. Helper-transfer and
+unresolved callees remain named limitations, not ready repair routes.
 
 ## Non-Goals
 
@@ -243,7 +300,20 @@ Tests for this spec will be added as the implementation work items land:
 - `analysis/repo-seam-inventory-v1`: golden tests for seam inventory output
 against fixture repos.
 - `analysis/test-grip-evidence-v1`: tests that evidence attaches to the
-correct seam and cites the correct related tests.
+  correct seam and cites the correct related tests.
+- `analysis/test-grip-evidence` owner-result field facts: a weak direct
+  owner-result field observation completes the producer-owned missing
+  `field_value` fact after known activation; exact field equality stays
+  already-gripped; wrapper, helper-transfer, shadow, reassignment, sibling
+  field, token coincidence, unknown activation, failed target authority,
+  mutable field borrow, assertion-message-only field credit, assertion-local
+  shadow, and same-name local or imported callees stay non-ready. A grouped
+  nested-`super` import of the unique owner completes the route; a foreign
+  module, cfg-ambiguous same-name pair, or leading `::` extern-prelude import
+  does not. A
+  refused DirectOwnerCall related test does not fall through to a Proposed
+  target; an advisory related observer does not block an independently
+  admitted proposal.
 - `analysis/related-test-ranking-v2-stabilization`: tests that direct owner
 calls outrank weaker relationship signals, strong oracles outrank smoke-only
 oracles inside the same relation, activation-value overlap breaks remaining
@@ -258,10 +328,15 @@ duplicative equality assertions remain weak instead of overclaiming exact
 value grip.
 - `analysis/repo-ripr-classification-v1`: tests for `SeamGripClass`
 classification rules and headline mapping.
+- Weak grip requires established activation:
+  `seam_classification.rs::given_activation_unknown_then_weak_evidence_is_activation_unknown_not_weak_grip`
+  pins both directions of the rule, and
+  `test_grip_evidence/tests.rs::boundary_with_unobserved_activation_is_activation_unknown_and_keeps_its_hint`
+  pins it end to end from source.
 
 ## Implementation Mapping
 
-Planned implementation work items (from `.ripr/goals/active.toml`):
+Planned implementation work items (historical; retired from `.ripr/goals/active.toml` in #1701):
 
 1. `analysis/repo-seam-model-v1`: introduces `RepoSeam`, `SeamId`, `SeamKind`,
 `RequiredDiscriminator`, `TestGripEvidence`, `SeamGripClass` as crate-private
@@ -276,6 +351,29 @@ types.
 7. `lsp/seam-evidence-hover-v1`: hover renders evidence path with cited tests.
 8. `context/agent-seam-packets-v1`: agent packets carry seam + grip + missing
 discriminator.
+
+Explicit per-seam CLI `packet.next` instructions bind commands and artifact
+writes to the selected repository root. Standalone packets include the static outcome
+producer before verify and receipt. Prepared repair packets instead advertise
+the durable after-phase continuation and leave incompatible manual steps null;
+the existing edit cage and authorization checks remain authoritative. Each
+seam packet states the edit cage its repair will enforce — `allowed_edit_surface`
+derived from the same recommended target the cage authority consumes,
+`forbidden_files` (the production file whose behavior changed), and
+`must_not_change` with the explicit terminality warning — so the disclosure
+cannot drift from enforcement (#4330). The `next` snapshot recipes are single
+plain commands without a POSIX-only directory prefix; the loop's `ripr`
+commands create their own artifact directories. The
+prepared command pins the published exact attempt selector; a finished attempt
+cannot resume a later attempt for the same seam. Explicit seam-based continuation
+still refuses ambiguous awaiting attempts. Portable bulk packets retain their local
+compatibility recipe. The standalone manual recipe assumes no retained durable
+workflow. Resume a matching awaiting attempt by its published exact selector;
+otherwise begin a fresh durable Before route for the selected seam, preserving
+retained attempts and receipt binding.
+Per-packet canonical/evidence commands remain outside this bounded claim.
+See `docs/OUTPUT_SCHEMA.md` for the additive fields and
+static evidence boundaries (#4000).
 
 ## Metrics
 

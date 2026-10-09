@@ -1,0 +1,8 @@
+[package]
+name = "rust_transitive_reach_same_name_other_type_fixture"
+version = "0.0.0"
+edition = "2024"
+
+[lib]
+name = "rust_transitive_reach_same_name_other_type_fixture"
+path = "src/lib.rs"

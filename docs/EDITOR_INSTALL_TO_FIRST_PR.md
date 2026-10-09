@@ -31,8 +31,11 @@ extension resolves the server in this order:
 6. actionable setup error
 
 For the first Rust loop, no config file is required. Rust is the default
-adapter. TypeScript, JavaScript, and Python are opt-in preview adapters and
-remain syntax-first, advisory, and static-limit bounded.
+adapter. TypeScript and JavaScript are opt-in preview adapters (`[languages]`
+in `ripr.toml`). Python preview is enabled automatically for Python-shaped
+repositories without a `ripr.toml`; an explicit `[languages]` list is
+authoritative. All preview evidence remains syntax-first, advisory, and
+static-limit bounded.
 
 ## 2. Diagnose Setup
 

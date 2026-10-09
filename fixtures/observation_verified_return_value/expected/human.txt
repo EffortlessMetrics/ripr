@@ -2,28 +2,29 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/observation_verified_return_value/input
 
-Summary: 2 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+Summary: 2 probe(s), 1 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 2 of 2 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
 
 Start here:
-  State: no_actionable_gap
+  State: no gap selected for repair (no_actionable_gap)
   Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
   File: fixtures/observation_verified_return_value/input/src/lib.rs:4
-  Static exposure: exposed (warning, confidence 1.00)
+  Static exposure: exposed (info, confidence 1.00)
   Changed behavior: x * SCALE_FACTOR
   Related test: tests/score_tests.rs:4 score_uses_scale_factor
-  Evidence:
+  Evidence: reach yes · infection yes · propagation yes · observation yes · discriminator yes
     - reach yes: Related tests appear to reach compute_score: score_uses_scale_factor
     - infection yes: Reachable tests can plausibly activate this changed behavior
-    - 7 more evidence line(s) hidden
+    - 7 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast probe:src_lib.rs:return_value:bc806f88
   ripr context --root fixtures/observation_verified_return_value/input --diff fixtures/observation_verified_return_value/diff.patch --mode fast --at probe:src_lib.rs:return_value:bc806f88
 
 Hidden:
-  1 lower-priority finding(s) omitted from default human output.
+  All 1 omitted finding(s) are base-side evidence, not candidate edit targets.
+    - fixtures/observation_verified_return_value/input/src/lib.rs:4 (static_unknown)
   Full evidence: rerun with --format human-full
   Machine data: rerun with --format json

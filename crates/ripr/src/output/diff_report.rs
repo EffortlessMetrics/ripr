@@ -270,7 +270,6 @@ pub(crate) fn build_diff_report(
             .iter()
             .map(|advisory| {
                 let analyzed = advisory.analyzed(&output.language_runs);
-                let failed_run = advisory.non_success_run(&output.language_runs);
                 DiffPreviewLanguageAdvisory {
                 language: advisory.language.clone(),
                 file_count: advisory.file_count,
@@ -280,18 +279,8 @@ pub(crate) fn build_diff_report(
                 category: "preview_language_advisory",
                 why: if analyzed {
                     "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean".to_string()
-                } else if !advisory.enabled {
-                    format!(
-                        "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
-                        advisory.language
-                    )
-                } else if let Some(run) = failed_run {
-                    format!(
-                        "preview adapter did not complete successfully ({}); files detected but not analyzed; empty result is not Rust-grade clean",
-                        run.status.as_str()
-                    )
                 } else {
-                    "preview adapter enabled but no files were routed; files not analyzed; empty result is not Rust-grade clean".to_string()
+                    advisory.unaudited_why(&output.language_runs)
                 },
             }
             })
@@ -321,19 +310,23 @@ pub(crate) fn render_diff_report_human(report: &DiffReport) -> String {
                 "analysis incomplete"
             }
         ));
-        if !outcome.outcome.limitations.is_empty() {
+        // #4952: an EOL-only churn disclosure may ride on a complete outcome,
+        // so the incomplete-scope hedge keys on the outcome itself, not on
+        // whether the limitation list is nonempty; the disclosure still
+        // renders either way.
+        if !outcome.analysis_complete {
             out.push_str(
                 "zero findings is not a clean result because the analyzed scope is incomplete.\n",
             );
-            for limitation in &outcome.outcome.limitations {
-                out.push_str(&format!(
-                    "limitation: {} at {}; recovery: {} — {}\n",
-                    limitation.kind.as_str(),
-                    limitation.producer_stage.as_str(),
-                    limitation.recovery.kind.as_str(),
-                    limitation.recovery.detail
-                ));
-            }
+        }
+        for limitation in &outcome.outcome.limitations {
+            out.push_str(&format!(
+                "limitation: {} at {}; recovery: {} — {}\n",
+                limitation.kind.as_str(),
+                limitation.producer_stage.as_str(),
+                limitation.recovery.kind.as_str(),
+                limitation.recovery.detail
+            ));
         }
     }
     out.push_str(&format!(
@@ -476,6 +469,8 @@ mod tests {
                 language_runs: Vec::new(),
                 no_scope_provided: false,
                 unanalyzed_working_tree: false,
+                untracked_working_tree_source_paths: Vec::new(),
+                unlinked_python_tests: None,
                 suppression: None,
                 analysis_outcome: None,
                 partial_scope: None,
@@ -545,6 +540,8 @@ mod tests {
                 language_runs: Vec::new(),
                 no_scope_provided: false,
                 unanalyzed_working_tree: false,
+                untracked_working_tree_source_paths: Vec::new(),
+                unlinked_python_tests: None,
                 suppression: None,
                 analysis_outcome: Some(outcome),
                 partial_scope: None,
@@ -580,6 +577,71 @@ mod tests {
         assert!(human.contains("zero findings is not a clean result"));
         assert!(human.contains("recovery: use_two_way_diff"));
         assert!(human.contains("Re-run against a two-way diff"));
+        Ok(())
+    }
+
+    // #4952: an EOL-only churn disclosure rides on a complete outcome, so the
+    // diff report must not contradict a complete outcome with the
+    // incomplete-scope hedge while still naming the limitation.
+    #[test]
+    fn diff_report_complete_outcome_with_eol_only_disclosure_drops_the_incomplete_hedge()
+    -> Result<(), String> {
+        let limitation = AnalysisLimitation::new(
+            AnalysisLimitationKind::EolOnlyChurn,
+            AnalysisStage::DiffParse,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::Retry,
+                "Normalize line endings and re-run the analysis.",
+            )?,
+        )
+        .with_affected_items(1)?;
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::CompleteWithFindings,
+            AnalysisIdentity {
+                input_identity: Some("sha256:fixture".to_string()),
+                ..AnalysisIdentity::default()
+            },
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 2,
+                finding_count: 1,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![limitation],
+        )?;
+        let report = build_diff_report(
+            &CheckOutput {
+                harness_projections: Vec::new(),
+                schema_version: "0.1".to_string(),
+                tool: "ripr".to_string(),
+                mode: Mode::Draft,
+                root: PathBuf::from("repo"),
+                base: None,
+                summary: Summary::default(),
+                findings: Vec::new(),
+                preview_language_advisories: Vec::new(),
+                language_runs: Vec::new(),
+                no_scope_provided: false,
+                unanalyzed_working_tree: false,
+                untracked_working_tree_source_paths: Vec::new(),
+                unlinked_python_tests: None,
+                suppression: None,
+                analysis_outcome: Some(outcome),
+                partial_scope: None,
+            },
+            "origin/main",
+            "HEAD",
+            Vec::new(),
+            "target/ripr/receipts/test.json".to_string(),
+        );
+
+        let human = render_diff_report_human(&report);
+        assert!(human.contains("analysis outcome: complete_with_findings (analysis complete)."));
+        assert!(
+            !human.contains("zero findings is not a clean result"),
+            "a complete outcome must not carry the incomplete-scope hedge: {human}"
+        );
+        assert!(human.contains("limitation: eol_only_churn at diff_parse"));
         Ok(())
     }
 
@@ -643,6 +705,7 @@ mod tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: Vec::new(),
             recommended_next_step: Some("Add equality-boundary assertion.".to_string()),
             language: None,
@@ -675,11 +738,14 @@ mod tests {
                     language: "typescript".to_string(),
                     file_count: 2,
                     sample_paths: vec!["src/discount.ts".to_string()],
+                    javascript_file_count: 0,
                     enabled: true,
                 }],
                 language_runs: Vec::new(),
                 no_scope_provided: false,
                 unanalyzed_working_tree: false,
+                untracked_working_tree_source_paths: Vec::new(),
+                unlinked_python_tests: None,
                 suppression: None,
                 analysis_outcome: None,
                 partial_scope: None,
@@ -730,6 +796,8 @@ mod tests {
                 language_runs: Vec::new(),
                 no_scope_provided: false,
                 unanalyzed_working_tree: false,
+                untracked_working_tree_source_paths: Vec::new(),
+                unlinked_python_tests: None,
                 suppression: None,
                 analysis_outcome: None,
                 partial_scope: None,

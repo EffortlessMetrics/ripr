@@ -5,7 +5,7 @@ Usage: ripr rerun --changed-test PATH[::TEST_NODE] [--before PATH] [--root PATH]
 
 Options:
   --changed-test PATH[::TEST_NODE]
-                       Edited Rust integration or unit-test file, optionally narrowed to one parsed test node. Required.
+                       Edited Rust integration or unit-test file, optionally narrowed to one parsed test node. Required unless --gap is used.
   --gap ID             Canonical gap identity from the explicit gap ledger.
   --gap-ledger PATH    Gap decision ledger required by --gap.
   --before PATH        Explicit prior targeted-rerun, repo-exposure, or compatible static snapshot.
@@ -21,7 +21,8 @@ every supplied ledger record with that canonical identity, scopes recomputation
 to each unique anchored file/owner, and returns only current seams with that
 same domain ID. Missing, stale, anchorless, or root-mismatched ledger selections
 become named limitations; a stale record does not hide other current scopes.
-RIPR never scans unrelated seams as a fallback.
+RIPR never scans unrelated seams as a fallback. A --gap-ledger that cannot be
+read or parsed exits 2 without a report, like an unreadable --changed-test.
 
 Both selectors reuse valid per-file facts. Without --before the receipt reports
 current_state_only and never infers movement. With an explicit compatible

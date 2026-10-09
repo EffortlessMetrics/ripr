@@ -40,6 +40,21 @@ impl AnalysisOutcomeKind {
         }
     }
 
+    /// What the outcome means, in words, for the human `check` header. The
+    /// schema value (`as_str`) is printed beside it.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::NoScope => "nothing was in scope",
+            Self::NoChangedLines => "the diff has no changed lines",
+            Self::NoBehavioralCandidates => "no changed line is behavior ripr checks",
+            Self::CompleteNoFindings => "no findings",
+            Self::CompleteWithFindings => "findings below",
+            Self::PartialWithLimitations => "limitations below",
+            Self::UnsupportedInput => "the input is not supported",
+            Self::AnalysisFailed => "the analysis failed",
+        }
+    }
+
     pub(crate) const fn is_complete(self) -> bool {
         matches!(
             self,
@@ -61,8 +76,26 @@ impl AnalysisLimitationKind {
             Self::DiffScopeOversized => "diff_scope_oversized",
             Self::LanguageAdapterUnavailable => "language_adapter_unavailable",
             Self::LanguageScopeUnsupported => "language_scope_unsupported",
+            Self::ChangedFileAbsentFromWorktree => "changed_file_absent_from_worktree",
             Self::ProducerTimeout => "producer_timeout",
             Self::ProducerFailure => "producer_failure",
+            Self::EolOnlyChurn => "eol_only_churn",
+        }
+    }
+
+    /// Plain words for human output; `as_str` stays the schema token.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::CombinedHunkUnsupported => "a combined (merge) diff hunk is not supported",
+            Self::UnresolvedConflictMarkers => "the diff has unresolved conflict markers",
+            Self::MalformedDiff => "the diff could not be parsed",
+            Self::DiffScopeOversized => "the diff is larger than the configured limit",
+            Self::LanguageAdapterUnavailable => "no analyzer is available for a changed language",
+            Self::LanguageScopeUnsupported => "some changed files were not analyzed",
+            Self::ChangedFileAbsentFromWorktree => "a changed file is absent from the working tree",
+            Self::ProducerTimeout => "the analysis ran out of time",
+            Self::ProducerFailure => "part of the analysis failed",
+            Self::EolOnlyChurn => "some files changed only in line endings",
         }
     }
 }
@@ -78,6 +111,18 @@ impl AnalysisStage {
             Self::AnalysisPipeline => "analysis_pipeline",
         }
     }
+
+    /// Plain words for human output; `as_str` stays the schema token.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::DiffLoad => "reading the diff",
+            Self::DiffParse => "parsing the diff",
+            Self::LanguageAdapter => "language analysis",
+            Self::ProbeGeneration => "probe generation",
+            Self::FindingClassification => "finding classification",
+            Self::AnalysisPipeline => "the analysis pipeline",
+        }
+    }
 }
 
 impl AnalysisRecoveryKind {
@@ -90,6 +135,19 @@ impl AnalysisRecoveryKind {
             Self::IncreaseConfiguredLimit => "increase_configured_limit",
             Self::Retry => "retry",
             Self::InspectFailure => "inspect_failure",
+        }
+    }
+
+    /// Plain words for human output; `as_str` stays the schema token.
+    pub(crate) const fn plain_label(self) -> &'static str {
+        match self {
+            Self::NarrowDiff => "narrow the diff",
+            Self::UseTwoWayDiff => "use a two-way diff",
+            Self::ResolveConflicts => "resolve the conflicts",
+            Self::EnableLanguage => "enable the language",
+            Self::IncreaseConfiguredLimit => "raise the configured limit",
+            Self::Retry => "retry",
+            Self::InspectFailure => "inspect the failure",
         }
     }
 }
@@ -114,8 +172,15 @@ pub(crate) enum AnalysisLimitationKind {
     DiffScopeOversized,
     LanguageAdapterUnavailable,
     LanguageScopeUnsupported,
+    ChangedFileAbsentFromWorktree,
     ProducerTimeout,
     ProducerFailure,
+    /// #4952: a file's changed lines pair identical before/after text at the
+    /// same positions, so the churn is line-ending-only. This is a
+    /// disclosure about the churn shape, not an incomplete analysis — the
+    /// full changed scope was read and probed — so unlike the kinds above it
+    /// may ride on a complete outcome.
+    EolOnlyChurn,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -225,7 +290,8 @@ pub(crate) struct AnalysisLimitation {
     pub(crate) kind: AnalysisLimitationKind,
     pub(crate) producer_stage: AnalysisStage,
     /// Repository-relative portable path. Absolute paths and parent traversal
-    /// are rejected before serialization.
+    /// are rejected before serialization. Whitespace belongs to the filename
+    /// and is preserved, including at the beginning or end.
     pub(crate) path: Option<String>,
     pub(crate) affected_items: Option<u64>,
     pub(crate) bounded_detail: Option<String>,
@@ -364,7 +430,9 @@ impl AnalysisOutcome {
 }
 
 pub(crate) fn normalize_portable_analysis_path(path: &str) -> Result<String, String> {
-    let normalized = path.trim().replace('\\', "/");
+    // Paths are filesystem identities, not prose: trimming can name a different
+    // existing file and disconnect a limitation from its admitted diff path.
+    let normalized = path.replace('\\', "/");
     let without_current = normalized.trim_start_matches("./");
     let bytes = without_current.as_bytes();
     let has_drive_prefix = bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':';
@@ -428,7 +496,15 @@ fn validate_outcome(
             | AnalysisOutcomeKind::CompleteNoFindings
             | AnalysisOutcomeKind::CompleteWithFindings
     );
-    if complete_or_subject_absent && !limitations.is_empty() {
+    // #4952: EolOnlyChurn is a churn-shape disclosure, not an
+    // incomplete-analysis limitation — the changed scope was fully analyzed
+    // — so a complete outcome may carry it, and only it. Every other kind
+    // still marks the outcome incomplete.
+    if complete_or_subject_absent
+        && limitations
+            .iter()
+            .any(|limitation| limitation.kind != AnalysisLimitationKind::EolOnlyChurn)
+    {
         return Err(format!(
             "analysis outcome {kind:?} cannot carry incomplete-analysis limitations"
         ));
@@ -506,6 +582,39 @@ fn validate_outcome(
 mod tests {
     use super::*;
     use std::fmt::{Debug, Display};
+
+    #[test]
+    fn limitation_plain_labels_are_words_not_schema_tokens() {
+        use AnalysisLimitationKind as K;
+        use AnalysisRecoveryKind as R;
+        use AnalysisStage as S;
+        let labels = [
+            K::CombinedHunkUnsupported.plain_label(),
+            K::UnresolvedConflictMarkers.plain_label(),
+            K::MalformedDiff.plain_label(),
+            K::DiffScopeOversized.plain_label(),
+            K::LanguageAdapterUnavailable.plain_label(),
+            K::LanguageScopeUnsupported.plain_label(),
+            K::ProducerTimeout.plain_label(),
+            K::ProducerFailure.plain_label(),
+            S::DiffLoad.plain_label(),
+            S::DiffParse.plain_label(),
+            S::LanguageAdapter.plain_label(),
+            S::ProbeGeneration.plain_label(),
+            S::FindingClassification.plain_label(),
+            S::AnalysisPipeline.plain_label(),
+            R::NarrowDiff.plain_label(),
+            R::UseTwoWayDiff.plain_label(),
+            R::ResolveConflicts.plain_label(),
+            R::EnableLanguage.plain_label(),
+            R::IncreaseConfiguredLimit.plain_label(),
+            R::Retry.plain_label(),
+            R::InspectFailure.plain_label(),
+        ];
+        for label in labels {
+            assert!(!label.is_empty() && !label.contains('_'), "{label}");
+        }
+    }
 
     fn recovery() -> Result<AnalysisRecovery, String> {
         AnalysisRecovery::new(
@@ -643,8 +752,13 @@ mod tests {
                 AnalysisLimitationKind::LanguageScopeUnsupported,
                 "language_scope_unsupported",
             ),
+            (
+                AnalysisLimitationKind::ChangedFileAbsentFromWorktree,
+                "changed_file_absent_from_worktree",
+            ),
             (AnalysisLimitationKind::ProducerTimeout, "producer_timeout"),
             (AnalysisLimitationKind::ProducerFailure, "producer_failure"),
+            (AnalysisLimitationKind::EolOnlyChurn, "eol_only_churn"),
         ];
         for (kind, expected) in limitation_kinds {
             assert_eq!(kind.as_str(), expected);
@@ -817,6 +931,64 @@ mod tests {
         )?;
         let normalized = normalize_portable_analysis_path("src\\module\\file.rs")?;
         assert_eq!(normalized, "src/module/file.rs");
+        Ok(())
+    }
+
+    #[test]
+    fn limitation_paths_preserve_whitespace_identity_through_round_trip() -> Result<(), String> {
+        let paths = [
+            "leading.py",
+            " leading.py",
+            "trailing.py ",
+            " spaced/discount.py",
+            "\tfile.rs",
+            " ",
+        ];
+        let limitations = paths
+            .iter()
+            .map(|path| {
+                limitation(AnalysisLimitationKind::ChangedFileAbsentFromWorktree)?.with_path(path)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        for (path, limitation) in paths.iter().zip(&limitations) {
+            assert_eq!(limitation.path.as_deref(), Some(*path));
+        }
+        let value = outcome(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisOutcomeCounts::default(),
+            limitations,
+        )?;
+        assert_eq!(
+            value.limitations.len(),
+            paths.len(),
+            "different file names must not deduplicate"
+        );
+        let json = serde_json::to_string(&value).map_err(|error| error.to_string())?;
+        let restored: AnalysisOutcome =
+            serde_json::from_str(&json).map_err(|error| error.to_string())?;
+        assert_eq!(restored, value);
+        assert_eq!(restored.semantic_digest()?, value.semantic_digest()?);
+        let spaced = outcome(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisOutcomeCounts::default(),
+            vec![
+                limitation(AnalysisLimitationKind::ChangedFileAbsentFromWorktree)?
+                    .with_path(" leading.py")?,
+            ],
+        )?;
+        let plain = outcome(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisOutcomeCounts::default(),
+            vec![
+                limitation(AnalysisLimitationKind::ChangedFileAbsentFromWorktree)?
+                    .with_path("leading.py")?,
+            ],
+        )?;
+        assert_ne!(spaced.semantic_digest()?, plain.semantic_digest()?);
+        assert_eq!(
+            normalize_portable_analysis_path("./ spaced\\file.rs ")?,
+            " spaced/file.rs "
+        );
         Ok(())
     }
 

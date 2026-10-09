@@ -23,6 +23,36 @@ report parsing, or ripr source edits.
 The config starts one client per resolved root. Run it only on a Neovim build that provides
 `vim.lsp.config()` / `vim.lsp.enable()`, and record the exact version; one receipt does not prove a version range.
 
+## Measured compatibility limit
+
+An isolated headless Windows rehearsal with unmodified Neovim **v0.12.5** and the installed
+rolling RIPR commit `4cdad1ace9c79c0a7c4c136081db560e3172969d` initialized successfully,
+but an explicit refresh did not display a diagnostic in the open document within
+60 seconds. The server returned a finding through workspace diagnostics. That
+client version ignores workspace results for buffers using document pull and
+does not refresh those buffers in response to `workspace/diagnostic/refresh`.
+[Neovim's upstream fix](https://github.com/neovim/neovim/commit/653f2092ce5545da3a10743e95aae435d0e0c182)
+addresses this behavior; it was absent from the tested release runtime.
+The rehearsal supplied `baseRef = "main"`, `checkMode = "draft"` and
+`seamDiagnostics = true` through standard `workspace/configuration`; it did not
+qualify the configuration defaults below.
+
+[The retained failed run](https://github.com/EffortlessMetrics/ripr-swarm/issues/1630#issuecomment-5877217051)
+and [standard document-pull discriminator](https://github.com/EffortlessMetrics/ripr-swarm/issues/1630#issuecomment-5877452052)
+are separate evidence. Bounded manual document pulls through the built-in handler
+made one diagnostic available in Neovim's buffer state, with related test
+information, hover and an advertised refresh action. This does not qualify automatic refresh, save/root-change or
+encoding parity, or a real-repository journey. The server bytes are a historical
+rolling rehearsal, not a final release candidate. This recipe remains a proof
+plan rather than a support claim.
+
+[The range readback](https://github.com/EffortlessMetrics/ripr-swarm/issues/1630#issuecomment-5877887011)
+also found a source-position mismatch: the supplied UTF-16 range converted
+correctly to buffer bytes, but highlighted `    if montant_é > discount_th`
+instead of the complete expression `montant_é > discount_threshold`. The
+expression-selection requirement in step 2 failed. This single conversion does
+not qualify source-range precision or the encoding matrix.
+
 ## Configure
 
 Open `lsp/ripr.lua`:
@@ -111,8 +141,16 @@ is a client presentation limit, not missing server evidence.
 :lua vim.lsp.buf.code_action({ filter = function(action, client_id) print(vim.inspect({ client_id = client_id, action = action })); return true end })
 ```
 
-Compare every offered command with `server_capabilities.executeCommandProvider.commands`. Zero unknown client-command
-IDs may be offered. VS Code-only actions may be absent or inert with a named disabled reason; they must not execute.
+Compare every executable command with
+`server_capabilities.executeCommandProvider.commands`. Zero unknown command IDs may be
+offered. Current RIPR lenses offer `ripr.refresh` and label the action "Refresh
+saved-workspace analysis" before the cached advisory. Invoke the real built-in lens action
+and record the resulting server request and response. This refresh does not execute tests
+or repair code.
+
+The earlier measured rehearsal used informational lenses with an empty command ID and did
+not exercise clicking them; it does not establish the current executable lens journey. VS
+Code-only actions may be absent or inert with a named disabled reason; they must not execute.
 Record unsupported or partial client presentation as `limited`.
 
 ### 4. Prove saved refresh and unchanged delivery
@@ -130,6 +168,20 @@ Save, then invoke the server-owned standard command:
 Confirm diagnostics, hover, related information, and lenses converge on saved state without restarting. Refresh again
 without another change and confirm semantic delivery is unchanged. Restore the fixture, save, refresh, and confirm
 the original observation returns.
+
+The command queues analysis; its response alone does not mean a new snapshot has
+published. Preserve a missing automatic update as a failed or limited result.
+For the v0.12.5 compatibility discriminator, after analysis finishes, request the
+open document through the standard built-in handler:
+
+```vim
+:lua local c = vim.lsp.get_clients({ name = "ripr", bufnr = 0 })[1]; if c then c:request("textDocument/diagnostic", { textDocument = { uri = vim.uri_from_bufnr(0) } }, nil, 0) else vim.notify("ripr is not attached", vim.log.levels.WARN) end
+```
+
+A request before publication can still return an empty report. Record any repeated
+manual pulls and their bound separately; the measured discriminator used at most
+one request per second for at most 60 seconds. Success through this workaround
+does not turn the automatic-refresh failure into a pass.
 
 ### 5. Prove root change and isolation
 

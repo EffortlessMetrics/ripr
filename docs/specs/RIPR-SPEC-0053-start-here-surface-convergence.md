@@ -89,6 +89,11 @@ receipt command
 receipt path
 ```
 
+`doctor` and `first-pr --check` treat a start-here packet whose `ripr_version`
+is missing or different from the running binary as `stale_evidence` and name
+the refresh command. They must not present that packet as current first-screen
+evidence.
+
 ### Receipt lifecycle
 
 Surfaces that show receipt state should distinguish:

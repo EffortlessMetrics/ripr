@@ -1,0 +1,26 @@
+pub struct Tally {
+    pub count: u32,
+    pub label: String,
+}
+
+impl Tally {
+    pub fn new() -> Self {
+        Tally { count: 0, label: String::from("x") }
+    }
+
+    pub fn tick(&mut self) {
+        self.count += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tick_adds_one() {
+        let mut c = Tally::new();
+        c.tick();
+        assert_eq!(c.count, 1);
+    }
+}

@@ -5,8 +5,8 @@ Spec: RIPR-SPEC-0028
 ## Given
 
 A Python production function changes a return value, and a pytest test in a
-different file uses a fixture parameter matching the owner file stem but does
-not call the changed owner.
+different file uses a fixture parameter matching the owner file stem and
+references the changed owner (`fee = calculate_fee`) but does not call it.
 
 The fixture workspace enables the Python preview adapter explicitly:
 
@@ -36,6 +36,8 @@ The Python preview adapter:
 
 - finds the `calculate_fee` function owner,
 - relates the pytest test through conservative fixture-name proximity,
+  because the test references the owner (a fixture-name match alone is not a
+  relation; RIPR-SPEC-0028),
 - marks the relation as uncertain,
 - keeps the related test oracle unknown,
 - emits Python preview metadata.
@@ -44,4 +46,5 @@ The Python preview adapter:
 
 - Treat fixture-name proximity as runtime proof.
 - Upgrade the relation to `exposed`.
+- Relate a test whose only link to the owner is a fixture name.
 - Execute pytest.

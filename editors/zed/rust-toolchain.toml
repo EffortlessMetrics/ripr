@@ -1,0 +1,7 @@
+# Zed builds a dev extension with `cargo build --target wasm32-wasip2` from this
+# directory, but checks for the target with the user's default toolchain. The
+# repository root pins 1.95.0 without that target, so name it here and rustup
+# installs it on the first build.
+[toolchain]
+channel = "1.95.0"
+targets = ["wasm32-wasip2"]

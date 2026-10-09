@@ -1,8 +1,9 @@
 use super::model::{
-    GapCounts, LimitationEntry, NullableU64, PrEvidenceSummaryJson, ReceiptStatusCounts,
-    TopLimitation, TopRepair, U64OrNotAvailable,
+    GapCounts, LimitationEntry, LimitationsOrNotAvailable, NullableU64, PrEvidenceSummaryJson,
+    ReceiptStatusCounts, TopLimitation, TopRepair, U64OrNotAvailable,
 };
 use super::util::value_path;
+use crate::agent::loop_commands::shell_arg;
 use serde_json::{Value, json};
 
 /// Build the in-memory summary struct from parsed artifact values.
@@ -39,13 +40,18 @@ pub fn build_pr_evidence_summary(
     let receipt_status =
         derive_receipt_status(gap_ledger_value, &missing_receipts, attempt_ledger_value);
     let (top_repair, top_repair_state) = derive_top_repair(start_here_value);
-    let top_limitation = limitations.first().map(|entry| TopLimitation {
+    let top_limitation = limitations.entries().first().map(|entry| TopLimitation {
         category: entry.category.clone(),
         repair_route: entry.repair_route.clone(),
         why_not_actionable: why_not_actionable_for_category(&entry.category),
     });
-    let local_reproduction_commands =
-        derive_local_reproduction_commands(start_here_value, diff_report_value);
+    let local_reproduction_commands = derive_local_reproduction_commands(
+        start_here_value,
+        diff_report_value,
+        top_repair
+            .as_ref()
+            .and_then(|repair| repair.repair_command.as_deref()),
+    );
 
     PrEvidenceSummaryJson {
         run_status,
@@ -142,13 +148,25 @@ fn derive_gaps(gap_ledger_value: Option<&Value>, baseline_value: Option<&Value>)
     }
 }
 
-fn derive_limitations(repo_exposure_value: Option<&Value>) -> Vec<LimitationEntry> {
-    let Some(limitations) =
-        value_path(repo_exposure_value, &["limitations"]).and_then(Value::as_array)
-    else {
-        return Vec::new();
+/// Read repo-exposure's `limitations[]`, keeping "not read" apart from "none".
+///
+/// `repo_exposure_value` is `None` when the artifact is missing or unparsable,
+/// which is the fail-closed case: nothing was established, so the field is
+/// `NotAvailable` rather than an empty list. A present artifact with no
+/// `limitations` key genuinely has none — `docs/OUTPUT_SCHEMA.md` documents
+/// that key as "present when repo exposure has a named run limitation or
+/// guidance disclosure" — so that case is an empty `Entries`. A `limitations`
+/// key that is not an array is malformed, so it is fail-closed too.
+fn derive_limitations(repo_exposure_value: Option<&Value>) -> LimitationsOrNotAvailable {
+    let Some(exposure) = repo_exposure_value else {
+        return LimitationsOrNotAvailable::NotAvailable;
     };
-    limitations
+    let limitations = match exposure.get("limitations") {
+        None => return LimitationsOrNotAvailable::Entries(Vec::new()),
+        Some(Value::Array(entries)) => entries,
+        Some(_) => return LimitationsOrNotAvailable::NotAvailable,
+    };
+    let entries = limitations
         .iter()
         .filter_map(|entry| {
             let category = entry.get("category")?.as_str()?.to_string();
@@ -162,7 +180,8 @@ fn derive_limitations(repo_exposure_value: Option<&Value>) -> Vec<LimitationEntr
                 repair_route,
             })
         })
-        .collect()
+        .collect();
+    LimitationsOrNotAvailable::Entries(entries)
 }
 
 fn derive_missing_receipts(gap_ledger_value: Option<&Value>) -> U64OrNotAvailable {
@@ -374,14 +393,23 @@ fn derive_top_repair(start_here_value: Option<&Value>) -> (Option<TopRepair>, Op
         .unwrap_or("receipt_missing")
         .to_string();
 
+    // Carried from start-here, never read from review comments here: a card
+    // read directly could pair with a different top gap than start-here's.
+    let repair_command = value_path(sel, &["repair_command"])
+        .and_then(Value::as_str)
+        .filter(|command| !command.trim().is_empty())
+        .map(ToString::to_string);
+
     (
         Some(TopRepair {
             canonical_gap_id,
             language,
             repair_kind,
             target,
+            repair_command,
             verify_command,
             receipt_command,
+            command_context: value_path(sel, &["command_context"]).cloned(),
             receipt_state,
         }),
         None,
@@ -391,19 +419,32 @@ fn derive_top_repair(start_here_value: Option<&Value>) -> (Option<TopRepair>, Op
 fn derive_local_reproduction_commands(
     start_here_value: Option<&Value>,
     diff_report_value: Option<&Value>,
+    repair_command: Option<&str>,
 ) -> Vec<String> {
     let mut commands = Vec::new();
 
-    let base = value_path(diff_report_value, &["base"])
+    // The carried repair start leads: it is the one command that begins the
+    // repair transaction for the selected seam.
+    if let Some(command) = repair_command {
+        commands.push(command.to_string());
+    }
+
+    // #3886: replay the base the artifacts recorded. Without one, omit
+    // `--base` so ripr resolves the repository's default branch rather than
+    // naming an `origin/main` that need not exist.
+    let base_arg = value_path(diff_report_value, &["base"])
+        .or_else(|| value_path(start_here_value, &["inputs", "base"]))
         .and_then(Value::as_str)
-        .unwrap_or("origin/main");
+        .map(|base| format!(" --base {}", shell_arg(base)))
+        .unwrap_or_default();
     let head = value_path(diff_report_value, &["head"])
         .and_then(Value::as_str)
         .unwrap_or("HEAD");
 
-    commands.push(format!("ripr check --base {base}"));
+    commands.push(format!("ripr check{base_arg}"));
     commands.push(format!(
-        "ripr first-pr --root . --base {base} --head {head}"
+        "ripr first-pr --root .{base_arg} --head {}",
+        shell_arg(head)
     ));
 
     // Add the verify_command from the top repair when it is a real command.
@@ -460,15 +501,25 @@ fn nullable_u64(v: &NullableU64) -> Value {
 /// Render the in-memory summary as a versioned JSON string.
 pub fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> String {
     let top_repair = match &s.top_repair {
-        Some(r) => json!({
-            "canonical_gap_id": r.canonical_gap_id,
-            "language": r.language,
-            "repair_kind": r.repair_kind,
-            "target": r.target,
-            "verify_command": r.verify_command,
-            "receipt_command": r.receipt_command,
-            "receipt_state": r.receipt_state
-        }),
+        Some(r) => {
+            let mut value = json!({
+                "canonical_gap_id": r.canonical_gap_id,
+                "language": r.language,
+                "repair_kind": r.repair_kind,
+                "target": r.target,
+                "verify_command": r.verify_command,
+                "receipt_command": r.receipt_command,
+                "receipt_state": r.receipt_state
+            });
+            if let Some(context) = &r.command_context {
+                value["command_context"] = context.clone();
+            }
+            // Present only when start-here carried it, like its source field.
+            if let Some(command) = &r.repair_command {
+                value["repair_command"] = json!(command);
+            }
+            value
+        }
         None => Value::Null,
     };
 
@@ -481,16 +532,24 @@ pub fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> String {
         None => Value::Null,
     };
 
-    let limitations: Vec<Value> = s
-        .limitations
-        .iter()
-        .map(|l| {
-            json!({
-                "category": l.category,
-                "repair_route": l.repair_route
-            })
-        })
-        .collect();
+    // `NotAvailable` renders as the string the schema names for a field whose
+    // source artifact could not be read, the same value `changed_surfaces`,
+    // `missing_receipts` and the `receipt_status` counts already use. An empty
+    // array stays an empty array, because that is repo-exposure saying none.
+    let limitations = match &s.limitations {
+        LimitationsOrNotAvailable::NotAvailable => Value::String("not_available".to_string()),
+        LimitationsOrNotAvailable::Entries(entries) => Value::Array(
+            entries
+                .iter()
+                .map(|l| {
+                    json!({
+                        "category": l.category,
+                        "repair_route": l.repair_route
+                    })
+                })
+                .collect(),
+        ),
+    };
 
     let mut gaps = json!({
         "total_actionable": u64_or_not_available(&s.gaps.total_actionable),
@@ -554,6 +613,187 @@ pub fn render_pr_evidence_summary_json(s: &PrEvidenceSummaryJson) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn require_same<T: std::fmt::Debug + PartialEq>(
+        label: &str,
+        actual: &T,
+        expected: &T,
+    ) -> Result<(), String> {
+        if actual == expected {
+            Ok(())
+        } else {
+            Err(format!("{label}: expected {expected:?}, got {actual:?}"))
+        }
+    }
+
+    /// The public pr-summary commands must pass artifact-derived Git refs as
+    /// literal argv. These values are valid branch names, including Bash syntax.
+    #[cfg(unix)]
+    #[test]
+    fn generated_reproduction_commands_preserve_hostile_refs_in_bash() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture =
+            std::env::temp_dir().join(format!("ripr-pr-summary-bash-{}", std::process::id()));
+        std::fs::create_dir(&fixture)
+            .map_err(|err| format!("create Bash fixture {}: {err}", fixture.display()))?;
+        let result = (|| {
+            let ripr = fixture.join("ripr");
+            let log = fixture.join("argv.bin");
+            let script = fixture.join("reproduce.sh");
+            std::fs::write(
+                &ripr,
+                b"#!/usr/bin/env bash\nprintf '__CALL__\\0' >> \"$RIPR_ARGV_LOG\"\nprintf '%s\\0' \"$@\" >> \"$RIPR_ARGV_LOG\"\nprintf '__END__\\0' >> \"$RIPR_ARGV_LOG\"\n",
+            )
+            .map_err(|err| format!("write argv recorder: {err}"))?;
+            std::fs::set_permissions(&ripr, std::fs::Permissions::from_mode(0o755))
+                .map_err(|err| format!("make argv recorder executable: {err}"))?;
+
+            let path = format!(
+                "{}:{}",
+                fixture.display(),
+                std::env::var("PATH").map_err(|err| format!("read PATH: {err}"))?
+            );
+            for (base, head) in [
+                ("topic/a$(printf${IFS}x)", "topic/a;true"),
+                ("topic/it's", "topic/it's"),
+            ] {
+                let start_here = serde_json::json!({
+                    "selected": {
+                        "state": "top_gap",
+                        "repair_command": "ripr agent repair --phase before",
+                        "verify_command": "cargo test boundary && cargo test nearby"
+                    }
+                });
+                let diff = serde_json::json!({"base": base, "head": head});
+                let summary = build_pr_evidence_summary(
+                    Some(&start_here),
+                    None,
+                    None,
+                    Some(&diff),
+                    None,
+                    None,
+                );
+                let commands = &summary.local_reproduction_commands;
+                require_same("command denominator", &commands.len(), &4)?;
+                require_same(
+                    "carried repair command",
+                    &commands.first().map(String::as_str),
+                    &Some("ripr agent repair --phase before"),
+                )?;
+                require_same(
+                    "carried verify command",
+                    &commands.get(3).map(String::as_str),
+                    &Some("cargo test boundary && cargo test nearby"),
+                )?;
+
+                let check = commands
+                    .get(1)
+                    .ok_or_else(|| "missing generated check command".to_string())?;
+                let first_pr = commands
+                    .get(2)
+                    .ok_or_else(|| "missing generated first-pr command".to_string())?;
+
+                std::fs::write(&log, b"").map_err(|err| format!("reset argv log: {err}"))?;
+                std::fs::write(&script, format!("set -e\n{check}\n{first_pr}\n"))
+                    .map_err(|err| format!("write generated Bash script: {err}"))?;
+                let output = std::process::Command::new("bash")
+                    .arg(&script)
+                    .env("PATH", &path)
+                    .env("RIPR_ARGV_LOG", &log)
+                    .output()
+                    .map_err(|err| format!("execute generated Bash commands: {err}"))?;
+                if !output.status.success() {
+                    return Err(format!(
+                        "generated Bash commands failed for {base:?}/{head:?}: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+                let bytes = std::fs::read(&log)
+                    .map_err(|err| format!("read Bash argv transcript: {err}"))?;
+                let actual = bytes
+                    .split(|byte| *byte == 0)
+                    .filter(|part| !part.is_empty())
+                    .map(|part| String::from_utf8_lossy(part).into_owned())
+                    .collect::<Vec<_>>();
+                let expected = [
+                    "__CALL__", "check", "--base", base, "__END__", "__CALL__", "first-pr",
+                    "--root", ".", "--base", base, "--head", head, "__END__",
+                ]
+                .into_iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+                require_same("Bash argv transcript", &actual, &expected)?;
+            }
+            Ok(())
+        })();
+        let cleanup = std::fs::remove_dir_all(&fixture)
+            .map_err(|err| format!("remove Bash fixture {}: {err}", fixture.display()));
+        match (result, cleanup) {
+            (Err(test_error), Err(cleanup_error)) => Err(format!("{test_error}; {cleanup_error}")),
+            (Err(test_error), Ok(())) => Err(test_error),
+            (Ok(()), Err(cleanup_error)) => Err(cleanup_error),
+            (Ok(()), Ok(())) => Ok(()),
+        }
+    }
+
+    #[test]
+    fn generated_reproduction_commands_keep_base_authority_and_carried_commands()
+    -> Result<(), String> {
+        let start_here = serde_json::json!({
+            "inputs": {"base": "fallback/branch"},
+            "selected": {
+                "state": "top_gap",
+                "repair_command": "ripr agent repair --phase before",
+                "verify_command": "cargo test boundary && cargo test nearby"
+            }
+        });
+        let diff = serde_json::json!({"base": "origin/main", "head": "HEAD"});
+        let selected =
+            build_pr_evidence_summary(Some(&start_here), None, None, Some(&diff), None, None);
+        let selected_expected = [
+            "ripr agent repair --phase before",
+            "ripr check --base origin/main",
+            "ripr first-pr --root . --base origin/main --head HEAD",
+            "cargo test boundary && cargo test nearby",
+        ]
+        .map(ToString::to_string)
+        .to_vec();
+        require_same(
+            "diff-report base precedence and carried commands",
+            &selected.local_reproduction_commands,
+            &selected_expected,
+        )?;
+
+        let fallback = build_pr_evidence_summary(Some(&start_here), None, None, None, None, None);
+        let fallback_actual = fallback
+            .local_reproduction_commands
+            .get(1..3)
+            .ok_or_else(|| "missing fallback generated commands".to_string())?
+            .to_vec();
+        let fallback_expected = [
+            "ripr check --base fallback/branch",
+            "ripr first-pr --root . --base fallback/branch --head HEAD",
+        ]
+        .map(ToString::to_string)
+        .to_vec();
+        require_same(
+            "start-here base fallback",
+            &fallback_actual,
+            &fallback_expected,
+        )?;
+
+        let absent = build_pr_evidence_summary(None, None, None, None, None, None);
+        let absent_expected = ["ripr check", "ripr first-pr --root . --head HEAD"]
+            .map(ToString::to_string)
+            .to_vec();
+        require_same(
+            "absent base and default head",
+            &absent.local_reproduction_commands,
+            &absent_expected,
+        )?;
+        Ok(())
+    }
 
     fn missing_all() -> PrEvidenceSummaryJson {
         build_pr_evidence_summary(None, None, None, None, None, None)
@@ -666,6 +906,112 @@ mod tests {
         Ok(())
     }
 
+    /// #3906: pr-summary carries start-here's `selected.repair_command`
+    /// unchanged into `top_repair` and leads the local reproduction commands
+    /// with it; a top gap without one keeps today's shape and order.
+    #[test]
+    fn start_here_repair_command_is_carried_into_top_repair() -> Result<(), String> {
+        let command = "ripr agent repair --root crates/pricing --seam-id seam-b --phase before";
+        let start_here = |repair_command: Option<&str>| {
+            let mut value = serde_json::json!({
+                "status": "actionable",
+                "selected": {
+                    "state": "top_gap",
+                    "canonical_gap_id": "gap:seam-b",
+                    "seam_id": "seam-b",
+                    "language": "rust",
+                    "repair": {"route": "AgentRepairTransaction", "target_file": "tests/pricing.rs"},
+                    "verify_command": "ripr agent verify --root . --json",
+                    "receipt_command": "ripr agent receipt --root . --seam-id seam-b --json"
+                }
+            });
+            if let Some(command) = repair_command {
+                value["selected"]["repair_command"] = serde_json::json!(command);
+            }
+            value
+        };
+
+        let with = build_pr_evidence_summary(
+            Some(&start_here(Some(command))),
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let repair = with
+            .top_repair
+            .as_ref()
+            .ok_or_else(|| "top_repair must be present".to_string())?;
+        assert_eq!(repair.repair_command.as_deref(), Some(command));
+        assert_eq!(
+            with.local_reproduction_commands.first().map(String::as_str),
+            Some(command)
+        );
+        let json: Value = serde_json::from_str(&render_pr_evidence_summary_json(&with))
+            .map_err(|err| format!("parse summary json: {err}"))?;
+        assert_eq!(json["top_repair"]["repair_command"], command);
+        let md = crate::app::pr_summary::render_evidence_summary_md(&with);
+        let start = md
+            .find(&format!("- start repair: `{command}`\n"))
+            .ok_or_else(|| format!("missing start repair line:\n{md}"))?;
+        // #3906 (F60-14): the after phase follows the start, and verify and
+        // receipt are the manual alternative, not peer steps.
+        let after = md
+            .find(&format!(
+                "- {}: {}\n",
+                crate::output::first_pr::REPAIR_AFTER_PHASE_LABEL.to_lowercase(),
+                crate::output::first_pr::REPAIR_AFTER_PHASE_STEP
+            ))
+            .ok_or_else(|| format!("missing after-phase line:\n{md}"))?;
+        let verify = md
+            .find(&format!(
+                "- {}: `",
+                crate::output::first_pr::MANUAL_VERIFY_LABEL.to_lowercase()
+            ))
+            .ok_or_else(|| format!("missing manual verify line:\n{md}"))?;
+        let receipt = md
+            .find(&format!(
+                "- {}: `",
+                crate::output::first_pr::MANUAL_RECEIPT_LABEL.to_lowercase()
+            ))
+            .ok_or_else(|| format!("missing manual receipt line:\n{md}"))?;
+        assert!(start < after && after < verify && verify < receipt, "{md}");
+        assert!(!md.contains("- verify: `"), "{md}");
+        assert!(!md.contains("- receipt: `"), "{md}");
+
+        // Negative: a top gap without a carried start renders none, and
+        // pr-summary does not rebuild one from `seam_id`.
+        let without =
+            build_pr_evidence_summary(Some(&start_here(None)), None, None, None, None, None);
+        let repair = without
+            .top_repair
+            .as_ref()
+            .ok_or_else(|| "top_repair must be present".to_string())?;
+        assert_eq!(repair.repair_command, None);
+        assert_eq!(
+            without
+                .local_reproduction_commands
+                .first()
+                .map(String::as_str),
+            Some("ripr check")
+        );
+        let json = render_pr_evidence_summary_json(&without);
+        assert!(!json.contains("repair_command"), "{json}");
+        assert!(!json.contains("agent repair"), "{json}");
+        let md = crate::app::pr_summary::render_evidence_summary_md(&without);
+        assert!(!md.contains("start repair"), "{md}");
+        assert!(!md.contains("without a repair attempt"), "{md}");
+        assert!(
+            md.contains(&format!(
+                "- {}: `",
+                crate::output::first_pr::VERIFY_AFTER_EDIT_LABEL.to_lowercase()
+            )),
+            "{md}"
+        );
+        Ok(())
+    }
+
     /// Local Reproduction Commands must offer both shells (#2628): each
     /// command is fenced `bash` (byte-identical command bytes) followed by its
     /// `powershell` translation, and a redirect in the verify command becomes
@@ -692,15 +1038,15 @@ mod tests {
             markdown.contains("cmd.exe is not supported."),
             "command presentation must state the cmd.exe boundary:\n{markdown}"
         );
-        // The default derived commands keep byte-identical bash bytes and gain
-        // their PowerShell pairs.
+        // A command that runs unchanged in PowerShell keeps its bash bytes and
+        // gains no second, identical block (F60-12).
         assert!(
-            markdown.contains("```bash\nripr check --base origin/main\n```\n\n"),
+            markdown.contains("```bash\nripr check\n```\n\n"),
             "bash form drifted:\n{markdown}"
         );
         assert!(
-            markdown.contains("```powershell\nripr check --base origin/main\n```\n\n"),
-            "powershell form missing or drifted:\n{markdown}"
+            !markdown.contains("```powershell\nripr check\n```"),
+            "an unchanged command must not repeat as a PowerShell block:\n{markdown}"
         );
         // A redirecting verify command round-trips through the shared
         // translation: bash bytes unchanged, PowerShell gets the guarded
@@ -710,7 +1056,7 @@ mod tests {
             markdown.contains(bash_form),
             "bash verify command drifted:\n{markdown}"
         );
-        let powershell_form = "```powershell\n$ripr = ((cargo test boundary) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('evidence.txt', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n\n";
+        let powershell_form = "```powershell\n$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((cargo test boundary) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('evidence.txt'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n\n";
         assert!(
             markdown.contains(powershell_form),
             "powershell verify command missing or drifted:\n{markdown}"
@@ -928,8 +1274,11 @@ mod tests {
         });
         let s = build_pr_evidence_summary(None, None, Some(&repo), None, None, None);
         assert_eq!(s.run_status, "unknown");
-        assert_eq!(s.limitations.len(), 1);
-        assert_eq!(s.limitations[0].category, "repo_seam_limit_applied");
+        assert_eq!(s.limitations.entries().len(), 1);
+        assert_eq!(
+            s.limitations.entries()[0].category,
+            "repo_seam_limit_applied"
+        );
         let top_lim = match s.top_limitation.as_ref() {
             Some(l) => l,
             None => return Err("top_limitation must be present".to_string()),
@@ -941,6 +1290,107 @@ mod tests {
             top_lim.why_not_actionable
         );
         Ok(())
+    }
+
+    /// An absent repo-exposure artifact leaves limitations not established,
+    /// not established as none.
+    ///
+    /// `docs/OUTPUT_SCHEMA.md` states the rule for this summary: "Failure to
+    /// load any artifact is fail-closed: the affected field is set to
+    /// `"not_available"` or `null`." Every other field already honours it, so
+    /// a run that read nothing rendered eleven `not_available` fields beside
+    /// `## Limitations` / `- none`, which reads as a finding.
+    #[test]
+    fn absent_repo_exposure_does_not_report_limitations_as_none() -> Result<(), String> {
+        let summary = build_pr_evidence_summary(None, None, None, None, None, None);
+        let json = render_pr_evidence_summary_json(&summary);
+        let markdown = crate::app::pr_summary::render_evidence_summary_md(&summary);
+
+        let mut failures: Vec<String> = Vec::new();
+        if !matches!(summary.limitations, LimitationsOrNotAvailable::NotAvailable) {
+            failures.push("limitations is not NotAvailable with no repo exposure".to_string());
+        }
+        if !json.contains("\"limitations\": \"not_available\"") {
+            failures.push(format!(
+                "json does not carry not_available limitations: {json}"
+            ));
+        }
+        if !markdown.contains("## Limitations\n\n- not_available\n") {
+            failures.push("markdown does not render limitations as not_available".to_string());
+        }
+        if markdown.contains("## Limitations\n\n- none\n") {
+            failures.push("markdown still reports no limitations as a finding".to_string());
+        }
+        if !markdown.contains("## Top Limitation\n\n- not_available\n") {
+            failures
+                .push("markdown does not render the top limitation as not_available".to_string());
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
+    /// A repo-exposure artifact that was read and names no limitation still
+    /// reports `none`, and that is the only case that may.
+    ///
+    /// `docs/OUTPUT_SCHEMA.md` documents repo-exposure's `limitations[]` as
+    /// "present when repo exposure has a named run limitation or guidance
+    /// disclosure", so the key being absent from a present artifact is the
+    /// producer saying there were none.
+    #[test]
+    fn read_repo_exposure_with_no_limitation_still_reports_none() -> Result<(), String> {
+        let repo = serde_json::json!({ "run_status": "complete" });
+        let summary = build_pr_evidence_summary(None, None, Some(&repo), None, None, None);
+        let json = render_pr_evidence_summary_json(&summary);
+        let markdown = crate::app::pr_summary::render_evidence_summary_md(&summary);
+
+        let mut failures: Vec<String> = Vec::new();
+        match &summary.limitations {
+            LimitationsOrNotAvailable::Entries(entries) if entries.is_empty() => {}
+            LimitationsOrNotAvailable::Entries(entries) => {
+                failures.push(format!(
+                    "{} limitations from an artifact with none",
+                    entries.len()
+                ));
+            }
+            LimitationsOrNotAvailable::NotAvailable => {
+                failures
+                    .push("a read artifact with no limitations reported not_available".to_string());
+            }
+        }
+        if !json.contains("\"limitations\": []") {
+            failures.push(format!(
+                "json does not carry an empty limitations array: {json}"
+            ));
+        }
+        if !markdown.contains("## Limitations\n\n- none\n") {
+            failures.push("markdown does not report none for a read artifact".to_string());
+        }
+        // Both sections answer from `empty_state_line`, so both are pinned in
+        // both states: a single-site change is what used to be possible here.
+        if !markdown.contains("## Top Limitation\n\n- none\n") {
+            failures.push("top limitation does not report none for a read artifact".to_string());
+        }
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
+        }
+    }
+
+    /// A `limitations` key that is not an array is malformed input, so it is
+    /// fail-closed rather than read as an absent key.
+    #[test]
+    fn malformed_limitations_are_not_read_as_none() -> Result<(), String> {
+        let repo = serde_json::json!({ "run_status": "complete", "limitations": {} });
+        let summary = build_pr_evidence_summary(None, None, Some(&repo), None, None, None);
+        if matches!(summary.limitations, LimitationsOrNotAvailable::NotAvailable) {
+            Ok(())
+        } else {
+            Err("a non-array limitations value was read as a limitation list".to_string())
+        }
     }
 
     #[test]

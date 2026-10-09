@@ -2,29 +2,31 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/opaque_fixture_builder/input
 
-Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+Summary: 1 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 1 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 Start here:
-  State: static_limited
+  State: limited by static analysis (static_limited)
   Safe next action: inspect the named static limitation before treating this as repair-ready.
   File: fixtures/opaque_fixture_builder/input/src/lib.rs:2
-  Static exposure: infection_unknown (warning, confidence 0.66)
-  Why infection_unknown: the change reaches a sink but infection could not be determined statically
+  Static exposure: unknown (infection_unknown, warning, confidence 0.66)
+  Why unknown: the change reaches a sink but infection could not be determined statically
   Changed behavior: amount >= 100
-  Missing discriminator: No detected boundary input for the changed predicate
+  Missing discriminator (1 of 2): No detected boundary input for the changed predicate
   Related test: tests/pricing.rs:16 fixture_builder_case_has_no_discount
   Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
-  Evidence:
+  Evidence: reach yes · infection unknown · propagation yes · observation yes · discriminator not established
     - reach yes: Related tests appear to reach discounted_total: fixture_builder_case_has_no_discount
     - infection unknown: Related tests use opaque fixtures; activation/infection is unknown
-    - 5 more evidence line(s) hidden
+    - 5 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/opaque_fixture_builder/input --diff fixtures/opaque_fixture_builder/diff.patch --mode fast probe:src_lib.rs:predicate:e177493b
   ripr context --root fixtures/opaque_fixture_builder/input --diff fixtures/opaque_fixture_builder/diff.patch --mode fast --at probe:src_lib.rs:predicate:e177493b
+Write a test for it:
+  ripr agent stub --root fixtures/opaque_fixture_builder/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

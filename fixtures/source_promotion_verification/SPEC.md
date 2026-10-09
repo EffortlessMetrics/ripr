@@ -86,6 +86,21 @@ source-authoritative changelog drift, and post-main histories are rejected with
 reason-bearing checks. Receipt booleans are derived from those verification
 results, and caller state is unchanged after every run.
 
+## Static analyzer model control
+
+The analyzer golden is a separate, minimal source model in `input/src/lib.rs`.
+Its committed diff changes `verify_join`'s length boundary from 39 to 40 and
+names that existing input file. The model has no tests: exactly one predicate
+finding must remain on the real boundary with `no_static_path`. This is a
+named static limitation, not proof that the graph verifier accepted or rejected
+any history. The executable graph/receipt checks above remain owned by the
+focused source-promotion verifier tests.
+
+An absent `xtask/src/reports/source_promotion_verify.rs` path is not a substitute
+for the model. The fixture must not silently collapse to zero probes/findings,
+change the boundary source, or infer executable verifier qualification from
+this static analyzer output.
+
 ## Must Not
 
 - Treat a tree-equivalent squash or cherry-pick as the declared history join.

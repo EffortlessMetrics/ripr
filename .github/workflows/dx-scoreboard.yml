@@ -1,0 +1,53 @@
+name: DX Scoreboard
+
+# Nightly developer-experience scoreboards (speed, ci, trust, paste,
+# first_run, agent) on the pinned real-repository corpus in
+# benchmarks/dx_scoreboard/scoreboards.toml. Advisory: the report is an
+# artifact, and the gate fails this lane only when a metric regresses past
+# its margin against metrics/dx-scoreboard/baseline.json or an instrument
+# breaks. Wall-time and memory compare only against a same-runner baseline.
+# The `corpus` board is gated by rust-corpus.yml, which ingests its receipt,
+# and the `ranking` board by pilot-ranking.yml.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 7 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dx-scoreboard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scoreboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      # Ingested metrics (first-run walk, mutation spot-check, agent-as-user)
+      # have no receipt here, so the gate cannot compare them; the report
+      # lists them under "Not compared with the baseline". The corpus lives
+      # outside target/ because rust-cache saves target/ and restores the
+      # checkouts without a usable .git (#6726).
+      - name: Measure developer-experience scoreboards
+        run: cargo xtask dx-scoreboard --clone --include-heavy --corpus-dir "$RUNNER_TEMP/dx-scoreboard-corpus" --baseline metrics/dx-scoreboard/baseline.json --gate
+
+      - name: Upload scoreboard report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: dx-scoreboard
+          path: target/ripr/reports/dx-scoreboard.*
+          if-no-files-found: warn

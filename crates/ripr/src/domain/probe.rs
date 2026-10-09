@@ -97,6 +97,60 @@ impl StopReason {
         }
     }
 
+    /// Plain-English gloss for human output (#4323). The snake_case token
+    /// stays the machine identity; this says why the static path stopped. Each
+    /// gloss names a limit of ripr's model, never a coverage or runtime claim.
+    /// Reasons produced by a lexical heuristic (`FixtureOpaque`,
+    /// `AsyncBoundaryOpaque`) say "mentions ... may", not a confirmed fact.
+    pub fn describe(&self) -> &'static str {
+        match self {
+            StopReason::MaxDepthReached => {
+                "the bounded call walk reached its depth limit before finding a test"
+            }
+            StopReason::ExternalCrateBoundary => {
+                "the path crosses into another crate, which ripr does not analyze"
+            }
+            StopReason::DynamicDispatchUnresolved => {
+                "the path goes through a dynamic call ripr cannot resolve statically"
+            }
+            StopReason::ProcMacroOpaque => {
+                "the changed expression contains a macro call whose expansion ripr does not see"
+            }
+            StopReason::FixtureOpaque => {
+                "a related test mentions a fixture, builder, or generator, so its inputs may \
+                 come from values ripr does not evaluate"
+            }
+            StopReason::FeatureUnknown => {
+                "the code depends on a Cargo feature or cfg ripr could not resolve"
+            }
+            StopReason::AsyncBoundaryOpaque => {
+                "the changed expression mentions async, spawn, or await, so the path may cross \
+                 a task boundary ripr does not follow"
+            }
+            StopReason::NoChangedRustLine => {
+                "ripr could not place the changed line inside a Rust function it analyzes"
+            }
+            StopReason::InfectionEvidenceUnknown => {
+                "ripr could not tell whether a test input reaches a value that makes the \
+                 change matter"
+            }
+            StopReason::PropagationEvidenceUnknown => {
+                "ripr could not tell whether the changed value flows to something a test \
+                 observes"
+            }
+            StopReason::StaticProbeUnknown => {
+                "ripr could not model this change well enough to classify it"
+            }
+            StopReason::TransitiveReachUnresolved => {
+                "a candidate test path exists but passes through calls ripr only matched by \
+                 name"
+            }
+            StopReason::MacroReachUnresolved => {
+                "a candidate test path stops at a same-repo macro ripr does not expand"
+            }
+        }
+    }
+
     pub fn for_unknown_class(class: &ExposureClass) -> Option<Self> {
         match class {
             ExposureClass::InfectionUnknown => Some(StopReason::InfectionEvidenceUnknown),
@@ -205,14 +259,18 @@ impl ValueContext {
     }
 }
 
-/// A single observed value extracted from a test assertion.
+/// A value found or statically derived from test source.
 ///
-/// The `text` field holds the full assertion source text; it is used by the
-/// human renderer.  The JSON renderer (schema 0.2+) **deduplicates** it into a
-/// finding-level `assertion_texts` map keyed by line number, so `text` does
-/// **not** appear in per-value objects in the JSON output.  Downstream JSON
-/// consumers should recover the assertion source via
-/// `finding.assertion_texts[line.to_string()]`.
+/// This fact does not establish assertion execution, oracle admission or
+/// observation of the changed behavior. It can retain values from refused
+/// assertions and bounded static value-transfer expressions. `context` records
+/// the source/value origin, not an execution state.
+///
+/// The `text` field holds retained source or value-transfer provenance. The
+/// JSON renderer deduplicates shared text into the finding-level
+/// `assertion_texts` map keyed by line number. Per-value objects retain optional
+/// `provenance` when their text differs from that shared entry; otherwise
+/// consumers recover it via `finding.assertion_texts[line.to_string()]`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValueFact {
     pub line: usize,
@@ -226,6 +284,33 @@ pub struct MissingDiscriminatorFact {
     pub value: String,
     pub reason: String,
     pub flow_sink: Option<FlowSinkFact>,
+}
+
+/// The missing discriminator that names an input boundary a test never
+/// reaches. Only predicate probes produce one, and its value is always
+/// `left == right` (`classify::activation::missing_boundary_discriminator`);
+/// error-variant and field facts name an assertion that is missing instead.
+pub(crate) fn input_boundary_fact<'a>(
+    facts: &'a [MissingDiscriminatorFact],
+    family: &ProbeFamily,
+) -> Option<&'a MissingDiscriminatorFact> {
+    if *family != ProbeFamily::Predicate {
+        return None;
+    }
+    facts.iter().find(|fact| fact.value.contains(" == "))
+}
+
+/// The missing discriminator that names an exact assertion no test makes
+/// (an error variant or a constructed field): the first fact that is not the
+/// predicate input boundary.
+pub(crate) fn exact_assertion_fact<'a>(
+    facts: &'a [MissingDiscriminatorFact],
+    family: &ProbeFamily,
+) -> Option<&'a MissingDiscriminatorFact> {
+    let boundary = input_boundary_fact(facts, family);
+    facts
+        .iter()
+        .find(|fact| boundary.is_none_or(|boundary| !std::ptr::eq(*fact, boundary)))
 }
 
 /// Prefix the classifier puts on the value-shaped entries of `Finding.missing`.
@@ -254,6 +339,8 @@ pub struct FindingCanonicalGap {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActivationEvidence {
+    /// Historical field name for source values; see ValueFact's non-execution
+    /// contract. Oracle observation remains a separate admitted stage.
     pub observed_values: Vec<ValueFact>,
     pub missing_discriminators: Vec<MissingDiscriminatorFact>,
 }
@@ -273,6 +360,74 @@ pub struct RelatedTest {
     /// Confidence that this test grips the changed behavior. `None` when
     /// `relation_reason` is `None`. Derived from `relation_reason` when set.
     pub relation_confidence: Option<crate::domain::RelationConfidence>,
+    /// Why this test does not catch the changed behavior, when ripr can say.
+    /// `None` for a test whose oracle supports the finding's class, and for
+    /// findings from producers that do not record it. Evidence only: no
+    /// classification decision reads this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub miss: Option<RelatedTestMiss>,
+}
+
+impl RelatedTest {
+    /// True for a test ripr examined whose assertions it matched against the
+    /// changed behavior and found none that apply. Such a test is listed as
+    /// evidence, but it supplied no oracle row, so gates that ask "did any
+    /// related test survive oracle matching" must skip it.
+    pub fn is_unmatched(&self) -> bool {
+        matches!(self.miss, Some(RelatedTestMiss::AssertionNotObserving))
+    }
+}
+
+/// Why one examined test would not notice the changed behavior being wrong.
+///
+/// Each value names a concrete, checkable fact about the test so a reader can
+/// open it and agree or disagree. Registered in `policy/output_contracts.txt`
+/// and documented in `docs/OUTPUT_SCHEMA.md`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RelatedTestMiss {
+    /// Linked by name or file location only; no call from the test to the
+    /// changed code was found.
+    NoCallPath,
+    /// The test contains no assertion ripr recognizes.
+    NoAssertion,
+    /// The test asserts, but none of its assertions observe the changed value,
+    /// error, field, or effect.
+    AssertionNotObserving,
+    /// The test has an assertion ripr declined to credit because it could not
+    /// establish that the assertion runs or what the macro binds to.
+    AssertionNotCredited,
+    /// The assertion observes the behavior only weakly (for example
+    /// `is_ok()` or a smoke check), so it cannot tell the old value from the
+    /// new one.
+    WeakAssertion,
+    /// The assertion observes the behavior, but no test input reaches the
+    /// value that separates the old behavior from the new one.
+    MissingInput,
+    /// The assertion observes the behavior, but none pins the exact value the
+    /// change alters (an error variant or a constructed field), so a wrong
+    /// value of the same shape still passes.
+    MissingExactAssertion,
+    /// The assertion has the right shape, but ripr could not confirm that it
+    /// observes this change rather than a sibling value (Rust: its text never
+    /// names the changed expression; Perl: the packet establishes no sink
+    /// alignment). An unknown, not an established miss.
+    ObservationUnconfirmed,
+}
+
+impl RelatedTestMiss {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NoCallPath => "no_call_path",
+            Self::NoAssertion => "no_assertion",
+            Self::AssertionNotObserving => "assertion_not_observing",
+            Self::AssertionNotCredited => "assertion_not_credited",
+            Self::WeakAssertion => "weak_assertion",
+            Self::MissingInput => "missing_input",
+            Self::MissingExactAssertion => "missing_exact_assertion",
+            Self::ObservationUnconfirmed => "observation_unconfirmed",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -288,6 +443,13 @@ pub struct Finding {
     pub flow_sinks: Vec<FlowSinkFact>,
     pub activation: ActivationEvidence,
     pub stop_reasons: Vec<StopReason>,
+    /// Number of matched related-test/oracle rows after the existing dedup,
+    /// before bounded unique-first packing. Metadata only: the retained
+    /// related_tests vector remains the semantic/selection input.
+    /// Older producers and artifacts omit this field and retain their known
+    /// vector count; absence cannot establish how many rows were discarded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub related_tests_matched_total: Option<usize>,
     pub related_tests: Vec<RelatedTest>,
     pub recommended_next_step: Option<String>,
     /// Source language the adapter that produced this finding identifies as.
@@ -419,6 +581,22 @@ pub const ORACLE_ALIGNMENT_VALUES: [&str; 5] = [
 ];
 
 impl Finding {
+    /// Related tests that supplied an oracle row or a refusal, skipping tests
+    /// listed only as examined misses (see [`RelatedTest::is_unmatched`]).
+    /// Gates that predate #5344 asked whether this set was empty.
+    pub fn oracle_related_tests(&self) -> impl Iterator<Item = &RelatedTest> {
+        self.related_tests
+            .iter()
+            .filter(|test| !test.is_unmatched())
+    }
+
+    /// Public count projection without changing retained evidence or selection.
+    pub fn related_tests_total(&self) -> usize {
+        self.related_tests_matched_total
+            .unwrap_or(self.related_tests.len())
+            .max(self.related_tests.len())
+    }
+
     pub fn unknown_has_stop_reason(&self) -> bool {
         !self.class.requires_stop_reason() || !self.stop_reasons.is_empty()
     }
@@ -448,6 +626,32 @@ impl Finding {
 
 #[cfg(test)]
 mod tests {
+
+    /// #4323: every stop-reason gloss is one clean clause (no whitespace runs
+    /// from broken literal continuations) and differs from its token.
+    #[test]
+    fn stop_reason_glosses_are_clean_prose() {
+        for reason in [
+            StopReason::MaxDepthReached,
+            StopReason::ExternalCrateBoundary,
+            StopReason::DynamicDispatchUnresolved,
+            StopReason::ProcMacroOpaque,
+            StopReason::FixtureOpaque,
+            StopReason::FeatureUnknown,
+            StopReason::AsyncBoundaryOpaque,
+            StopReason::NoChangedRustLine,
+            StopReason::InfectionEvidenceUnknown,
+            StopReason::PropagationEvidenceUnknown,
+            StopReason::StaticProbeUnknown,
+            StopReason::TransitiveReachUnresolved,
+            StopReason::MacroReachUnresolved,
+        ] {
+            let gloss = reason.describe();
+            assert!(!gloss.contains("  "), "{}: {gloss}", reason.as_str());
+            assert!(!gloss.contains('_'), "{}: {gloss}", reason.as_str());
+            assert!(!gloss.ends_with('.'), "{}: {gloss}", reason.as_str());
+        }
+    }
     use super::{FlowSinkKind, StopReason, ValueContext};
     use crate::domain::ExposureClass;
 

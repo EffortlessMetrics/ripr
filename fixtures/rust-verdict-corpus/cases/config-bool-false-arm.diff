@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c2dc09a..226f0a3 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -88,7 +88,7 @@ pub fn parse_log_level(value: &str) -> Result<LogLevel, ConfigError> {
+ pub fn parse_bool(value: &str) -> Option<bool> {
+     match value {
+         "true" | "yes" | "on" | "1" => Some(true),
+-        "false" | "no" | "off" | "0" => Some(false),
++        "0" | "false" | "no" | "off" => Some(false),
+         _ => None,
+     }
+ }

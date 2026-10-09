@@ -173,6 +173,29 @@ class NpmNativeEvidenceTests(unittest.TestCase):
 
 
 class NpmPackageTests(unittest.TestCase):
+    def test_consumer_native_banner_binds_raw_version_and_full_clean_source_sha(self):
+        pin = {"native_version": "0.11.0-alpha.2",
+               "product_source_sha": "6d438e6afb43c92f3a7faa7a314c94485013c19d"}
+        actual = "ripr 0.11.0-alpha.2 (6d438e6afb43c92f3a7faa7a314c94485013c19d)"
+        self.assertTrue(CONSUMER.native_version_matches(actual, pin))
+        for name, banner in (
+                ("wrong-native-version", "ripr 0.11.0-alpha.3 (" + pin["product_source_sha"] + ")"),
+                ("wrong-source", "ripr 0.11.0-alpha.2 (" + "a" * 40 + ")"),
+                ("short-source", "ripr 0.11.0-alpha.2 (6d438e6)"),
+                ("missing-source", "ripr 0.11.0-alpha.2"),
+                ("dirty-source", "ripr 0.11.0-alpha.2 (" + pin["product_source_sha"] + "-dirty)"),
+                ("python-normalized-version", "ripr 0.11.0a2 (" + pin["product_source_sha"] + ")")):
+            with self.subTest(name=name):
+                self.assertFalse(CONSUMER.native_version_matches(banner, pin))
+        for field, value in (("native_version", "0.11.0-alpha.3"),
+                             ("product_source_sha", "a" * 40)):
+            with self.subTest(pin_field=field):
+                self.assertFalse(CONSUMER.native_version_matches(actual, {**pin, field: value}))
+        for source in (None, "6d438e6", pin["product_source_sha"].upper()):
+            with self.subTest(invalid_source=source):
+                with self.assertRaisesRegex(ValueError, "invalid native product source identity"):
+                    CONSUMER.native_version_matches(actual, {**pin, "product_source_sha": source})
+
     def test_consumer_rejects_missing_unscoped_and_foreign_package_identity(self):
         for name in (None, "ripr", "@other/ripr"):
             with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:

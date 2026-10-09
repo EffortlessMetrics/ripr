@@ -1,4 +1,5 @@
 import * as assert from 'assert';
+import { createHash } from 'crypto';
 import { promises as fs } from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
@@ -8,8 +9,15 @@ import {
   RiprAgentLoopCommandTarget,
   RiprWorkspaceRootState,
   readActionableGapQueueStatus,
-  readFirstPrPacketStatus
+  readFirstPrPacketStatus,
+  validatedAgentLoopCommand
 } from '../../src/client';
+import { explicitSetting } from '../../src/config';
+import { hasUnsafeShellMetacharacter, redirectStaysInWorkspace, redirectTargetMatches, serverShellArg } from '../../src/packetJson';
+import {
+  NO_RUNNING_SERVER_MESSAGE,
+  messageClaimsHungServer
+} from '../../src/cockpitRequest';
 import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Extension Smoke', () => {
@@ -37,6 +45,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.selectWorkspaceRoot'));
     assert.ok(commands.includes('ripr.showOutput'));
     assert.ok(commands.includes('ripr.showStatus'));
+    assert.ok(commands.includes('ripr.showAttemptStatus'));
     assert.ok(commands.includes('ripr.diagnoseSetup'));
     assert.ok(commands.includes('ripr.startCurrentRepair'));
     assert.ok(commands.includes('ripr.copyCurrentRepairPacket'));
@@ -51,6 +60,7 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.copyContext'));
     assert.ok(commands.includes('ripr.copySuggestedAssertion'));
     assert.ok(commands.includes('ripr.copyTargetedTestBrief'));
+    assert.ok(commands.includes('ripr.copyAgentRepairCommand'));
     assert.ok(commands.includes('ripr.copyAgentPacketCommand'));
     assert.ok(commands.includes('ripr.copyAgentBriefCommand'));
     assert.ok(commands.includes('ripr.copyAfterSnapshotCommand'));
@@ -68,6 +78,165 @@ suite('Extension Smoke', () => {
     assert.ok(commands.includes('ripr.copyTopVerifyCommand'));
     assert.ok(commands.includes('ripr.openReport'));
     assert.ok(commands.includes('ripr.showTopLimitation'));
+
+    // Exercise the registered command in the active development or VSIX copy.
+    // Only the CLI transport is fixture-backed; retain the actual controller,
+    // typed adapter, status bar and command argument guard.
+    const extension = vscode.extensions.getExtension('EffortlessMetrics.ripr');
+    assert.ok(extension?.isActive, 'the actual extension must already be active');
+    const activeClient = require(path.join(extension.extensionPath, 'out/src/client.js')) as {
+      RiprClientController: typeof RiprClientController;
+    };
+    const prototype = activeClient.RiprClientController.prototype;
+    const original = prototype.showAttemptStatus;
+    const selectedRaw = await fs.readFile(
+      path.resolve(__dirname, '../../../test-fixtures/attempt-status/status-awaiting_edit.json'),
+      'utf8'
+    );
+    const selected = JSON.parse(selectedRaw) as {
+      schema_version: string;
+      kind: string;
+      attempt: { attempt_id: string; seam_id: string; state: string; status_class: string };
+      next_action: { command: string };
+    };
+    assert.strictEqual(selected.schema_version, '0.1');
+    assert.strictEqual(selected.kind, 'agent_attempt_status');
+    assert.strictEqual(selected.attempt.status_class, 'awaiting_edit');
+    assert.strictEqual(selected.attempt.state, 'awaiting_edit');
+    const attemptId = selected.attempt.attempt_id;
+    assert.strictEqual(attemptId, 'repair-attempt-0123456789abcdef01234567');
+    assert.ok(selected.next_action.command.includes(attemptId));
+    const inventory = JSON.stringify({
+      schema_version: selected.schema_version,
+      repair_attempts: [{
+        attempt_id: attemptId,
+        seam_id: selected.attempt.seam_id,
+        state: selected.attempt.state
+      }]
+    });
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(root, 'command proof requires the owned editor workspace');
+    const trusted = vscode.workspace.isTrusted;
+    const forwarded: Array<string | undefined> = [];
+    let controller: RiprClientController | undefined;
+    let expectedArgument: string | undefined;
+    let mismatch = false;
+    let restoreSurface: (() => Promise<void>) | undefined;
+    prototype.showAttemptStatus = async function (this: RiprClientController, argument?: string) {
+      forwarded.push(argument);
+      assert.strictEqual(argument, expectedArgument, 'registration must preserve strings and drop other values');
+      const view = this as unknown as {
+        context: vscode.ExtensionContext;
+        runtime: RiprClientRuntime;
+        output: vscode.LogOutputChannel;
+        attemptStatusBar?: vscode.StatusBarItem;
+        server?: { command: string };
+      };
+      const bar = view.attemptStatusBar;
+      assert.ok(bar, 'actual activation must create the independent attempt status bar');
+      assert.strictEqual(view.runtime.isWorkspaceTrusted(), trusted);
+      if (trusted) {
+        assert.ok(view.server?.command, 'qualified editor test server must be resolved before transport injection');
+      }
+      if (controller === undefined) {
+        controller = this;
+        const saved = {
+          text: bar.text, tooltip: bar.tooltip, command: bar.command,
+          backgroundColor: bar.backgroundColor, color: bar.color
+        };
+        const selectionKey = 'ripr.activeAttemptSelection.v1';
+        const savedSelection = view.context.workspaceState.get<Record<string, unknown>>(selectionKey);
+        restoreSurface = async () => {
+          bar.hide(); // This first command test starts with activation's hidden attempt item.
+          Object.assign(bar, saved);
+          await view.context.workspaceState.update(selectionKey, savedSelection);
+        };
+      } else {
+        assert.strictEqual(this, controller, 'all invocations must reach the same active extension controller');
+      }
+      const runtime = view.runtime;
+      const runRipr = runtime.runRipr;
+      const information = runtime.showInformationMessage;
+      const warning = runtime.showWarningMessage;
+      const appendLine = view.output.appendLine;
+      const showBar = bar.show;
+      const reads: Array<{ command: string; args: string[]; cwd: string }> = [];
+      const info: string[] = [];
+      const warnings: string[] = [];
+      const lines: string[] = [];
+      let shown = 0;
+      try {
+        runtime.runRipr = async (command, args, cwd) => {
+          reads.push({ command, args: [...args], cwd });
+          assert.strictEqual(command, view.server?.command);
+          assert.strictEqual(cwd, root);
+          assert.ok(reads.length <= 2, 'status is exactly inventory then selected read');
+          assert.deepStrictEqual(args, reads.length === 1
+            ? ['agent', 'status', '--root', root, '--json']
+            : ['agent', 'status', '--root', root, '--attempt', argument ?? attemptId, '--json']);
+          return reads.length === 1 ? inventory : selectedRaw;
+        };
+        runtime.showInformationMessage = async (message) => { info.push(message); return undefined; };
+        runtime.showWarningMessage = async (message) => { warnings.push(message); return undefined; };
+        view.output.appendLine = (line) => { lines.push(line); appendLine.call(view.output, line); };
+        bar.show = () => { shown += 1; showBar.call(bar); };
+        await original.call(this, argument);
+        if (!trusted) {
+          assert.deepStrictEqual(reads, [], 'untrusted command must never read attempt authority');
+          assert.strictEqual(shown, 0);
+          assert.deepStrictEqual(info, [
+            'ripr repair-attempt status is unavailable in an untrusted workspace; trust the workspace to read shared attempt state.'
+          ]);
+          return;
+        }
+        assert.strictEqual(reads.length, 2, 'nonempty fixture must reach selected typed status');
+        assert.strictEqual(shown, 1, 'actual bar must be shown once by the retained owner');
+        assert.strictEqual(bar.command, 'ripr.showAttemptStatus');
+        if (mismatch) {
+          const refusal = `ripr attempt status for ${argument} returned a document for ${attemptId}; refusing mismatched attempt state.`;
+          assert.strictEqual(bar.text, '$(warning) ripr: attempt status unavailable');
+          assert.strictEqual(bar.tooltip, refusal);
+          assert.deepStrictEqual(info, [], 'a foreign selected identity must never be presented as success');
+          assert.ok(warnings.includes(refusal), warnings.join('\n'));
+          assert.ok(lines.includes(refusal), lines.join('\n'));
+        } else {
+          assert.strictEqual(bar.text, '$(edit) ripr: attempt awaiting edit');
+          assert.strictEqual(bar.backgroundColor, undefined);
+          assert.strictEqual(bar.color, undefined);
+          const tooltip = String(bar.tooltip);
+          assert.ok(tooltip.includes(`attempt: ${attemptId}`), tooltip);
+          assert.ok(tooltip.includes('status: awaiting_edit'), tooltip);
+          assert.ok(tooltip.includes(`next: ${selected.next_action.command}`), tooltip);
+          assert.deepStrictEqual(info, [`ripr attempt awaiting edit: ${attemptId}`]);
+          assert.deepStrictEqual(warnings, []);
+          assert.ok(lines.some((line) => line.includes(`ripr attempt status:\nattempt: ${attemptId}\nstatus: awaiting_edit`)), lines.join('\n'));
+        }
+      } finally {
+        runtime.runRipr = runRipr;
+        runtime.showInformationMessage = information;
+        runtime.showWarningMessage = warning;
+        view.output.appendLine = appendLine;
+        bar.show = showBar;
+      }
+    };
+    try {
+      expectedArgument = attemptId;
+      await vscode.commands.executeCommand('ripr.showAttemptStatus', attemptId);
+      assert.strictEqual(forwarded.length, 1, 'registered handler must actually delegate');
+      expectedArgument = 'repair-attempt-explicit-editor-control';
+      mismatch = true;
+      await vscode.commands.executeCommand('ripr.showAttemptStatus', expectedArgument);
+      assert.strictEqual(forwarded.length, 2);
+      expectedArgument = undefined;
+      mismatch = false;
+      await vscode.commands.executeCommand('ripr.showAttemptStatus', { attempt_id: attemptId });
+      assert.deepStrictEqual(forwarded, [attemptId, 'repair-attempt-explicit-editor-control', undefined]);
+    } finally {
+      prototype.showAttemptStatus = original;
+      if (restoreSurface) {
+        await restoreSurface();
+      }
+    }
   });
 
   test('trusted-host gate is limited to explicit untrusted harness mode', () => {
@@ -340,6 +509,44 @@ suite('Extension Smoke', () => {
     });
   });
 
+  test('leaves unset seam diagnostic settings to ripr.toml', async () => {
+    await withControllerTestContext({}, async (context) => {
+      await context.controller.start();
+
+      // A key the user never set must stay absent so the server applies
+      // ripr.toml [lsp] values; forwarding the manifest default overrode
+      // `seam_diagnostics = false` for every 0.10 user who upgraded.
+      const initializationOptions = context.client.receivedInitializationOptions ?? {};
+      assert.strictEqual(JSON.parse(JSON.stringify(initializationOptions)).seamDiagnostics, undefined);
+      assert.strictEqual(JSON.parse(JSON.stringify(initializationOptions)).diagnosticProfile, undefined);
+    });
+  });
+
+  test('explicitSetting ignores manifest defaults and returns user layers', () => {
+    const fakeConfig = (inspected: Record<string, unknown>) =>
+      ({ inspect: () => ({ key: 'ripr.seamDiagnostics', ...inspected }) }) as unknown as vscode.WorkspaceConfiguration;
+
+    assert.strictEqual(explicitSetting<boolean>(fakeConfig({ defaultValue: true }), 'seamDiagnostics'), undefined);
+    assert.strictEqual(
+      explicitSetting<boolean>(fakeConfig({ defaultValue: true, globalValue: false }), 'seamDiagnostics'),
+      false
+    );
+    assert.strictEqual(
+      explicitSetting<boolean>(
+        fakeConfig({ defaultValue: true, globalValue: true, workspaceValue: false }),
+        'seamDiagnostics'
+      ),
+      false
+    );
+    assert.strictEqual(
+      explicitSetting<boolean>(
+        fakeConfig({ defaultValue: true, workspaceValue: false, workspaceFolderValue: true }),
+        'seamDiagnostics'
+      ),
+      true
+    );
+  });
+
   test('preserves mixed LSP configuration request ordering', async () => {
     await withControllerTestContext({}, async (context) => {
       await context.controller.start();
@@ -404,6 +611,11 @@ suite('Extension Smoke', () => {
     }
 
     const uri = workspaceFileUri('src/lib.rs');
+    const selectedRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    assert.ok(selectedRoot, 'real-server workspace root must be open');
+    const displayRoot = selectedRoot.replace(/\\/g, '/');
+    const rootArg = serverShellArg(displayRoot);
+    const anchored = (artifact: string) => serverShellArg(`${displayRoot}/${artifact}`);
     const config = vscode.workspace.getConfiguration('ripr', uri);
     const previousProfile = config.get<'actionable' | 'full'>('diagnosticProfile', 'actionable');
     try {
@@ -492,13 +704,13 @@ suite('Extension Smoke', () => {
 
     await vscode.commands.executeCommand(contextCommand.command, ...(contextCommand.arguments ?? []));
     const contextPacket = await waitForClipboardText((text) =>
-      text.includes('"schema_version": "0.4"') && text.includes('"seam_id": "67fc764ba37d77bd"')
+      text.includes('"schema_version": "0.5"') && text.includes('"seam_id": "67fc764ba37d77bd"')
     );
     const parsedContextPacket = JSON.parse(contextPacket) as {
       schema_version?: string;
       packets?: Array<{ seam_id?: string }>;
     };
-    assert.strictEqual(parsedContextPacket.schema_version, '0.4');
+    assert.strictEqual(parsedContextPacket.schema_version, '0.5');
     assert.strictEqual(parsedContextPacket.packets?.[0]?.seam_id, '67fc764ba37d77bd');
 
     await vscode.commands.executeCommand(targetedBriefCommand.command, ...(targetedBriefCommand.arguments ?? []));
@@ -511,30 +723,30 @@ suite('Extension Smoke', () => {
 
     await vscode.commands.executeCommand(packetCommand.command, ...(packetCommand.arguments ?? []));
     const packetText = await waitForClipboardText((text) => text.includes('ripr agent packet'));
-    assert.ok(packetText.includes('ripr agent packet --root . --seam-id 67fc764ba37d77bd'), packetText);
-    assert.ok(packetText.includes('target/ripr/agent/agent-packet.json'), packetText);
+    assert.ok(packetText.includes(`ripr agent packet --root ${rootArg} --seam-id 67fc764ba37d77bd`), packetText);
+    assert.ok(packetText.endsWith(` > ${anchored('target/ripr/agent/agent-packet.json')}`), packetText);
 
     await vscode.commands.executeCommand(briefCommand.command, ...(briefCommand.arguments ?? []));
     const briefText = await waitForClipboardText((text) => text.includes('ripr agent brief'));
-    assert.ok(briefText.includes('ripr agent brief --root . --seam-id 67fc764ba37d77bd'), briefText);
-    assert.ok(briefText.includes('target/ripr/agent/agent-brief.json'), briefText);
+    assert.ok(briefText.includes(`ripr agent brief --root ${rootArg} --seam-id 67fc764ba37d77bd`), briefText);
+    assert.ok(briefText.endsWith(` > ${anchored('target/ripr/agent/agent-brief.json')}`), briefText);
 
     await vscode.commands.executeCommand(afterSnapshotCommand.command, ...(afterSnapshotCommand.arguments ?? []));
     const afterSnapshotText = await waitForClipboardText((text) =>
       text.includes('ripr check') && text.includes('target/ripr/pilot/after.repo-exposure.json')
     );
-    assert.ok(afterSnapshotText.includes('ripr check --root . --base '), afterSnapshotText);
+    assert.ok(afterSnapshotText.includes(`ripr check --root ${rootArg} --base `), afterSnapshotText);
     assert.ok(afterSnapshotText.includes('--format repo-exposure-json'), afterSnapshotText);
-    assert.ok(afterSnapshotText.includes('target/ripr/pilot/after.repo-exposure.json'), afterSnapshotText);
+    assert.ok(afterSnapshotText.endsWith(` > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`), afterSnapshotText);
 
     await vscode.commands.executeCommand(verifyCommand.command, ...(verifyCommand.arguments ?? []));
     const verifyText = await waitForClipboardText((text) => text.includes('ripr agent verify'));
-    assert.ok(verifyText.includes('ripr agent verify --root .'), verifyText);
-    assert.ok(verifyText.includes('target/ripr/pilot/after.repo-exposure.json'), verifyText);
+    assert.ok(verifyText.includes(`ripr agent verify --root ${rootArg}`), verifyText);
+    assert.ok(verifyText.endsWith(` > ${anchored('target/ripr/agent/agent-verify.json')}`), verifyText);
 
     await vscode.commands.executeCommand(receiptCommand.command, ...(receiptCommand.arguments ?? []));
     const receiptText = await waitForClipboardText((text) => text.includes('ripr agent receipt'));
-    assert.ok(receiptText.includes('ripr agent receipt --root .'), receiptText);
+    assert.ok(receiptText.includes(`ripr agent receipt --root ${rootArg}`), receiptText);
     assert.ok(receiptText.includes('--seam-id 67fc764ba37d77bd'), receiptText);
     assert.ok(receiptText.includes('target/ripr/agent/agent-receipt.json'), receiptText);
 
@@ -622,8 +834,8 @@ suite('Extension Smoke', () => {
         recovery_route?: string;
       };
       assert.strictEqual(stalePacket.status, 'stale');
-      assert.strictEqual(stalePacket.recovery_command, 'ripr.refreshDiagnostics');
-      assert.strictEqual(stalePacket.recovery_route, 'ripr.refreshDiagnostics');
+      assert.strictEqual(stalePacket.recovery_command, 'ripr.refresh');
+      assert.strictEqual(stalePacket.recovery_route, 'ripr.refresh');
 
       await vscode.commands.executeCommand(secondContext.command, ...(secondContext.arguments ?? []));
       const currentPacket = JSON.parse(await waitForClipboardText((text) => text.includes('"seam_id"'))) as {
@@ -722,6 +934,9 @@ suite('Extension Smoke', () => {
       // Keep the preview journey on the same host/session as the trusted Rust
       // journey so state leakage remains observable across the sequence.
       await editAndSaveDocumentThenWaitForAnalysis(document, 60000);
+      // The server withholds a ledger whose source_subject does not match the
+      // files on disk (#4544), so stamp it after the save changed pricing.ts.
+      await writeEditorGapSmokeLedger();
       await vscode.commands.executeCommand('ripr.refreshDiagnostics');
       await vscode.commands.executeCommand('ripr.showStatus');
 
@@ -1006,6 +1221,35 @@ suite('Extension Smoke', () => {
       assert.deepStrictEqual(context.client.requests, []);
       assert.strictEqual(context.clipboardWrites[0], packet);
       assert.ok(context.infoMessages.at(-1)?.includes('gap repair packet'));
+    } finally {
+      await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
+  test('copyContext copies repair cards without LSP fallback for active workspace file', async () => {
+    const relativePath = 'src/repair-card.rs';
+    const uri = workspaceFileUri(relativePath);
+    const context = createControllerTestContext({});
+    const packet = JSON.stringify({
+      schema_version: 'ripr-repair-card-v1',
+      repair_card_id: 'card-digest',
+      subject: { seam_id: 'seam:rust:pricing' }
+    });
+    try {
+      await writeWorkspaceFile(relativePath, 'pub fn repair_card_target() {}\n');
+      const document = await vscode.workspace.openTextDocument(uri);
+      await vscode.window.showTextDocument(document);
+      await context.controller.start();
+      await context.controller.copyContext({
+        label: 'repair_card',
+        packet
+      });
+
+      assert.deepStrictEqual(context.client.requests, []);
+      assert.strictEqual(context.clipboardWrites[0], packet);
+      assert.ok(context.infoMessages.at(-1)?.includes('repair card'));
     } finally {
       await context.dispose();
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
@@ -1415,6 +1659,52 @@ suite('Extension Smoke', () => {
     }
   });
 
+  test('refresh failures suggest editor recovery without restarting the server', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      context.client.emitNotification('window/logMessage', {
+        message: 'ripr analysis refresh failed: the base `origin/main` does not resolve to a commit'
+      });
+      assert.ok(String(context.status.tooltip).includes('Set ripr.baseRef to a ref this repository has'));
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1', tool: 'ripr', kind: 'analysis_status', state: 'failed',
+        failure: { kind: 'analysis_error', message: 'temporary timeout' }
+      });
+      assert.ok(String(context.status.tooltip).includes('Run ripr: Refresh Diagnostics to retry'));
+      assert.ok(!String(context.status.tooltip).includes('Restart Server'));
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1', tool: 'ripr', kind: 'analysis_status', state: 'failed',
+        retry_command: 'ripr.refresh',
+        failure: { kind: 'analysis_error', message: 'the base `origin/main` does not resolve to a commit. Fetch the ref or pass --base <ref>.' }
+      });
+      assert.ok(String(context.status.tooltip).includes('Set ripr.baseRef to a ref this repository has'));
+      assert.ok(String(context.status.tooltip).includes('ripr: Refresh Diagnostics'));
+
+      for (const [retryCommand, expectedCommand] of [
+        ['ripr.refresh', 'ripr: Refresh Diagnostics'],
+        ['ripr.refreshDiagnostics', 'ripr: Refresh Diagnostics'],
+        ['   ', 'ripr: Refresh Diagnostics'],
+        ['server-owned recovery', 'server-owned recovery']
+      ]) {
+        context.client.emitNotification('ripr/analysisStatus', {
+          schema_version: '0.1', tool: 'ripr', kind: 'analysis_status', state: 'failed',
+          retry_command: retryCommand,
+          failure: { kind: 'analysis_error', message: 'temporary timeout' }
+        });
+        assert.ok(
+          String(context.status.tooltip).includes(`Run ${expectedCommand} to retry`),
+          `unexpected editor recovery for ${JSON.stringify(retryCommand)}`
+        );
+      }
+
+    } finally {
+      await context.dispose();
+    }
+  });
+
   test('typed analysis status surfaces server-owned ambiguous root state', async () => {
     const context = createControllerTestContext({});
     try {
@@ -1485,6 +1775,406 @@ suite('Extension Smoke', () => {
       assert.ok(context.status.text.includes('ripr: stale'));
       assert.ok(String(context.status.tooltip).includes('unsaved routed-file changes remain'));
       assert.ok(String(context.status.tooltip).includes('Current diagnostics describe the last saved workspace state.'));
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed succeeded status discloses limited run statuses instead of completed', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      const emitSucceededWithRunStatus = (runStatus: string) => {
+        context.client.emitNotification('ripr/analysisStatus', {
+          schema_version: '0.1',
+          tool: 'ripr',
+          kind: 'analysis_status',
+          state: 'succeeded',
+          run_status: runStatus,
+          attempt_id: 'run-1',
+          snapshot_id: 'snapshot:run-1'
+        });
+      };
+      const assertDegraded = (expectedLines: string[]) => {
+        // Degraded presentations use the dedicated analysisLimited status
+        // kind: warning icon and text, never the healthy
+        // `$(check) ripr: diagnostics` presentation.
+        assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+        assert.ok(!context.status.text.includes('ripr: diagnostics'), context.status.text);
+        const tooltip = String(context.status.tooltip);
+        for (const expected of expectedLines) {
+          assert.ok(tooltip.includes(expected), tooltip);
+        }
+      };
+
+      // Git-timeout shape: a limited snapshot may carry zero findings, so the
+      // summary must not read as a healthy completion.
+      emitSucceededWithRunStatus('limited');
+      assertDegraded([
+        'ripr analysis completed with limited evidence.',
+        'for example a git invocation timeout',
+        'findings may be missing',
+        'Next safe action: Run ripr: Refresh Diagnostics'
+      ]);
+
+      emitSucceededWithRunStatus('cache_limited');
+      assertDegraded([
+        'ripr analysis completed with a limited evidence cache.',
+        'Gap-artifact cache entries were rejected this refresh',
+        'Next safe action: Rerun ripr check to regenerate the rejected gap-artifact reports'
+      ]);
+
+      emitSucceededWithRunStatus('limited_partial_scope');
+      assertDegraded([
+        'ripr analysis completed on a bounded partition of the diff.',
+        'the remainder was not evaluated',
+        'Next safe action: Run ripr: Show Top Limitation to see which budget stopped the run (RIPR_PARTIAL_DIFF_FILE_BUDGET or RIPR_PARTIAL_DIFF_LINE_BUDGET), raise it or narrow the diff'
+      ]);
+
+      emitSucceededWithRunStatus('limited_incomplete_input');
+      assertDegraded([
+        'ripr analysis completed with incomplete input.',
+        'The run input was incomplete',
+        'Next safe action: Run ripr: Refresh Diagnostics'
+      ]);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status prefers the degraded component recovery route over the canned refresh step (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-gap-ledger',
+        snapshot_id: 'snapshot:run-gap-ledger',
+        components: [
+          {
+            component: 'diff',
+            state: 'complete',
+            kind: null,
+            message: null,
+            findings_trustworthy: true,
+            recovery: null,
+            snapshot_identity: 'snapshot:run-gap-ledger'
+          },
+          {
+            component: 'gap_ledger',
+            state: 'failed',
+            kind: 'gap_ledger_parse_failed',
+            message: 'gap diagnostics skipped: ledger parse failed',
+            findings_trustworthy: true,
+            recovery: 'run ripr check to regenerate the gap decision ledger',
+            snapshot_identity: 'snapshot:run-gap-ledger'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // The artifact-derived failure can only be repaired outside the editor,
+      // so the nextStep must name the server-published recovery route, not
+      // the editor refresh that would re-read the same corrupt artifact.
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr check to regenerate the gap decision ledger'),
+        tooltip
+      );
+      assert.ok(!tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status surfaces findings_trustworthy false as untrustworthy snapshot evidence (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-git-timeout',
+        snapshot_id: 'snapshot:run-git-timeout',
+        components: [
+          {
+            component: 'diff',
+            state: 'failed',
+            kind: 'git_invocation_timeout',
+            message: 'git diff timed out',
+            findings_trustworthy: false,
+            recovery: 'retry ripr.refreshDiagnostics',
+            snapshot_identity: 'snapshot:run-git-timeout'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // The degraded diff published zero findings; "no diagnostics" must not
+      // read as "no exposure" for this snapshot.
+      assert.ok(
+        tooltip.includes(
+          'Published findings are not trustworthy evidence for this snapshot (diff failed (git_invocation_timeout)).'
+        ),
+        tooltip
+      );
+      assert.ok(tooltip.includes('Next safe action: Retry ripr.refreshDiagnostics'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status keeps the canned refresh step when no degraded component names a recovery (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-no-recovery',
+        snapshot_id: 'snapshot:run-no-recovery',
+        components: [
+          {
+            component: 'seam_inventory',
+            state: 'deferred',
+            kind: 'interactive_refresh_deferral',
+            message: null,
+            findings_trustworthy: true,
+            recovery: 'run ripr.refreshDiagnostics for the full seam inventory',
+            snapshot_identity: 'snapshot:run-no-recovery'
+          },
+          {
+            component: 'diff',
+            state: 'limited',
+            kind: 'budget_exhausted',
+            message: 'static limit reached',
+            findings_trustworthy: true,
+            recovery: null,
+            snapshot_identity: 'snapshot:run-no-recovery'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // No degraded component carries a recovery, and the deferred component's
+      // recovery must not be promoted: the canned refresh step is the fallback.
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics to retry the analysis and restore the missing evidence.'),
+        tooltip
+      );
+      assert.ok(!tooltip.includes('not trustworthy evidence'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited partial scope keeps the budget remedy alongside the component recovery (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited_partial_scope',
+        attempt_id: 'run-partial-plus-ledger',
+        snapshot_id: 'snapshot:run-partial-plus-ledger',
+        components: [
+          {
+            component: 'gap_ledger',
+            state: 'failed',
+            kind: 'gap_ledger_parse_failed',
+            message: 'gap diagnostics skipped: ledger parse failed',
+            findings_trustworthy: true,
+            recovery: 'run ripr check to regenerate the gap decision ledger',
+            snapshot_identity: 'snapshot:run-partial-plus-ledger'
+          }
+        ]
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      // The artifact recovery does not widen the diff partition, so the canned
+      // budget remedy must survive composition with the component recovery.
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Show Top Limitation to see which budget stopped the run (RIPR_PARTIAL_DIFF_FILE_BUDGET or RIPR_PARTIAL_DIFF_LINE_BUDGET), raise it or narrow the diff, then run ripr: Refresh Diagnostics. Run ripr check to regenerate the gap decision ledger'),
+        tooltip
+      );
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited status fails closed to the canned step for a malformed components payload (#5004)', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'limited',
+        attempt_id: 'run-malformed',
+        snapshot_id: 'snapshot:run-malformed',
+        // A version-mismatched or corrupted server may send a non-array; the
+        // presentation must take the canned fallback instead of throwing.
+        components: 'not-an-array'
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics to retry the analysis and restore the missing evidence.'),
+        tooltip
+      );
+      assert.ok(!tooltip.includes('not trustworthy evidence'), tooltip);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed succeeded status discloses deferred seam evidence instead of completed', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'seams_deferred',
+        attempt_id: 'save-1',
+        snapshot_id: 'snapshot:save-1'
+      });
+
+      assert.ok(context.status.text.includes('$(warning) ripr: limited'), context.status.text);
+      assert.ok(!context.status.text.includes('ripr: diagnostics'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      assert.ok(tooltip.includes('ripr analysis completed; seam and gap evidence is deferred.'), tooltip);
+      assert.ok(tooltip.includes('Interactive saves defer the seam inventory'), tooltip);
+      assert.ok(
+        tooltip.includes('Next safe action: Run ripr: Refresh Diagnostics to compute the full seam inventory.'),
+        tooltip
+      );
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('limited run statuses do not gate repair packet copies as stale', async () => {
+    const context = createControllerTestContext({
+      files: {
+        'target/ripr/reports/actionable-gaps.json': actionableGapsReport({})
+      }
+    });
+    try {
+      await context.controller.start();
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'seams_deferred',
+        attempt_id: 'save-1',
+        snapshot_id: 'snapshot:save-1'
+      });
+
+      // The degraded disclosure must not reuse the stale kind's action gates:
+      // the published snapshot is not stale, only seam evidence is deferred.
+      await context.controller.copyCurrentRepairPacket();
+      const copied = context.clipboardWrites.at(-1) ?? '';
+      assert.ok(copied.includes('RIPR current repair packet'), copied);
+      assert.ok(copied.includes('gap:rust:pricing:discount:threshold-boundary'), copied);
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('typed succeeded status keeps healthy presentation for full and unknown run statuses', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+
+      const emitSucceededWithRunStatus = (runStatus: string | undefined) => {
+        context.client.emitNotification('ripr/analysisStatus', {
+          schema_version: '0.1',
+          tool: 'ripr',
+          kind: 'analysis_status',
+          state: 'succeeded',
+          run_status: runStatus,
+          attempt_id: 'run-1',
+          snapshot_id: 'snapshot:run-1'
+        });
+      };
+
+      emitSucceededWithRunStatus('full');
+      assert.ok(context.status.text.includes('$(check) ripr: diagnostics'), context.status.text);
+      assert.ok(String(context.status.tooltip).includes('ripr saved-workspace analysis completed.'));
+
+      // Unknown run_status values keep today's healthy presentation.
+      emitSucceededWithRunStatus('not_yet_a_server_status');
+      assert.ok(context.status.text.includes('$(check) ripr: diagnostics'), context.status.text);
+
+      emitSucceededWithRunStatus(undefined);
+      assert.ok(context.status.text.includes('$(check) ripr: diagnostics'), context.status.text);
+
+      // 'stale' keeps today's degraded presentation and retry wording.
+      emitSucceededWithRunStatus('stale');
+      assert.ok(context.status.text.includes('$(warning) ripr: stale'), context.status.text);
+      const staleTooltip = String(context.status.tooltip);
+      assert.ok(staleTooltip.includes('ripr analysis completed with stale or limited evidence.'), staleTooltip);
+      assert.ok(
+        staleTooltip.includes('Next safe action: Run ripr: Restart Server after resolving the reported limitation.'),
+        staleTooltip
+      );
+    } finally {
+      await context.dispose();
+    }
+  });
+
+  test('dirty routed files compose ahead of the deferred seam disclosure', async () => {
+    const context = createControllerTestContext({});
+    try {
+      await context.controller.start();
+      const document = await vscode.workspace.openTextDocument(workspaceFileUri('src/lib.rs'));
+      context.controller.markWorkspaceStale(document);
+
+      context.client.emitNotification('ripr/analysisStatus', {
+        schema_version: '0.1',
+        tool: 'ripr',
+        kind: 'analysis_status',
+        state: 'succeeded',
+        run_status: 'seams_deferred',
+        attempt_id: 'dirty-deferred',
+        snapshot_id: 'snapshot:dirty-deferred'
+      });
+
+      assert.ok(context.status.text.includes('ripr: stale'), context.status.text);
+      const tooltip = String(context.status.tooltip);
+      assert.ok(tooltip.includes('unsaved routed-file changes remain'), tooltip);
+      assert.ok(tooltip.includes('Current diagnostics describe the last saved workspace state.'), tooltip);
     } finally {
       await context.dispose();
     }
@@ -1778,6 +2468,63 @@ suite('Extension Smoke', () => {
     }));
     assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
 
+    // Python and TypeScript first-PR packets carry the test runner's own verify
+    // command; TypeScript's must run the installed binary, never fetch one.
+    const verifyPacketState = async (verify: string) => {
+      const packet = JSON.parse(firstPrPacket({ commands: { verify } })) as Record<string, unknown>;
+      (packet.selected as Record<string, unknown>).verify_command = verify;
+      return (await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+        'target/ripr/reports/start-here.json': JSON.stringify(packet)
+      }))).state;
+    };
+    for (const verify of [
+      'python -m pytest tests/test_pricing.py::test_calculate_discount_smoke',
+      'npx --no-install jest tests/discount.test.ts',
+      'pnpm exec vitest run src/util.test.ts',
+      'yarn ava tests/math.test.ts',
+      'bun run jest tests/discount.test.ts',
+      'npm test -- tests/math.test.ts'
+    ]) {
+      assert.strictEqual(await verifyPacketState(verify), 'topRepairableGap', verify);
+    }
+    for (const verify of [
+      'npx jest tests/discount.test.ts',
+      'bunx vitest run src/util.test.ts',
+      'pnpm dlx jest tests/discount.test.ts',
+      'yarn add jest',
+      'npx --no-install jest ../outside/discount.test.ts',
+      'python -m pytest ../outside/test_pricing.py',
+      'npx --no-install jest --config other.config.js tests/discount.test.ts',
+      'node --test --import ./setup.mjs tests/math.test.ts',
+      'npm test -- --watch tests/math.test.ts',
+      'node --test /tmp/outside.test.js',
+      'python -m pytest ..',
+      // Built at runtime so the local-context policy does not read the
+      // fixture as a machine path.
+      `npx --no-install jest ${'C'}:/outside/discount.test.ts`
+    ]) {
+      assert.strictEqual(await verifyPacketState(verify), 'unsafeCommand', verify);
+    }
+
+    // #4265: the CLI anchors the packet redirect at --root; a redirect that
+    // leaves the workspace is refused even though no metacharacter is.
+    const agentPacketTo = (target: string) => firstPrPacket({
+      commands: {
+        verify: 'cargo xtask fixtures boundary_gap',
+        agent_packet: `ripr agent packet --root . --gap-id 'gap:pr:amount>=threshold' --json > ${target}`
+      }
+    });
+    const anchoredPacket = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': agentPacketTo(
+        serverShellArg(`${workspaceRoot.replace(/\\/g, '/')}/target/ripr/workflow/agent-packet.json`)
+      )
+    }));
+    assert.strictEqual(anchoredPacket.state, 'topRepairableGap');
+    const escapingPacket = await readFirstPrPacketStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+      'target/ripr/reports/start-here.json': agentPacketTo(`${path.resolve('/elsewhere').replace(/\\/g, '/')}/.bashrc`)
+    }));
+    assert.strictEqual(escapingPacket.state, 'unsafeCommand');
+
     const unsafePathPacket = JSON.parse(firstPrPacket({})) as Record<string, unknown>;
     unsafePathPacket.selected = {
       ...(unsafePathPacket.selected as Record<string, unknown>),
@@ -1928,6 +2675,32 @@ suite('Extension Smoke', () => {
     }));
     assert.strictEqual(unsafeCommand.state, 'unsafeCommand');
 
+    const queueVerifyState = async (verify: string) => {
+      const queue = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+      (queue.packets as Array<Record<string, unknown>>)[0].verify_command = verify;
+      return (await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+        'target/ripr/reports/actionable-gaps.json': JSON.stringify(queue)
+      }))).state;
+    };
+    assert.notStrictEqual(await queueVerifyState('npx --no-install jest tests/discount.test.ts'), 'unsafeCommand');
+    assert.notStrictEqual(await queueVerifyState('python -m pytest tests/test_pricing.py::test_smoke'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('npx jest tests/discount.test.ts'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('bunx vitest run src/util.test.ts'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('npx --no-install jest ../outside/discount.test.ts'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyState('python -m pytest -p plugin tests/test_pricing.py'), 'unsafeCommand');
+
+    // #4265: a queue command may redirect into the workspace, not out of it.
+    const queueVerifyTo = async (target: string) => {
+      const queue = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
+      (queue.packets as Array<Record<string, unknown>>)[0].verify_command =
+        `ripr agent verify --root . --json > ${target}`;
+      return (await readActionableGapQueueStatus(workspaceRoot, firstPrReadFile(workspaceRoot, {
+        'target/ripr/reports/actionable-gaps.json': JSON.stringify(queue)
+      }))).state;
+    };
+    assert.notStrictEqual(await queueVerifyTo('target/ripr/agent/agent-verify.json'), 'unsafeCommand');
+    assert.strictEqual(await queueVerifyTo('../outside/agent-verify.json'), 'unsafeCommand');
+
     const unsafePathPacket = JSON.parse(actionableGapsReport({})) as Record<string, unknown>;
     (unsafePathPacket.packets as Array<Record<string, unknown>>)[0].target_test =
       '../outside.rs::test_escape';
@@ -1950,7 +2723,7 @@ suite('Extension Smoke', () => {
       await context.controller.start();
       const statusOutput = await showStatusReport(context);
       assert.ok(statusOutput.includes('First PR packet: missing; target/ripr/reports/start-here.json was not found.'));
-      assert.ok(statusOutput.includes('Next safe first-pr action: run cargo xtask first-pr'));
+      assert.ok(statusOutput.includes('Next safe first-pr action: run ripr first-pr --root .'));
       const diagnosis = await diagnoseSetupReport(context);
       assert.ok(diagnosis.includes('First PR packet: missing; target/ripr/reports/start-here.json was not found.'));
       assert.strictEqual(context.runRiprCalls.length, 0);
@@ -2033,7 +2806,7 @@ suite('Extension Smoke', () => {
       context.controller.markWorkspaceStale(document);
       const statusOutput = await showStatusReport(context);
       assert.ok(statusOutput.includes('First PR packet: stale; target/ripr/reports/start-here.json exists, but editor evidence is stale.'));
-      assert.ok(statusOutput.includes('Refresh saved-workspace evidence and rerun cargo xtask first-pr before inspecting or copying first-pr packet content.'));
+      assert.ok(statusOutput.includes('Refresh saved-workspace evidence and rerun ripr first-pr --root . before inspecting or copying first-pr packet content.'));
       assert.ok(!statusOutput.includes('top repairable gap available'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
@@ -2615,7 +3388,7 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('current saved-workspace evidence'));
 
       await context.controller.copyFirstPrRegenerationGuidance();
-      assert.ok(context.clipboardWrites.at(-1)?.includes('cargo xtask first-pr'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('ripr first-pr --root .'));
       assert.ok(context.clipboardWrites.at(-1)?.includes('editor does not run the command'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
@@ -2629,7 +3402,7 @@ suite('Extension Smoke', () => {
       assert.ok(context.infoMessages.at(-1)?.includes('first-pr packet is missing'));
 
       await context.controller.copyFirstPrRegenerationGuidance();
-      assert.ok(context.clipboardWrites.at(-1)?.includes('cargo xtask first-pr'));
+      assert.ok(context.clipboardWrites.at(-1)?.includes('ripr first-pr --root .'));
       assert.strictEqual(context.runRiprCalls.length, 0);
     });
 
@@ -2732,7 +3505,7 @@ suite('Extension Smoke', () => {
         'Missing configured ripr server path for this test.',
         'Server: not resolved',
         'Server started: no; server unavailable',
-        'Next safe action: Set ripr.server.path'
+        'Next safe action: Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path. Then run ripr: Restart Server.'
       ]);
       assert.strictEqual(context.client.startCalls, 0);
     });
@@ -3099,7 +3872,7 @@ suite('Extension Smoke', () => {
         'Status: Select one workspace folder before using ripr repair actions.',
         'Workspace root state: workspace_multi_root_ambiguous',
         'Root-scoped repair actions are suppressed until one workspace folder is selected.',
-        'Next safe action: Run ripr: Select Workspace Root, or open a Rust or enabled preview-language file from one workspace folder'
+        'Next safe action: Run ripr: Select Workspace Root, or open a file from one workspace folder.'
       ]);
     } finally {
       await context.dispose();
@@ -3174,7 +3947,7 @@ suite('Extension Smoke', () => {
       assert.ok(String(context.status.tooltip).includes('Server: not resolved'));
       assert.ok(String(context.status.tooltip).includes('Server started: no; server unavailable'));
       assert.ok(String(context.status.tooltip).includes('Config: ripr.toml'));
-      assert.ok(String(context.status.tooltip).includes('Next safe action: Set ripr.server.path'));
+      assert.ok(String(context.status.tooltip).includes('Next safe action: Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path. Then run ripr: Restart Server.'));
       assert.strictEqual(context.errorMessages.length, 1);
       assert.strictEqual(context.client.startCalls, 0);
     } finally {
@@ -3448,34 +4221,45 @@ suite('Extension Smoke', () => {
       await writeWorkspaceFile(relativePath, 'pub fn agent_loop_command_target() {}\n');
       const document = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(document);
+      await context.controller.start();
       const seamId = '67fc764ba37d77bd';
+      const selectedRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      assert.ok(selectedRoot, 'test workspace root must be open');
+      const rootArg = serverShellArg(selectedRoot.replace(/\\/g, '/'));
+      const anchored = (artifact: string) => serverShellArg(`${selectedRoot.replace(/\\/g, '/')}/${artifact}`);
       const targets = [
         agentLoopCommandTarget(
+          'agent_repair',
+          `ripr agent repair --root ${rootArg} --seam-id ${seamId} --phase before`,
+          'target/ripr/repair-attempts',
+          { seamId }
+        ),
+        agentLoopCommandTarget(
           'agent_packet',
-          `ripr agent packet --root . --seam-id ${seamId} --json > target/ripr/agent/agent-packet.json`,
+          `ripr agent packet --root ${rootArg} --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-packet.json')}`,
           'target/ripr/agent/agent-packet.json',
           { seamId }
         ),
         agentLoopCommandTarget(
           'agent_brief',
-          `ripr agent brief --root . --seam-id ${seamId} --json > target/ripr/agent/agent-brief.json`,
+          `ripr agent brief --root ${rootArg} --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-brief.json')}`,
           'target/ripr/agent/agent-brief.json',
           { seamId }
         ),
         agentLoopCommandTarget(
           'after_snapshot',
-          'ripr check --root . --base "origin/main with space" --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json',
+          `ripr check --root ${rootArg} --base 'origin/main with space' --mode ready --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
           'target/ripr/pilot/after.repo-exposure.json',
           { base: 'origin/main with space', mode: 'ready' }
         ),
         agentLoopCommandTarget(
           'agent_verify',
-          'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json',
+          `ripr agent verify --root ${rootArg} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > ${anchored('target/ripr/agent/agent-verify.json')}`,
           'target/ripr/agent/agent-verify.json'
         ),
         agentLoopCommandTarget(
           'agent_receipt',
-          `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
+          `ripr agent receipt --root ${rootArg} --verify-json target/ripr/agent/agent-verify.json --seam-id ${seamId} --json --out target/ripr/agent/agent-receipt.json`,
           'target/ripr/agent/agent-receipt.json',
           { seamId }
         ),
@@ -3502,6 +4286,210 @@ suite('Extension Smoke', () => {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       await removeWorkspacePath(relativePath);
     }
+  });
+
+  test('copyAgentLoopCommand accepts redirects anchored at the session root (#4220)', async () => {
+    // The server binds both the root argument and redirect to the selected
+    // session workspace root.
+    const relativePath = 'src/agent-loop-anchored.rs';
+    const uri = workspaceFileUri(relativePath);
+    const context = createControllerTestContext({});
+    try {
+      await writeWorkspaceFile(relativePath, 'pub fn agent_loop_anchored_target() {}\n');
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
+      await context.controller.start();
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+      assert.ok(root, 'test workspace root must be open');
+      const anchored = (artifact: string) => serverShellArg(`${root.replace(/\\/g, '/')}/${artifact}`);
+      const rootArg = serverShellArg(root.replace(/\\/g, '/'));
+      const seamId = '67fc764ba37d77bd';
+      const packetTo = (redirect: string) => agentLoopCommandTarget(
+        'agent_packet',
+        `ripr agent packet --root ${rootArg} --seam-id ${seamId} --json > ${redirect}`,
+        'target/ripr/agent/agent-packet.json',
+        { seamId }
+      );
+      const accepted = [
+        packetTo(anchored('target/ripr/agent/agent-packet.json')),
+        agentLoopCommandTarget(
+          'agent_brief',
+          `ripr agent brief --root ${rootArg} --seam-id ${seamId} --json > ${anchored('target/ripr/agent/agent-brief.json')}`,
+          'target/ripr/agent/agent-brief.json',
+          { seamId }
+        ),
+        agentLoopCommandTarget(
+          'after_snapshot',
+          `ripr check --root ${rootArg} --base origin/main --mode fast --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
+          'target/ripr/pilot/after.repo-exposure.json',
+          { mode: 'fast' }
+        ),
+        agentLoopCommandTarget(
+          'agent_verify',
+          `ripr agent verify --root ${rootArg} --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > ${anchored('target/ripr/agent/agent-verify.json')}`,
+          'target/ripr/agent/agent-verify.json'
+        )
+      ];
+      // Another root, another file, a `..` hop, a trailing token, or a
+      // second redirect ahead of the anchored one.
+      const rejected = [
+        packetTo('/elsewhere/target/ripr/agent/agent-packet.json'),
+        packetTo(`/elsewhere/.bashrc > ${anchored('target/ripr/agent/agent-packet.json')}`),
+        packetTo(anchored('target/ripr/agent/other.json')),
+        packetTo(anchored(`../${path.basename(root)}/target/ripr/agent/agent-packet.json`)),
+        packetTo(`${anchored('target/ripr/agent/agent-packet.json')} extra`)
+      ];
+
+      for (const target of [...accepted, ...rejected]) {
+        await context.controller.copyAgentLoopCommand(target);
+      }
+
+      assert.deepStrictEqual(
+        context.clipboardWrites,
+        accepted.map((target) => target.command)
+      );
+    } finally {
+      await context.dispose();
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await removeWorkspacePath(relativePath);
+    }
+  });
+
+  test('redirectTargetMatches mirrors the server redirect quoting (#4220)', () => {
+    const artifact = 'target/ripr/agent/agent-packet.json';
+    const root = path.resolve('/work/repo');
+    const spaced = path.resolve('/work/my repo');
+    const slash = (value: string) => value.replace(/\\/g, '/');
+
+    assert.ok(redirectTargetMatches(artifact, artifact, []));
+    assert.ok(redirectTargetMatches(`${slash(root)}/${artifact}`, artifact, [root]));
+    assert.ok(redirectTargetMatches(`'${slash(spaced)}/${artifact}'`, artifact, [spaced]));
+    // The server reads its cwd back from the OS, which resolves symlinks.
+    assert.ok(redirectTargetMatches(`${slash(root)}/${artifact}`, artifact, ['/link/to/repo', root]));
+
+    assert.ok(!redirectTargetMatches(`${slash(root)}/${artifact}`, artifact, []));
+    assert.ok(!redirectTargetMatches(`${slash(spaced)}/${artifact}`, artifact, [spaced]));
+    assert.ok(!redirectTargetMatches(`'${artifact}`, artifact, [root]));
+    assert.ok(!redirectTargetMatches(`${slash(root)}/sub/../${artifact}`, artifact, [root]));
+    assert.ok(!redirectTargetMatches(`${slash(root)}/${artifact} extra`, artifact, [root]));
+    assert.ok(!redirectTargetMatches('target/ripr/agent/../agent/agent-packet.json', artifact, [root]));
+  });
+
+  test('redirectStaysInWorkspace keeps every redirect inside the workspace (#4265)', () => {
+    const root = path.resolve('/work/repo');
+    const inRoot = `${root.replace(/\\/g, '/')}/target/ripr/out.json`;
+    const accepts = (command: string) => redirectStaysInWorkspace(command, [root]);
+
+    assert.ok(accepts('ripr first-pr --json'));
+    assert.ok(accepts('ripr agent verify --root . --json > target/ripr/out.json'));
+    assert.ok(accepts(`ripr agent verify --root . --json > ${serverShellArg(inRoot)}`));
+    // A quoted `>` is an argument, not a redirect.
+    assert.ok(accepts("ripr receipt write --gap 'gap:amount>=threshold' --verify-command 'cargo test > log' --status not_run"));
+    assert.ok(accepts("ripr agent packet --gap-id 'gap:a>b' --json > target/ripr/agent-packet.json"));
+
+    for (const command of [
+      'ripr first-pr --json > /etc/profile',
+      `ripr first-pr --json > '${path.resolve('/work/repo-other').replace(/\\/g, '/')}/out.json'`,
+      'ripr first-pr --json > ../outside.json',
+      'ripr first-pr --json > target/../../outside.json',
+      'ripr first-pr --json > C:outside.json',
+      'ripr first-pr --json >> target/ripr/out.json',
+      'ripr first-pr --json >/etc/passwd',
+      'ripr first-pr --json 2> target/ripr/out.json',
+      'ripr first-pr --json > target/ripr/out.json extra',
+      'ripr first-pr --json > target/a.json > target/b.json',
+      'ripr first-pr --json > ',
+      'ripr first-pr --json < target/ripr/in.json',
+      "ripr first-pr --json > 'target/ripr/a\u2019b.json'"
+    ]) {
+      assert.ok(!accepts(command), command);
+    }
+  });
+
+  test('agent loop commands must equal the body the server renders from the payload (#4225)', () => {
+    const seamId = '67fc764ba37d77bd';
+    const root = path.resolve('/work/R&D/$repo');
+    const rootDisplay = root.replace(/\\/g, '/');
+    const anchored = (artifact: string) => `'${rootDisplay}/${artifact}'`;
+    const accepts = (target: RiprAgentLoopCommandTarget) =>
+      validatedAgentLoopCommand(target, [root]) === target.command;
+    const packet = (body: string, redirect = anchored('target/ripr/agent/agent-packet.json')) =>
+      agentLoopCommandTarget('agent_packet', `${body} > ${redirect}`, 'target/ripr/agent/agent-packet.json', { seamId });
+    const snapshot = (commandBase: string, payloadBase: string | null): RiprAgentLoopCommandTarget => ({
+      ...agentLoopCommandTarget(
+        'after_snapshot',
+        `ripr check --root ${commandRoot}${commandBase} --mode fast --format repo-exposure-json > ${anchored('target/ripr/pilot/after.repo-exposure.json')}`,
+        'target/ripr/pilot/after.repo-exposure.json',
+        { mode: 'fast' }
+      ),
+      base: payloadBase
+    });
+
+    // The real server binds the selected root in the command while the payload
+    // retains its portable `root: "."` role. This must fail on the old client.
+    const commandRoot = process.platform === 'win32' ? `'${rootDisplay}'` : "'/work/R&D/$repo'";
+    assert.ok(accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`)));
+    assert.ok(!accepts(packet(`ripr agent packet --root . --seam-id ${seamId} --json`)));
+    const otherRoot = path.resolve('/work/other').replace(/\\/g, '/');
+    assert.ok(!accepts(packet(`ripr agent packet --root ${otherRoot} --seam-id ${seamId} --json`)));
+    assert.ok(!accepts(packet(
+      `ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      `${otherRoot}/target/ripr/agent/agent-packet.json`
+    )));
+    // Both spellings may be selected (symlink and realpath), but the command
+    // and redirect must use the SAME one. A relative tail is not a bound tail.
+    const otherPacket = packet(
+      `ripr agent packet --root ${otherRoot} --seam-id ${seamId} --json`,
+      `${otherRoot}/target/ripr/agent/agent-packet.json`
+    );
+    assert.strictEqual(validatedAgentLoopCommand(otherPacket, [root, otherRoot]), otherPacket.command);
+    assert.strictEqual(validatedAgentLoopCommand(packet(
+      `ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      `${otherRoot}/target/ripr/agent/agent-packet.json`
+    ), [root, otherRoot]), undefined);
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      'target/ripr/agent/agent-packet.json')));
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json`,
+      serverShellArg(`${root.replace(/\\/g, '/')}/../other/target/ripr/agent/agent-packet.json`))));
+    // Bases the server single-quotes, and no `--base` when the payload has none.
+    for (const base of ['HEAD~1', 'HEAD^', '@{u}', 'origin/main with space']) {
+      assert.ok(accepts(snapshot(` --base ${serverShellArg(base)}`, base)), base);
+    }
+    assert.ok(accepts(snapshot('', null)));
+
+    // Extra tokens before the redirect, including command substitution.
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} $(touch pwned) --json`)));
+    assert.ok(!accepts(packet(`ripr agent packet --root ${commandRoot} --seam-id ${seamId} --json --extra`)));
+    assert.ok(!accepts(agentLoopCommandTarget(
+      'agent_verify',
+      'ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json $(touch pwned) > target/ripr/agent/agent-verify.json',
+      'target/ripr/agent/agent-verify.json'
+    )));
+    assert.ok(!accepts(agentLoopCommandTarget('gap_verify', 'ripr agent verify --root . --json $(touch pwned)')));
+    assert.ok(!accepts(agentLoopCommandTarget('gap_verify', 'ripr agent verify --root . --json <(touch pwned)')));
+    // The double-quoted base the client used to expect, and a base the payload
+    // does not carry.
+    assert.ok(!accepts(snapshot(' --base "HEAD~1"', 'HEAD~1')));
+    assert.ok(!accepts(snapshot(' --base origin/main', null)));
+    assert.ok(!accepts(snapshot(' --base other', 'origin/main')));
+    // `'\\''` needs a backslash, which fish reads differently: still refused.
+    assert.ok(!accepts(snapshot(` --base ${serverShellArg("it's")}`, "it's")));
+    // The quoted redirect span may not carry a line break, a backslash, or a
+    // typographic quote that PowerShell reads as the end of the span.
+    for (const bad of ['\n', '\\', '\u2019']) {
+      assert.ok(!redirectTargetMatches(
+        `'/work/a${bad}b/target/ripr/agent/agent-packet.json'`,
+        'target/ripr/agent/agent-packet.json',
+        [`/work/a${bad}b`]
+      ), JSON.stringify(bad));
+    }
+    assert.ok(hasUnsafeShellMetacharacter('ripr check $(id)'));
+    assert.ok(hasUnsafeShellMetacharacter('ripr check >(id)'));
+    assert.ok(hasUnsafeShellMetacharacter('ripr check "$(id)"'));
+    assert.ok(hasUnsafeShellMetacharacter(`ripr check "it's $(id) it's"`));
+    assert.ok(hasUnsafeShellMetacharacter("ripr check 'unterminated $(id)"));
+    assert.ok(hasUnsafeShellMetacharacter("ripr check 'a\u2019 $(id) \u2019b'"));
+    // The server single-quotes a gap id built from an expression; it stays inert.
+    assert.ok(!hasUnsafeShellMetacharacter("ripr agent packet --gap-id 'gap:len(x)>0' --json > out.json"));
   });
 
   test('agent loop command handlers ignore malformed args without throwing', async () => {
@@ -3556,6 +4544,23 @@ suite('Extension Smoke', () => {
           'agent_receipt',
           'ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json',
           'target/ripr/agent/agent-receipt.json'
+        )
+      );
+      // The repair start must name the before phase and the payload's seam.
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'agent_repair',
+          'ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase after',
+          'target/ripr/repair-attempts',
+          { seamId: '67fc764ba37d77bd' }
+        )
+      );
+      await context.controller.copyAgentLoopCommand(
+        agentLoopCommandTarget(
+          'agent_repair',
+          'ripr agent repair --root . --seam-id other-seam --phase before',
+          'target/ripr/repair-attempts',
+          { seamId: '67fc764ba37d77bd' }
         )
       );
       await context.controller.copyAgentLoopCommand(
@@ -3706,20 +4711,6 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('showReceiptStatus shows info message when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.showReceiptStatus();
-
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard');
-    } finally {
-      await context.dispose();
-    }
-  });
-
   test('copyReceiptCommand writes real command to clipboard when LSP returns a real value', async () => {
     const context = createControllerTestContext({
       lspResult: {
@@ -3779,20 +4770,6 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('copyReceiptCommand shows info message and does NOT write to clipboard when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.copyReceiptCommand();
-
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
-    } finally {
-      await context.dispose();
-    }
-  });
-
   test('openAttemptLedger shows info message when LSP returns not_available', async () => {
     const context = createControllerTestContext({
       lspResult: {
@@ -3807,20 +4784,6 @@ suite('Extension Smoke', () => {
       assert.deepStrictEqual(context.clipboardWrites, [], 'openAttemptLedger must not write to clipboard');
       assert.ok(context.infoMessages.length > 0, 'expected an info message');
       assert.ok(context.infoMessages.at(-1)?.includes('No attempt ledger is available'), context.infoMessages.at(-1));
-    } finally {
-      await context.dispose();
-    }
-  });
-
-  test('openAttemptLedger shows info message when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.openAttemptLedger();
-
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
     } finally {
       await context.dispose();
     }
@@ -3899,26 +4862,149 @@ suite('Extension Smoke', () => {
     }
   });
 
-  test('showRouteQuality shows info message when no LSP client is running', async () => {
-    const context = createControllerTestContext({});
-    try {
-      // Do NOT start the controller — no client attached.
-      await context.controller.showRouteQuality();
-
-      assert.ok(context.infoMessages.length > 0, 'expected an info message');
-      assert.ok(context.infoMessages.at(-1)?.includes('not responding'), context.infoMessages.at(-1));
-      assert.deepStrictEqual(context.clipboardWrites, [], 'must not write to clipboard without LSP client');
-    } finally {
-      await context.dispose();
-    }
-  });
-
   test('receipt inspection commands are registered', async () => {
     const commands = await vscode.commands.getCommands(true);
     assert.ok(commands.includes('ripr.showReceiptStatus'));
     assert.ok(commands.includes('ripr.copyReceiptCommand'));
     assert.ok(commands.includes('ripr.openAttemptLedger'));
     assert.ok(commands.includes('ripr.showRouteQuality'));
+  });
+
+  // Replaces the four no-client tests that previously asserted hung-server
+  // wording (`not responding`) for showReceiptStatus, copyReceiptCommand,
+  // openAttemptLedger, and showRouteQuality. Those assertions encoded #5099.
+  const cockpitAbsenceCommands: Array<{
+    name: string;
+    run: (controller: RiprClientController) => Promise<void>;
+    unavailableIncludes: string;
+  }> = [
+    {
+      name: 'copyTopRepairPacket',
+      run: (controller) => controller.copyTopRepairPacket(),
+      unavailableIncludes: 'did not respond'
+    },
+    {
+      name: 'copyTopVerifyCommand',
+      run: (controller) => controller.copyTopVerifyCommand(),
+      unavailableIncludes: 'No verify command available'
+    },
+    {
+      name: 'copyTopReceiptCommand',
+      run: (controller) => controller.copyTopReceiptCommand(),
+      unavailableIncludes: 'No receipt command available'
+    },
+    {
+      name: 'showReceiptStatus',
+      run: (controller) => controller.showReceiptStatus(),
+      unavailableIncludes: 'not responding'
+    },
+    {
+      name: 'copyReceiptCommand',
+      run: (controller) => controller.copyReceiptCommand(),
+      unavailableIncludes: 'not responding'
+    },
+    {
+      name: 'openAttemptLedger',
+      run: (controller) => controller.openAttemptLedger(),
+      unavailableIncludes: 'not responding'
+    },
+    {
+      name: 'showRouteQuality',
+      run: (controller) => controller.showRouteQuality(),
+      unavailableIncludes: 'not responding'
+    }
+  ];
+
+  for (const command of cockpitAbsenceCommands) {
+    test(`${command.name} does not claim a hung server when no client was started`, async () => {
+      const context = createControllerTestContext({});
+      try {
+        await command.run(context.controller);
+
+        assert.strictEqual(context.infoMessages.at(-1), NO_RUNNING_SERVER_MESSAGE);
+        assert.strictEqual(messageClaimsHungServer(context.infoMessages.at(-1) ?? ''), false);
+        assert.ok(
+          !context.infoMessages.at(-1)?.includes(command.unavailableIncludes),
+          context.infoMessages.at(-1)
+        );
+        assert.deepStrictEqual(context.client.requests, []);
+        assert.deepStrictEqual(context.clipboardWrites, []);
+      } finally {
+        await context.dispose();
+      }
+    });
+
+    test(`${command.name} keeps the request-failed wording when a live client returns null`, async () => {
+      const context = createControllerTestContext({ lspResult: null });
+      try {
+        await context.controller.start();
+        await command.run(context.controller);
+
+        const message = context.infoMessages.at(-1) ?? '';
+        assert.ok(message.includes(command.unavailableIncludes), message);
+        assert.notStrictEqual(message, NO_RUNNING_SERVER_MESSAGE);
+        assert.strictEqual(context.client.requests.length, 1);
+        assert.deepStrictEqual(context.clipboardWrites, []);
+      } finally {
+        await context.dispose();
+      }
+    });
+
+    test(`${command.name} keeps the request-failed wording when a live client throws`, async () => {
+      const context = createControllerTestContext({
+        lspError: new Error(`${command.name} request failed`)
+      });
+      try {
+        await context.controller.start();
+        await command.run(context.controller);
+
+        const message = context.infoMessages.at(-1) ?? '';
+        assert.ok(message.includes(command.unavailableIncludes), message);
+        assert.notStrictEqual(message, NO_RUNNING_SERVER_MESSAGE);
+        assert.strictEqual(context.client.requests.length, 1);
+        assert.ok(
+          context.outputLines.some((line) => line.includes('failed')),
+          context.outputLines.join('\n')
+        );
+        assert.deepStrictEqual(context.clipboardWrites, []);
+      } finally {
+        await context.dispose();
+      }
+    });
+  }
+
+  test('an array LSP response still shows a user-visible toast and does not crash', async () => {
+    const cases: Array<{
+      name: string;
+      run: (controller: RiprClientController) => Promise<void>;
+      includes: string;
+    }> = [
+      {
+        name: 'copyTopRepairPacket',
+        run: (controller) => controller.copyTopRepairPacket(),
+        includes: 'No complete repair packet available'
+      },
+      {
+        name: 'showReceiptStatus',
+        run: (controller) => controller.showReceiptStatus(),
+        includes: 'not_available'
+      }
+    ];
+    for (const command of cases) {
+      const context = createControllerTestContext({ lspResult: ['not', 'a', 'packet'] });
+      try {
+        await context.controller.start();
+        await command.run(context.controller);
+
+        const message = context.infoMessages.at(-1) ?? '';
+        assert.ok(message.includes(command.includes), `${command.name}: ${message}`);
+        assert.notStrictEqual(message, NO_RUNNING_SERVER_MESSAGE, command.name);
+        assert.strictEqual(messageClaimsHungServer(message), false, command.name);
+        assert.deepStrictEqual(context.clipboardWrites, [], command.name);
+      } finally {
+        await context.dispose();
+      }
+    }
   });
 });
 
@@ -3939,6 +5025,7 @@ interface ControllerTestOptions {
   workspaceTrusted?: boolean;
 }
 
+// Mirror of the server's `shell_arg` (crates/ripr/src/agent/loop_commands.rs).
 function agentLoopCommandTarget(
   label: string,
   command: string,
@@ -4341,8 +5428,8 @@ function createControllerTestContext(options: ControllerTestOptions) {
         checkMode: 'draft',
         baseRef: 'origin/main',
         includeUnchangedTests: options.includeUnchangedTests ?? true,
-        seamDiagnostics: options.seamDiagnostics ?? true,
-        diagnosticProfile: options.diagnosticProfile ?? 'actionable',
+        seamDiagnostics: options.seamDiagnostics,
+        diagnosticProfile: options.diagnosticProfile,
         traceServer: 'off'
       };
     },
@@ -4673,13 +5760,41 @@ async function writeEditorGapSmokeFiles(): Promise<void> {
       ''
     ].join('\n')
   );
+}
+
+// Stamp every file the ledger records name (anchor, repair target, related
+// test) with its current digest, the way a real producer stamps the files its
+// analysis read. Deriving the set from the records keeps the stamp complete
+// when the fixture ledger changes.
+async function writeEditorGapSmokeLedger(): Promise<void> {
+  const ledger = editorGapSmokeLedger();
+  const files = await Promise.all(
+    gapLedgerSubjectPaths(ledger).map(async (relativePath) => ({
+      path: relativePath,
+      digest: `sha256:${createHash('sha256').update(await fs.readFile(workspaceFilePath(relativePath))).digest('hex')}`
+    }))
+  );
   await writeWorkspaceFile(
     'target/ripr/reports/gap-decision-ledger.json',
-    JSON.stringify(editorGapSmokeLedger(), null, 2)
+    JSON.stringify({ ...ledger, source_subject: { digest_algorithm: 'sha256', files } }, null, 2)
   );
 }
 
-function editorGapSmokeLedger(): unknown {
+function gapLedgerSubjectPaths(ledger: Record<string, unknown>): string[] {
+  type SubjectRecord = {
+    anchor?: { file?: string };
+    repair_route?: { target_file?: string; related_test?: string };
+  };
+  const records = (ledger.records ?? []) as SubjectRecord[];
+  const paths = records.flatMap((record) => [
+    record.anchor?.file,
+    record.repair_route?.target_file,
+    record.repair_route?.related_test?.split('::')[0]
+  ]);
+  return [...new Set(paths.filter((path): path is string => Boolean(path)))].sort();
+}
+
+function editorGapSmokeLedger(): Record<string, unknown> {
   return {
     schema_version: '0.1',
     tool: 'ripr',

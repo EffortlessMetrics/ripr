@@ -6,6 +6,74 @@ use serde_json::Value;
 use std::fs;
 use std::path::Path;
 
+/// Carried display commands may name a physical root that no longer belongs
+/// to this packet after relocation. Validate it before exposing those forms;
+/// do not rewrite raw commands or promote the context to execution authority.
+pub(super) fn validate_selected_command_root(packet: &Value, root: &Path) -> Result<(), String> {
+    let Some(context) = packet.pointer("/selected/command_context") else {
+        // Explicit compatibility for historical packets without context.
+        return Ok(());
+    };
+    if context.get("authority").and_then(Value::as_str) != Some("advisory_display_only") {
+        return Err(
+            "selected command context has missing or invalid display authority".to_string(),
+        );
+    }
+    for step in ["verify", "receipt"] {
+        let forms = context
+            .get(step)
+            .filter(|forms| forms.is_object())
+            .ok_or_else(|| {
+                format!("selected command context {step} forms are missing or not an object")
+            })?;
+        for field in ["bash", "powershell", "recovery"] {
+            if !forms
+                .get(field)
+                .is_some_and(|value| value.is_null() || value.is_string())
+            {
+                return Err(format!(
+                    "selected command context {step}.{field} is missing or not a string/null"
+                ));
+            }
+        }
+    }
+    let cwd = context.get("cwd").and_then(Value::as_str).ok_or_else(|| {
+        "selected command context has no available repository directory".to_string()
+    })?;
+    let carried_root = Path::new(cwd);
+    if !carried_root.is_absolute() {
+        return Err(
+            "selected command context directory is not a bounded absolute path".to_string(),
+        );
+    }
+    // A multiline physical root is valid data, but its producer withholds
+    // shell forms. Accept that roundtrip without admitting displayed commands.
+    if cwd.contains(['\r', '\n'])
+        && ["verify", "receipt"].iter().any(|step| {
+            ["bash", "powershell"]
+                .iter()
+                .any(|field| !context[*step][*field].is_null())
+        })
+    {
+        return Err(
+            "selected command context multiline directory requires withheld shell forms"
+                .to_string(),
+        );
+    }
+    let current = root
+        .canonicalize()
+        .map_err(|error| format!("selected repository directory is unavailable: {error}"))?;
+    let carried = carried_root
+        .canonicalize()
+        .map_err(|error| format!("selected command context directory is unavailable: {error}"))?;
+    if !carried.is_dir() || carried != current {
+        return Err(
+            "selected command context targets a different repository directory".to_string(),
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn validate_start_here_packet(
     json_path: &Path,
     markdown_path: &Path,
@@ -77,7 +145,9 @@ fn validate_preflight(preflight: &Value, violations: &mut Vec<String>) {
         violations.push("preflight.checks is missing or not an array".to_string());
         return;
     };
+    validate_recovery_fields(preflight, "preflight", violations);
     for check in checks {
+        validate_recovery_fields(check, "preflight check", violations);
         if check.get("id").and_then(Value::as_str).is_none() {
             violations.push("preflight check id is missing or not a string".to_string());
         }
@@ -93,6 +163,37 @@ fn validate_preflight(preflight: &Value, violations: &mut Vec<String>) {
         if check.get("message").and_then(Value::as_str).is_none() {
             violations.push("preflight check message is missing or not a string".to_string());
         }
+    }
+}
+
+/// `recovery_commands` and `recovery_guidance` are optional, but a present
+/// field must be usable: the Markdown renderer treats a present array as the
+/// recovery action and hides the legacy `next_command`, so a malformed element
+/// would leave the reader with no command at all. Multi-line commands stay
+/// valid: a root containing a newline produces one, and the renderer withholds it.
+fn validate_recovery_fields(scope_value: &Value, scope: &str, violations: &mut Vec<String>) {
+    if let Some(commands) = scope_value.get("recovery_commands") {
+        match commands.as_array() {
+            None => violations.push(format!("{scope} recovery_commands is not an array")),
+            Some(commands) if commands.is_empty() => {
+                violations.push(format!("{scope} recovery_commands is empty"));
+            }
+            Some(commands) => {
+                for command in commands {
+                    match command.as_str() {
+                        Some(text) if !text.trim().is_empty() => {}
+                        _ => violations.push(format!(
+                            "{scope} recovery_commands entries must be nonempty strings"
+                        )),
+                    }
+                }
+            }
+        }
+    }
+    if let Some(guidance) = scope_value.get("recovery_guidance")
+        && !guidance.is_string()
+    {
+        violations.push(format!("{scope} recovery_guidance is not a string"));
     }
 }
 
@@ -172,5 +273,79 @@ fn expect_string(packet: &Value, key: &str, expected: &str, violations: &mut Vec
         Some(actual) if actual == expected => {}
         Some(actual) => violations.push(format!("{key} is {actual:?}, expected {expected:?}")),
         None => violations.push(format!("{key} is missing or not a string")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_preflight;
+    use serde_json::{Value, json};
+
+    fn preflight_with(recovery: Value) -> Value {
+        let mut check = json!({
+            "id": "git_head",
+            "status": "needs_attention",
+            "message": "Head ref is missing."
+        });
+        check["recovery_commands"] = recovery.clone();
+        json!({
+            "status": "needs_attention",
+            "mode": "write",
+            "checks": [check],
+            "recovery_commands": recovery
+        })
+    }
+
+    fn violations_for(recovery: Value) -> Vec<String> {
+        let mut violations = Vec::new();
+        validate_preflight(&preflight_with(recovery), &mut violations);
+        violations
+    }
+
+    #[test]
+    fn preflight_accepts_well_formed_recovery_commands() {
+        assert!(violations_for(json!(["git -C . rev-parse --verify HEAD"])).is_empty());
+    }
+
+    #[test]
+    fn preflight_rejects_malformed_recovery_commands() {
+        for malformed in [json!([null]), json!([""]), json!([]), json!("not an array")] {
+            let violations = violations_for(malformed.clone());
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains("recovery_commands")),
+                "{malformed} was accepted: {violations:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn preflight_rejects_whitespace_only_recovery_command_entries() {
+        // `""` is already covered above. Whitespace-only entries are a
+        // distinct mutation of dropping `trim()` in `validate_recovery_fields`.
+        for malformed in [json!(["   "]), json!(["\t"]), json!([" \n "])] {
+            let violations = violations_for(malformed.clone());
+            assert!(
+                violations
+                    .iter()
+                    .any(|violation| violation.contains("recovery_commands")),
+                "{malformed} was accepted: {violations:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn preflight_rejects_non_string_recovery_guidance() {
+        let mut preflight = preflight_with(json!(["git status"]));
+        preflight["recovery_guidance"] = json!(7);
+        let mut violations = Vec::new();
+        validate_preflight(&preflight, &mut violations);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("recovery_guidance")),
+            "{violations:?}"
+        );
     }
 }

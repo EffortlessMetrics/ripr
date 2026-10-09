@@ -27,7 +27,8 @@ a merge gate. A gate should exist only when a repository explicitly configures
 one, and it should fail only for narrow, high-confidence, new gaps.
 
 The policy layer also needs a strict runtime boundary. Static RIPR evidence can
-say a changed seam appears weakly exercised or lacks a discriminator. Imported
+say a changed seam appears weakly exercised or names a missing discriminator
+(#4381: the shared sentence lives in `output::gap_vocabulary`). Imported
 runtime mutation calibration can only adjust confidence when a pre-existing
 calibration artifact joins runtime evidence to the same static seam. The gate
 must not run mutation testing, infer runtime outcomes, or use runtime outcome
@@ -411,7 +412,8 @@ The gate decision JSON uses schema version `0.1`:
 - `summary.suppressed` - count of suppressed or configured-hidden candidates
   preserved in the gate report.
 - `summary.not_applicable` - count of parsed records that are outside the
-  configured policy scope.
+  configured policy scope, including gap-ledger records that are not
+  gate-candidate eligible, such as an already-observed gap.
 - `summary.unknown_confidence` - count of candidates that could not satisfy
   high-confidence requirements.
 - `decisions[].source` - source artifact family such as `pr_guidance`,
@@ -555,7 +557,10 @@ Initial implementation should add tests for:
 - missing and malformed input reports;
 - recommendation calibration agreement and disagreement;
 - mutation calibration agreement, disagreement, and ambiguous join handling;
-- generated workflow opt-in wiring.
+- generated workflow opt-in wiring;
+- a producer-declared static limitation outranks the PR-wide nearby-test
+  reason in the gate headline without changing eligibility
+  (`crates/ripr/src/output/gate/tests.rs::gate_static_limitation_reason_outranks_pr_wide_nearby_test_flag`).
 
 ## Implementation Mapping
 

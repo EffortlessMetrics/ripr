@@ -15,6 +15,7 @@
     "edited_files": [
       "tests/test_pricing.py"
     ],
+    "edited_files_outside_root": [],
     "edited_forbidden_files": [],
     "forbidden_files": [
       "app/pricing.py"

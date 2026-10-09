@@ -35,6 +35,15 @@ def command(args, cwd, env, *, success=True, data=None):
     return result
 
 
+def native_version_matches(version_line, pin):
+    """Bind the raw native version to the full clean qualified source SHA."""
+    source_sha = pin["product_source_sha"]
+    require(isinstance(source_sha, str) and len(source_sha) == 40 and
+            all(char in "0123456789abcdef" for char in source_sha),
+            "invalid native product source identity")
+    return version_line == f"ripr {pin['native_version']} ({source_sha})"
+
+
 def useful_journey(prefix, project, env, output, route):
     args = ["check", "--root", project, "--diff", project / "diff.patch", "--mode", "fast", "--json"]
     result = command([*prefix, *args], output, env)
@@ -118,7 +127,7 @@ def main():
         require(sha(local_binary) == pin["payload_sha256"], "local native bytes mismatch")
         require((local / "node_modules/.bin/ripr").resolve() == local_binary, "npm did not link native executable directly")
         local_prefix = [local / "node_modules/.bin/ripr"]
-        require(command([*local_prefix, "--version"], root, env).stdout.strip() == "ripr " + receipt["version"], "native version mismatch")
+        require(native_version_matches(command([*local_prefix, "--version"], root, env).stdout.strip(), pin), "native version mismatch")
         proof["routes"].append(useful_journey(local_prefix, project, env, output, "local"))
         global_root = root / "global"
         command([*npm_command, "install", "--global", "--prefix", global_root, "--ignore-scripts", "--offline", "--no-audit", "--no-fund", tarball], root, env)
@@ -208,7 +217,7 @@ def main():
             require(attempt.returncode != 0 and "EBADPLATFORM" in attempt.stderr, "wrong platform was accepted: " + key)
             proof["negative_controls"].append("npm rejects contradictory " + key + " metadata")
         reinstall_global(npm_command, global_root, tarball, root, env, pin["payload_sha256"])
-        require(command([global_binary, "--version"], root, env).stdout.strip() == "ripr " + receipt["version"], "reinstalled native version mismatch")
+        require(native_version_matches(command([global_binary, "--version"], root, env).stdout.strip(), pin), "reinstalled native version mismatch")
         (project / "ripr.toml").unlink()
         proof["reinstall_journey"] = useful_journey([global_binary], project, env, output, "fresh-reinstall")
         command([*npm_command, "uninstall", "--global", "--prefix", global_root, "--ignore-scripts", PACKAGE_NAME], root, env)

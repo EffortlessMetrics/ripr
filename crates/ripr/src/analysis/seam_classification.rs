@@ -11,8 +11,8 @@
 //! 2. any stage `== Opaque`                              → `Opaque`
 //! 3. all five stages `== Yes`                           → `StronglyGripped`
 //! 4. `discriminate == No`                               → `ReachableUnrevealed`
-//! 5. `discriminate == Weak`
-//!    or `missing_discriminators` non-empty              → `WeaklyGripped`
+//! 5. `activate != Unknown` and (`discriminate == Weak`
+//!    or `missing_discriminators` non-empty)             → `WeaklyGripped`
 //! 6. `activate == Unknown`                              → `ActivationUnknown`
 //! 7. `propagate == Unknown`                             → `PropagationUnknown`
 //! 8. `observe == Unknown`                               → `ObservationUnknown`
@@ -30,16 +30,45 @@ use super::test_grip_evidence::TestGripEvidence;
 use crate::domain::StageState;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
+use std::cell::Cell;
+#[cfg(test)]
 use std::collections::BTreeMap;
 use std::collections::HashMap;
 
 /// A seam paired with its evidence and the resulting grip class.
 /// Crate-private; the report PR consumes `Vec<ClassifiedSeam>` directly.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct ClassifiedSeam {
     pub(crate) seam: RepoSeam,
     pub(crate) evidence: TestGripEvidence,
     pub(crate) class: SeamGripClass,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CLASSIFIED_SEAM_CLONES: Cell<usize> = const { Cell::new(0) };
+}
+
+impl Clone for ClassifiedSeam {
+    fn clone(&self) -> Self {
+        #[cfg(test)]
+        CLASSIFIED_SEAM_CLONES.with(|count| count.set(count.get().saturating_add(1)));
+        Self {
+            seam: self.seam.clone(),
+            evidence: self.evidence.clone(),
+            class: self.class,
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn classified_seam_clone_count() -> usize {
+    CLASSIFIED_SEAM_CLONES.with(Cell::get)
+}
+
+#[cfg(test)]
+pub(crate) fn reset_classified_seam_clone_count() {
+    CLASSIFIED_SEAM_CLONES.with(|count| count.set(0));
 }
 
 /// Compact per-class count summary for repo-scoped consumers that only
@@ -98,8 +127,15 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
         return SeamGripClass::ReachableUnrevealed;
     }
 
-    if evidence.discriminate.state == StageState::Weak
-        || !evidence.missing_discriminators.is_empty()
+    // Weak grip is a claim about tests that run the seam: their oracle is
+    // weak, or the activation values they pass miss a needed discriminator.
+    // With activation unknown ripr has not established that any related
+    // test runs the seam (a same-file relation, or #4214's boundary hint
+    // with no observed value), so the seam falls through to
+    // `ActivationUnknown` instead of ranking as a weak-grip gap.
+    if evidence.activate.state != StageState::Unknown
+        && (evidence.discriminate.state == StageState::Weak
+            || !evidence.missing_discriminators.is_empty())
     {
         return SeamGripClass::WeaklyGripped;
     }
@@ -132,7 +168,6 @@ pub(crate) fn classify_seam(_seam: &RepoSeam, evidence: &TestGripEvidence) -> Se
 /// Seams without a matching evidence record are skipped. The inventory
 /// walker always builds evidence for every seam, so this only filters
 /// out genuinely orphaned input.
-#[cfg(test)]
 pub(crate) fn classify_seams(
     seams: &[RepoSeam],
     evidence: &[TestGripEvidence],
@@ -237,6 +272,7 @@ mod tests {
             discriminate: stage(discriminate),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: missing,
+            new_test_target: None,
         }
     }
 
@@ -284,6 +320,44 @@ mod tests {
             classify_seam(&sample_seam(), &evidence),
             SeamGripClass::WeaklyGripped
         );
+    }
+
+    #[test]
+    fn given_activation_unknown_then_weak_evidence_is_activation_unknown_not_weak_grip() {
+        // The mutation spot check found pilot's top `weakly_gripped` seams of
+        // these shapes mostly caught by real mutants: a boundary hint with no
+        // observed activation value, and a weak oracle from tests ripr only
+        // relates by file. Neither establishes that a test runs the seam.
+        for (discriminate, missing) in [
+            (StageState::Yes, one_missing()),
+            (StageState::Weak, no_missing()),
+        ] {
+            let unknown_activation = evidence_with(
+                StageState::Yes,
+                StageState::Unknown,
+                StageState::Yes,
+                StageState::Yes,
+                discriminate.clone(),
+                missing.clone(),
+            );
+            assert_eq!(
+                classify_seam(&sample_seam(), &unknown_activation),
+                SeamGripClass::ActivationUnknown
+            );
+            // Established activation keeps the same evidence a weak grip.
+            let activated = evidence_with(
+                StageState::Yes,
+                StageState::Yes,
+                StageState::Yes,
+                StageState::Yes,
+                discriminate,
+                missing,
+            );
+            assert_eq!(
+                classify_seam(&sample_seam(), &activated),
+                SeamGripClass::WeaklyGripped
+            );
+        }
     }
 
     #[test]
@@ -515,6 +589,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
         let ungripped_evidence = TestGripEvidence {
             seam_id: ungripped_seam.id().clone(),
@@ -526,6 +601,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
 
         // Seams in one order, evidence in the OPPOSITE order. With
@@ -575,6 +651,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
 
         let classified = classify_seams(std::slice::from_ref(&seam), &[evidence]);
@@ -607,6 +684,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::<ValueFact>::new(),
             missing_discriminators: no_missing(),
+            new_test_target: None,
         };
         let matching_evidence = evidence_with(
             StageState::Yes,

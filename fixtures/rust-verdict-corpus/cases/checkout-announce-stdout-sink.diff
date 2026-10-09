@@ -1,0 +1,13 @@
+diff --git a/src/rates.rs b/src/rates.rs
+index aad58f4..8868f48 100644
+--- a/src/rates.rs
++++ b/src/rates.rs
+@@ -29,7 +29,7 @@ pub fn label(region: &str) -> String {
+ }
+ 
+ pub fn announce(rate: u32) -> u32 {
+-    println!("rate is now {}", rate * 2);
++    println!("rate is now {}", 2 * rate);
+     rate
+ }
+ 

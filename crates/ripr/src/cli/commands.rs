@@ -1,72 +1,37 @@
 use crate::analysis;
-use crate::app::agent_brief::{
-    AgentBriefPolicy, AgentBriefResolvedWorkingSet, select_agent_brief_seams,
-};
 use crate::app::{self, CheckInput, Mode, OutputFormat};
-use crate::cli::commands_numeric::parse_positive_u64;
 use crate::cli::help;
-use crate::cli::parse::{expect_value, parse_mode};
-use crate::cli::suggest::unknown_argument;
+use crate::cli::parse::{
+    base_with_diff_conflict_error, disclose_attached_terminal_stdin_read, expect_value, parse_mode,
+};
+use crate::cli::suggest::{unknown_argument, unknown_value};
 #[cfg(test)]
 use crate::config::CONFIG_FILE_NAME;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
 use crate::output;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
-use crate::cli::commands_agent_support::{
-    agent_brief_lines_from_diff, agent_brief_owners_for_lines,
-};
 use crate::cli::commands_options::*;
 use crate::cli::commands_timestamps::generated_at_unix_ms;
 
-const DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS: u64 = 120_000;
-
-fn record_review_comments_error(
-    receipt: &mut crate::output::review_comments_receipt::ReviewCommentsRunReceipt,
-    receipt_path: &Path,
-    phase: &str,
-    error: String,
-) -> String {
-    receipt.failed(phase, &error);
-    match receipt.write_atomic(receipt_path) {
-        Ok(()) => error,
-        Err(receipt_error) => {
-            format!("{error}; failed to persist terminal receipt: {receipt_error}")
-        }
-    }
-}
-
-fn enforce_review_comments_deadline(
-    receipt: &mut crate::output::review_comments_receipt::ReviewCommentsRunReceipt,
-    receipt_path: &Path,
-    started: Instant,
-    now: Instant,
-    timeout_ms: u64,
-    phase: &str,
-) -> Result<(), String> {
-    if now.saturating_duration_since(started) < Duration::from_millis(timeout_ms) {
-        return Ok(());
-    }
-    receipt.limited_timeout(phase);
-    receipt.write_atomic(receipt_path).map_err(|error| {
-        format!(
-            "review-comments timed out during {phase}; failed to persist terminal receipt: {error}"
-        )
-    })?;
-    Err(format!("review-comments timed out during {phase}"))
-}
+#[path = "commands/agent.rs"]
 mod agent;
+#[path = "commands/agent_card.rs"]
+pub(crate) mod agent_card;
 #[path = "commands/agent_dispatch.rs"]
 mod agent_dispatch;
 #[path = "commands/agent_gap_packet.rs"]
 mod agent_gap_packet;
+#[path = "commands/agent_stub.rs"]
+pub(crate) mod agent_stub;
 #[path = "commands/cache.rs"]
 mod cache_command;
 #[path = "commands/config.rs"]
 mod config_command;
 #[path = "commands/context.rs"]
 mod context;
+#[path = "commands/feedback.rs"]
+mod feedback_command;
 #[path = "commands/policy.rs"]
 mod policy_commands;
 #[path = "commands/receipt.rs"]
@@ -74,11 +39,11 @@ mod receipt_command;
 #[path = "commands/swarm/mod.rs"]
 mod swarm_command;
 
-pub(super) use agent::agent;
+pub(super) use agent::{agent, before_phase_stdout, run_before_repair_with_identity};
 pub(super) use context::context;
-// The receipt help bodies live beside the receipt parser but are also the
-// flag source for `ripr receipt write|check` suggestions, so `cli::help` needs
-// a path to them.
+// Flag-documenting help bodies live beside their parsers so `cli::help`
+// suggestions mine the same text `--help` prints.
+pub(super) use feedback_command::{FEEDBACK_EXPORT_HELP, FEEDBACK_RECORD_HELP};
 #[cfg(test)]
 use policy_commands::{
     parse_policy_history_options, parse_policy_operations_options,
@@ -91,9 +56,17 @@ use policy_commands::{
     policy_readiness, policy_suppression_health, policy_waiver_aging,
 };
 pub(super) use receipt_command::{RECEIPT_CHECK_HELP, RECEIPT_WRITE_HELP};
+// Cache help bodies live beside the cache parser but are also the flag source
+// for `ripr cache status|clear` suggestions, so `cli::help` needs a path to
+// them. Removing this re-export must fail to compile.
+pub(super) use cache_command::{CACHE_CLEAR_HELP, CACHE_STATUS_HELP};
 
 pub(super) fn receipt(args: &[String]) -> Result<(), String> {
     receipt_command::run_receipt(args)
+}
+
+pub(super) fn feedback(args: &[String]) -> Result<(), String> {
+    feedback_command::run_feedback(args)
 }
 
 pub(super) fn swarm(args: &[String]) -> Result<(), String> {
@@ -107,28 +80,50 @@ pub(super) fn cache(args: &[String]) -> Result<(), String> {
 pub(super) use config_command::config;
 
 fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
-    if let Some(parent) = path
-        .parent()
-        .filter(|parent| !parent.as_os_str().is_empty())
-    {
-        std::fs::create_dir_all(parent)
-            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-    }
-    std::fs::write(path, rendered).map_err(|err| {
+    output::file_write::write(path, rendered.as_bytes()).map_err(|err| {
         format!(
-            "write {} failed: {err}",
+            "write output {} failed: {err}",
             output::outcome::display_path(path)
         )
     })
+}
+
+fn append_jsonl_record(path: &Path, record: &str) -> Result<(), String> {
+    output::file_write::append_line(path, record).map_err(|err| {
+        format!(
+            "append jsonl {} failed: {err}",
+            output::outcome::display_path(path)
+        )
+    })
+}
+
+fn maybe_append_jsonl(path: Option<&Path>, record: &str) -> Result<(), String> {
+    let Some(path) = path else {
+        return Ok(());
+    };
+    append_jsonl_record(path, record)?;
+    println!("Appended {}", path.display());
+    Ok(())
 }
 
 #[path = "commands/baseline.rs"]
 mod baseline;
 pub(super) use baseline::baseline;
 
+#[path = "commands/ci_packet.rs"]
+mod ci_packet;
+#[path = "commands/ci_summary.rs"]
+mod ci_summary;
+#[path = "commands/pr_comments_github.rs"]
+mod pr_comments_github;
+
 #[path = "commands/check.rs"]
 mod check;
 pub(super) use check::check;
+
+#[path = "commands/review_comments.rs"]
+mod review_comments;
+pub(super) use review_comments::review_comments;
 
 #[path = "commands/doctor.rs"]
 mod doctor;
@@ -142,7 +137,14 @@ pub(super) use gate::gate;
 mod init;
 pub(super) use init::init;
 #[cfg(test)]
-use init::{generated_github_actions_workflow, parse_init_options};
+use init::parse_init_options;
+
+// The generated `ripr init --ci github` workflow template lives beside the
+// init command; its tests here pin rendered placeholders against it.
+#[path = "commands/init_workflow.rs"]
+mod init_workflow;
+#[cfg(test)]
+use init_workflow::generated_github_actions_workflow;
 
 #[path = "commands/pilot.rs"]
 mod pilot;
@@ -155,13 +157,13 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
     }
 
     let options = parse_outcome_options(args)?;
-    let before_json = std::fs::read_to_string(&options.before).map_err(|err| {
+    let before_json = crate::bounded_input::read_to_string(&options.before).map_err(|err| {
         format!(
             "read {} failed: {err}",
             output::outcome::display_path(&options.before)
         )
     })?;
-    let after_json = std::fs::read_to_string(&options.after).map_err(|err| {
+    let after_json = crate::bounded_input::read_to_string(&options.after).map_err(|err| {
         format!(
             "read {} failed: {err}",
             output::outcome::display_path(&options.after)
@@ -173,14 +175,15 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
         output::outcome::display_path(&options.before),
         output::outcome::display_path(&options.after),
     )?;
-    // The before/after artifacts do not carry a head SHA, so we cannot
-    // verify they came from the same repository or adjacent commits. The
-    // comparison matches seams/findings by id only. Disclose this on stderr
-    // (machine JSON output on stdout is unchanged) so a user who did not
-    // read the help knows the movement report assumes same-repo/same-base
-    // before/after. See #1942.
+    // Disclose on stderr (machine JSON output on stdout is unchanged) what
+    // can actually be said about the two snapshots' provenance, so a user who
+    // did not read the help knows what the movement report assumes. See
+    // #1942; the line used to assert unconditionally that the artifacts carry
+    // no head SHA, which is false for any snapshot written through the
+    // artifact-identity path.
     eprintln!(
-        "ripr outcome: comparison matches seams/findings by id only; the before/after artifacts do not carry a head SHA, so ensure both snapshots are from the same repository and adjacent commits."
+        "{}",
+        output::outcome::head_provenance_disclosure(&before_json, &after_json)
     );
     let rendered = match options.format {
         OutcomeFormat::Markdown => output::outcome::render_targeted_test_outcome_md(&report),
@@ -188,21 +191,7 @@ pub(super) fn outcome(args: &[String]) -> Result<(), String> {
     };
 
     match options.out {
-        Some(path) => {
-            if let Some(parent) = path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-            }
-            std::fs::write(&path, rendered).map_err(|err| {
-                format!(
-                    "write {} failed: {err}",
-                    output::outcome::display_path(&path)
-                )
-            })
-        }
+        Some(path) => write_text_file(&path, &rendered),
         None => {
             print!("{rendered}");
             Ok(())
@@ -229,7 +218,7 @@ pub(super) fn evidence_health(args: &[String]) -> Result<(), String> {
         analysis::inventory_classified_seams_at_with_config(&options.root, &config)?;
     let calibration = match &options.mutation_calibration {
         Some(path) => {
-            let contents = std::fs::read_to_string(path).map_err(|err| {
+            let contents = crate::bounded_input::read_to_string(path).map_err(|err| {
                 format!(
                     "read evidence-health calibration context {} failed: {err}",
                     output::outcome::display_path(path)
@@ -254,10 +243,6 @@ pub(super) fn evidence_health(args: &[String]) -> Result<(), String> {
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
     Ok(())
-}
-
-pub(super) fn review_comments(args: &[String]) -> Result<(), String> {
-    review_comments_with_diff_loader(args, load_review_comments_diff)
 }
 
 pub(super) fn zero(args: &[String]) -> Result<(), String> {
@@ -328,18 +313,20 @@ pub(super) fn pr_comments(args: &[String]) -> Result<(), String> {
         help::print_pr_comments_help();
         return Ok(());
     }
-    // The sole subcommand is implied when the command runs bare:
-    // `ripr <cmd>` behaves like `ripr <cmd> "plan"` (#2013).
+    // `plan` is implied when the command runs bare: `ripr pr-comments`
+    // behaves like `ripr pr-comments plan` (#2013).
     let (subcommand, rest) = match args.split_first() {
         Some((subcommand, rest)) => (subcommand.as_str(), rest),
         None => ("plan", &[][..]),
     };
-    if subcommand != "plan" {
-        return Err(format!(
-            "unknown pr-comments subcommand {subcommand:?}; expected `plan`"
-        ));
+    match subcommand {
+        "plan" => pr_comments_plan(rest),
+        "existing" => pr_comments_github::pr_comments_existing(rest),
+        "requests" => pr_comments_github::pr_comments_requests(rest),
+        _ => Err(format!(
+            "unknown pr-comments subcommand {subcommand:?}; expected `plan`, `existing`, or `requests`"
+        )),
     }
-    pr_comments_plan(rest)
 }
 
 pub(super) fn pr_review(args: &[String]) -> Result<(), String> {
@@ -510,17 +497,19 @@ pub(super) fn reports(args: &[String]) -> Result<(), String> {
     }
     let Some((subcommand, rest)) = args.split_first() else {
         return Err(
-            "reports requires subcommand `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+            "reports requires subcommand `index`, `ci-packet`, `ci-summary`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
                 .to_string(),
         );
     };
     match subcommand.as_str() {
         "index" => report_packet_index(rest),
+        "ci-packet" => ci_packet::ci_packet(rest),
+        "ci-summary" => ci_summary::ci_summary(rest),
         "gap-ledger" => gap_decision_ledger(rest),
         "ts-limitations" => typescript_limitations(rest),
         "ts-false-actionable" => typescript_false_actionable(rest),
         _ => Err(format!(
-            "unknown reports subcommand {subcommand:?}; expected `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+            "unknown reports subcommand {subcommand:?}; expected `index`, `ci-packet`, `ci-summary`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
         )),
     }
 }
@@ -550,15 +539,38 @@ fn report_packet_index(args: &[String]) -> Result<(), String> {
 
 fn gap_decision_ledger(args: &[String]) -> Result<(), String> {
     let options = parse_gap_decision_ledger_options(args)?;
+    // A root that is not a directory cannot be analyzed, whether or not the
+    // source reads: refuse (exit 2 per docs/EXIT_CODES.md) before writing a
+    // ledger and exiting 0 as if the run succeeded.
+    if !Path::new(&options.root).is_dir() {
+        return Err(format!(
+            "reports gap-ledger --root {} is not a directory; pass the repository root with --root",
+            options.root
+        ));
+    }
     let records_path = ledger_source_path(options.source.path())?;
+    // An unreadable source means the command could not complete for the same
+    // reason: refuse before writing a `blocked` ledger.
+    let records_json = read_optional_text_for_report(options.source.label(), options.source.path())
+        .map_err(|error| {
+            format!(
+                "{error}; generate it first (for example `ripr pilot --root {}`) or pass the correct path",
+                crate::agent::loop_commands::shell_arg(&options.root)
+            )
+        })?;
     let input = output::gap_decision_ledger::GapDecisionLedgerInput {
         root: options.root,
         generated_at: gap_decision_ledger_generated_at()?,
         source_kind: options.source.kind(),
         records_path,
-        records_json: read_optional_text_for_report(options.source.label(), options.source.path()),
+        records_json: Ok(records_json),
     };
-    let report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
+    let selected_root = PathBuf::from(&input.root);
+    let mut report = output::gap_decision_ledger::build_gap_decision_ledger_report(input);
+    output::gap_decision_ledger::stamp_gap_decision_ledger_source_subject(
+        &mut report,
+        &selected_root,
+    )?;
     let rendered_json = output::gap_decision_ledger::render_gap_decision_ledger_json(&report)?;
     let rendered_md = output::gap_decision_ledger::render_gap_decision_ledger_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
@@ -581,11 +593,15 @@ fn ledger_source_path(path: &Path) -> Result<String, String> {
 
 fn typescript_limitations(args: &[String]) -> Result<(), String> {
     let options = parse_typescript_limitations_options(args)?;
+    // An unreadable check output means the command could not complete:
+    // surface the read failure (exit 2 per docs/EXIT_CODES.md) instead of
+    // writing a `blocked` report and exiting 0 as if the run succeeded.
+    let check_output_json = read_optional_text_for_report("check output", &options.check_output)?;
     let input = output::typescript_limitations::TypeScriptLimitationLeaderboardInput {
         root: options.root,
         generated_at: typescript_limitations_generated_at()?,
         check_output_path: output::baseline_delta::display_path(&options.check_output),
-        check_output_json: read_optional_text_for_report("check output", &options.check_output),
+        check_output_json: Ok(check_output_json),
     };
     let report =
         output::typescript_limitations::build_typescript_limitation_leaderboard_report(input);
@@ -602,14 +618,16 @@ fn typescript_limitations(args: &[String]) -> Result<(), String> {
 
 fn typescript_false_actionable(args: &[String]) -> Result<(), String> {
     let options = parse_typescript_false_actionable_options(args)?;
+    // An unreadable corpus means the command could not complete: surface the
+    // read failure (exit 2 per docs/EXIT_CODES.md) instead of writing a
+    // `blocked` report and exiting 0 as if the run succeeded.
+    let corpus_json =
+        read_optional_text_for_report("TypeScript false-actionable audit corpus", &options.corpus)?;
     let input = output::typescript_false_actionable::TypeScriptFalseActionableAuditInput {
         root: options.root,
         generated_at: typescript_false_actionable_generated_at()?,
         corpus_path: output::baseline_delta::display_path(&options.corpus),
-        corpus_json: read_optional_text_for_report(
-            "TypeScript false-actionable audit corpus",
-            &options.corpus,
-        ),
+        corpus_json: Ok(corpus_json),
     };
     let report =
         output::typescript_false_actionable::build_typescript_false_actionable_audit_report(input);
@@ -787,6 +805,10 @@ fn pr_evidence_ledger_record(args: &[String]) -> Result<(), String> {
     let rendered_md = output::pr_evidence_ledger::render_pr_evidence_ledger_markdown(&report);
     write_text_file(&options.out, &rendered_json)?;
     write_text_file(&options.out_md, &rendered_md)?;
+    maybe_append_jsonl(
+        options.out_jsonl.as_deref(),
+        &output::pr_evidence_ledger::render_pr_evidence_ledger_jsonl_record(&report)?,
+    )?;
     println!("Wrote {}", options.out.display());
     println!("Wrote {}", options.out_md.display());
     Ok(())
@@ -1141,428 +1163,6 @@ fn assistant_loop_health(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn review_comments_with_diff_loader(
-    args: &[String],
-    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
-) -> Result<(), String> {
-    review_comments_with_diff_loader_at(args, load_diff, Instant::now)
-}
-
-fn review_comments_with_diff_loader_at(
-    args: &[String],
-    load_diff: impl Fn(&Path, &str, &str) -> Result<String, String>,
-    now: impl Fn() -> Instant,
-) -> Result<(), String> {
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
-        help::print_review_comments_help();
-        return Ok(());
-    }
-
-    let options = parse_review_comments_options(args)?;
-    if !options.root.is_dir() {
-        return Err(format!(
-            "review-comments root {} is not a directory",
-            options.root.display()
-        ));
-    }
-
-    let config = load_for_root(&options.root)?;
-    let mut input = CheckInput {
-        root: options.root.clone(),
-        ..CheckInput::default()
-    };
-    apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
-    let receipt_path =
-        output::review_comments_receipt::ReviewCommentsRunReceipt::path_for_output(&options.out);
-    let markdown_path = review_comments_markdown_path(&options.out);
-    let artifacts = vec![
-        output::outcome::display_path(&options.out),
-        output::outcome::display_path(&markdown_path),
-    ];
-    let started = now();
-    let mut receipt = output::review_comments_receipt::ReviewCommentsRunReceipt::new(
-        &input.root,
-        &options.base,
-        &options.head,
-        &input.mode,
-        options.timeout_ms,
-        &artifacts,
-    );
-    receipt.write_atomic(&receipt_path)?;
-    receipt.phase("input_validation", "configuration");
-    receipt.write_atomic(&receipt_path)?;
-
-    if let Some(gap_ledger) = &options.gap_ledger {
-        if options.check_output.is_some() {
-            return Err(
-                "review-comments accepts at most one of --gap-ledger or --check-output".to_string(),
-            );
-        }
-        let gap_ledger_text = std::fs::read_to_string(gap_ledger).map_err(|err| {
-            record_review_comments_error(
-                &mut receipt,
-                &receipt_path,
-                "configuration",
-                format!(
-                    "review-comments --gap-ledger {} is invalid: read failed: {err}",
-                    output::pr_inline_comment_publish_plan::display_path(gap_ledger)
-                ),
-            )
-        })?;
-        let records = output::gap_decision_ledger::parse_gap_records_json(&gap_ledger_text)
-            .map_err(|err| {
-                record_review_comments_error(
-                    &mut receipt,
-                    &receipt_path,
-                    "configuration",
-                    format!(
-                        "review-comments --gap-ledger {} is invalid: {err}",
-                        output::pr_inline_comment_publish_plan::display_path(gap_ledger)
-                    ),
-                )
-            })?;
-        enforce_review_comments_deadline(
-            &mut receipt,
-            &receipt_path,
-            started,
-            now(),
-            options.timeout_ms,
-            "configuration",
-        )?;
-        receipt.phase("configuration", "static_rendering");
-        receipt.write_atomic(&receipt_path)?;
-        let gap_ledger_path = output::pr_inline_comment_publish_plan::display_path(gap_ledger);
-        let rendered_json = output::review_comments::render_gap_record_review_comments_json(
-            &input.root,
-            &options.base,
-            &options.head,
-            &input.mode,
-            &gap_ledger_path,
-            &records,
-        )
-        .map_err(|error| {
-            record_review_comments_error(&mut receipt, &receipt_path, "static_rendering", error)
-        })?;
-        let rendered_md = output::review_comments::render_gap_record_review_comments_markdown(
-            &input.root,
-            &options.base,
-            &options.head,
-            &input.mode,
-            &gap_ledger_path,
-            &records,
-        );
-        enforce_review_comments_deadline(
-            &mut receipt,
-            &receipt_path,
-            started,
-            now(),
-            options.timeout_ms,
-            "static_rendering",
-        )?;
-        receipt.phase("static_rendering", "artifact_io");
-        receipt.write_atomic(&receipt_path)?;
-        let rendered_json =
-            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-        write_text_file(&options.out, &rendered_json).map_err(|error| {
-            record_review_comments_error(&mut receipt, &receipt_path, "artifact_io", error)
-        })?;
-        write_text_file(&markdown_path, &rendered_md).map_err(|error| {
-            record_review_comments_error(&mut receipt, &receipt_path, "artifact_io", error)
-        })?;
-        enforce_review_comments_deadline(
-            &mut receipt,
-            &receipt_path,
-            started,
-            now(),
-            options.timeout_ms,
-            "artifact_io",
-        )?;
-        receipt.complete(&artifacts);
-        let rendered_json =
-            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-        write_text_file(&options.out, &rendered_json)?;
-        receipt.write_atomic(&receipt_path)?;
-        println!("Wrote {}", options.out.display());
-        println!("Wrote {}", markdown_path.display());
-        return Ok(());
-    }
-
-    receipt.phase("configuration", "diff_discovery");
-    receipt.write_atomic(&receipt_path)?;
-    let diff_text = load_diff(&input.root, &options.base, &options.head).map_err(|error| {
-        record_review_comments_error(&mut receipt, &receipt_path, "diff_discovery", error)
-    })?;
-    if analysis::working_tree_has_tracked_changes(&input.root) {
-        eprintln!(
-            "ripr: warning: working tree has uncommitted tracked changes; \
-             the committed diff at {}...{} does not include them.",
-            options.base, options.head
-        );
-    }
-    enforce_review_comments_deadline(
-        &mut receipt,
-        &receipt_path,
-        started,
-        now(),
-        options.timeout_ms,
-        "diff_discovery",
-    )?;
-    receipt.phase("diff_discovery", "producer_evidence_admission");
-    receipt.write_atomic(&receipt_path)?;
-    let admitted = if let Some(path) = options.check_output.as_deref() {
-        match app::review_comments::admit_producer_evidence(
-            path,
-            &input,
-            &config,
-            &options.base,
-            &options.head,
-            &diff_text,
-        ) {
-            Ok(admitted) => Some(admitted),
-            Err(error) => {
-                receipt.fail(
-                    "producer_evidence_admission",
-                    error.category,
-                    &error.message,
-                );
-                receipt.write_atomic(&receipt_path)?;
-                return Err(format!("{}: {}", error.category, error.message));
-            }
-        }
-    } else {
-        None
-    };
-    let mut admitted_review_input = None;
-    if let Some(admitted) = &admitted {
-        receipt.admit_identity(admitted.identity.clone());
-        if let Some(check_output) = options.check_output.as_deref() {
-            let review_input_path = check_output.with_file_name("review-input.json");
-            match app::review_comments::admit_review_input(
-                &review_input_path,
-                &input.root,
-                &admitted.identity,
-                admitted.outcome.counts.finding_count,
-                Some(&admitted.producer_projection),
-            ) {
-                Ok(review_input) => admitted_review_input = Some(review_input),
-                Err(error) => {
-                    receipt.fail(
-                        "producer_evidence_admission",
-                        error.category,
-                        &error.message,
-                    );
-                    receipt.write_atomic(&receipt_path)?;
-                    return Err(format!("{}: {}", error.category, error.message));
-                }
-            }
-        }
-    }
-    receipt.phase("producer_evidence_admission", "language_facts");
-    receipt.write_atomic(&receipt_path)?;
-    let changed_lines = agent_brief_lines_from_diff(&input.root, &diff_text);
-    let changed_owners = agent_brief_owners_for_lines(&input.root, &changed_lines);
-    enforce_review_comments_deadline(
-        &mut receipt,
-        &receipt_path,
-        started,
-        now(),
-        options.timeout_ms,
-        "language_facts",
-    )?;
-    receipt.phase("language_facts", "canonical_analysis");
-    receipt.write_atomic(&receipt_path)?;
-    let working_set = AgentBriefResolvedWorkingSet::base(options.base.clone(), changed_lines)
-        .with_changed_owners(changed_owners);
-    let changed_owner_names = working_set
-        .changed_owners
-        .iter()
-        .map(|owner| owner.owner.clone())
-        .collect::<Vec<_>>();
-    let changed_line_inputs = working_set
-        .changed_lines
-        .iter()
-        .map(|line| (line.file.clone(), line.line))
-        .collect::<Vec<_>>();
-    if let Some(review_input) = admitted_review_input {
-        let analysis_scope =
-            output::review_comments::ReviewCommentsAnalysisScope::producer_projection(
-                &working_set,
-                review_input.reviewed_count,
-            );
-        receipt.measured_phase(
-            "canonical_analysis",
-            "route_construction",
-            true,
-            Some(review_input.reviewed_count),
-            Some(review_input.projection_sha256),
-        );
-        receipt.write_atomic(&receipt_path)?;
-        let render_context = output::review_comments::ReviewCommentsRenderContext {
-            root: &input.root,
-            base: &options.base,
-            head: &options.head,
-            mode: &input.mode,
-            config: &config,
-        };
-        let rendered_json = output::review_comments::render_review_comments_json_from_projection(
-            &render_context,
-            &working_set,
-            &analysis_scope,
-            &review_input.projection,
-            admitted.as_ref().map(|value| &value.outcome),
-        )?;
-        let rendered_md = output::review_comments::render_review_comments_markdown_from_json(
-            &input.root,
-            &options.base,
-            &options.head,
-            &input.mode,
-            &rendered_json,
-        );
-        receipt.phase("route_construction", "artifact_io");
-        receipt.write_atomic(&receipt_path)?;
-        let rendered_json =
-            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-        write_text_file(&options.out, &rendered_json)?;
-        write_text_file(&markdown_path, &rendered_md)?;
-        receipt.complete(&artifacts);
-        let rendered_json =
-            output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-        write_text_file(&options.out, &rendered_json)?;
-        receipt.write_atomic(&receipt_path)?;
-        println!("Wrote {}", options.out.display());
-        println!("Wrote {}", markdown_path.display());
-        return Ok(());
-    }
-    let inventory =
-        match app::review_comments::run_analysis_with_timeout(options.timeout_ms, || {
-            analysis::inventory_diff_scoped_classified_seams_at_with_config_and_lines(
-                &input.root,
-                &config,
-                &working_set.files,
-                &changed_owner_names,
-                Some(&changed_line_inputs),
-            )
-        }) {
-            Ok(inventory) => inventory,
-            Err(error) if analysis::cancellation::is_cancellation_error(&error) => {
-                let message = format!(
-                    "canonical review analysis exceeded the configured {}ms deadline: {error}",
-                    options.timeout_ms
-                );
-                receipt.fail("canonical_analysis", "limited_timeout", &message);
-                receipt.write_atomic(&receipt_path)?;
-                return Err(format!("limited_timeout: {message}"));
-            }
-            Err(error) => {
-                return Err(record_review_comments_error(
-                    &mut receipt,
-                    &receipt_path,
-                    "canonical_analysis",
-                    error,
-                ));
-            }
-        };
-    let analysis_scope = output::review_comments::ReviewCommentsAnalysisScope::limited_diff_scope(
-        &working_set,
-        &inventory,
-    );
-    let classified = inventory.classified;
-    enforce_review_comments_deadline(
-        &mut receipt,
-        &receipt_path,
-        started,
-        now(),
-        options.timeout_ms,
-        "canonical_analysis",
-    )?;
-    receipt.measured_phase(
-        "canonical_analysis",
-        "route_construction",
-        false,
-        Some(classified.len()),
-        admitted
-            .as_ref()
-            .map(|value| value.identity.canonical_diff_sha256.clone()),
-    );
-    receipt.write_atomic(&receipt_path)?;
-    let selection = select_agent_brief_seams(
-        &classified,
-        &working_set,
-        output::review_comments::DEFAULT_REVIEW_MAX_SUMMARY_ITEMS,
-        AgentBriefPolicy::from_config(&config),
-    );
-    enforce_review_comments_deadline(
-        &mut receipt,
-        &receipt_path,
-        started,
-        now(),
-        options.timeout_ms,
-        "route_construction",
-    )?;
-    receipt.phase("route_construction", "static_rendering");
-    receipt.write_atomic(&receipt_path)?;
-    // An incomplete producer is admitted for identity and diagnostic
-    // continuity, but it is not the consumer's analysis result.  Rendering it
-    // as the final outcome would make a successful consumer run unhealthy;
-    // the consumer's canonical phase owns its own success or timeout result.
-    let analysis_outcome = admitted
-        .as_ref()
-        .filter(|value| value.outcome.kind.is_complete())
-        .map(|value| value.outcome.clone());
-    let render_context = output::review_comments::ReviewCommentsRenderContext {
-        root: &input.root,
-        base: &options.base,
-        head: &options.head,
-        mode: &input.mode,
-        config: &config,
-    };
-    let rendered_json = output::review_comments::render_review_comments_json_with_scope(
-        &render_context,
-        &working_set,
-        &selection,
-        &analysis_scope,
-        analysis_outcome.as_ref(),
-    )
-    .map_err(|error| {
-        record_review_comments_error(&mut receipt, &receipt_path, "static_rendering", error)
-    })?;
-    let rendered_md = output::review_comments::render_review_comments_markdown_with_scope(
-        &render_context,
-        &working_set,
-        &selection,
-        &analysis_scope,
-        analysis_outcome.as_ref(),
-    );
-    enforce_review_comments_deadline(
-        &mut receipt,
-        &receipt_path,
-        started,
-        now(),
-        options.timeout_ms,
-        "static_rendering",
-    )?;
-    receipt.phase("static_rendering", "artifact_io");
-    receipt.write_atomic(&receipt_path)?;
-    let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-    write_text_file(&options.out, &rendered_json)?;
-    write_text_file(&markdown_path, &rendered_md)?;
-    enforce_review_comments_deadline(
-        &mut receipt,
-        &receipt_path,
-        started,
-        now(),
-        options.timeout_ms,
-        "artifact_io",
-    )?;
-    receipt.complete(&artifacts);
-    let rendered_json = output::review_comments_receipt::attach_to_json(&rendered_json, &receipt)?;
-    write_text_file(&options.out, &rendered_json)?;
-    receipt.write_atomic(&receipt_path)?;
-    println!("Wrote {}", options.out.display());
-    println!("Wrote {}", markdown_path.display());
-    Ok(())
-}
-
 pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_calibrate_help();
@@ -1579,8 +1179,8 @@ pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
     }
 
     let options = parse_calibrate_cargo_mutants_options(rest)?;
-    let repo_exposure_json =
-        std::fs::read_to_string(&options.repo_exposure_json).map_err(|err| {
+    let repo_exposure_json = crate::bounded_input::read_to_string(&options.repo_exposure_json)
+        .map_err(|err| {
             format!(
                 "read {} failed: {err}",
                 output::outcome::display_path(&options.repo_exposure_json)
@@ -1601,21 +1201,7 @@ pub(super) fn calibrate(args: &[String]) -> Result<(), String> {
     };
 
     match options.out {
-        Some(path) => {
-            if let Some(parent) = path
-                .parent()
-                .filter(|parent| !parent.as_os_str().is_empty())
-            {
-                std::fs::create_dir_all(parent)
-                    .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
-            }
-            std::fs::write(&path, rendered).map_err(|err| {
-                format!(
-                    "write {} failed: {err}",
-                    output::outcome::display_path(&path)
-                )
-            })
-        }
+        Some(path) => write_text_file(&path, &rendered),
         None => {
             print!("{rendered}");
             Ok(())
@@ -1673,10 +1259,11 @@ fn parse_calibrate_cargo_mutants_options(args: &[String]) -> Result<CalibrateOpt
 }
 
 fn parse_calibrate_format(value: &str) -> Result<CalibrateFormat, String> {
+    const ACCEPTED: &[&str] = &["md", "markdown", "text", "json"];
     match value {
         "md" | "markdown" | "text" => Ok(CalibrateFormat::Markdown),
         "json" => Ok(CalibrateFormat::Json),
-        _ => Err(format!("unknown calibrate format {value:?}")),
+        _ => Err(unknown_value("calibrate format", value, ACCEPTED)),
     }
 }
 
@@ -1719,7 +1306,7 @@ fn read_json_value(path: &Path) -> Result<serde_json::Value, String> {
 }
 
 fn read_calibration_text(path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path)
+    crate::bounded_input::read_to_string(path)
         .map_err(|err| format!("read {} failed: {err}", output::outcome::display_path(path)))
 }
 
@@ -1802,87 +1389,6 @@ fn parse_evidence_health_options(args: &[String]) -> Result<EvidenceHealthOption
         out,
         out_md,
         mutation_calibration,
-    })
-}
-
-fn parse_review_comments_options(args: &[String]) -> Result<ReviewCommentsOptions, String> {
-    let mut root = PathBuf::from(".");
-    let mut base: Option<String> = None;
-    let mut head: Option<String> = None;
-    let mut gap_ledger = None;
-    let mut check_output = None;
-    let mut out = PathBuf::from("target/ripr/review/comments.json");
-    let mut timeout_ms = DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS;
-
-    let mut i = 0usize;
-    while i < args.len() {
-        match args[i].as_str() {
-            "--root" => {
-                i += 1;
-                root = PathBuf::from(expect_value(args, i, "--root")?);
-            }
-            "--base" => {
-                i += 1;
-                let value = expect_value(args, i, "--base")?;
-                if value.trim().is_empty() {
-                    return Err("review-comments --base requires a non-empty revision".to_string());
-                }
-                base = Some(value.to_string());
-            }
-            "--head" => {
-                i += 1;
-                let value = expect_value(args, i, "--head")?;
-                if value.trim().is_empty() {
-                    return Err("review-comments --head requires a non-empty revision".to_string());
-                }
-                head = Some(value.to_string());
-            }
-            "--gap-ledger" => {
-                i += 1;
-                let value = expect_value(args, i, "--gap-ledger")?;
-                if value.trim().is_empty() {
-                    return Err(
-                        "review-comments --gap-ledger requires a non-empty path".to_string()
-                    );
-                }
-                gap_ledger = Some(PathBuf::from(value));
-            }
-            "--check-output" => {
-                i += 1;
-                let value = expect_value(args, i, "--check-output")?;
-                if value.trim().is_empty() {
-                    return Err(
-                        "review-comments --check-output requires a non-empty path".to_string()
-                    );
-                }
-                check_output = Some(PathBuf::from(value));
-            }
-            "--out" => {
-                i += 1;
-                let value = expect_value(args, i, "--out")?;
-                if value.trim().is_empty() {
-                    return Err("review-comments --out requires a non-empty path".to_string());
-                }
-                out = PathBuf::from(value);
-            }
-            "--timeout-ms" => {
-                i += 1;
-                timeout_ms =
-                    parse_positive_u64(expect_value(args, i, "--timeout-ms")?, "--timeout-ms")?;
-            }
-            other => return Err(unknown_argument("review-comments", other)),
-        }
-        i += 1;
-    }
-
-    Ok(ReviewCommentsOptions {
-        root,
-        base: base.ok_or_else(|| "review-comments requires --base <sha>".to_string())?,
-        head: head.ok_or_else(|| "review-comments requires --head <sha>".to_string())?,
-        gap_ledger,
-        check_output,
-        out,
-        timeout_ms,
     })
 }
 
@@ -1969,6 +1475,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
     let mut history = None;
     let mut out = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_OUT);
     let mut out_md = PathBuf::from(output::pr_evidence_ledger::DEFAULT_PR_EVIDENCE_LEDGER_MD_OUT);
+    let mut out_jsonl = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -2083,6 +1590,15 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "pr-ledger record")?;
             }
+            "--out-jsonl" => {
+                i += 1;
+                out_jsonl = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out-jsonl",
+                    "pr-ledger record",
+                )?);
+            }
             other => return Err(unknown_argument("pr-ledger record", other)),
         }
         i += 1;
@@ -2098,6 +1614,34 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
             "pr-ledger record requires at least one of --gate, --baseline-delta, --zero-status, --pr-guidance, or --gap-ledger"
                 .to_string(),
         );
+    }
+
+    if let Some(jsonl) = out_jsonl.as_ref() {
+        let mut forbidden = vec![&out, &out_md];
+        for input in [
+            gate.as_ref(),
+            baseline_delta.as_ref(),
+            zero_status.as_ref(),
+            pr_guidance.as_ref(),
+            gap_ledger.as_ref(),
+            recommendation_calibration.as_ref(),
+            agent_receipt.as_ref(),
+            coverage.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            forbidden.push(input);
+        }
+        if forbidden
+            .iter()
+            .any(|path| output::path::same_output_leaf(jsonl, path))
+        {
+            return Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string(),
+            );
+        }
     }
 
     Ok(PrEvidenceLedgerOptions {
@@ -2117,6 +1661,7 @@ fn parse_pr_evidence_ledger_options(args: &[String]) -> Result<PrEvidenceLedgerO
         history,
         out,
         out_md,
+        out_jsonl,
     })
 }
 
@@ -3139,7 +2684,7 @@ fn assistant_loop_health_generated_at() -> Result<String, String> {
 }
 
 fn read_optional_text_for_report(label: &str, path: &Path) -> Result<String, String> {
-    std::fs::read_to_string(path).map_err(|err| {
+    crate::bounded_input::read_to_string(path).map_err(|err| {
         format!(
             "read {label} {} failed: {err}",
             output::baseline_delta::display_path(path)
@@ -3156,7 +2701,7 @@ fn read_optional_manifest_for_report(
     } else {
         root.join(manifest)
     };
-    match std::fs::read_to_string(&read_path) {
+    match crate::bounded_input::read_to_string(&read_path) {
         Ok(text) => Some(Ok(text)),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => None,
         Err(err) => Some(Err(format!(
@@ -3191,38 +2736,12 @@ fn non_empty_string_arg(
 }
 
 fn parse_outcome_format(value: &str) -> Result<OutcomeFormat, String> {
+    const ACCEPTED: &[&str] = &["md", "markdown", "text", "json"];
     match value {
         "md" | "markdown" | "text" => Ok(OutcomeFormat::Markdown),
         "json" => Ok(OutcomeFormat::Json),
-        _ => Err(format!("unknown outcome format {value:?}")),
+        _ => Err(unknown_value("outcome format", value, ACCEPTED)),
     }
-}
-
-fn load_review_comments_diff(root: &Path, base: &str, head: &str) -> Result<String, String> {
-    let range = format!("{base}...{head}");
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .arg("diff")
-        .arg("--unified=0")
-        .arg("--no-ext-diff")
-        .arg(&range)
-        .output()
-        .map_err(|err| format!("failed to run git diff for review-comments: {err}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git diff for review-comments failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    String::from_utf8(output.stdout)
-        .map_err(|err| format!("git diff for review-comments was not UTF-8: {err}"))
-}
-
-fn review_comments_markdown_path(json_path: &Path) -> PathBuf {
-    let mut path = json_path.to_path_buf();
-    path.set_extension("md");
-    path
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -3234,7 +2753,9 @@ enum DiffReportFormat {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DiffOptions {
     root: PathBuf,
-    base: String,
+    /// `None` when `--base` was omitted; resolved by the loader's base
+    /// authority at run time, never defaulted to a literal branch here.
+    base: Option<String>,
     head: String,
     mode: Mode,
     format: DiffReportFormat,
@@ -3249,11 +2770,15 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
     }
     let options = parse_diff_options(args)?;
     let config = load_for_root(&options.root)?;
-    let diff_text = analysis::load_diff_range(&options.root, &options.base, &options.head)?;
+    // #3952 / RIPR-SPEC-0084: an omitted --base resolves the repository's
+    // default branch through the same authority as `ripr check`, and an
+    // explicit one is verified there, instead of assuming `origin/main`.
+    let base = analysis::resolve_effective_base(&options.root, options.base.as_deref(), None)?;
+    let diff_text = analysis::load_diff_range(&options.root, &base, &options.head)?;
     let changed_files = diff_changed_files_from_text(&diff_text);
     let diff_file = crate::app::temp_diff::write_temporary_diff_file(&diff_text)?;
 
-    let check_result = run_diff_check_from_file(&options, &config, &diff_file);
+    let check_result = run_diff_check_from_file(&options, &base, &config, &diff_file);
     let _ = std::fs::remove_file(&diff_file);
     // The temporary diff lives in a per-invocation private directory
     // (#2102); remove it too so runs do not accumulate empty dirs.
@@ -3264,10 +2789,10 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
 
     let report = output::diff_report::build_diff_report(
         &output,
-        &options.base,
+        &base,
         &options.head,
         changed_files,
-        diff_receipt_path(&options.base, &options.head),
+        diff_receipt_path(&base, &options.head),
     );
     match options.format {
         DiffReportFormat::Human => {
@@ -3283,7 +2808,7 @@ pub(super) fn diff(args: &[String]) -> Result<(), String> {
 fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
     let mut options = DiffOptions {
         root: PathBuf::from("."),
-        base: "origin/main".to_string(),
+        base: None,
         head: "HEAD".to_string(),
         mode: Mode::Draft,
         format: DiffReportFormat::Human,
@@ -3300,7 +2825,7 @@ fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
             }
             "--base" => {
                 i += 1;
-                options.base = expect_value(args, i, "--base")?.to_string();
+                options.base = Some(expect_value(args, i, "--base")?.to_string());
             }
             "--head" => {
                 i += 1;
@@ -3325,7 +2850,11 @@ fn parse_diff_options(args: &[String]) -> Result<DiffOptions, String> {
         i += 1;
     }
 
-    if options.base.trim().is_empty() {
+    if options
+        .base
+        .as_deref()
+        .is_some_and(|base| base.trim().is_empty())
+    {
         return Err("diff --base requires a non-empty revision".to_string());
     }
     if options.head.trim().is_empty() {
@@ -3347,12 +2876,13 @@ fn parse_diff_format(value: &str) -> Result<DiffReportFormat, String> {
 
 fn run_diff_check_from_file(
     options: &DiffOptions,
+    base: &str,
     config: &RiprConfig,
     diff_file: &Path,
 ) -> Result<app::CheckOutput, String> {
     let mut input = CheckInput {
         root: options.root.clone(),
-        base: Some(options.base.clone()),
+        base: Some(base.to_string()),
         diff_file: Some(diff_file.to_path_buf()),
         mode: options.mode.clone(),
         format: OutputFormat::Json,
@@ -3448,12 +2978,17 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
     // the same values resolve here (flag or config).
     let mut from_artifact: Option<PathBuf> = None;
     let mut base_explicitly_provided = false;
+    // `--worktree` matches `ripr check --worktree`: the finding may come
+    // from uncommitted edits the committed-history diff never sees.
+    let mut worktree = false;
+    let mut root_explicitly_provided = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
             "--root" => {
                 i += 1;
                 input.root = PathBuf::from(expect_value(args, i, "--root")?);
+                root_explicitly_provided = true;
             }
             "--base" => {
                 i += 1;
@@ -3468,6 +3003,7 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
                 i += 1;
                 from_artifact = Some(PathBuf::from(expect_value(args, i, "--from")?));
             }
+            "--worktree" => worktree = true,
             "--mode" => {
                 i += 1;
                 input.mode = parse_mode(expect_value(args, i, "--mode")?)?;
@@ -3510,16 +3046,47 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
         }
         i += 1;
     }
-    let selector = selector.ok_or_else(|| {
-        "missing finding selector; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `ripr check --json` to list finding ids".to_string()
-    })?;
+    // #4319: the synopsis reads `[--base REV|--diff PATH]` — alternatives —
+    // but the loader gives `--diff` precedence and never validates `--base`
+    // beside it, so both flags on one command line silently analyzed the
+    // diff while appearing to assert the base. Fail at parse time, before
+    // any pipeline run. Only the fresh path conflicts: beside `--from`, both
+    // flags are assertions verified against the recording (RIPR-SPEC-0140),
+    // so that verification path is intentionally left alone.
+    if from_artifact.is_none() && base_explicitly_provided && input.diff_file.is_some() {
+        return Err(base_with_diff_conflict_error("explain"));
+    }
+    worktree_scope_conflict(
+        "explain",
+        worktree,
+        input.diff_file.is_some(),
+        from_artifact.is_some(),
+    )?;
+    if selector.is_none() && !worktree {
+        return Err(missing_selector_error(
+            "missing finding selector",
+            "ripr check --json",
+        ));
+    }
+    resolve_worktree_root(&mut input, worktree, root_explicitly_provided)?;
     let config = load_for_root(&input.root)?;
     apply_to_check_input(&mut input, &config, explicit);
+    let Some(selector) = selector else {
+        return Err(missing_selector_error(
+            "missing finding selector",
+            &app::finding_navigation_with_worktree(&input, None, explicit.mode, worktree)
+                .list_command(),
+        ));
+    };
     let asserted_base = if base_explicitly_provided {
         input.base.clone()
     } else {
         None
     };
+    // #4319: `--diff -` reads the diff from stdin. On an attached terminal
+    // that blocks until EOF with no visible sign of why, so the cli adapter
+    // discloses the read before dispatching; the analysis loader itself
+    // stays silent for library callers.
     let rendered = match from_artifact.as_deref() {
         Some(artifact_path) => app::explain_finding_from_artifact_with_navigation_mode(
             input,
@@ -3529,14 +3096,64 @@ pub(super) fn explain(args: &[String]) -> Result<(), String> {
             asserted_base.as_deref(),
             explicit.mode,
         )?,
-        None => app::explain_finding_with_config_and_navigation_mode(
-            input,
-            &selector,
-            &config,
-            explicit.mode,
-        )?,
+        None => {
+            disclose_attached_terminal_stdin_read(input.diff_file.as_deref());
+            app::explain_finding_with_config_and_navigation_mode(
+                input,
+                &selector,
+                &config,
+                explicit.mode,
+                worktree,
+            )?
+        }
     };
     println!("{rendered}");
+    Ok(())
+}
+
+/// The selector-less `explain`/`context` error. `listing` lists finding ids
+/// for the same scope: a `--worktree` run names a worktree-scoped listing,
+/// since plain `ripr check --json` omits findings only uncommitted edits
+/// produce.
+pub(super) fn missing_selector_error(what: &str, listing: &str) -> String {
+    format!(
+        "{what}; pass a finding id (e.g. `probe:src_lib.rs:error_path:abc123`) or `file:line`. Run `{listing}` to list finding ids"
+    )
+}
+
+/// A `--worktree` drill-in without `--root` resolves the implicit project
+/// root the same way `ripr check --worktree` does, so a manual invocation
+/// from a project subdirectory analyzes the scope that listed the finding.
+/// An explicit `--root` is kept as given.
+pub(super) fn resolve_worktree_root(
+    input: &mut CheckInput,
+    worktree: bool,
+    root_explicitly_provided: bool,
+) -> Result<(), String> {
+    if worktree && !root_explicitly_provided {
+        check::resolve_implicit_workspace_root(input)?;
+    }
+    Ok(())
+}
+
+/// `--worktree` is its own diff source, like in `ripr check`: it cannot sit
+/// beside `--diff`, and an artifact from `--from` already fixes the scope.
+pub(super) fn worktree_scope_conflict(
+    command: &str,
+    worktree: bool,
+    diff_file: bool,
+    from_artifact: bool,
+) -> Result<(), String> {
+    if worktree && diff_file {
+        return Err(format!(
+            "{command} --worktree cannot be combined with --diff"
+        ));
+    }
+    if worktree && from_artifact {
+        return Err(format!(
+            "{command} --worktree cannot be combined with --from: the artifact already records the diff it was written from"
+        ));
+    }
     Ok(())
 }
 
@@ -3576,8 +3193,8 @@ pub(super) fn annotations(args: &[String]) -> Result<(), String> {
 /// `ripr pr-evidence` — binary-first PR evidence packet (Campaign 31 item 8c).
 /// Writes the PR diff, runs an in-process RIPR check, and composes the result
 /// into a PR evidence packet. The canonical downstream replacement for
-/// `cargo xtask ripr-pr`. Unlike the xtask, it calls `check_workspace`
-/// directly instead of shelling out to `cargo run -p ripr -- check`.
+/// `cargo xtask ripr-pr`. Unlike the xtask, it calls the configured check
+/// use case directly instead of shelling out to `cargo run -p ripr -- check`.
 pub(super) fn pr_evidence(args: &[String]) -> Result<(), String> {
     crate::app::pr_evidence::run_pr_evidence(args)
 }
@@ -3600,7 +3217,6 @@ pub(super) fn ripr_plus(args: &[String]) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     pub(super) fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| value.to_string()).collect()
@@ -3672,10 +3288,7 @@ mod tests {
     struct GeneratedWorkflowSmokeFixture<'a> {
         commands: &'a [&'a str],
         artifact_paths: &'a [&'a str],
-        summary_sections: &'a [&'a str],
-        non_blocking_steps: &'a [&'a str],
-        gate_conditional_steps: &'a [&'a str],
-        optional_sarif_steps: &'a [&'a str],
+        yaml_advisory_steps: &'a [&'a str],
         forbidden_fragments: &'a [&'a str],
     }
 
@@ -3686,9 +3299,6 @@ mod tests {
                 "ripr agent start",
                 "ripr agent packet",
                 "ripr check",
-                "ripr agent verify",
-                "ripr agent receipt",
-                "ripr outcome",
                 "reports gap-ledger",
                 "ripr review-comments",
                 "gate evaluate",
@@ -3701,7 +3311,6 @@ mod tests {
                 "policy operations",
                 "policy history",
                 "policy promote",
-                "policy preview-promote",
                 "assistant-loop proof",
                 "assistant-loop health",
                 "first-action",
@@ -3711,7 +3320,6 @@ mod tests {
                 "pr-comments plan",
                 "ripr agent status",
                 "ripr agent review-summary",
-                "cargo xtask operator-cockpit",
             ],
             artifact_paths: &[
                 "target/ripr/pilot",
@@ -3720,16 +3328,13 @@ mod tests {
                 "target/ripr/reports",
                 "target/ripr/review",
                 "target/ripr/workflow/before.repo-exposure.json",
-                "target/ripr/workflow/after.repo-exposure.json",
                 "target/ripr/workflow/agent-packet.json",
                 "target/ripr/workflow/agent-brief.json",
-                "target/ripr/workflow/agent-verify.json",
                 "target/ripr/reports/agent-receipt.json",
                 "target/ripr/workflow/agent-status.json",
                 "target/ripr/workflow/agent-status.md",
                 "target/ripr/workflow/agent-review-summary.json",
                 "target/ripr/workflow/agent-review-summary.md",
-                "target/ripr/reports/targeted-test-outcome.json",
                 "target/ripr/reports/gap-decision-ledger.json",
                 "target/ripr/reports/gap-decision-ledger.md",
                 "target/ripr/reports/ripr-findings.sarif",
@@ -3754,16 +3359,12 @@ mod tests {
                 "target/ripr/reports/policy-operations.md",
                 "target/ripr/reports/policy-history.json",
                 "target/ripr/reports/policy-history.md",
-                "target/ripr/reports/policy-promotion-visible-only.json",
                 "target/ripr/reports/policy-promotion-visible-only.md",
-                "target/ripr/reports/policy-promotion-acknowledgeable.json",
                 "target/ripr/reports/policy-promotion-acknowledgeable.md",
-                "target/ripr/reports/policy-promotion-baseline-check.json",
                 "target/ripr/reports/policy-promotion-baseline-check.md",
-                "target/ripr/reports/policy-promotion-calibrated-gate.json",
                 "target/ripr/reports/policy-promotion-calibrated-gate.md",
-                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json",
-                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md",
+                "target/ripr/reports/preview-promotion-{language}-boundary-gap.json",
+                "target/ripr/reports/preview-promotion-{language}-boundary-gap.md",
                 "target/ripr/reports/preview-promotion-typescript-boundary-gap.md",
                 "target/ripr/reports/preview-promotion-python-boundary-gap.md",
                 "target/ripr/reports/test-oracle-assistant-proof.json",
@@ -3774,7 +3375,6 @@ mod tests {
                 "target/ripr/reports/first-useful-action.md",
                 "target/ripr/reports/pr-review-front-panel.json",
                 "target/ripr/reports/pr-review-front-panel.md",
-                "target/ripr/reports/start-here.json",
                 "target/ripr/reports/start-here.md",
                 "target/ripr/reports/index.json",
                 "target/ripr/reports/index.md",
@@ -3784,94 +3384,15 @@ mod tests {
                 "target/ripr/review/comment-publish-plan.md",
                 "target/ci/labels.json",
             ],
-            summary_sections: &[
-                "## RIPR advisory summary",
-                "### Start here",
-                "#### First-run status",
-                "### Language preview grouping",
-                "### PR review summary",
-                "#### PR review at a glance",
-                "### Recommended next test",
-                "#### Recommended next test at a glance",
-                "### Top recommendation",
-                "### Agent review packet",
-                "### Artifact packet",
-                "### Uploaded review artifacts",
-                "#### Uploaded artifacts at a glance",
-                "### Gate decision",
-                "#### Gate decision at a glance",
-                "### Baseline debt delta",
-                "#### Baseline debt movement",
-                "### RIPR Zero status",
-                "#### RIPR Zero at a glance",
-                "### PR evidence ledger",
-                "#### PR movement at a glance",
-                "### Policy readiness",
-                "#### Policy readiness at a glance",
-                "### Policy operations",
-                "#### Policy operations at a glance",
-                "### Policy history",
-                "#### Policy history at a glance",
-                "### Policy promotion packets",
-                "### Preview promotion packets",
-                "### Waiver aging",
-                "#### Waiver aging at a glance",
-                "### Suppression health",
-                "#### Suppression health at a glance",
-                "### Test-oracle assistant proof",
-                "#### Assistant proof at a glance",
-                "### Agent proof status",
-                "#### Agent proof status at a glance",
-                "### SARIF and badge status",
-                "### PR guidance annotations",
-                "### PR inline comments",
-                "### Known limits",
-            ],
-            non_blocking_steps: &[
-                "Generate RIPR pilot packet",
-                "Prepare RIPR editor-agent artifacts",
-                "Generate RIPR agent loop artifacts",
-                "Render RIPR repo badge artifacts",
-                "Render RIPR operator cockpit",
-                "Render RIPR baseline debt delta",
-                "Render RIPR Zero status",
-                "Render RIPR PR evidence ledger",
-                "Render RIPR waiver aging",
-                "Render RIPR suppression health",
-                "Render RIPR policy readiness",
-                "Render RIPR policy operations",
-                "Render RIPR policy history",
-                "Render RIPR policy promotion packets",
-                "Render RIPR preview promotion packets",
-                "Render RIPR test-oracle assistant proof",
-                "Render RIPR assistant loop health",
-                "Render RIPR first useful action",
-                "Render RIPR PR review front panel",
-                "Render RIPR report packet index",
-                "Render RIPR LLM work-loop summaries",
+            // The steps left in YAML; the packet's own steps keep their
+            // continue-on-error semantics in `ci_packet::stage_table`.
+            yaml_advisory_steps: &[
                 "Capture existing RIPR inline comments",
-                "Plan RIPR inline comments",
                 "Publish RIPR inline comments",
-                "Capture RIPR gate labels",
-                "Emit RIPR PR guidance annotations",
-                "Check RIPR advisory artifacts",
                 "Add RIPR advisory summary",
                 "Upload RIPR report artifacts",
                 // Upload infra is not analysis authority (#2009 review): a
                 // CodeQL flake must not fail a gate the analysis passed.
-                "Upload RIPR diff findings",
-                "Upload RIPR repo seams",
-            ],
-            // Gate-critical analysis producers (#2009): advisory by default
-            // but blocking when the operator opted into a blocking gate.
-            gate_conditional_steps: &[
-                "Run RIPR PR guidance report",
-                "Render RIPR diff SARIF",
-                "Render RIPR repo seam SARIF",
-            ],
-            optional_sarif_steps: &[
-                "Render RIPR diff SARIF",
-                "Render RIPR repo seam SARIF",
                 "Upload RIPR diff findings",
                 "Upload RIPR repo seams",
             ],
@@ -3881,6 +3402,13 @@ mod tests {
                 "RIPR_GATE_MODE: \"acknowledgeable\"",
                 "RIPR_GATE_MODE: \"baseline-check\"",
                 "RIPR_GATE_MODE: \"calibrated-gate\"",
+                // #3906: CI has no test edit between snapshots, so it
+                // never runs the post-edit half of the loop.
+                "ripr agent receipt",
+                "ripr outcome",
+                "> target/ripr/workflow/agent-verify.json",
+                "> target/ripr/workflow/after.repo-exposure.json",
+                "target/ripr/reports/targeted-test-outcome.json",
             ],
         }
     }
@@ -3980,7 +3508,7 @@ mod tests {
         assert_eq!(
             reports(&args(&["unknown"])),
             Err(
-                "unknown reports subcommand \"unknown\"; expected `index`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
+                "unknown reports subcommand \"unknown\"; expected `index`, `ci-packet`, `ci-summary`, `gap-ledger`, `ts-limitations`, or `ts-false-actionable`"
                     .to_string()
             )
         );
@@ -4044,6 +3572,29 @@ mod tests {
     }
 
     #[test]
+    fn reports_ts_limitations_fails_closed_on_unreadable_check_output() -> Result<(), String> {
+        // Per docs/EXIT_CODES.md an unreadable input means the command could
+        // not complete: the CLI must return the read error (exit 2 at the
+        // process boundary) instead of writing a `blocked` report and
+        // exiting 0.
+        let missing =
+            unique_command_test_dir("ts-limitations-missing").join("definitely-missing-check.json");
+        let result = reports(&args(&[
+            "ts-limitations",
+            "--check-output",
+            &missing.display().to_string(),
+        ]));
+        let err = result.err().ok_or_else(|| {
+            "unreadable check output must fail closed, not exit cleanly".to_string()
+        })?;
+        assert!(
+            err.contains("read check output") && err.contains("failed"),
+            "error must name the unreadable input, got: {err}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn reports_ts_false_actionable_requires_corpus_input() {
         assert_eq!(
             reports(&args(&["ts-false-actionable"])),
@@ -4081,7 +3632,7 @@ mod tests {
             .map_err(|err| format!("parse TypeScript false-actionable JSON: {err}"))?;
         assert_eq!(value["kind"], "typescript_false_actionable_audit");
         assert_eq!(value["status"], "advisory");
-        assert_eq!(value["summary"]["cases_total"], 14);
+        assert_eq!(value["summary"]["cases_total"], 15);
         assert_eq!(value["summary"]["false_actionable_total"], 0);
         assert_eq!(value["summary"]["false_actionable_rate"], 0.0);
         assert_eq!(value["summary"]["preview_boundary_violation_total"], 0);
@@ -4092,13 +3643,36 @@ mod tests {
         let markdown = std::fs::read_to_string(&out_md)
             .map_err(|err| format!("read TypeScript false-actionable Markdown: {err}"))?;
         assert!(markdown.contains("# RIPR TypeScript False-Actionable Audit"));
-        assert!(markdown.contains("False actionable: `0` / `14` (`0.000`)"));
+        assert!(markdown.contains("False actionable: `0` / `15` (`0.000`)"));
         assert!(
             markdown.contains("Gate-decision and badge artifacts keep their existing authority")
         );
 
         std::fs::remove_dir_all(&dir)
             .map_err(|err| format!("remove TypeScript false-actionable dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn reports_ts_false_actionable_fails_closed_on_unreadable_corpus() -> Result<(), String> {
+        // Per docs/EXIT_CODES.md an unreadable input means the command could
+        // not complete: the CLI must return the read error (exit 2 at the
+        // process boundary) instead of writing a `blocked` report and
+        // exiting 0.
+        let missing = unique_command_test_dir("ts-false-actionable-missing")
+            .join("definitely-missing-corpus.json");
+        let result = reports(&args(&[
+            "ts-false-actionable",
+            "--corpus",
+            &missing.display().to_string(),
+        ]));
+        let err = result
+            .err()
+            .ok_or_else(|| "unreadable corpus must fail closed, not exit cleanly".to_string())?;
+        assert!(
+            err.contains("read TypeScript false-actionable audit corpus") && err.contains("failed"),
+            "error must name the unreadable input, got: {err}"
+        );
         Ok(())
     }
 
@@ -4130,6 +3704,271 @@ mod tests {
         assert!(markdown.contains("gate candidates=`1`"));
 
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gap ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    fn read_json_file(path: &Path) -> Result<serde_json::Value, String> {
+        serde_json::from_str(
+            &std::fs::read_to_string(path)
+                .map_err(|err| format!("read {}: {err}", path.display()))?,
+        )
+        .map_err(|err| format!("parse {}: {err}", path.display()))
+    }
+
+    fn gap_ledger_from(
+        root: &str,
+        flag: &str,
+        input: &Path,
+        out: &Path,
+    ) -> Result<serde_json::Value, String> {
+        let out_md = out.with_extension("md");
+        reports(&args(&[
+            "gap-ledger",
+            "--root",
+            root,
+            flag,
+            &input.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))?;
+        read_json_file(out)
+    }
+
+    fn pricing_gap_record(anchor_file: &str) -> serde_json::Value {
+        serde_json::json!({
+            "gap_id": "gap:pr:pricing",
+            "canonical_gap_id": "gap:rust:pricing",
+            "kind": "MissingBoundaryAssertion",
+            "language": "rust",
+            "language_status": "stable",
+            "gap_state": "actionable",
+            "repair_route": {
+                "route_kind": "AddBoundaryAssertion",
+                "related_test": "tests/pricing.rs::discount_threshold"
+            },
+            "anchor": {"file": anchor_file, "line": 1}
+        })
+    }
+
+    /// #4544: the ledger writer never hashes the workspace. A records input
+    /// without an analysis stamp yields no usable stamp (the LSP then reports
+    /// `unverifiable_subject`), and re-rendering that unstamped ledger through
+    /// `--records` does not mint a fresh stamp for the current bytes.
+    #[test]
+    fn reports_gap_ledger_without_an_input_stamp_is_unavailable_and_stays_so() -> Result<(), String>
+    {
+        use crate::output::gap_source_subject::{SourceSubjectCheck, check_source_subject};
+        let dir = unique_command_test_dir("gap-ledger-source-subject-missing");
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(dir.join("src/pricing.rs"), "abc\n")
+            .map_err(|err| format!("write anchor: {err}"))?;
+        let records = dir.join("records.json");
+        std::fs::write(
+            &records,
+            serde_json::json!({"records": [pricing_gap_record("src/pricing.rs")]}).to_string(),
+        )
+        .map_err(|err| format!("write records: {err}"))?;
+        let root = dir.display().to_string();
+
+        let ledger = gap_ledger_from(&root, "--records", &records, &dir.join("ledger.json"))?;
+        assert_eq!(ledger.get("source_subject"), None);
+        assert_eq!(
+            ledger["source_subject_unavailable"],
+            serde_json::json!("input_source_subject_missing")
+        );
+        let required = std::collections::BTreeSet::from([
+            "src/pricing.rs".to_string(),
+            "tests/pricing.rs".to_string(),
+        ]);
+        assert!(matches!(
+            check_source_subject(&dir, ledger.get("source_subject"), &required),
+            SourceSubjectCheck::Unverifiable(_)
+        ));
+
+        let rerendered = gap_ledger_from(
+            &root,
+            "--records",
+            &dir.join("ledger.json"),
+            &dir.join("rerendered.json"),
+        )?;
+        assert_eq!(rerendered.get("source_subject"), None);
+        assert_eq!(
+            rerendered["source_subject_unavailable"],
+            serde_json::json!("input_source_subject_missing")
+        );
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+        Ok(())
+    }
+
+    /// #4544: a stamped input's digests are copied, never recomputed: the
+    /// ledger carries the input's digest even though the file changed before
+    /// the ledger was written, so the LSP reports the ledger stale. The root is
+    /// relative and the record names the anchor by absolute path, which must
+    /// still resolve to the same repo-relative stamp entry.
+    #[test]
+    fn reports_gap_ledger_copies_the_input_stamp_for_absolute_paths_under_a_relative_root()
+    -> Result<(), String> {
+        use crate::output::gap_source_subject::{SourceSubjectCheck, check_source_subject};
+        let dir = unique_repo_relative_test_dir("gap-ledger-source-subject-copy");
+        assert!(dir.is_relative(), "{}", dir.display());
+        std::fs::create_dir_all(dir.join("src")).map_err(|err| format!("create src: {err}"))?;
+        std::fs::write(dir.join("src/pricing.rs"), "abc\n")
+            .map_err(|err| format!("write anchor: {err}"))?;
+        let absolute_anchor = std::env::current_dir()
+            .map_err(|err| format!("cwd: {err}"))?
+            .join(&dir)
+            .join("src/pricing.rs");
+        let root = dir.display().to_string();
+        let analysis_stamp = serde_json::json!({
+            "digest_algorithm": "sha256",
+            "files": [
+                {
+                    "path": "src/pricing.rs",
+                    "digest": "sha256:edeaaff3f1774ad2888673770c6d64097e391bc362d7d6fb34982ddf0efd18cb"
+                },
+                {"path": "tests/pricing.rs", "digest": null}
+            ]
+        });
+        let records = dir.join("records.json");
+        std::fs::write(
+            &records,
+            serde_json::json!({
+                "root": root,
+                "source_subject": analysis_stamp,
+                "records": [pricing_gap_record(&absolute_anchor.display().to_string())]
+            })
+            .to_string(),
+        )
+        .map_err(|err| format!("write records: {err}"))?;
+        // The workspace moves on after the analysis stamped it.
+        std::fs::write(dir.join("src/pricing.rs"), "abd\n")
+            .map_err(|err| format!("edit anchor: {err}"))?;
+
+        let ledger = gap_ledger_from(&root, "--records", &records, &dir.join("ledger.json"))?;
+        assert_eq!(ledger["source_subject"], analysis_stamp);
+        assert_eq!(ledger.get("source_subject_unavailable"), None);
+        let required = std::collections::BTreeSet::from([
+            "src/pricing.rs".to_string(),
+            "tests/pricing.rs".to_string(),
+        ]);
+        assert_eq!(
+            check_source_subject(&dir, ledger.get("source_subject"), &required),
+            SourceSubjectCheck::Stale("src/pricing.rs".to_string())
+        );
+
+        // Re-rendering the written ledger keeps the analysis stamp.
+        let rerendered = gap_ledger_from(
+            &root,
+            "--records",
+            &dir.join("ledger.json"),
+            &dir.join("rerendered.json"),
+        )?;
+        assert_eq!(rerendered["source_subject"], analysis_stamp);
+
+        // A stamp that omits a named file yields no usable stamp.
+        std::fs::write(
+            &records,
+            serde_json::json!({
+                "root": root,
+                "source_subject": {"digest_algorithm": "sha256", "files": [
+                    analysis_stamp["files"][0].clone()
+                ]},
+                "records": [pricing_gap_record("src/pricing.rs")]
+            })
+            .to_string(),
+        )
+        .map_err(|err| format!("rewrite records: {err}"))?;
+        let incomplete =
+            gap_ledger_from(&root, "--records", &records, &dir.join("incomplete.json"))?;
+        assert_eq!(incomplete.get("source_subject"), None);
+        assert_eq!(
+            incomplete["source_subject_unavailable"],
+            serde_json::json!("input_source_subject_incomplete")
+        );
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
+        Ok(())
+    }
+
+    /// #4544 regression: analysis, then an edit, then the ledger write. The
+    /// repo-exposure artifact stamps the bytes the analysis run read; the
+    /// ledger derived after the edit copies that stamp, so the LSP-side check
+    /// reports the edited file stale instead of vouching for the new bytes.
+    #[test]
+    fn reports_gap_ledger_after_an_edit_keeps_the_analysis_time_stamp() -> Result<(), String> {
+        use crate::output::gap_source_subject::{SourceSubjectCheck, check_source_subject};
+        let dir = unique_command_test_dir("gap-ledger-source-subject-analysis");
+        let fixture = repo_root().join("fixtures/boundary_gap/input");
+        for file in ["Cargo.toml", "src/lib.rs", "tests/pricing.rs"] {
+            let target = dir.join(file);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|err| format!("create {}: {err}", parent.display()))?;
+            }
+            std::fs::copy(fixture.join(file), &target)
+                .map_err(|err| format!("copy {file}: {err}"))?;
+        }
+        let config = crate::config::RiprConfig::default();
+        let (classified, limit_info) =
+            crate::analysis::inventory_classified_seams_at_with_config(&dir, &config)?;
+        let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+            dir.clone(),
+            "draft".to_string(),
+            None,
+            &config,
+        )?;
+        let repo_exposure_json =
+            crate::output::repo_exposure::render_repo_exposure_json_with_context(
+                &classified,
+                limit_info.as_ref(),
+                None,
+                None,
+                None,
+                &context,
+            )?;
+        let repo_exposure = dir.join("repo-exposure.json");
+        std::fs::write(&repo_exposure, &repo_exposure_json)
+            .map_err(|err| format!("write repo exposure: {err}"))?;
+        let analysis_stamp = read_json_file(&repo_exposure)?["source_subject"].clone();
+        let stamped_paths = analysis_stamp["files"]
+            .as_array()
+            .map(|files| {
+                files
+                    .iter()
+                    .filter_map(|file| file["path"].as_str().map(ToOwned::to_owned))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        assert_eq!(stamped_paths, ["src/lib.rs", "tests/pricing.rs"]);
+
+        std::fs::write(
+            dir.join("src/lib.rs"),
+            format!(
+                "{}\n// edited after analysis\n",
+                std::fs::read_to_string(dir.join("src/lib.rs"))
+                    .map_err(|err| format!("read lib: {err}"))?
+            ),
+        )
+        .map_err(|err| format!("edit lib: {err}"))?;
+
+        let ledger = gap_ledger_from(
+            &dir.display().to_string(),
+            "--repo-exposure",
+            &repo_exposure,
+            &dir.join("ledger.json"),
+        )?;
+        assert_eq!(ledger.get("source_subject_unavailable"), None);
+        assert_eq!(ledger["source_subject"], analysis_stamp);
+        let required = stamped_paths.into_iter().collect();
+        assert_eq!(
+            check_source_subject(&dir, ledger.get("source_subject"), &required),
+            SourceSubjectCheck::Stale("src/lib.rs".to_string())
+        );
+
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove dir: {err}"))?;
         Ok(())
     }
 
@@ -4544,123 +4383,6 @@ mod tests {
     }
 
     #[test]
-    fn review_comments_parses_required_revisions_and_out() {
-        assert_eq!(
-            parse_review_comments_options(&args(&[
-                "--root",
-                "repo",
-                "--base",
-                "origin/main",
-                "--head",
-                "HEAD",
-                "--out",
-                "target/ripr/review/comments.json",
-            ])),
-            Ok(ReviewCommentsOptions {
-                root: PathBuf::from("repo"),
-                base: "origin/main".to_string(),
-                head: "HEAD".to_string(),
-                gap_ledger: None,
-                check_output: None,
-                out: PathBuf::from("target/ripr/review/comments.json"),
-                timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
-            })
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&[
-                "--base",
-                "origin/main",
-                "--head",
-                "HEAD",
-                "--gap-ledger",
-                "target/ripr/reports/gap-decision-ledger.json",
-            ])),
-            Ok(ReviewCommentsOptions {
-                root: PathBuf::from("."),
-                base: "origin/main".to_string(),
-                head: "HEAD".to_string(),
-                gap_ledger: Some(PathBuf::from(
-                    "target/ripr/reports/gap-decision-ledger.json"
-                )),
-                check_output: None,
-                out: PathBuf::from("target/ripr/review/comments.json"),
-                timeout_ms: DEFAULT_REVIEW_COMMENTS_TIMEOUT_MS,
-            })
-        );
-    }
-
-    #[test]
-    fn review_comments_requires_base_and_head() {
-        assert_eq!(
-            parse_review_comments_options(&args(&["--head", "HEAD"])),
-            Err("review-comments requires --base <sha>".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&["--base", "main"])),
-            Err("review-comments requires --head <sha>".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&["--base"])),
-            Err("missing value for --base".to_string())
-        );
-    }
-
-    #[test]
-    fn review_comments_rejects_empty_values_and_unknown_args() {
-        assert_eq!(
-            parse_review_comments_options(&args(&["--base", "", "--head", "HEAD"])),
-            Err("review-comments --base requires a non-empty revision".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&["--base", "main", "--head", ""])),
-            Err("review-comments --head requires a non-empty revision".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&[
-                "--base", "main", "--head", "HEAD", "--out", "",
-            ])),
-            Err("review-comments --out requires a non-empty path".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&[
-                "--base",
-                "main",
-                "--head",
-                "HEAD",
-                "--gap-ledger",
-                "",
-            ])),
-            Err("review-comments --gap-ledger requires a non-empty path".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&[
-                "--base",
-                "main",
-                "--head",
-                "HEAD",
-                "--check-output",
-                "",
-            ])),
-            Err("review-comments --check-output requires a non-empty path".to_string())
-        );
-        assert_eq!(
-            parse_review_comments_options(&args(&["--base", "main", "--head", "HEAD", "--bad"])),
-            Err(
-                "unknown review-comments argument \"--bad\". Run `ripr review-comments --help`."
-                    .to_string()
-            )
-        );
-    }
-
-    #[test]
-    fn review_comments_markdown_path_replaces_json_extension() {
-        assert_eq!(
-            review_comments_markdown_path(Path::new("target/ripr/review/comments.json")),
-            PathBuf::from("target/ripr/review/comments.md")
-        );
-    }
-
-    #[test]
     fn pr_review_bare_dispatches_to_front_panel() {
         // Bare `ripr pr-review` is the `front-panel` alias (#2013).
         assert_eq!(
@@ -4965,6 +4687,7 @@ mod tests {
                 pr_number: Some("123".to_string()),
                 out: PathBuf::from("target/ripr/reports/policy-history.json"),
                 out_md: PathBuf::from("target/ripr/reports/policy-history.md"),
+                out_jsonl: None,
             })
         );
         assert_eq!(
@@ -4981,6 +4704,76 @@ mod tests {
                 "unknown policy history argument \"--bad\". Run `ripr policy history --help`."
                     .to_string()
             )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out-jsonl",
+                ".ripr/policy-history.jsonl",
+            ])),
+            Ok(PolicyHistoryOptions {
+                root: ".".to_string(),
+                current: PathBuf::from("ops.json"),
+                history: None,
+                commit: None,
+                pr_number: None,
+                out: PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_OUT),
+                out_md: PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_MD_OUT),
+                out_jsonl: Some(PathBuf::from(".ripr/policy-history.jsonl")),
+            })
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out",
+                "policy-history.json",
+                "--out-jsonl",
+                "policy-history.json",
+            ])),
+            Err(
+                "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out",
+                "./policy-history.json",
+                "--out-jsonl",
+                "policy-history.json",
+            ])),
+            Err(
+                "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--out-jsonl",
+                "ops.json",
+            ])),
+            Err(
+                "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_policy_history_options(&args(&[
+                "--current",
+                "ops.json",
+                "--history",
+                ".ripr/policy-history.jsonl",
+                "--out-jsonl",
+                ".ripr/policy-history.jsonl",
+            ]))
+            .map(|options| options.out_jsonl),
+            Ok(Some(PathBuf::from(".ripr/policy-history.jsonl")))
         );
     }
 
@@ -5372,6 +5165,158 @@ mod tests {
             std::fs::read_to_string(&history).map_err(|err| format!("read history: {err}"))?,
             history_text
         );
+        assert!(
+            !dir.join("produced.jsonl").exists(),
+            "default policy history must not write JSONL without --out-jsonl"
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_out_jsonl_is_opt_in_and_feeds_non_null_trend() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history-jsonl");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("policy-operations.json");
+        let jsonl = dir.join("policy-history.jsonl");
+        let first_out = dir.join("first.json");
+        let first_md = dir.join("first.md");
+        let second_out = dir.join("second.json");
+        let second_md = dir.join("second.md");
+        std::fs::write(
+            &current,
+            r#"{
+              "schema_version": "0.1",
+              "kind": "policy_operations",
+              "generated_at": "unix_ms:10",
+              "current_policy_ceiling": "ready_for_acknowledgeable",
+              "safe_to_promote_to": [
+                {"mode": "visible-only", "allowed_now": true, "reason": "ok", "source_artifacts": []},
+                {"mode": "acknowledgeable", "allowed_now": true, "reason": "ok", "source_artifacts": []}
+              ],
+              "not_safe_to_promote_to": [],
+              "promotion_blockers": [],
+              "input_artifacts": [
+                {"kind":"baseline_delta","path":"baseline.json","status":"read"},
+                {"kind":"waiver_aging","path":"waiver.json","status":"read"},
+                {"kind":"suppression_health","path":"suppression.json","status":"read"},
+                {"kind":"recommendation_calibration","path":"recommendation.json","status":"omitted"}
+              ],
+              "current": {
+                "new_policy_eligible_count": 1,
+                "waiver_count": 2,
+                "stale_suppression_count": 0,
+                "baseline_still_present": 4,
+                "baseline_resolved": 1
+              }
+            }"#,
+        )
+        .map_err(|err| format!("write current: {err}"))?;
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "1",
+            "--out",
+            &first_out.display().to_string(),
+            "--out-md",
+            &first_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let first_json =
+            std::fs::read_to_string(&first_out).map_err(|err| format!("read first json: {err}"))?;
+        assert!(
+            first_json.contains("\"history_not_supplied\"")
+                || first_json.contains("\"direction\": \"unknown\""),
+            "first snapshot without history stays unknown: {first_json}"
+        );
+        let produced =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read produced jsonl: {err}"))?;
+        let first_line = produced
+            .lines()
+            .next()
+            .ok_or_else(|| "produced jsonl must have one line".to_string())?;
+        assert!(
+            !first_line.contains("\"kind\""),
+            "policy history jsonl is a snapshot, not the full report: {first_line}"
+        );
+
+        policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--history",
+            &jsonl.display().to_string(),
+            "--commit",
+            "HEAD",
+            "--pr-number",
+            "2",
+            "--out",
+            &second_out.display().to_string(),
+            "--out-md",
+            &second_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let second_json = std::fs::read_to_string(&second_out)
+            .map_err(|err| format!("read second json: {err}"))?;
+        assert!(
+            second_json.contains("\"entries\": 2"),
+            "history from --out-jsonl must populate entries: {second_json}"
+        );
+        assert!(
+            second_json.contains("\"direction\": \"unchanged\""),
+            "supplied history must populate trend, not unknown: {second_json}"
+        );
+        let appended =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read appended jsonl: {err}"))?;
+        let lines: Vec<&str> = appended.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(lines.len(), 2, "second --out-jsonl must append: {appended}");
+        assert_eq!(
+            lines[0], first_line,
+            "append must preserve the prior record"
+        );
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn policy_history_out_jsonl_refuses_unavailable_current() -> Result<(), String> {
+        let dir = unique_command_test_dir("policy-history-jsonl-refuse");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create history dir: {err}"))?;
+        let current = dir.join("missing-policy-operations.json");
+        let jsonl = dir.join("policy-history.jsonl");
+        let out = dir.join("policy-history.json");
+        let out_md = dir.join("policy-history.md");
+        let error = match policy(&args(&[
+            "history",
+            "--current",
+            &current.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ])) {
+            Err(error) => error,
+            Ok(()) => return Err("unavailable current must refuse --out-jsonl".to_string()),
+        };
+        assert!(
+            error.contains("refuses to append"),
+            "expected refuse error, got {error}"
+        );
+        assert!(
+            !jsonl.exists(),
+            "unavailable current must not produce a durable JSONL line"
+        );
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove history dir: {err}"))?;
         Ok(())
     }
@@ -5650,6 +5595,65 @@ language = "rust"
     }
 
     #[test]
+    fn policy_suppression_health_rejects_missing_root_without_writing() -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health-no-root");
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+        let missing = dir.join("does-not-exist");
+
+        let err = policy(&args(&[
+            "suppression-health",
+            "--root",
+            &missing.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]))
+        .err()
+        .ok_or_else(|| "missing --root must fail".to_string())?;
+
+        assert!(err.contains("cannot be read"), "{err}");
+        assert!(err.contains("does-not-exist"), "{err}");
+        assert!(
+            !out.exists() && !out_md.exists(),
+            "no report may be written"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn policy_suppression_health_rejects_file_root_without_writing() -> Result<(), String> {
+        let dir = unique_command_test_dir("suppression-health-file-root");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create suppression dir: {err}"))?;
+        let root_file = dir.join("root-file");
+        std::fs::write(&root_file, "not a directory")
+            .map_err(|err| format!("write root file: {err}"))?;
+        let out = dir.join("suppression-health.json");
+        let out_md = dir.join("suppression-health.md");
+
+        let result = policy(&args(&[
+            "suppression-health",
+            "--root",
+            &root_file.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+        ]));
+        let reports_written = out.exists() || out_md.exists();
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove suppression dir: {err}"))?;
+
+        let err = result
+            .err()
+            .ok_or_else(|| "file --root must fail".to_string())?;
+        assert!(err.contains("is not a directory"), "{err}");
+        assert!(err.contains("root-file"), "{err}");
+        assert!(!reports_written, "no report may be written");
+        Ok(())
+    }
+
+    #[test]
     fn pr_evidence_ledger_parses_option_surface() {
         assert_eq!(
             parse_pr_evidence_ledger_options(&args(&[
@@ -5706,6 +5710,7 @@ language = "rust"
                 history: Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")),
                 out: PathBuf::from("target/ripr/reports/pr-evidence-ledger.json"),
                 out_md: PathBuf::from("target/ripr/reports/pr-evidence-ledger.md"),
+                out_jsonl: None,
             })
         );
     }
@@ -5782,6 +5787,98 @@ language = "rust"
                 "unknown pr-ledger record argument \"--bad\". Run `ripr pr-ledger record --help`."
                     .to_string()
             )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out-jsonl",
+                ".ripr/pr-evidence-ledger.jsonl",
+            ]))
+            .map(|options| options.out_jsonl),
+            Ok(Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")))
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out",
+                "ledger.json",
+                "--out-jsonl",
+                "ledger.json",
+            ])),
+            Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out",
+                "./ledger.json",
+                "--out-jsonl",
+                "ledger.json",
+            ])),
+            Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--out-jsonl",
+                "gap-ledger.json",
+            ])),
+            Err(
+                "pr-ledger record --out-jsonl must not be the same path as --out, --out-md, or an evidence input"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            parse_pr_evidence_ledger_options(&args(&[
+                "--pr-number",
+                "123",
+                "--base",
+                "base",
+                "--head",
+                "head",
+                "--gap-ledger",
+                "gap-ledger.json",
+                "--history",
+                ".ripr/pr-evidence-ledger.jsonl",
+                "--out-jsonl",
+                ".ripr/pr-evidence-ledger.jsonl",
+            ]))
+            .map(|options| options.out_jsonl),
+            Ok(Some(PathBuf::from(".ripr/pr-evidence-ledger.jsonl")))
         );
     }
 
@@ -5872,7 +5969,7 @@ language = "rust"
         );
         assert_eq!(
             pr_comments(&args(&["publish"])),
-            Err("unknown pr-comments subcommand \"publish\"; expected `plan`".to_string())
+            Err("unknown pr-comments subcommand \"publish\"; expected `plan`, `existing`, or `requests`".to_string())
         );
         assert_eq!(
             parse_pr_comments_plan_options(&args(&["--mode", "post"])),
@@ -6169,7 +6266,133 @@ language = "rust"
         assert!(md_text.contains("# RIPR PR Evidence Ledger"));
         assert!(md_text.contains("Gate: acknowledgeable / acknowledged"));
         assert!(md_text.contains("Gap decision ledger:"));
+        assert!(
+            !dir.join("produced.jsonl").exists(),
+            "default pr-ledger record must not write JSONL without --out-jsonl"
+        );
 
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pr_evidence_ledger_out_jsonl_is_opt_in_and_feeds_non_null_history() -> Result<(), String> {
+        let dir = unique_command_test_dir("pr-evidence-ledger-jsonl");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create ledger dir: {err}"))?;
+        let out = dir.join("pr-evidence-ledger.json");
+        let out_md = dir.join("pr-evidence-ledger.md");
+        let jsonl = dir.join("pr-evidence-ledger.jsonl");
+        let second_out = dir.join("second.json");
+        let second_md = dir.join("second.md");
+        let gap_ledger = dir.join("gap-decision-ledger.json");
+        let fixture = repo_root().join("fixtures/boundary_gap/expected/pr-evidence-ledger/mixed");
+        std::fs::write(
+            &gap_ledger,
+            r#"{"gap_records":[{"gap_id":"gap:pr:cli","canonical_gap_id":"gap:rust:cli","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/cli.rs","line":7},"repair_route":{"route_kind":"AddBoundaryAssertion","assertion_shape":"assert!(cli())"},"verification_commands":["cargo xtask fixtures boundary_gap"]}]}"#,
+        )
+        .map_err(|err| format!("write gap ledger: {err}"))?;
+
+        pr_ledger(&args(&[
+            "record",
+            "--pr-number",
+            "1",
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--gate",
+            &fixture.join("gate-decision.json").display().to_string(),
+            "--baseline-delta",
+            &fixture
+                .join("baseline-debt-delta.json")
+                .display()
+                .to_string(),
+            "--zero-status",
+            &fixture.join("ripr-zero-status.json").display().to_string(),
+            "--pr-guidance",
+            &fixture.join("comments.json").display().to_string(),
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+            "--out-md",
+            &out_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let first_json =
+            std::fs::read_to_string(&out).map_err(|err| format!("read first json: {err}"))?;
+        assert!(
+            first_json.contains("\"history\": null"),
+            "first record without --history stays null: {first_json}"
+        );
+        let produced =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read produced jsonl: {err}"))?;
+        let first_line = produced
+            .lines()
+            .next()
+            .ok_or_else(|| "produced jsonl must have one line".to_string())?;
+        assert!(
+            first_line.contains("\"kind\":\"pr_evidence_ledger\""),
+            "pr-ledger jsonl is the compact record object: {first_line}"
+        );
+
+        pr_ledger(&args(&[
+            "record",
+            "--pr-number",
+            "2",
+            "--base",
+            "base",
+            "--head",
+            "head",
+            "--gate",
+            &fixture.join("gate-decision.json").display().to_string(),
+            "--baseline-delta",
+            &fixture
+                .join("baseline-debt-delta.json")
+                .display()
+                .to_string(),
+            "--zero-status",
+            &fixture.join("ripr-zero-status.json").display().to_string(),
+            "--pr-guidance",
+            &fixture.join("comments.json").display().to_string(),
+            "--gap-ledger",
+            &gap_ledger.display().to_string(),
+            "--history",
+            &jsonl.display().to_string(),
+            "--out",
+            &second_out.display().to_string(),
+            "--out-md",
+            &second_md.display().to_string(),
+            "--out-jsonl",
+            &jsonl.display().to_string(),
+        ]))?;
+
+        let second_json = std::fs::read_to_string(&second_out)
+            .map_err(|err| format!("read second json: {err}"))?;
+        assert!(
+            !second_json.contains("\"history\": null"),
+            "history from --out-jsonl must be non-null: {second_json}"
+        );
+        assert!(
+            second_json.contains("\"records\": 1"),
+            "history must count the appended record: {second_json}"
+        );
+        assert!(
+            second_json.contains("\"trend\": \"improving\"")
+                || second_json.contains("\"trend\": \"regressing\"")
+                || second_json.contains("\"trend\": \"stable\""),
+            "trend must be populated from produced history: {second_json}"
+        );
+        let appended =
+            std::fs::read_to_string(&jsonl).map_err(|err| format!("read appended jsonl: {err}"))?;
+        let lines: Vec<&str> = appended.lines().filter(|line| !line.is_empty()).collect();
+        assert_eq!(lines.len(), 2, "second --out-jsonl must append: {appended}");
+        assert_eq!(
+            lines[0], first_line,
+            "append must preserve the prior record"
+        );
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove ledger dir: {err}"))?;
         Ok(())
     }
@@ -6269,500 +6492,6 @@ language = "rust"
         std::fs::remove_dir_all(&dir).map_err(|err| format!("remove frontier dir: {err}"))?;
         Ok(())
     }
-
-    #[test]
-    fn review_comments_rejects_missing_root_before_loading_diff() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-missing-root");
-        let root_arg = root.display().to_string();
-        let result = review_comments_with_diff_loader(
-            &args(&["--root", &root_arg, "--base", "main", "--head", "HEAD"]),
-            |_root, _base, _head| Ok(String::new()),
-        );
-
-        let err = match result {
-            Ok(_) => return Err("missing root should be rejected".to_string()),
-            Err(err) => err,
-        };
-        assert!(err.contains("is not a directory"));
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_analysis_timeout_is_typed_and_fail_closed() -> Result<(), String> {
-        let result = app::review_comments::run_analysis_with_timeout(10, || {
-            std::thread::sleep(Duration::from_millis(100));
-            analysis::cancellation::checkpoint().map(|_| ())
-        });
-
-        let error = match result {
-            Ok(()) => {
-                return Err(
-                    "analysis that exceeded its deadline must not complete successfully"
-                        .to_string(),
-                );
-            }
-            Err(error) => error,
-        };
-        if !analysis::cancellation::is_cancellation_error(&error)
-            || !error.contains("DeadlineExceeded")
-        {
-            return Err(format!("expected typed deadline cancellation, got {error}"));
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_renders_from_bounded_producer_input() -> Result<(), String> {
-        use sha2::{Digest, Sha256};
-
-        let root = repo_root();
-        let root_identity_text = crate::output::outcome::display_path(&root);
-        let root_identity = root_identity_text
-            .strip_prefix("//?/")
-            .unwrap_or(&root_identity_text)
-            .to_string();
-        let revision = |kind: &str| -> Result<String, String> {
-            let output = std::process::Command::new("git")
-                .args(["-C", &root.display().to_string(), "rev-parse"])
-                .arg(kind)
-                .output()
-                .map_err(|error| format!("resolve fixture revision: {error}"))?;
-            if !output.status.success() {
-                return Err(format!("resolve fixture revision failed: {kind}"));
-            }
-            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-        };
-        let base_sha = revision("HEAD")?;
-        let head_tree = revision("HEAD^{tree}")?;
-        let check_bytes = br#"{}"#;
-        let check_sha = format!("sha256:{:x}", Sha256::digest(check_bytes));
-        let diff_sha = format!("sha256:{:x}", Sha256::digest([]));
-        let outcome = crate::analysis_outcome::AnalysisOutcome::new(
-            crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
-            crate::analysis_outcome::AnalysisIdentity {
-                base_revision: Some(base_sha.clone()),
-                input_identity: Some(diff_sha.clone()),
-                ..Default::default()
-            },
-            Default::default(),
-            Vec::new(),
-        )
-        .map_err(|error| format!("build fixture outcome: {error}"))?;
-        let subject = serde_json::json!({
-            "schema_version": "ripr.pr_check_subject.v1",
-            "root_identity": root_identity,
-            "base_sha": base_sha,
-            "head_sha": revision("HEAD")?,
-            "head_tree": head_tree,
-            "check_sha256": check_sha,
-            "check_byte_count": check_bytes.len(),
-            "check_schema": "0.2",
-            "canonical_diff_sha256": diff_sha,
-            "configuration_fingerprint": crate::config::repo_exposure_config_identity_hash(
-                &crate::config::RiprConfig::default(),
-            ),
-            "analyzer_generation": crate::review_input::REVIEW_ANALYZER_GENERATION,
-            "mode": "draft",
-            "analysis_outcome": {"analysis_complete": true, "outcome": outcome},
-            "canonical_finding_index": {
-                "schema_version": crate::review_input::REVIEW_INDEX_SCHEMA_VERSION,
-                "total_finding_count": 0,
-                "index_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
-                "entries": []
-            },
-            "canonical_finding_index_entry_count": 0,
-            "canonical_finding_index_byte_count": 2,
-        });
-        let review_input = serde_json::json!({
-            "schema_version": crate::review_input::REVIEW_INPUT_SCHEMA_VERSION,
-            "root_identity": root_identity,
-            "base_sha": subject["base_sha"],
-            "head_sha": subject["head_sha"],
-            "head_tree": subject["head_tree"],
-            "check_sha256": subject["check_sha256"],
-            "canonical_diff_sha256": diff_sha,
-            "mode": "draft",
-            "analysis_complete": true,
-            "total_finding_count": 0,
-            "projected_finding_count": 0,
-            "projection_limit": 10,
-            "projection_truncated": false,
-            "projection_selection_policy": crate::review_input::REVIEW_INPUT_SELECTION_POLICY,
-            "projection_selection_policy_version": crate::review_input::REVIEW_INPUT_SELECTION_POLICY_VERSION,
-            "reviewed_count": 0,
-            "projection_sha256": format!("sha256:{:x}", Sha256::digest(b"[]")),
-            "findings": [],
-            "analysis_outcome": subject["analysis_outcome"]
-        });
-        let review_bytes = format!(
-            "{}\n",
-            serde_json::to_string_pretty(&review_input)
-                .map_err(|error| format!("serialize review input: {error}"))?
-        );
-        let check_path = root.join("target/ripr/review-comments-bounded-check.json");
-        let subject_path = check_path.with_extension("subject.json");
-        let review_path = check_path.with_file_name("review-input.json");
-        std::fs::create_dir_all(
-            check_path
-                .parent()
-                .ok_or_else(|| "bounded fixture parent missing".to_string())?,
-        )
-        .map_err(|error| format!("create bounded fixture parent: {error}"))?;
-        std::fs::write(&check_path, check_bytes).map_err(|error| error.to_string())?;
-        std::fs::write(
-            &subject_path,
-            format!(
-                "{}\n",
-                serde_json::to_string_pretty(&subject)
-                    .map_err(|error| format!("serialize subject: {error}"))?
-            ),
-        )
-        .map_err(|error| error.to_string())?;
-        let review_input_sha = format!("sha256:{:x}", Sha256::digest(review_bytes.as_bytes()));
-        let mut subject = subject;
-        subject["review_input_sha256"] = serde_json::json!(review_input_sha);
-        subject["review_input_byte_count"] = serde_json::json!(review_bytes.len());
-        std::fs::write(
-            &subject_path,
-            format!(
-                "{}\n",
-                serde_json::to_string_pretty(&subject)
-                    .map_err(|error| format!("serialize bound subject: {error}"))?
-            ),
-        )
-        .map_err(|error| error.to_string())?;
-        std::fs::write(&review_path, review_bytes).map_err(|error| error.to_string())?;
-        let out = root.join("target/ripr/review-comments-bounded.json");
-        let args = args(&[
-            "--root",
-            &root.display().to_string(),
-            "--base",
-            "HEAD",
-            "--head",
-            "HEAD",
-            "--check-output",
-            &check_path.display().to_string(),
-            "--out",
-            &out.display().to_string(),
-        ]);
-        review_comments_with_diff_loader(&args, |_root, _base, _head| Ok(String::new()))?;
-        let rendered = std::fs::read_to_string(&out).map_err(|error| error.to_string())?;
-        if !rendered.contains("\"basis\": \"producer_check_projection\"") {
-            return Err("bounded producer route did not render producer projection".to_string());
-        }
-        for path in [&check_path, &subject_path, &review_path, &out] {
-            let _ = std::fs::remove_file(path);
-        }
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_returns_diff_loader_errors() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-diff-error");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        let root_arg = root.display().to_string();
-        let out = root.join("comments.json");
-        let out_arg = out.display().to_string();
-        let result = review_comments_with_diff_loader(
-            &args(&[
-                "--root", &root_arg, "--base", "main", "--head", "HEAD", "--out", &out_arg,
-            ]),
-            |_root, _base, _head| Err("synthetic diff failure".to_string()),
-        );
-
-        assert_eq!(result, Err("synthetic diff failure".to_string()));
-        let receipt_path = out.with_file_name("run-receipt.json");
-        let receipt_json = std::fs::read_to_string(&receipt_path)
-            .map_err(|err| format!("read failed receipt: {err}"))?;
-        let receipt: serde_json::Value = serde_json::from_str(&receipt_json)
-            .map_err(|err| format!("parse failed receipt: {err}"))?;
-        assert_eq!(receipt["status"], "failed");
-        assert_eq!(receipt["active_phase"], "diff_discovery");
-        assert_eq!(receipt["limitations"][0]["category"], "analysis_failed");
-        assert_eq!(
-            receipt["limitations"][0]["repair_route"],
-            "synthetic diff failure"
-        );
-        assert_eq!(receipt["non_claims"][1], "no complete route inventory");
-        assert_eq!(receipt["non_claims"][2], "no all-clear");
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_writes_json_and_markdown_from_loaded_diff() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments");
-        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
-        std::fs::write(
-            root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-        )
-        .map_err(|err| format!("write Cargo.toml: {err}"))?;
-        std::fs::write(
-            root.join("src/lib.rs"),
-            "pub fn discounted_total(amount: i32) -> i32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn above_threshold_gets_discount() {\n        assert_eq!(discounted_total(11), 10);\n    }\n}\n",
-        )
-        .map_err(|err| format!("write src/lib.rs: {err}"))?;
-
-        let out = root.join("target/ripr/review/comments.json");
-        let root_arg = root.display().to_string();
-        let out_arg = out.display().to_string();
-        review_comments_with_diff_loader(
-            &args(&[
-                "--root", &root_arg, "--base", "HEAD~1", "--head", "HEAD", "--out", &out_arg,
-            ]),
-            |diff_root, base, head| {
-                assert_eq!(diff_root, root.as_path());
-                assert_eq!(base, "HEAD~1");
-                assert_eq!(head, "HEAD");
-                Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2 +2 @@\n-    if amount >= 10 { amount - 1 } else { amount }\n+    if amount > 10 { amount - 1 } else { amount }\n".to_string())
-            },
-        )?;
-
-        let rendered_json = std::fs::read_to_string(&out)
-            .map_err(|err| format!("read review comments JSON: {err}"))?;
-        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
-            .map_err(|err| format!("read review comments Markdown: {err}"))?;
-        assert!(rendered_json.contains("\"schema_version\": \"0.1\""));
-        assert!(rendered_json.contains("\"status\": \"advisory\""));
-        assert!(rendered_json.contains("\"base\": \"HEAD~1\""));
-        assert!(rendered_json.contains("\"head\": \"HEAD\""));
-        let value: serde_json::Value = serde_json::from_str(&rendered_json)
-            .map_err(|err| format!("parse review comments JSON: {err}"))?;
-        assert_eq!(value["analysis_scope"]["run_status"], "limited_diff_scope");
-        assert_eq!(
-            value["analysis_scope"]["limitation"],
-            "review_comments_diff_scope_only"
-        );
-        assert!(rendered_md.contains("# RIPR PR Guidance"));
-        assert!(rendered_md.contains("run status: `limited_diff_scope`"));
-        assert!(rendered_md.contains("Advisory static evidence only"));
-
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_scopes_diff_fast_path_to_changed_files_and_immediate_callers()
-    -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-diff-scope");
-        std::fs::create_dir_all(root.join("src")).map_err(|err| format!("create src: {err}"))?;
-        std::fs::write(
-            root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_scope_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-        )
-        .map_err(|err| format!("write Cargo.toml: {err}"))?;
-        std::fs::write(
-            root.join("src/lib.rs"),
-            "pub fn discounted_total(amount: i32) -> i32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
-        )
-        .map_err(|err| format!("write src/lib.rs: {err}"))?;
-        std::fs::write(
-            root.join("src/wrapper.rs"),
-            "pub fn quote(amount: i32) -> i32 {\n    if discounted_total(amount) > 0 { discounted_total(amount) } else { 0 }\n}\n",
-        )
-        .map_err(|err| format!("write src/wrapper.rs: {err}"))?;
-        std::fs::write(
-            root.join("src/unrelated.rs"),
-            "pub fn unrelated(value: i32) -> i32 {\n    if value > 0 { value } else { 0 }\n}\n",
-        )
-        .map_err(|err| format!("write src/unrelated.rs: {err}"))?;
-
-        let out = root.join("target/ripr/review/comments.json");
-        review_comments_with_diff_loader(
-            &args(&[
-                "--root",
-                &root.display().to_string(),
-                "--base",
-                "HEAD~1",
-                "--head",
-                "HEAD",
-                "--out",
-                &out.display().to_string(),
-            ]),
-            |_diff_root, _base, _head| {
-                Ok("diff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -2 +2 @@\n-    if amount >= 10 { amount - 1 } else { amount }\n+    if amount > 10 { amount - 1 } else { amount }\n".to_string())
-            },
-        )?;
-
-        let rendered_json = std::fs::read_to_string(&out)
-            .map_err(|err| format!("read review comments JSON: {err}"))?;
-        let value: serde_json::Value = serde_json::from_str(&rendered_json)
-            .map_err(|err| format!("parse review comments JSON: {err}"))?;
-        let scope = &value["analysis_scope"];
-        assert_eq!(scope["scope"], "diff_scoped_changed_files");
-        assert_eq!(scope["run_status"], "limited_diff_scope");
-        assert_eq!(
-            scope["basis"],
-            "changed_production_files_plus_immediate_callers"
-        );
-        assert_eq!(scope["total_production_files"], 3);
-        assert_eq!(scope["production_files_considered"], 2);
-        assert_eq!(
-            scope["changed_production_files"],
-            serde_json::json!(["src/lib.rs"])
-        );
-        assert_eq!(
-            scope["immediate_caller_files"],
-            serde_json::json!(["src/wrapper.rs"])
-        );
-        assert_eq!(
-            scope["scoped_production_files"],
-            serde_json::json!(["src/lib.rs", "src/wrapper.rs"])
-        );
-        assert!(
-            !rendered_json.contains("src/unrelated.rs"),
-            "unrelated production files must stay out of the scoped review report"
-        );
-
-        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
-            .map_err(|err| format!("read review comments Markdown: {err}"))?;
-        assert!(rendered_md.contains("analysis scope: `diff_scoped_changed_files`"));
-        assert!(rendered_md.contains("scoped production files: 2/3"));
-        assert!(rendered_md.contains("review_comments_diff_scope_only"));
-
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_gap_ledger_writes_repair_cards_without_loading_diff() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-gap-ledger");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        let gap_ledger = root.join("gap-ledger.json");
-        let out = root.join("target/ripr/review/comments.json");
-        std::fs::write(
-            &gap_ledger,
-            r#"{"records":[{"gap_id":"gap:pr:pricing","source_currentness":"candidate_current","seam_id":"seam:pricing:threshold-boundary","kind":"MissingBoundaryAssertion","language":"rust","language_status":"stable","scope":"pr_local","evidence_class":"predicate_boundary","gap_state":"actionable","policy_state":"new","repairability":"repairable","anchor":{"file":"src/pricing.rs","line":42,"dedupe_fingerprint":"gap:pricing"},"repair_route":{"route_kind":"AddBoundaryAssertion","target_file":"tests/pricing.rs","assertion_shape":"assert_eq!(discount(100, 100), 90)","changed_behavior":"amount == threshold"},"verification_commands":["cargo xtask fixtures boundary_gap"],"projection_eligibility":{"pr_comment":{"eligible":true,"reason":"stable_anchor_and_repair_route"}}}]}"#,
-        )
-        .map_err(|err| format!("write gap ledger: {err}"))?;
-
-        review_comments_with_diff_loader(
-            &args(&[
-                "--root",
-                &root.display().to_string(),
-                "--base",
-                "main",
-                "--head",
-                "HEAD",
-                "--gap-ledger",
-                &gap_ledger.display().to_string(),
-                "--out",
-                &out.display().to_string(),
-            ]),
-            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
-        )?;
-
-        let rendered_json = std::fs::read_to_string(&out)
-            .map_err(|err| format!("read gap-ledger review comments JSON: {err}"))?;
-        let rendered_md = std::fs::read_to_string(out.with_extension("md"))
-            .map_err(|err| format!("read gap-ledger review comments Markdown: {err}"))?;
-        assert!(rendered_json.contains(r#""source": "gap_decision_ledger""#));
-        assert!(rendered_json.contains(r#""repair_card""#));
-        let value: serde_json::Value = serde_json::from_str(&rendered_json)
-            .map_err(|err| format!("parse gap-ledger review comments JSON: {err}"))?;
-        assert_eq!(value["analysis_scope"]["scope"], "gap_ledger_artifact");
-        assert_eq!(value["analysis_scope"]["run_status"], "artifact_scope");
-        assert_eq!(
-            value["analysis_scope"]["basis"],
-            "supplied_gap_decision_ledger"
-        );
-        assert_eq!(
-            value["analysis_scope"]["changed_files"],
-            serde_json::json!(["src/pricing.rs"])
-        );
-        assert!(rendered_md.contains("ripr first-action"));
-        assert!(rendered_md.contains("analysis scope: `gap_ledger_artifact`"));
-
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_gap_ledger_reports_read_and_parse_errors() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-gap-ledger-errors");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
-        let missing_ledger = root.join("missing-gap-ledger.json");
-        let out = root.join("target/ripr/review/comments.json");
-
-        let read_err = match review_comments_with_diff_loader(
-            &args(&[
-                "--root",
-                &root.display().to_string(),
-                "--base",
-                "main",
-                "--head",
-                "HEAD",
-                "--gap-ledger",
-                &missing_ledger.display().to_string(),
-                "--out",
-                &out.display().to_string(),
-            ]),
-            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
-        ) {
-            Ok(()) => return Err("missing gap ledger should fail before diff loading".to_string()),
-            Err(err) => err,
-        };
-        assert!(read_err.contains("review-comments --gap-ledger"));
-        assert!(read_err.contains("read failed"));
-
-        // Pin the read-failure receipt before the next run overwrites it.
-        let receipt_path = out.with_file_name("run-receipt.json");
-        let read_receipt: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&receipt_path)
-                .map_err(|err| format!("read read-failure receipt: {err}"))?,
-        )
-        .map_err(|err| format!("parse read-failure receipt: {err}"))?;
-        assert_eq!(read_receipt["status"], "failed");
-        assert_eq!(read_receipt["active_phase"], "configuration");
-
-        let malformed_ledger = root.join("malformed-gap-ledger.json");
-        std::fs::write(&malformed_ledger, "{not json")
-            .map_err(|err| format!("write malformed gap ledger: {err}"))?;
-        let parse_err = match review_comments_with_diff_loader(
-            &args(&[
-                "--root",
-                &root.display().to_string(),
-                "--base",
-                "main",
-                "--head",
-                "HEAD",
-                "--gap-ledger",
-                &malformed_ledger.display().to_string(),
-                "--out",
-                &out.display().to_string(),
-            ]),
-            |_root, _base, _head| Err("gap-ledger path should not load git diff".to_string()),
-        ) {
-            Ok(()) => {
-                return Err("malformed gap ledger should fail before diff loading".to_string());
-            }
-            Err(err) => err,
-        };
-        assert!(parse_err.contains("review-comments --gap-ledger"));
-        assert!(parse_err.contains("invalid"));
-
-        // Both failure routes must publish a terminal failed receipt so a
-        // reader of the run receipt never mistakes the run for in-progress.
-        let receipt_path = out.with_file_name("run-receipt.json");
-        let receipt_json = std::fs::read_to_string(&receipt_path)
-            .map_err(|err| format!("read failed receipt: {err}"))?;
-        let receipt: serde_json::Value = serde_json::from_str(&receipt_json)
-            .map_err(|err| format!("parse failed receipt: {err}"))?;
-        assert_eq!(receipt["status"], "failed");
-        assert_eq!(receipt["active_phase"], "configuration");
-        assert_eq!(receipt["limitations"][0]["category"], "analysis_failed");
-        assert!(
-            receipt["limitations"][0]["repair_route"]
-                .as_str()
-                .is_some_and(|route| route.contains("--gap-ledger")),
-            "receipt must carry the gap-ledger failure route: {receipt_json}"
-        );
-
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove temp root: {err}"))?;
-        Ok(())
-    }
-
     #[test]
     fn outcome_defaults_to_markdown_stdout_shape() {
         assert_eq!(
@@ -6793,6 +6522,232 @@ language = "rust"
     #[test]
     fn outcome_help_returns_ok() {
         assert_eq!(outcome(&args(&["--help"])), Ok(()));
+    }
+
+    /// Run the retained `ripr check` production path over the
+    /// `ts_repair_packet_complete` fixture and return the rendered check JSON.
+    #[cfg(feature = "lang-typescript")]
+    fn ts_repair_packet_complete_check_json() -> Result<serde_json::Value, String> {
+        let fixture = repo_root().join("fixtures/ts_repair_packet_complete");
+        let mut input = crate::app::CheckInput {
+            root: fixture.join("input"),
+            diff_file: Some(fixture.join("diff.patch")),
+            mode: crate::app::Mode::Draft,
+            ..crate::app::CheckInput::default()
+        };
+        let config = crate::config::load_for_root(&input.root)?;
+        crate::config::apply_to_check_input(
+            &mut input,
+            &config,
+            crate::config::CheckInputExplicit::default(),
+        );
+        let output = crate::app::check_workspace_with_config(input, &config)?;
+        let rendered = crate::output::json::render_with_config(&output, &config, None);
+        serde_json::from_str(&rendered).map_err(|err| format!("check JSON did not parse: {err}"))
+    }
+
+    /// The single TypeScript repair packet the fixture's check JSON carries.
+    #[cfg(feature = "lang-typescript")]
+    fn ts_repair_packet(check: &serde_json::Value) -> Result<&serde_json::Value, String> {
+        let packets: Vec<&serde_json::Value> = check["findings"]
+            .as_array()
+            .ok_or("check JSON must carry a findings array")?
+            .iter()
+            .filter_map(|finding| finding.get("typescript_repair_packet"))
+            .collect();
+        match packets.as_slice() {
+            [packet] => Ok(packet),
+            other => Err(format!(
+                "expected exactly one TypeScript repair packet, got {}",
+                other.len()
+            )),
+        }
+    }
+
+    #[cfg(feature = "lang-typescript")]
+    fn ts_packet_receipt_command(packet: &serde_json::Value) -> Result<String, String> {
+        packet["receipt_command"]
+            .as_str()
+            .map(ToString::to_string)
+            .ok_or_else(|| format!("TypeScript repair packet has no receipt_command: {packet}"))
+    }
+
+    /// Split a copied bash command into argv the way a POSIX shell does for
+    /// the quoting `shell_arg` emits: whitespace-separated words, single-quoted
+    /// spans taken literally, and backslash escapes outside quotes. Any other
+    /// shell-active character fails instead of being guessed at.
+    fn posix_words(command: &str) -> Result<Vec<String>, String> {
+        let mut words = Vec::new();
+        let mut current: Option<String> = None;
+        let mut chars = command.chars();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\'' => {
+                    let word = current.get_or_insert_with(String::new);
+                    loop {
+                        match chars.next() {
+                            Some('\'') => break,
+                            Some(inner) => word.push(inner),
+                            None => return Err(format!("unterminated quote in `{command}`")),
+                        }
+                    }
+                }
+                '\\' => {
+                    let escaped = chars
+                        .next()
+                        .ok_or_else(|| format!("dangling escape in `{command}`"))?;
+                    current.get_or_insert_with(String::new).push(escaped);
+                }
+                '"' | '$' | '`' | ';' | '&' | '|' | '<' | '>' | '(' | ')' => {
+                    return Err(format!("shell-active `{ch}` in `{command}`"));
+                }
+                ch if ch.is_whitespace() => {
+                    if let Some(word) = current.take() {
+                        words.push(word);
+                    }
+                }
+                ch => current.get_or_insert_with(String::new).push(ch),
+            }
+        }
+        if let Some(word) = current {
+            words.push(word);
+        }
+        Ok(words)
+    }
+
+    /// #3906 / RIPR-SPEC-0079 `canonical_receipt_command` field rule: the
+    /// receipt command the TypeScript preview packet emits is copied verbatim
+    /// into a shell, so it must be the canonical `ripr receipt write` form and
+    /// every argument it carries must be accepted by that command's parser.
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn typescript_preview_receipt_command_parses_as_receipt_write() -> Result<(), String> {
+        let check = ts_repair_packet_complete_check_json()?;
+        let packet = ts_repair_packet(&check)?;
+        let command = ts_packet_receipt_command(packet)?;
+        let words = posix_words(&command)?;
+        let rest = words
+            .strip_prefix(&[
+                "ripr".to_string(),
+                "receipt".to_string(),
+                "write".to_string(),
+            ])
+            .ok_or_else(|| format!("not a `ripr receipt write` command: {command}"))?;
+        let options = receipt_command::parse_receipt_write_options(rest)
+            .map_err(|err| format!("`{command}` is rejected by ripr receipt write: {err}"))?;
+        assert_eq!(
+            options.canonical_gap_id,
+            "gap:typescript:typescript_preview:2396aec1"
+        );
+        assert_eq!(
+            Some(options.canonical_gap_id.as_str()),
+            packet["canonical_gap_id"].as_str(),
+            "receipt must bind to the packet's canonical gap id"
+        );
+        assert_eq!(
+            options.verify_command,
+            "npx --no-install jest tests/discount.test.ts"
+        );
+        assert_eq!(
+            Some(options.verify_command.as_str()),
+            packet["verify_command"].as_str(),
+            "receipt must carry the packet's real verify command"
+        );
+        assert_eq!(options.verify_status, "not_run");
+        assert_eq!(
+            options.out,
+            Some(PathBuf::from(
+                "target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json"
+            ))
+        );
+        Ok(())
+    }
+
+    /// RIPR-SPEC-0079 "`ripr outcome` is not a receipt command": the emitted
+    /// TypeScript receipt command is not a movement invocation, `ripr outcome`
+    /// rejects its arguments, and the retired movement form it replaced is not
+    /// a receipt write either. The gap ledger also synthesizes the same string
+    /// for the same gap when the packet supplies none, so both surfaces agree.
+    #[test]
+    #[cfg(feature = "lang-typescript")]
+    fn typescript_preview_receipt_command_is_not_ripr_outcome() -> Result<(), String> {
+        let check = ts_repair_packet_complete_check_json()?;
+        let command = ts_packet_receipt_command(ts_repair_packet(&check)?)?;
+        if command.contains("ripr outcome") {
+            return Err(format!(
+                "receipt_command must not be a ripr outcome invocation: {command}"
+            ));
+        }
+        let words = posix_words(&command)?;
+        if words.get(..3)
+            != Some(
+                &[
+                    "ripr".to_string(),
+                    "receipt".to_string(),
+                    "write".to_string(),
+                ][..],
+            )
+        {
+            return Err(format!(
+                "receipt_command must be a ripr receipt write invocation: {command}"
+            ));
+        }
+        let receipt_args = words.get(3..).ok_or("receipt command has no arguments")?;
+        if parse_outcome_options(receipt_args).is_ok() {
+            return Err(format!(
+                "ripr outcome must reject the receipt-write arguments of `{command}`"
+            ));
+        }
+        let retired_movement_form = args(&[
+            "--before",
+            "<baseline>",
+            "--after",
+            "<repair>",
+            "--out",
+            "target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json",
+        ]);
+        if receipt_command::parse_receipt_write_options(&retired_movement_form).is_ok() {
+            return Err("ripr receipt write must reject the retired movement form".to_string());
+        }
+
+        let mut without_packet_receipt = check.clone();
+        if let Some(packet) = without_packet_receipt["findings"]
+            .as_array_mut()
+            .and_then(|findings| findings.first_mut())
+            .and_then(|finding| finding.get_mut("typescript_repair_packet"))
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            packet.remove("receipt_command");
+        }
+        let ledger = crate::output::gap_decision_ledger::build_gap_decision_ledger_report(
+            crate::output::gap_decision_ledger::GapDecisionLedgerInput {
+                root: ".".to_string(),
+                generated_at: "test".to_string(),
+                source_kind:
+                    crate::output::gap_decision_ledger::GapDecisionLedgerSourceKind::CheckOutput,
+                records_path: "target/ripr/reports/check.json".to_string(),
+                records_json: Ok(without_packet_receipt.to_string()),
+            },
+        );
+        let ledger: serde_json::Value = serde_json::from_str(
+            &crate::output::gap_decision_ledger::render_gap_decision_ledger_json(&ledger)?,
+        )
+        .map_err(|err| format!("gap ledger JSON did not parse: {err}"))?;
+        let synthesized = match ledger["records"].as_array().map(Vec::as_slice) {
+            Some([record]) => record["receipt_command"].as_str().map(ToString::to_string),
+            other => {
+                return Err(format!(
+                    "expected one gap-ledger record, got {:?}",
+                    other.map(<[serde_json::Value]>::len)
+                ));
+            }
+        };
+        assert_eq!(
+            synthesized.as_deref(),
+            Some(command.as_str()),
+            "gap ledger and TypeScript packet must emit the same receipt command"
+        );
+        Ok(())
     }
 
     #[test]
@@ -6984,7 +6939,7 @@ language = "rust"
         );
         assert_eq!(
             init(&args(&["--ci", "gitlab"])),
-            Err("unknown init --ci provider \"gitlab\"".to_string())
+            Err("unknown init --ci provider \"gitlab\". Accepted: github.".to_string())
         );
     }
 
@@ -7008,12 +6963,248 @@ language = "rust"
         );
     }
 
+    /// The contiguous `#` comment lines immediately above `<name>:` in the
+    /// generated workflow's `env:` block. Extracting the block is what makes
+    /// the negative assertions below mean anything: a phrase deleted from this
+    /// comment could still match somewhere else in a 2000-line workflow.
+    fn generated_workflow_env_comment(workflow: &str, name: &str) -> Result<String, String> {
+        let mut comment: Vec<&str> = Vec::new();
+        for line in workflow.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with(&format!("{name}:")) {
+                // An empty block means the comment moved away from the entry
+                // (a blank line between them also lands here). Fail with that
+                // as the reason rather than running `contains` on "".
+                if comment.is_empty() {
+                    return Err(format!("`{name}:` has no comment directly above it"));
+                }
+                return Ok(comment.join("\n"));
+            }
+            if let Some(text) = trimmed.strip_prefix("# ") {
+                comment.push(text);
+            } else if trimmed.starts_with('#') {
+                comment.push("");
+            } else {
+                comment.clear();
+            }
+        }
+        Err(format!("generated workflow has no `{name}:` env entry"))
+    }
+
+    /// One `- \`NAME\` ...` entry of docs/CI.md's generated-workflow
+    /// settings list, joined onto one line.
+    fn ci_doc_setting(name: &str) -> Result<String, String> {
+        let doc = include_str!("../../../../docs/CI.md");
+        let section = doc
+            .split("#### Generated workflow settings and steps\n")
+            .nth(1)
+            .ok_or("docs/CI.md has no generated workflow settings section")?;
+        let start = format!("- `{name}` ");
+        let entry = section
+            .split("\n- ")
+            .map(|entry| format!("- {}", entry.trim_start_matches("- ")))
+            .find(|entry| entry.starts_with(&start))
+            .ok_or_else(|| format!("docs/CI.md settings do not document `{name}`"))?;
+        let entry = entry.split("\n\n").next().unwrap_or_default();
+        Ok(entry.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+
+    /// The generated workflow documents the gate to whoever adopts it, and
+    /// nothing else reads those comments, so they drift silently. Bind them to
+    /// the two contracts they describe rather than to their own wording.
     #[test]
-    fn init_generated_github_workflow_is_advisory() {
+    fn generated_workflow_env_comments_match_the_gate_contract() -> Result<(), String> {
         let workflow = generated_github_actions_workflow();
-        assert!(workflow.contains(
-            "continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}"
-        ));
+        let gate_help = crate::cli::help::help_text_for("gate")
+            .ok_or_else(|| "`ripr gate` has no help text".to_string())?;
+
+        // `--baseline` takes a filesystem path, and the workflow feeds this
+        // variable straight to that flag, so the comment cannot call it a ref.
+        assert!(
+            gate_help.contains("--baseline PATH"),
+            "gate help no longer declares --baseline as a PATH:\n{gate_help}"
+        );
+        let (packet, _) = ci_packet::recorded_full_packet()?;
+        assert!(
+            include_str!("commands/ci_packet.rs")
+                .contains("settings.gate_baseline = var(\"RIPR_GATE_BASELINE\");")
+                && packet
+                    .lines()
+                    .any(|line| line.starts_with("ripr gate evaluate ")
+                        && line.ends_with(" --baseline .ripr/gate-baseline.json")),
+            "generated workflow no longer passes RIPR_GATE_BASELINE to --baseline"
+        );
+        // #5409: the long setting docs live in docs/CI.md; the workflow keeps
+        // a one-line mode list and points there.
+        let baseline = ci_doc_setting("RIPR_GATE_BASELINE")?;
+        // The path comes from `ripr baseline create`'s own default rather than
+        // from a copy of the docs, so renaming the ledger fails here.
+        assert!(
+            baseline.contains(crate::output::baseline::DEFAULT_BASELINE_OUT),
+            "RIPR_GATE_BASELINE comment does not name `{}`:\n{baseline}",
+            crate::output::baseline::DEFAULT_BASELINE_OUT
+        );
+        for ref_wording in ["git ref", "tag, branch", "SHA"] {
+            assert!(
+                !baseline.contains(ref_wording),
+                "RIPR_GATE_BASELINE comment describes a git ref, but the flag \
+                 takes a path:\n{baseline}"
+            );
+        }
+
+        // Every mode the CLI accepts is listed, derived from the help line
+        // rather than from a second list kept here.
+        let mode_line = gate_help
+            .lines()
+            .find(|line| line.trim_start().starts_with("--mode MODE"))
+            .ok_or_else(|| format!("gate help does not document --mode:\n{gate_help}"))?;
+        let modes: Vec<&str> = mode_line
+            .split_once("MODE")
+            .map(|(_, values)| values)
+            .unwrap_or(mode_line)
+            .split('.')
+            .next()
+            .unwrap_or_default()
+            .split(&[',', ' '][..])
+            .map(|token| token.trim())
+            .filter(|token| {
+                !token.is_empty()
+                    && *token != "or"
+                    && token
+                        .chars()
+                        .all(|character| character.is_ascii_lowercase() || character == '-')
+            })
+            .collect();
+        // Guards the parse above, not the mode set: modes are only ever added,
+        // so a short inventory means this stopped reading the help line.
+        assert!(
+            modes.len() >= 4,
+            "parsed no usable mode inventory from: {mode_line}"
+        );
+        let mode_comment = generated_workflow_env_comment(&workflow, "RIPR_GATE_MODE")?;
+        let mode_doc = ci_doc_setting("RIPR_GATE_MODE")?;
+        for mode in &modes {
+            assert!(
+                mode_doc.contains(&format!("`{mode}`")),
+                "docs/CI.md does not document gate mode `{mode}`:\n{mode_doc}"
+            );
+            assert!(
+                mode_comment.contains(mode),
+                "generated workflow does not document gate mode `{mode}`:\n{mode_comment}"
+            );
+            // And each one is a mode the evaluator actually accepts, so a
+            // documented mode that no longer parses fails here too.
+            assert!(
+                crate::output::gate::GateMode::parse(mode).is_ok(),
+                "help and the workflow document `{mode}`, which `GateMode::parse` rejects"
+            );
+        }
+
+        // calibrated-gate blocks a strict subset of what acknowledgeable
+        // blocks: `output::gate` requires a new baseline identity, supporting
+        // calibration evidence, and warning severity, where acknowledgeable
+        // blocks every policy-eligible candidate.
+        assert!(
+            !mode_doc.contains("any actionable finding"),
+            "calibrated-gate is described as the broadest mode:\n{mode_doc}"
+        );
+        assert!(
+            mode_doc.contains("new,") && mode_doc.contains("policy-eligible"),
+            "calibrated-gate entry does not state what it narrows to:\n{mode_doc}"
+        );
+        assert!(
+            workflow.contains("Each setting and step is explained in docs/CI.md"),
+            "the workflow no longer points at the setting docs"
+        );
+
+        Ok(())
+    }
+
+    /// The reverse of the setting checks above (#6723): every setting,
+    /// permission, job setting and step that docs/CI.md describes for the
+    /// generated workflow is still in it, so removing one from the template
+    /// while the doc still explains it fails here. A bullet this test cannot
+    /// bind fails too, so a new doc entry has to be added here.
+    #[test]
+    fn ci_doc_describes_only_what_the_generated_workflow_has() -> Result<(), String> {
+        let workflow = generated_github_actions_workflow();
+        let workflow_lines: Vec<&str> = workflow.lines().map(str::trim_start).collect();
+        let doc = include_str!("../../../../docs/CI.md");
+        let section = doc
+            .split_once("#### Generated workflow settings and steps\n")
+            .and_then(|(_, rest)| rest.split_once("\nFor a first rollout"))
+            .map(|(section, _)| section)
+            .ok_or("docs/CI.md has no generated workflow settings section ending at \"For a first rollout\"")?;
+        let mut entries = 0usize;
+        for entry in section.lines().filter_map(|line| line.strip_prefix("- ")) {
+            let step = entry
+                .strip_prefix("**")
+                .and_then(|rest| rest.split_once("**"))
+                .map(|(step, _)| step);
+            let setting = entry
+                .strip_prefix('`')
+                .and_then(|rest| rest.split_once('`'))
+                .map(|(setting, _)| setting);
+            let present = match (step, setting) {
+                // The two unnamed steps are documented by what they use.
+                (Some("Checkout"), _) => workflow_lines
+                    .iter()
+                    .any(|line| line.starts_with("- uses: actions/checkout@")),
+                (Some("actions/cache"), _) => workflow_lines
+                    .iter()
+                    .any(|line| line.starts_with("- uses: actions/cache@")),
+                (Some(name), _) => {
+                    let expected = format!("- name: {name}");
+                    workflow_lines.iter().any(|line| *line == expected)
+                }
+                (None, Some("labeled")) => workflow_lines.iter().any(|line| {
+                    line.starts_with("types: [")
+                        && line.contains(" labeled,")
+                        && line.contains(" unlabeled]")
+                }),
+                (None, Some(setting)) if setting.starts_with("RIPR_") => {
+                    let expected = format!("{setting}:");
+                    workflow_lines
+                        .iter()
+                        .any(|line| line.starts_with(&expected))
+                }
+                (None, Some(permission)) => workflow_lines
+                    .iter()
+                    .any(|line| line.split(" #").next().map(str::trim_end) == Some(permission)),
+                (None, None) if entry.starts_with("Every run step is bash") => {
+                    workflow.contains("\ndefaults:\n  run:\n    shell: bash\n")
+                }
+                (None, None) if entry.starts_with("One run per pull request") => {
+                    workflow.contains("\nconcurrency:\n")
+                        && workflow_lines.contains(&"cancel-in-progress: true")
+                }
+                (None, None) if entry.starts_with("The job is `continue-on-error`") => {
+                    workflow_lines.iter().any(|line| {
+                        line.starts_with("continue-on-error: ${{ vars.RIPR_GATE_MODE == '' ")
+                    })
+                }
+                (None, None) => {
+                    return Err(format!(
+                        "docs/CI.md entry is not bound to the generated workflow; add it to this test: {entry}"
+                    ));
+                }
+            };
+            assert!(
+                present,
+                "docs/CI.md describes `{entry}`, which the generated workflow no longer has"
+            );
+            entries += 1;
+        }
+        // Today's inventory: 4 settings, 6 permission and job entries and 8
+        // steps. Fewer means the section stopped being read or lost an entry.
+        assert!(entries >= 18, "read only {entries} entries:\n{section}");
+        Ok(())
+    }
+
+    #[test]
+    fn init_generated_github_workflow_is_advisory() -> Result<(), String> {
+        let workflow = super::init_workflow::generated_development_workflow();
+        let (packet, _) = ci_packet::recorded_full_packet()?;
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
         assert!(workflow.contains("actions/upload-artifact@v7"));
         assert!(workflow.contains("RIPR_UPLOAD_SARIF"));
@@ -7021,536 +7212,348 @@ language = "rust"
         assert!(workflow.contains("RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}"));
         assert!(workflow.contains("RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}"));
         assert!(workflow.contains("pull-requests: write"));
-        assert!(workflow.contains("--format sarif"));
-        assert!(workflow.contains("--format repo-sarif"));
-        assert!(workflow.contains("--format repo-badge-json"));
-        assert!(workflow.contains("ripr pilot"));
-        assert!(workflow.contains("ripr agent start"));
-        assert!(workflow.contains("ripr agent packet"));
-        assert!(workflow.contains("ripr agent verify"));
-        assert!(workflow.contains("ripr agent receipt"));
-        assert!(workflow.contains("ripr agent status"));
-        assert!(workflow.contains("ripr agent review-summary"));
-        assert!(workflow.contains("ripr outcome"));
-        assert!(workflow.contains("target/ripr/workflow/agent-packet.json"));
-        assert!(workflow.contains("target/ripr/workflow/agent-brief.json"));
-        assert!(workflow.contains("target/ripr/workflow/agent-verify.json"));
-        assert!(workflow.contains("target/ripr/reports/agent-receipt.json"));
-        assert!(workflow.contains("target/ripr/workflow/agent-status.json"));
-        assert!(workflow.contains("target/ripr/workflow/agent-status.md"));
-        assert!(workflow.contains("target/ripr/workflow/agent-review-summary.json"));
-        assert!(workflow.contains("target/ripr/workflow/agent-review-summary.md"));
-        assert!(workflow.contains("target/ripr/agent/agent-packet.json"));
-        assert!(workflow.contains("target/ripr/agent/agent-brief.json"));
-        assert!(workflow.contains("target/ripr/agent/agent-verify.json"));
-        assert!(workflow.contains("target/ripr/agent/agent-receipt.json"));
-        assert!(workflow.contains("target/ripr/reports/targeted-test-outcome.json"));
-        assert!(workflow.contains("target/ripr/reports/gate-decision.json"));
-        assert!(workflow.contains("target/ripr/reports/gate-decision.md"));
-        assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.json"));
-        assert!(workflow.contains("target/ripr/reports/baseline-debt-delta.md"));
-        assert!(workflow.contains("target/ripr/reports/ripr-zero-status.json"));
-        assert!(workflow.contains("target/ripr/reports/ripr-zero-status.md"));
-        assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(workflow.contains("target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(workflow.contains("target/ripr/reports/waiver-aging.json"));
-        assert!(workflow.contains("target/ripr/reports/waiver-aging.md"));
-        assert!(workflow.contains("target/ripr/reports/suppression-health.json"));
-        assert!(workflow.contains("target/ripr/reports/suppression-health.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-readiness.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-readiness.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-operations.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-operations.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-history.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-history.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-visible-only.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-acknowledgeable.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.json"));
-        assert!(workflow.contains("target/ripr/reports/policy-promotion-calibrated-gate.md"));
-        assert!(workflow.contains(
-            "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
-        ));
+        assert!(workflow.contains("run: ripr reports ci-packet --root ."));
+        // The gate's advisory switch lives in the packet now: a gate input
+        // failure blocks only under a blocking RIPR_GATE_MODE (#2009).
         assert!(
-            workflow.contains(
-                "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.md"
-            )
+            include_str!("commands/ci_packet.rs")
+                .contains("self.gate_mode.is_empty() || self.gate_mode == \"visible-only\"")
         );
+        for command in [
+            "--format sarif",
+            "--format repo-sarif",
+            "--format repo-badge-json",
+            "ripr pilot",
+            "ripr agent start",
+            "ripr agent packet",
+            "ripr agent status",
+            "ripr agent review-summary",
+            "ripr pr-evidence --root . --base origin/main --head HEAD",
+            if crate::domain::LanguageId::Rust.is_available() {
+                "ripr review-comments --root . --base origin/main --head HEAD --enrich-repair-guidance --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json"
+            } else {
+                "ripr review-comments --root . --base origin/main --head HEAD --check-output target/ripr/pr/check.json --out target/ripr/review/comments.json"
+            },
+        ] {
+            assert!(
+                packet.contains(command),
+                "packet runs no `{command}`:\n{packet}"
+            );
+        }
         assert!(
-            workflow.contains("target/ripr/reports/preview-promotion-typescript-boundary-gap.md")
+            !packet.contains(
+                "ripr check --root . --base origin/main --format json > target/ripr/pr/check.json"
+            ),
+            "packet must use the whole PR-evidence producer before strict review-comments:\n{packet}"
         );
-        assert!(workflow.contains("target/ripr/reports/preview-promotion-python-boundary-gap.md"));
-        assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
-        assert!(workflow.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(workflow.contains("target/ripr/reports/assistant-loop-health.json"));
-        assert!(workflow.contains("target/ripr/reports/assistant-loop-health.md"));
-        assert!(workflow.contains("target/ripr/reports/gap-decision-ledger.json"));
-        assert!(workflow.contains("target/ripr/reports/gap-decision-ledger.md"));
-        assert!(workflow.contains("target/ripr/reports/first-useful-action.json"));
-        assert!(workflow.contains("target/ripr/reports/first-useful-action.md"));
-        assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.json"));
-        assert!(workflow.contains("target/ripr/reports/pr-review-front-panel.md"));
-        assert!(workflow.contains("target/ripr/reports/start-here.json"));
-        assert!(workflow.contains("target/ripr/reports/start-here.md"));
-        assert!(workflow.contains("target/ripr/reports/index.json"));
-        assert!(workflow.contains("target/ripr/reports/index.md"));
-        assert!(workflow.contains("target/ci/labels.json"));
-        assert!(workflow.contains("target/ripr/review/comments.json"));
-        assert!(workflow.contains("target/ripr/pr/check.json"));
-        assert!(workflow.contains("ripr check \\"));
-        assert!(workflow.contains("--check-output target/ripr/pr/check.json"));
-        assert!(workflow.contains("target/ripr/review/existing-comments.json"));
-        assert!(workflow.contains("target/ripr/review/comment-publish-plan.json"));
-        assert!(workflow.contains("target/ripr/review/comment-publish-plan.md"));
-        assert!(workflow.contains("target/ripr/review"));
-        assert!(workflow.contains("target/ci"));
         assert!(workflow.contains("name: Capture existing RIPR inline comments"));
-        assert!(workflow.contains("name: Plan RIPR inline comments"));
         assert!(workflow.contains("name: Publish RIPR inline comments"));
-        assert!(workflow.contains("name: Capture RIPR gate labels"));
-        assert!(workflow.contains("name: Evaluate RIPR gate decision"));
-        assert!(workflow.contains("name: Render RIPR baseline debt delta"));
-        assert!(workflow.contains("name: Emit RIPR PR guidance annotations"));
-        assert!(workflow.contains("name: Render RIPR waiver aging"));
-        assert!(workflow.contains("name: Render RIPR suppression health"));
-        assert!(workflow.contains("name: Render RIPR policy readiness"));
-        assert!(workflow.contains("name: Render RIPR policy operations"));
-        assert!(workflow.contains("name: Render RIPR policy history"));
-        assert!(workflow.contains("name: Render RIPR policy promotion packets"));
-        assert!(workflow.contains("name: Render RIPR preview promotion packets"));
-        assert!(workflow.contains("name: Render RIPR test-oracle assistant proof"));
-        assert!(workflow.contains("name: Render RIPR assistant loop health"));
-        assert!(workflow.contains("name: Render RIPR first useful action"));
-        assert!(workflow.contains("name: Render RIPR PR review front panel"));
-        assert!(workflow.contains("name: Render RIPR first-pr start-here"));
-        assert!(workflow.contains("name: Render RIPR report packet index"));
-        assert!(workflow.contains("escape_github_property()"));
-        assert!(workflow.contains("annotation_path=\"$(escape_github_property \"$path\")\""));
-        assert!(workflow.contains("::warning file=$annotation_path,line=$annotation_line"));
-        assert!(workflow.contains("title=$annotation_title"));
         assert!(workflow.contains("name: Add RIPR advisory summary"));
-        assert!(workflow.contains("## RIPR advisory summary"));
-        assert!(workflow.contains("### Start here"));
-        assert!(workflow.contains("#### First-run status"));
-        assert!(workflow.contains("Changed behavior"));
-        assert!(workflow.contains("Current evidence strength"));
-        assert!(workflow.contains("Missing discriminator"));
-        assert!(workflow.contains("Focused proof intent"));
-        assert!(workflow.contains("### Language preview grouping"));
-        assert!(workflow.contains("### PR review summary"));
-        assert!(workflow.contains("#### PR review at a glance"));
-        assert!(workflow.contains("### Recommended next test"));
-        assert!(workflow.contains("#### Recommended next test at a glance"));
-        assert!(workflow.contains("### Top recommendation"));
-        assert!(workflow.contains("### Artifact packet"));
-        assert!(workflow.contains("### Uploaded review artifacts"));
-        assert!(workflow.contains("#### Uploaded artifacts at a glance"));
-        assert!(workflow.contains("### Gate decision"));
-        assert!(workflow.contains("#### Gate decision at a glance"));
-        assert!(workflow.contains("### Baseline debt delta"));
-        assert!(workflow.contains("#### Baseline debt movement"));
-        assert!(workflow.contains("### RIPR Zero status"));
-        assert!(workflow.contains("#### RIPR Zero at a glance"));
-        assert!(workflow.contains("### PR evidence ledger"));
-        assert!(workflow.contains("#### PR movement at a glance"));
-        assert!(workflow.contains("### Policy readiness"));
-        assert!(workflow.contains("#### Policy readiness at a glance"));
-        assert!(workflow.contains("### Policy operations"));
-        assert!(workflow.contains("#### Policy operations at a glance"));
-        assert!(workflow.contains("### Policy history"));
-        assert!(workflow.contains("#### Policy history at a glance"));
-        assert!(workflow.contains("### Policy promotion packets"));
-        assert!(workflow.contains("### Preview promotion packets"));
-        assert!(workflow.contains("### Waiver aging"));
-        assert!(workflow.contains("#### Waiver aging at a glance"));
-        assert!(workflow.contains("### Suppression health"));
-        assert!(workflow.contains("#### Suppression health at a glance"));
-        assert!(workflow.contains("### Test-oracle assistant proof"));
-        assert!(workflow.contains("#### Assistant proof at a glance"));
-        assert!(workflow.contains("### Agent proof status"));
-        assert!(workflow.contains("#### Agent proof status at a glance"));
-        assert!(workflow.contains("markdown_inline()"));
-        assert!(workflow.contains("Active PR labels"));
-        assert!(workflow.contains("Applied waiver label"));
-        assert!(workflow.contains("Baseline artifact"));
-        assert!(workflow.contains("Recommendation calibration"));
-        assert!(workflow.contains("Mutation calibration"));
-        assert!(workflow.contains("Blocking reason"));
-        assert!(workflow.contains("Gate artifacts"));
-        assert!(workflow.contains("Baseline delta artifacts"));
-        assert!(workflow.contains("Policy readiness artifacts"));
-        assert!(workflow.contains("Policy operations artifacts"));
-        assert!(workflow.contains("Policy history artifacts"));
-        assert!(workflow.contains("Promotion packet artifacts"));
-        assert!(workflow.contains("Preview promotion artifacts"));
-        assert!(workflow.contains("Waiver-aging artifacts"));
-        assert!(workflow.contains("Suppression-health artifacts"));
-        assert!(workflow.contains("Proof artifacts"));
-        assert!(workflow.contains("Action artifacts"));
-        assert!(workflow.contains("Front-panel artifacts"));
-        assert!(workflow.contains("Index artifacts"));
-        assert!(workflow.contains("### SARIF and badge status"));
-        assert!(workflow.contains("### PR guidance annotations"));
-        assert!(workflow.contains("### PR inline comments"));
-        assert!(workflow.contains("### Known limits"));
-        assert!(workflow.contains("Inline comments are disabled by default"));
+        // The annotation program moved into the packet; parity with the
+        // retired jq is pinned by the replay suite.
+        assert!(!workflow.contains("def escape_data:"));
+        assert!(!workflow.contains("::warning file="));
         assert!(!workflow.contains("fail-on-new-warning"));
         assert!(!workflow.contains("pull_request_target"));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"acknowledgeable\""));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"baseline-check\""));
         assert!(!workflow.contains("RIPR_GATE_MODE: \"calibrated-gate\""));
+        Ok(())
     }
 
     #[test]
-    fn init_generated_github_workflow_never_auto_refreshes_baseline() {
+    fn init_generated_github_workflow_never_auto_refreshes_baseline() -> Result<(), String> {
         let workflow = generated_github_actions_workflow();
-        let baseline_delta = workflow_step(&workflow, "Render RIPR baseline debt delta");
-        assert!(baseline_delta.contains("ripr baseline diff"));
-        assert!(baseline_delta.contains("continue-on-error: true"));
-        assert!(!workflow.contains("ripr baseline update"));
-        assert!(!workflow.contains("--remove-resolved"));
-        assert!(!workflow.contains("--adopt-new"));
-        assert!(!workflow.contains("--out .ripr/gate-baseline.json"));
+        let (packet, _) = ci_packet::recorded_full_packet()?;
+        assert!(packet.contains("ripr baseline diff --baseline .ripr/gate-baseline.json"));
+        for surface in [workflow.as_str(), packet.as_str()] {
+            assert!(!surface.contains("ripr baseline update"));
+            assert!(!surface.contains("--remove-resolved"));
+            assert!(!surface.contains("--adopt-new"));
+            assert!(!surface.contains("--out .ripr/gate-baseline.json"));
+        }
+        Ok(())
     }
 
     #[test]
-    fn init_generated_github_workflow_uploads_reports_and_makes_sarif_optional() {
-        let workflow = generated_github_actions_workflow();
+    fn init_generated_github_workflow_uploads_reports_and_makes_sarif_optional()
+    -> Result<(), String> {
+        let workflow = super::init_workflow::generated_development_workflow();
         assert!(workflow.contains("name: RIPR advisory reports"));
-        assert!(workflow.contains("target/ripr/pilot"));
-        assert!(workflow.contains("target/ripr/agent"));
-        assert!(workflow.contains("target/ripr/workflow"));
-        assert!(workflow.contains("target/ripr/reports"));
-        assert!(workflow.contains("target/ripr/review"));
-        assert!(workflow.contains("target/ci"));
+        let upload = workflow_step(&workflow, "Upload RIPR report artifacts");
+        assert!(
+            upload.contains("          path: |\n            target/ripr\n            target/ci\n"),
+            "{upload}"
+        );
         assert!(workflow.contains("name: ripr-reports"));
-        assert!(workflow.contains("RIPR_TOP_SEAM_ID"));
-        assert!(workflow.contains(".top_actionable_seams[0].seam_id"));
-        assert!(!workflow.contains(".top_seams[0].seam_id"));
-        assert!(workflow.contains("cargo xtask operator-cockpit"));
-        assert!(workflow.contains("cat target/ripr/pilot/pilot-summary.md"));
-        assert!(workflow.contains("cat target/ripr/workflow/agent-review-summary.md"));
-        assert!(workflow.contains("repo-ripr-badge.json"));
-        assert!(workflow.contains("repo-ripr-badge-shields.json"));
-        assert!(workflow.contains(".summary.comments // 0"));
-        assert!(workflow.contains(".summary.summary_only // 0"));
-        assert!(workflow.contains(".summary.suppressed // 0"));
-        assert!(workflow.contains(".summary.unknown_confidence // 0"));
-        assert!(workflow.contains(".inputs.labels // []"));
-        assert!(workflow.contains(".policy.acknowledgement_labels // []"));
-        assert!(workflow.contains(".policy.acknowledgement_label"));
-        assert!(workflow.contains(".inputs.baseline // \"not supplied\""));
-        assert!(workflow.contains(".inputs.recommendation_calibration // \"not supplied\""));
-        assert!(workflow.contains(".inputs.mutation_calibration // \"not supplied\""));
-        assert!(workflow.contains(".evidence.recommendation_calibration.confidence_effect"));
-        assert!(workflow.contains(".evidence.mutation_calibration.confidence_effect"));
-        assert!(workflow.contains(".gate_reason"));
-        assert!(workflow.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
-        assert!(workflow.contains("Counts: blocking=\\`$blocking\\`"));
-        assert!(workflow.contains(".delta.still_present // 0"));
-        assert!(workflow.contains(".delta.resolved // 0"));
-        assert!(workflow.contains(".delta.new_policy_eligible // 0"));
-        assert!(workflow.contains(".delta.acknowledged // 0"));
-        assert!(workflow.contains(".delta.suppressed // 0"));
-        assert!(workflow.contains(".delta.stale_baseline_entry // 0"));
-        assert!(workflow.contains(".delta.invalid_baseline_entry // 0"));
-        assert!(workflow.contains(".delta.missing_current_input // 0"));
-        assert!(workflow.contains("Counts: still_present=\\`$still_present\\`"));
-        assert!(workflow.contains(".movement.new_policy_eligible // 0"));
-        assert!(workflow.contains(".movement.baseline_still_present // 0"));
-        assert!(workflow.contains(".movement.baseline_resolved // 0"));
-        assert!(workflow.contains(".movement.acknowledged // 0"));
-        assert!(workflow.contains(".movement.suppressed // 0"));
-        assert!(workflow.contains(".movement.blocking_candidates // 0"));
-        assert!(workflow.contains(".movement.visible_unresolved // 0"));
-        assert!(workflow.contains(".coverage_grip_frontier.status // \"not_available\""));
-        assert!(workflow.contains(".history.trend // \"not_available\""));
-        assert!(workflow.contains("Counts: new_policy_eligible=\\`$ledger_new_policy_eligible\\`"));
-        assert!(workflow.contains("sed 's/`/\\\\`/g'"));
-        assert!(workflow.contains("Blocking reason (\\`$blocking\\`): \\`$blocking_reason\\`"));
-        assert!(workflow.contains("Boundary: $limits_note"));
-        assert!(workflow.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
-        assert!(workflow.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(workflow.contains("Set `RIPR_GATE_BASELINE`"));
-        assert!(workflow.contains("RIPR_GATE_MODE"));
-        assert!(workflow.contains("RIPR_GATE_BASELINE"));
-        assert!(workflow.contains("RIPR_COMMENT_MODE"));
-        assert!(workflow.contains("existing-comments.raw.json"));
-        assert!(workflow.contains("<!-- ripr:dedupe="));
-        assert!(workflow.contains("--mode \"$RIPR_COMMENT_MODE\""));
-        assert!(workflow.contains("--existing-comments target/ripr/review/existing-comments.json"));
-        assert!(workflow.contains("--token-available"));
-        assert!(workflow.contains("--write-permission"));
-        assert!(workflow.contains("jq -e '.summary.safe_to_publish == true'"));
-        assert!(workflow.contains("gh api --method POST"));
-        assert!(workflow.contains("gh api --method PATCH"));
-        assert!(workflow.contains("assistant-loop proof"));
-        assert!(workflow.contains("first-action"));
-        assert!(workflow.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(workflow.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
-        assert!(workflow.contains("--before target/ripr/workflow/before.repo-exposure.json"));
-        assert!(workflow.contains("--after target/ripr/workflow/after.repo-exposure.json"));
-        assert!(workflow.contains("--receipt target/ripr/reports/agent-receipt.json"));
-        assert!(workflow.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(
-            workflow
-                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
-        );
-        assert!(workflow.contains("--gate-decision target/ripr/reports/gate-decision.json"));
-        assert!(workflow.contains("pr-review front-panel"));
-        assert!(workflow.contains("reports index"));
-        assert!(workflow.contains("front_panel_has_input=true"));
-        assert!(workflow.contains("--first-action target/ripr/reports/first-useful-action.json"));
-        assert!(
-            workflow.contains("--assistant-health target/ripr/reports/assistant-loop-health.json")
-        );
-        assert!(workflow.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(workflow.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json"));
-        assert!(workflow.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
-        assert!(
-            workflow
-                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
-        );
-        assert!(workflow.contains("--receipt target/ripr/reports/agent-receipt.json"));
-        assert!(workflow.contains("ripr \"${gate_args[@]}\""));
-        assert!(workflow.contains("ripr \"${proof_args[@]}\""));
-        assert!(workflow.contains("ripr \"${first_action_args[@]}\""));
-        assert!(workflow.contains("ripr \"${front_panel_args[@]}\""));
-        assert!(workflow.contains("ripr reports index"));
-        assert!(workflow.contains("index_has_input=true"));
-        assert!(workflow.contains("Set `RIPR_GATE_MODE`"));
-        assert!(workflow.contains("No runtime mutation execution is performed"));
-        assert!(workflow.contains("hashFiles('crates/ripr/Cargo.toml')"));
-        assert!(workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
-        assert!(workflow.contains("if: env.RIPR_UPLOAD_SARIF == 'true'"));
+        // An adopter repository has no xtask; the workflow must not call it.
+        assert!(!workflow.contains("cargo xtask"));
+        // The RIPR-source-tree-only cockpit step is gone from the adopter
+        // workflow (F60-8).
+        assert!(!workflow.contains("hashFiles('xtask/src/reports/operator.rs')"));
+        // #5409: ripr does the comment JSON work; the YAML only calls GitHub.
+        assert!(workflow.contains("| ripr pr-comments existing --root . --raw -"));
+        assert!(workflow.contains("ripr pr-comments requests --root ."));
+        assert!(workflow.contains("gh api --method \"$method\""));
+        assert!(!workflow.contains("jq "));
         assert!(workflow.contains(
-            "if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'"
+            "env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif')"
         ));
+        assert!(
+            workflow
+                .contains("env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'")
+        );
+
+        // With SARIF off, the packet renders none for the upload steps to
+        // find.
+        let root = unique_command_test_dir("ci-packet-sarif-off");
+        std::fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+        let (commands, _) = ci_packet::recorded_commands(&root, Default::default());
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            !commands.iter().any(|line| line.contains("sarif")),
+            "{commands:?}"
+        );
+        assert!(
+            commands
+                .iter()
+                .any(|line| line.contains("--format repo-badge-json")),
+            "{commands:?}"
+        );
+        Ok(())
     }
 
     #[test]
     fn init_generated_github_workflow_names_cockpit_repair_commands() {
-        let workflow = generated_github_actions_workflow();
-
-        let first_action = workflow_step(&workflow, "Render RIPR first useful action");
-        assert!(first_action.contains(
+        let packet = include_str!("commands/ci_packet.rs");
+        assert!(packet.contains(
             "Safe next action: run `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md`"
         ));
-
-        let front_panel = workflow_step(&workflow, "Render RIPR PR review front panel");
-        assert!(front_panel.contains(
+        assert!(packet.contains(
             "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
         ));
-
-        let first_pr = workflow_step(&workflow, "Render RIPR first-pr start-here");
-        assert!(first_pr.contains("ripr first-pr"));
-        assert!(first_pr.contains("--gap-ledger target/ripr/reports/gap-decision-ledger.json"));
-        assert!(first_pr.contains("--out-dir target/ripr/reports"));
-
-        let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
-        assert!(packet_index.contains(
-            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
-        ));
-
-        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
-        assert!(summary.contains("### Start here"));
-        assert!(summary.contains("Open `target/ripr/reports/start-here.md` first when it exists."));
-        assert!(summary.contains(
-            "Then open `target/ripr/reports/index.md` to navigate deeper evidence artifacts."
-        ));
-        assert!(summary.contains(
-            "Safe next action: repair one named gap, regenerate missing or malformed artifacts"
-        ));
-        assert!(summary.contains(
-            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
-        ));
-        assert!(summary.contains(
-            "Proof rail: verify command, receipt command, and receipt path are static movement evidence only."
-        ));
-        assert!(summary.contains(
-            "Preview boundary: preview-limited evidence stays syntax-first and advisory"
-        ));
-        assert!(summary.contains(
-            "Gate authority: `ripr gate evaluate` remains the pass/fail source only when `RIPR_GATE_MODE` is configured."
-        ));
-        assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
-        assert!(summary.contains(".summary.start_here // \"not_available\""));
-        assert!(summary.contains("Start-here artifact: \\`$start_here_path\\`"));
         assert!(
-            summary.contains("Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`")
+            packet
+                .contains("println!(\"Regenerate command: `ripr {}`.\", regenerate.join(\" \"));")
         );
-        assert!(summary.contains("Start-here artifact: `target/ripr/pilot/pilot-summary.md`"));
-        assert!(summary.contains("#### First-run status"));
-        assert!(summary.contains(".status // \"unknown\""));
-        assert!(summary.contains(".selected.state // \"unknown\""));
-        assert!(summary.contains(".selected.canonical_gap_id // .selected.gap_id"));
-        assert!(summary.contains(".selected.language + \" (\""));
-        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
-        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
-        assert!(summary.contains(
-            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(
-            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(".selected.repair.target_file // \"not_available\""));
-        assert!(summary.contains(".selected.repair.related_test // \"not_available\""));
-        assert!(summary.contains(".selected.static_limit_kind"));
-        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
-        assert!(summary.contains(".selected.receipt_state // \"receipt_missing\""));
-        assert!(summary.contains("Canonical gap: \\`$start_gap\\`"));
-        assert!(summary.contains("Language: \\`$start_language\\`"));
-        assert!(summary.contains("Changed behavior: \\`$start_changed\\`"));
-        assert!(summary.contains("Missing discriminator: \\`$start_missing\\`"));
-        assert!(summary.contains("Focused proof intent: \\`$start_focused\\`"));
-        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
-        assert!(summary.contains("Repair target: \\`$start_target\\`"));
-        assert!(summary.contains("Related test: \\`$start_related\\`"));
-        assert!(summary.contains("Static limit: \\`$start_limit\\`"));
-        assert!(summary.contains("Verify command: \\`$start_verify\\`"));
-        assert!(summary.contains("Receipt command: \\`$start_receipt\\`"));
-        assert!(summary.contains("Receipt path: \\`$start_receipt_path\\`"));
-        assert!(summary.contains("Receipt state: \\`$start_receipt_state\\`"));
-        assert!(summary.contains("Safe next action command: \\`$start_next\\`"));
-        assert!(
-            summary
-                .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
-        );
-        assert!(summary.contains(".action_kind // \"unknown\""));
-        assert!(summary.contains(".commands.context_packet // \"not_available\""));
-        assert!(summary.contains("missing_start_here"));
-        assert!(summary.contains("State: \\`missing_artifact\\`"));
-        assert!(summary.contains(
-            "Safe next action: run \\`ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
-        ));
-        assert!(summary.contains(
-            "start-here is advisory first-run guidance only; gate decision remains separate pass/fail authority"
-        ));
-        assert!(summary.contains(
-            "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
-        ));
-        assert!(summary.contains(
-            "Fallback safe next action: run \\`ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md\\`"
-        ));
-        assert!(summary.contains(
-            "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md`"
-        ));
-        assert!(summary.contains(
-            "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`."
-        ));
     }
 
     #[test]
     fn init_generated_github_workflow_groups_preview_languages_only_when_configured() {
-        let workflow = generated_github_actions_workflow();
-        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
-
-        // The generated workflow consumes the typed doctor JSON surface
-        // (#2072), not the human "Enabled languages:" line.
-        assert!(summary.contains("ripr doctor --root . --json"));
-        assert!(summary.contains("jq -r '.languages | join(\",\")'"));
-        assert!(summary.contains("sed -n '/^typescript$/p; /^python$/p'"));
-        assert!(!summary.contains("sed -n 's/^- Enabled languages: //p'"));
-        assert!(summary.contains("|| true"));
-
-        // The preview-promotion detection site uses the same typed surface
-        // and discloses a doctor failure instead of claiming "none
-        // configured" (#2182 review).
-        let packets = workflow_step(&workflow, "Render RIPR preview promotion packets");
-        assert!(packets.contains("ripr doctor --root . --json"));
-        assert!(packets.contains("jq -r '.languages[]?'"));
-        assert!(!packets.contains("sed -n 's/^- Enabled languages: //p'"));
-        assert!(packets.contains("Language detection via `ripr doctor --json` failed"));
-        assert!(!packets.contains("No TypeScript or Python preview languages are configured; preview promotion packets were not generated.'\n            fi") || packets.contains("if ripr doctor --root . --json > /dev/null 2>&1"));
-        assert!(summary.contains("target/ripr/reports/repo-exposure.json"));
-        assert!(summary.contains("target/ripr/pilot/repo-exposure.json"));
-        assert!(summary.contains(".language_status? != \"preview\""));
-        assert!(summary.contains("configured preview/advisory"));
-        assert!(summary.contains("artifact_entries=\\`$artifact_entries\\`"));
-        assert!(summary.contains("grouped_preview_languages=\"$preview_languages\""));
-        assert!(
-            summary.contains("grouped_preview_languages=\"$grouped_preview_languages javascript\"")
-        );
-        assert!(summary.contains("Grouped preview evidence languages"));
-        assert!(summary.contains("for language in $grouped_preview_languages; do"));
-        assert!(summary.contains("actionability_states"));
-        assert!(summary.contains("actionability_categories"));
-        assert!(summary.contains("repair_packet_ready_entries"));
-        assert!(summary.contains("gate_impact=\\`none\\`"));
-        assert!(summary.contains(
-            "preview-language groups are advisory presentation only; \\`ripr gate evaluate\\` remains pass/fail authority"
+        // The preview-promotion packets read the typed language config
+        // (#2072), not the human "Enabled languages:" line, and disclose a
+        // config failure instead of claiming "none configured" (#2182
+        // review). The summary's own grouping reads the same enabled set
+        // (`output::ci_summary` tests pin it).
+        let packet = include_str!("commands/ci_packet.rs");
+        let packets = packet
+            .split("fn preview_promotion_packets")
+            .nth(1)
+            .unwrap_or_default();
+        assert!(packets.contains("crate::config::load_for_root(&self.root)"));
+        assert!(packets.contains("Reading the language configuration failed"));
+        assert!(packets.contains(
+            "No TypeScript or Python preview languages are configured; preview promotion packets were not generated."
         ));
-
-        let guard = summary
-            .find("if [ -n \"$preview_languages\" ]; then")
-            .unwrap_or(usize::MAX);
-        let grouping = summary
-            .find("echo '### Language preview grouping'")
-            .unwrap_or(usize::MAX);
-        let pr_review = summary
-            .find("echo '### PR review summary'")
-            .unwrap_or(usize::MAX);
-        assert_ne!(guard, usize::MAX, "missing language grouping guard");
-        assert_ne!(grouping, usize::MAX, "missing language grouping heading");
-        assert_ne!(pr_review, usize::MAX, "missing PR review heading");
-        assert!(
-            guard < grouping && grouping < pr_review,
-            "language grouping must stay opt-in and before the PR review summary"
-        );
     }
 
     #[test]
-    fn init_generated_github_workflow_matches_smoke_fixture() {
-        let workflow = generated_github_actions_workflow();
+    fn init_generated_github_workflow_renders_the_summary_with_one_command() {
+        let workflow = super::init_workflow::generated_development_workflow();
+        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
+        assert!(summary.contains("        if: always()\n        continue-on-error: true\n"));
+        // #5409: the command reads the base ref and settings from the
+        // workflow env, so the step passes no flags.
+        assert!(
+            summary
+                .contains("          ripr reports ci-summary --root . >> \"$GITHUB_STEP_SUMMARY\""),
+            "{summary}"
+        );
+        assert!(!summary.contains("RIPR_BASE_REF"));
+        // #5236 review: when the install failed, the step still writes a
+        // summary that says so and where to look, instead of nothing.
+        assert!(summary.contains("          RIPR_INSTALL_OUTCOME: ${{ steps.install.outcome }}\n"));
+        let (guard, render) = summary
+            .split_once("          ripr reports ci-summary")
+            .unwrap_or_default();
+        assert!(guard.contains("if [ \"${RIPR_INSTALL_OUTCOME:-}\" != success ]; then"));
+        assert!(guard.contains("Next: open the Install ripr step log."));
+        // The guard only prints fixed text; the summary itself is rendered
+        // by the command, not by shell.
+        for retired in ["markdown_inline", "repo_relative", "jq ", "echo "] {
+            assert!(
+                !render.contains(retired),
+                "the summary step still carries `{retired}`"
+            );
+        }
+        assert!(!workflow.contains("markdown_inline()"));
+        // Every flag the step passes is one the command parses.
+        let options = super::ci_summary::parse_ci_summary_options(&[
+            "--root".to_string(),
+            ".".to_string(),
+            "--base-ref".to_string(),
+            "trunk".to_string(),
+            "--upload-sarif".to_string(),
+            String::new(),
+            "--gate-baseline".to_string(),
+            String::new(),
+            "--comment-mode".to_string(),
+            String::new(),
+        ]);
+        assert_eq!(
+            options.map(|options| options.base_ref),
+            Ok("trunk".to_string())
+        );
+        // With no flags, the settings come from the workflow env: the PR base
+        // first, then the repository default branch, and an explicit flag
+        // still wins.
+        let workflow_env = ci_packet::CiSettings {
+            base_ref: String::new(),
+            default_branch: "trunk".to_string(),
+            upload_sarif: "true".to_string(),
+            gate_baseline: ".ripr/gate-baseline.json".to_string(),
+            comment_mode: "inline".to_string(),
+            ..Default::default()
+        };
+        let from_env = super::ci_summary::parse_ci_summary_options_with(
+            &["--root".to_string(), ".".to_string()],
+            &workflow_env,
+        );
+        assert_eq!(
+            from_env.map(|options| (
+                options.base_ref,
+                options.upload_sarif,
+                options.gate_baseline,
+                options.comment_mode
+            )),
+            Ok((
+                "trunk".to_string(),
+                "true".to_string(),
+                ".ripr/gate-baseline.json".to_string(),
+                "inline".to_string()
+            ))
+        );
+        let pr_env = ci_packet::CiSettings {
+            base_ref: "release".to_string(),
+            ..workflow_env
+        };
+        let overridden = super::ci_summary::parse_ci_summary_options_with(
+            &["--comment-mode".to_string(), "off".to_string()],
+            &pr_env,
+        );
+        assert_eq!(
+            overridden.map(|options| (options.base_ref, options.comment_mode)),
+            Ok(("release".to_string(), "off".to_string()))
+        );
+        // Outside any workflow the base falls back to `main`.
+        let bare = super::ci_summary::parse_ci_summary_options(&[]);
+        assert_eq!(bare.map(|options| options.base_ref), Ok("main".to_string()));
+    }
+
+    #[test]
+    fn init_generated_github_workflow_matches_smoke_fixture() -> Result<(), String> {
+        use super::init_workflow::workflow_install_version;
+
+        let workflow = super::init_workflow::generated_development_workflow();
         let fixture = generated_workflow_smoke_fixture();
+        // The analysis steps run inside `ripr reports ci-packet` (#4696). Its
+        // own tests pin every command line a pull request run records and
+        // each step's continue-on-error and always() semantics; this test
+        // pins what is left in YAML and that the two meet.
+        let (packet, failed) = ci_packet::recorded_full_packet()?;
+        assert!(failed.is_empty(), "{failed:?}");
+        let packet_source = include_str!("commands/ci_packet.rs");
+        let surface = format!("{workflow}\n{packet}\n{packet_source}");
+
+        // The DX bar from #5409: a workflow an adopter can read in one sitting.
+        let line_count = workflow.lines().count();
+        assert!(
+            line_count <= 150,
+            "generated workflow is {line_count} lines; #5409 keeps it at 150 or fewer"
+        );
 
         assert!(workflow.contains("RIPR_UPLOAD_SARIF: \"true\""));
-        // Install caching (#2008): the registry/git/dependency caches are
-        // warm, and the install still runs fresh (no stale-binary risk).
-        // Pinned to a SHA, not the mutable v2 tag (#2190 review).
-        assert!(workflow.contains("Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32"));
-        assert!(!workflow.contains("Swatinem/rust-cache@v2"));
-        assert!(workflow.contains("shared-key: ripr-install"));
+        // The install downloads the prebuilt release binary instead of
+        // compiling ripr, so the job sets up no Rust toolchain or cargo
+        // cache of its own.
+        assert!(!workflow.contains("Swatinem/rust-cache"));
+        assert!(!workflow.contains("dtolnay/rust-toolchain"));
         assert!(workflow.contains("RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}"));
         assert!(workflow.contains("actions/upload-artifact@v7"));
         assert!(workflow.contains("github/codeql-action/upload-sarif@v4"));
-        assert_contains_all(&workflow, "command", fixture.commands);
-        assert_contains_all(&workflow, "artifact path", fixture.artifact_paths);
-        assert_contains_all(&workflow, "summary section", fixture.summary_sections);
+        assert_contains_all(&packet, "command", fixture.commands);
+        assert!(packet_source.contains("\"preview-promote\","));
+        assert_contains_all(&surface, "artifact path", fixture.artifact_paths);
 
-        let prepare = workflow_step(&workflow, "Prepare RIPR editor-agent artifacts");
-        assert!(prepare.contains("RIPR_TOP_SEAM_ID"));
-        assert!(prepare.contains(".top_actionable_seams[0].seam_id"));
+        // Workflow hardening: the job token is not persisted into the
+        // checkout that PR-controlled code runs in.
         assert!(
-            !prepare.contains(".top_seams[0].seam_id"),
-            "top seam extraction must use pilot-summary top_actionable_seams"
+            workflow.contains("          fetch-depth: 0\n          persist-credentials: false #")
         );
+        // Checked-in files under target/ripr and target/ci are removed before
+        // any RIPR step, so gate inputs read "when present" come only from
+        // this run. The analysis cache is restored outside the checkout, so
+        // the cleanup cannot discard it and the restore cannot land a file
+        // the cleanup was meant to remove.
+        let cleanup = workflow_step(&workflow, "Remove checked-in RIPR artifacts");
+        assert!(cleanup.contains("run: rm -rf target/ripr target/ci"));
+        let install = workflow_step(&workflow, "Install ripr");
+        assert!(
+            install.contains(r#"echo "RIPR_CACHE_DIR=$RUNNER_TEMP/ripr-cache" >> "$GITHUB_ENV""#)
+        );
+        let cache = workflow
+            .split("\n\n")
+            .find(|block| {
+                block.contains(
+                    "      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0",
+                )
+            })
+            .unwrap_or_default();
+        assert!(cache.contains("          path: ${{ runner.temp }}/ripr-cache\n"));
+        // The job token has write scopes, so the action is pinned to a SHA.
+        assert!(!workflow.contains("actions/cache@v"));
+        // #5208: the cache key pins the installed version — the generator
+        // itself when released, the latest release when unreleased.
+        assert!(cache.contains(&format!(
+            "          key: ripr-cache-{}-${{{{ runner.os }}}}-",
+            workflow_install_version(env!("CARGO_PKG_VERSION"))
+        )));
+        let cache_at = workflow
+            .find("      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9")
+            .unwrap_or(usize::MAX);
+        let install_at = workflow.find("      - name: Install ripr").unwrap_or(0);
+        let run_at = workflow.find("      - name: Run RIPR\n").unwrap_or(0);
+        assert!(
+            install_at < cache_at && cache_at < run_at,
+            "the cache restores after the install sets RIPR_CACHE_DIR and before the first analysis"
+        );
+        assert_step_before(
+            &workflow,
+            "Remove checked-in RIPR artifacts",
+            "Install ripr",
+        );
+        assert_step_before(&workflow, "Remove checked-in RIPR artifacts", "Run RIPR");
+        // #5409: the bot-author filter and the CR/LF folding of printed
+        // messages live in `output::pr_inline_comment_github`, whose tests pin
+        // them; the steps hand ripr the API pages and replay its requests.
+        let capture = workflow_step(&workflow, "Capture existing RIPR inline comments");
+        assert!(capture.contains("| ripr pr-comments existing --root . --raw -"));
+        let publish = workflow_step(&workflow, "Publish RIPR inline comments");
+        assert!(publish.contains("done < target/ripr/review/publish/requests.tsv"));
 
-        let agent_loop = workflow_step(&workflow, "Generate RIPR agent loop artifacts");
-        assert!(agent_loop.contains("cp target/ripr/workflow/agent-packet.json"));
-        assert!(agent_loop.contains("cp target/ripr/workflow/agent-brief.json"));
-        assert!(agent_loop.contains("cp target/ripr/workflow/agent-verify.json"));
-        assert!(agent_loop.contains("cp target/ripr/reports/agent-receipt.json"));
-        assert!(agent_loop.contains("--format repo-exposure-json"));
-        assert!(agent_loop.contains("--format json"));
-        assert!(agent_loop.contains("target/ripr/workflow/analysis-outcome.json"));
-
-        let guidance = workflow_step(&workflow, "Run RIPR PR guidance report");
-        assert!(guidance.contains("github.event_name == 'pull_request'"));
-        assert!(guidance.contains("mkdir -p target/ripr/pr target/ripr/review"));
-        assert!(guidance.contains("check_status=0"));
-        assert!(guidance.contains(r#"ripr check \"#));
-        assert!(guidance.contains(r#"--base "origin/${{ github.base_ref }}"#));
-        assert!(guidance.contains("--format json > target/ripr/pr/check.json"));
-        assert!(guidance.contains("|| check_status=$?"));
-        assert!(guidance.contains("target/ripr/pr/check.json"));
-        assert!(guidance.contains("ripr review-comments"));
-        assert!(guidance.contains("--base \"origin/${{ github.base_ref }}\""));
-        assert!(guidance.contains("--head HEAD"));
-        assert!(guidance.contains("--out target/ripr/review/comments.json"));
+        let run = workflow_step(&workflow, "Run RIPR");
+        assert_eq!(
+            run, "      - name: Run RIPR\n        run: ripr reports ci-packet --root .",
+            "the packet step has no condition or continue-on-error: a required \
+             step's failure must fail the job"
+        );
+        assert_step_before(
+            &workflow,
+            "Capture existing RIPR inline comments",
+            "Run RIPR",
+        );
+        assert_step_before(&workflow, "Run RIPR", "Publish RIPR inline comments");
+        assert_step_before(&workflow, "Run RIPR", "Add RIPR advisory summary");
 
         let existing_comments = workflow_step(&workflow, "Capture existing RIPR inline comments");
         assert!(existing_comments.contains("env.RIPR_COMMENT_MODE != 'off'"));
@@ -7559,866 +7562,90 @@ language = "rust"
         assert!(
             existing_comments.contains("pulls/${{ github.event.pull_request.number }}/comments")
         );
-        assert!(existing_comments.contains("target/ripr/review/existing-comments.json"));
-        assert!(existing_comments.contains("capture(\"<!-- ripr:dedupe=(?<key>[^ ]+)\")"));
-
-        let comment_plan = workflow_step(&workflow, "Plan RIPR inline comments");
-        assert!(comment_plan.contains("env.RIPR_COMMENT_MODE != 'off'"));
-        assert!(comment_plan.contains("hashFiles('target/ripr/review/comments.json')"));
-        assert!(comment_plan.contains("pr-comments plan"));
-        assert!(comment_plan.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(comment_plan.contains("--mode \"$RIPR_COMMENT_MODE\""));
-        assert!(comment_plan.contains("--event-name \"${{ github.event_name }}\""));
-        assert!(
-            comment_plan.contains("--pull-request \"${{ github.event.pull_request.number }}\"")
-        );
-        assert!(
-            comment_plan
-                .contains("--head-repo \"${{ github.event.pull_request.head.repo.full_name }}\"")
-        );
-        assert!(comment_plan.contains("--base-repo \"${{ github.repository }}\""));
-        assert!(comment_plan.contains("--out target/ripr/review/comment-publish-plan.json"));
-        assert!(comment_plan.contains("--out-md target/ripr/review/comment-publish-plan.md"));
-        assert!(
-            comment_plan.contains("--existing-comments target/ripr/review/existing-comments.json")
-        );
-        assert!(comment_plan.contains("--token-available"));
-        assert!(comment_plan.contains("--no-token"));
-        assert!(comment_plan.contains("--write-permission"));
+        // The command's default output is the file the packet's plan reads.
+        assert!(include_str!("commands/pr_comments_github.rs").contains(
+            "const DEFAULT_EXISTING_OUT: &str = \"target/ripr/review/existing-comments.json\";"
+        ));
+        // The capture runs before the guidance exists, so it cannot wait on it.
+        assert!(!existing_comments.contains("hashFiles"));
 
         let publish_comments = workflow_step(&workflow, "Publish RIPR inline comments");
         assert!(publish_comments.contains("env.RIPR_COMMENT_MODE == 'inline'"));
         assert!(
             publish_comments.contains("hashFiles('target/ripr/review/comment-publish-plan.json')")
         );
-        assert!(publish_comments.contains("jq -e '.summary.safe_to_publish == true'"));
-        assert!(publish_comments.contains("select(.safe_to_publish == true)"));
-        assert!(publish_comments.contains("published_body: compact_body"));
-        assert!(publish_comments.contains("github.event.pull_request.head.sha"));
-        assert!(publish_comments.contains("gh api --method POST"));
-        assert!(publish_comments.contains("gh api --method PATCH"));
-        assert_step_before(
-            &workflow,
-            "Run RIPR PR guidance report",
-            "Capture existing RIPR inline comments",
+        assert!(
+            publish_comments.contains("--head-sha \"${{ github.event.pull_request.head.sha }}\"")
         );
-        assert_step_before(
-            &workflow,
-            "Capture existing RIPR inline comments",
-            "Plan RIPR inline comments",
-        );
-        assert_step_before(
-            &workflow,
-            "Plan RIPR inline comments",
-            "Publish RIPR inline comments",
-        );
-        assert_step_before(
-            &workflow,
-            "Plan RIPR inline comments",
-            "Evaluate RIPR gate decision",
-        );
-        assert_step_before(
-            &workflow,
-            "Capture RIPR gate labels",
-            "Evaluate RIPR gate decision",
-        );
-        assert_step_before(
-            &workflow,
-            "Evaluate RIPR gate decision",
-            "Render RIPR baseline debt delta",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR baseline debt delta",
-            "Render RIPR Zero status",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR Zero status",
-            "Render RIPR PR evidence ledger",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR PR evidence ledger",
-            "Render RIPR waiver aging",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR waiver aging",
-            "Render RIPR suppression health",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR suppression health",
-            "Render RIPR policy readiness",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR policy readiness",
-            "Render RIPR policy operations",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR policy operations",
-            "Render RIPR policy history",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR policy history",
-            "Render RIPR policy promotion packets",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR policy promotion packets",
-            "Render RIPR preview promotion packets",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR preview promotion packets",
-            "Render RIPR test-oracle assistant proof",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR test-oracle assistant proof",
-            "Render RIPR assistant loop health",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR assistant loop health",
-            "Render RIPR first useful action",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR first useful action",
-            "Render RIPR PR review front panel",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR PR review front panel",
-            "Render RIPR report packet index",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR report packet index",
-            "Render RIPR LLM work-loop summaries",
-        );
-        assert_step_before(
-            &workflow,
-            "Render RIPR PR evidence ledger",
-            "Emit RIPR PR guidance annotations",
-        );
-        assert_step_before(
-            &workflow,
-            "Run RIPR PR guidance report",
-            "Add RIPR advisory summary",
-        );
+        assert!(publish_comments.contains(
+            "gh api --method \"$method\" \"repos/${{ github.repository }}/$endpoint\" --input \"$request\""
+        ));
+
+        // The packet writes the plan the publish step reads, and the comment
+        // capture writes the file the plan reads.
+        assert!(packet.contains(
+            "--existing-comments target/ripr/review/existing-comments.json --token-available --write-permission"
+        ));
+        assert!(packet.contains("--out target/ripr/review/comment-publish-plan.json"));
+        // Dependabot runs get a read-only token whatever the permissions say.
+        assert!(packet_source.contains(
+            "settings.actor == \"dependabot[bot]\" || settings.pr_author == \"dependabot[bot]\""
+        ));
+        assert!(packet_source.contains("\"--no-write-permission\""));
+        // first-pr checks the review cards were built for its base; the
+        // cards use the PR's base, so first-pr must too (F60-8).
+        assert!(packet.contains("ripr review-comments --root . --base origin/main --head HEAD"));
+        assert!(packet.contains("ripr first-pr --root . --base origin/main --head HEAD"));
+        assert!(packet_source.contains("\"/top_actionable_seams/0/seam_id\""));
 
         let artifact_upload = workflow_step(&workflow, "Upload RIPR report artifacts");
         assert!(artifact_upload.contains("if-no-files-found: ignore"));
-        for path in [
-            "target/ripr/pilot",
-            "target/ripr/agent",
-            "target/ripr/workflow",
-            "target/ripr/reports",
-            "target/ripr/review",
-            "target/ci",
-        ] {
+        for path in ["            target/ripr\n", "            target/ci\n"] {
             assert!(
                 artifact_upload.contains(path),
                 "artifact upload must include {path}"
             );
         }
 
-        let gate = workflow_step(&workflow, "Evaluate RIPR gate decision");
-        assert!(gate.contains("env.RIPR_GATE_MODE != ''"));
-        assert!(gate.contains("hashFiles('target/ripr/review/comments.json')"));
-        assert!(gate.contains("gate evaluate"));
-        assert!(gate.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(gate.contains("--mode \"$RIPR_GATE_MODE\""));
-        assert!(gate.contains("--out target/ripr/reports/gate-decision.json"));
-        assert!(gate.contains("--out-md target/ripr/reports/gate-decision.md"));
-        assert!(gate.contains("--labels-json target/ci/labels.json"));
-        assert!(gate.contains("--sarif-policy target/ripr/reports/sarif-policy.json"));
-        assert!(gate.contains(
-            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
-        ));
-        assert!(
-            gate.contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
-        );
-        assert!(gate.contains("--baseline \"$RIPR_GATE_BASELINE\""));
-        assert!(!gate.contains("continue-on-error: true"));
-
-        let baseline_delta = workflow_step(&workflow, "Render RIPR baseline debt delta");
-        assert!(baseline_delta.contains("always() && env.RIPR_GATE_BASELINE != ''"));
-        assert!(baseline_delta.contains("hashFiles('target/ripr/reports/gate-decision.json')"));
-        assert!(baseline_delta.contains("continue-on-error: true"));
-        assert!(baseline_delta.contains("ripr baseline diff"));
-        assert!(baseline_delta.contains("--baseline \"$RIPR_GATE_BASELINE\""));
-        assert!(baseline_delta.contains("--current target/ripr/reports/gate-decision.json"));
-        assert!(baseline_delta.contains("--out target/ripr/reports/baseline-debt-delta.json"));
-        assert!(baseline_delta.contains("--out-md target/ripr/reports/baseline-debt-delta.md"));
-
-        let zero_status = workflow_step(&workflow, "Render RIPR Zero status");
-        assert!(zero_status.contains("hashFiles('target/ripr/reports/baseline-debt-delta.json')"));
-        assert!(zero_status.contains("continue-on-error: true"));
-        assert!(zero_status.contains("zero status"));
-        assert!(zero_status.contains("--delta target/ripr/reports/baseline-debt-delta.json"));
-        assert!(zero_status.contains("--out target/ripr/reports/ripr-zero-status.json"));
-        assert!(zero_status.contains("--out-md target/ripr/reports/ripr-zero-status.md"));
-        assert!(zero_status.contains("--baseline \"$RIPR_GATE_BASELINE\""));
-        assert!(zero_status.contains("--gate target/ripr/reports/gate-decision.json"));
-        assert!(zero_status.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(zero_status.contains(
-            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
-        ));
-
-        let pr_ledger = workflow_step(&workflow, "Render RIPR PR evidence ledger");
-        assert!(pr_ledger.contains("github.event_name == 'pull_request'"));
-        assert!(pr_ledger.contains("hashFiles('target/ripr/review/comments.json')"));
-        assert!(pr_ledger.contains("continue-on-error: true"));
-        assert!(pr_ledger.contains("pr-ledger record"));
-        assert!(pr_ledger.contains("--pr-number \"${{ github.event.pull_request.number }}\""));
-        assert!(pr_ledger.contains("--base \"origin/${{ github.base_ref }}\""));
-        assert!(pr_ledger.contains("--head HEAD"));
-        assert!(pr_ledger.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(pr_ledger.contains("--gate target/ripr/reports/gate-decision.json"));
-        assert!(
-            pr_ledger.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
-        );
-        assert!(pr_ledger.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
-        assert!(pr_ledger.contains(
-            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
-        ));
-        assert!(pr_ledger.contains("--agent-receipt target/ripr/reports/agent-receipt.json"));
-        assert!(pr_ledger.contains("--coverage target/ripr/reports/coverage-summary.json"));
-        assert!(pr_ledger.contains("--history .ripr/pr-evidence-ledger.jsonl"));
-        assert!(pr_ledger.contains("ledger_args+=(--label \"$label\")"));
-        assert!(pr_ledger.contains("ripr \"${ledger_args[@]}\""));
-
-        let waiver_aging = workflow_step(&workflow, "Render RIPR waiver aging");
-        assert!(waiver_aging.contains("hashFiles('target/ripr/reports/pr-evidence-ledger.json')"));
-        assert!(waiver_aging.contains("continue-on-error: true"));
-        assert!(waiver_aging.contains("policy waiver-aging"));
-        assert!(waiver_aging.contains("--root ."));
-        assert!(waiver_aging.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(waiver_aging.contains("--out target/ripr/reports/waiver-aging.json"));
-        assert!(waiver_aging.contains("--out-md target/ripr/reports/waiver-aging.md"));
-        assert!(waiver_aging.contains("--history .ripr/pr-evidence-ledger.jsonl"));
-        assert!(waiver_aging.contains("ripr \"${waiver_args[@]}\""));
-
-        let suppression_health = workflow_step(&workflow, "Render RIPR suppression health");
-        assert!(suppression_health.contains("if: always()"));
-        assert!(suppression_health.contains("continue-on-error: true"));
-        assert!(suppression_health.contains("policy suppression-health"));
-        assert!(suppression_health.contains("--root ."));
-        assert!(suppression_health.contains("--out target/ripr/reports/suppression-health.json"));
-        assert!(suppression_health.contains("--out-md target/ripr/reports/suppression-health.md"));
-        assert!(suppression_health.contains("ripr \"${suppression_args[@]}\""));
-
-        let policy_readiness = workflow_step(&workflow, "Render RIPR policy readiness");
-        assert!(policy_readiness.contains("if: always()"));
-        assert!(policy_readiness.contains("continue-on-error: true"));
-        assert!(policy_readiness.contains("policy readiness"));
-        assert!(policy_readiness.contains("--root ."));
-        assert!(policy_readiness.contains("--out target/ripr/reports/policy-readiness.json"));
-        assert!(policy_readiness.contains("--out-md target/ripr/reports/policy-readiness.md"));
-        assert!(
-            policy_readiness.contains("--gate-decision target/ripr/reports/gate-decision.json")
-        );
-        assert!(
-            policy_readiness
-                .contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
-        );
-        assert!(policy_readiness.contains(
-            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
-        ));
-        assert!(
-            policy_readiness
-                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
-        );
-        assert!(policy_readiness.contains("--waiver-aging target/ripr/reports/waiver-aging.json"));
-        assert!(
-            policy_readiness
-                .contains("--suppression-health target/ripr/reports/suppression-health.json")
-        );
-        assert!(policy_readiness.contains("ripr \"${policy_args[@]}\""));
-
-        let policy_operations = workflow_step(&workflow, "Render RIPR policy operations");
-        assert!(
-            policy_operations.contains("hashFiles('target/ripr/reports/policy-readiness.json')")
-        );
-        assert!(policy_operations.contains("continue-on-error: true"));
-        assert!(policy_operations.contains("policy operations"));
-        assert!(policy_operations.contains("--root ."));
-        assert!(
-            policy_operations
-                .contains("--policy-readiness target/ripr/reports/policy-readiness.json")
-        );
-        assert!(policy_operations.contains("--out target/ripr/reports/policy-operations.json"));
-        assert!(policy_operations.contains("--out-md target/ripr/reports/policy-operations.md"));
-        assert!(policy_operations.contains("--waiver-aging target/ripr/reports/waiver-aging.json"));
-        assert!(
-            policy_operations
-                .contains("--suppression-health target/ripr/reports/suppression-health.json")
-        );
-        assert!(
-            policy_operations
-                .contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
-        );
-        assert!(
-            policy_operations.contains("--gate-decision target/ripr/reports/gate-decision.json")
-        );
-        assert!(policy_operations.contains(
-            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
-        ));
-        assert!(
-            policy_operations
-                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
-        );
-        assert!(
-            policy_operations.contains("--preview-boundary target/ripr/reports/repo-exposure.json")
-        );
-        assert!(policy_operations.contains("ripr \"${operations_args[@]}\""));
-
-        let policy_history = workflow_step(&workflow, "Render RIPR policy history");
-        assert!(policy_history.contains("hashFiles('target/ripr/reports/policy-operations.json')"));
-        assert!(policy_history.contains("continue-on-error: true"));
-        assert!(policy_history.contains("policy history"));
-        assert!(policy_history.contains("--current target/ripr/reports/policy-operations.json"));
-        assert!(policy_history.contains("--commit \"$GITHUB_SHA\""));
-        assert!(policy_history.contains("--history .ripr/policy-history.jsonl"));
-        assert!(policy_history.contains("--pr-number \"${{ github.event.number }}\""));
-        assert!(policy_history.contains("--out target/ripr/reports/policy-history.json"));
-        assert!(policy_history.contains("--out-md target/ripr/reports/policy-history.md"));
-        assert!(policy_history.contains("ripr \"${history_args[@]}\""));
-
-        let promotion_packets = workflow_step(&workflow, "Render RIPR policy promotion packets");
-        assert!(
-            promotion_packets.contains("hashFiles('target/ripr/reports/policy-operations.json')")
-        );
-        assert!(promotion_packets.contains("continue-on-error: true"));
-        assert!(promotion_packets.contains(
-            "for target_mode in visible-only acknowledgeable baseline-check calibrated-gate"
-        ));
-        assert!(promotion_packets.contains("policy promote"));
-        assert!(promotion_packets.contains("--to \"$target_mode\""));
-        assert!(
-            promotion_packets.contains("--operations target/ripr/reports/policy-operations.json")
-        );
-        assert!(promotion_packets.contains("--history target/ripr/reports/policy-history.json"));
-        assert!(
-            promotion_packets.contains("target/ripr/reports/policy-promotion-${target_mode}.json")
-        );
-        assert!(promotion_packets.contains("ripr \"${promotion_args[@]}\""));
-
-        let preview_packets = workflow_step(&workflow, "Render RIPR preview promotion packets");
-        assert!(preview_packets.contains("if: always()"));
-        assert!(preview_packets.contains("continue-on-error: true"));
-        assert!(preview_packets.contains("ripr doctor --root ."));
-        assert!(preview_packets.contains("policy preview-promote"));
-        assert!(preview_packets.contains("--language \"$language\""));
-        assert!(preview_packets.contains("--class \"$class_label\""));
-        assert!(preview_packets.contains(
-            "target/ripr/reports/preview-promotion-${language}-${class_label//_/-}.json"
-        ));
-        assert!(
-            preview_packets
-                .contains("--evidence target/ripr/reports/preview-promotion-evidence.json")
-        );
-        assert!(preview_packets.contains("TypeScript or Python preview languages are configured"));
-        assert!(preview_packets.contains("ripr \"${preview_args[@]}\""));
-
-        let assistant_proof = workflow_step(&workflow, "Render RIPR test-oracle assistant proof");
-        assert!(assistant_proof.contains("hashFiles('target/ripr/review/comments.json')"));
-        assert!(assistant_proof.contains("hashFiles('target/ripr/workflow/agent-brief.json')"));
-        assert!(
-            assistant_proof.contains("hashFiles('target/ripr/workflow/before.repo-exposure.json')")
-        );
-        assert!(
-            assistant_proof.contains("hashFiles('target/ripr/workflow/after.repo-exposure.json')")
-        );
-        assert!(assistant_proof.contains("hashFiles('target/ripr/reports/agent-receipt.json')"));
-        assert!(
-            assistant_proof.contains("hashFiles('target/ripr/reports/pr-evidence-ledger.json')")
-        );
-        assert!(assistant_proof.contains("continue-on-error: true"));
-        assert!(assistant_proof.contains("assistant-loop proof"));
-        assert!(assistant_proof.contains("--root ."));
-        assert!(assistant_proof.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(assistant_proof.contains("--agent-packet target/ripr/workflow/agent-brief.json"));
-        assert!(
-            assistant_proof.contains("--before target/ripr/workflow/before.repo-exposure.json")
-        );
-        assert!(assistant_proof.contains("--after target/ripr/workflow/after.repo-exposure.json"));
-        assert!(assistant_proof.contains("--receipt target/ripr/reports/agent-receipt.json"));
-        assert!(assistant_proof.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(
-            assistant_proof.contains("--out target/ripr/reports/test-oracle-assistant-proof.json")
-        );
-        assert!(
-            assistant_proof.contains("--out-md target/ripr/reports/test-oracle-assistant-proof.md")
-        );
-        assert!(
-            assistant_proof
-                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
-        );
-        assert!(assistant_proof.contains("--gate-decision target/ripr/reports/gate-decision.json"));
-        assert!(assistant_proof.contains("ripr \"${proof_args[@]}\""));
-
-        let assistant_health = workflow_step(&workflow, "Render RIPR assistant loop health");
-        assert!(
-            assistant_health
-                .contains("hashFiles('target/ripr/reports/test-oracle-assistant-proof.json')")
-        );
-        assert!(assistant_health.contains("continue-on-error: true"));
-        assert!(assistant_health.contains("assistant-loop health"));
-        assert!(assistant_health.contains("--root ."));
-        assert!(
-            assistant_health
-                .contains("--proof target/ripr/reports/test-oracle-assistant-proof.json")
-        );
-        assert!(assistant_health.contains("--out target/ripr/reports/assistant-loop-health.json"));
-        assert!(assistant_health.contains("--out-md target/ripr/reports/assistant-loop-health.md"));
-
-        let gap_ledger = workflow_step(&workflow, "Render RIPR gap decision ledger");
-        assert!(gap_ledger.contains("hashFiles('target/ripr/reports/repo-exposure.json')"));
-        assert!(gap_ledger.contains("continue-on-error: true"));
-        assert!(gap_ledger.contains("reports gap-ledger"));
-        assert!(gap_ledger.contains("--root ."));
-        assert!(gap_ledger.contains("--repo-exposure target/ripr/reports/repo-exposure.json"));
-        assert!(gap_ledger.contains("--out target/ripr/reports/gap-decision-ledger.json"));
-        assert!(gap_ledger.contains("--out-md target/ripr/reports/gap-decision-ledger.md"));
-
-        let first_action = workflow_step(&workflow, "Render RIPR first useful action");
-        assert!(first_action.contains("continue-on-error: true"));
-        assert!(first_action.contains("first-action"));
-        assert!(first_action.contains("--root ."));
-        assert!(first_action.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(
-            first_action
-                .contains("--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json")
-        );
-        assert!(first_action.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(
-            first_action.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
-        );
-        assert!(first_action.contains("--receipt target/ripr/reports/agent-receipt.json"));
-        assert!(first_action.contains("--gate-decision target/ripr/reports/gate-decision.json"));
-        assert!(
-            first_action
-                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
-        );
-        assert!(
-            first_action.contains("--editor-context target/ripr/workflow/evidence-context.json")
-        );
-        assert!(first_action.contains("--out target/ripr/reports/first-useful-action.json"));
-        assert!(first_action.contains("--out-md target/ripr/reports/first-useful-action.md"));
-        assert!(first_action.contains("first_action_has_input=true"));
-        assert!(first_action.contains("ripr \"${first_action_args[@]}\""));
-
-        let front_panel = workflow_step(&workflow, "Render RIPR PR review front panel");
-        assert!(front_panel.contains("continue-on-error: true"));
-        assert!(front_panel.contains("pr-review front-panel"));
-        assert!(front_panel.contains("--root ."));
-        assert!(front_panel.contains("--pr-guidance target/ripr/review/comments.json"));
-        assert!(
-            front_panel.contains("--first-action target/ripr/reports/first-useful-action.json")
-        );
-        assert!(
-            front_panel
-                .contains("--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json")
-        );
-        assert!(
-            front_panel
-                .contains("--assistant-health target/ripr/reports/assistant-loop-health.json")
-        );
-        assert!(front_panel.contains("--ledger target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(
-            front_panel.contains("--baseline-delta target/ripr/reports/baseline-debt-delta.json")
-        );
-        assert!(front_panel.contains("--zero-status target/ripr/reports/ripr-zero-status.json"));
-        assert!(front_panel.contains("--gate-decision target/ripr/reports/gate-decision.json"));
-        assert!(front_panel.contains(
-            "--recommendation-calibration target/ripr/reports/recommendation-calibration.json"
-        ));
-        assert!(
-            front_panel
-                .contains("--mutation-calibration target/ripr/reports/mutation-calibration.json")
-        );
-        assert!(
-            front_panel
-                .contains("--coverage-frontier target/ripr/reports/coverage-grip-frontier.json")
-        );
-        assert!(front_panel.contains("--receipt target/ripr/reports/agent-receipt.json"));
-        assert!(front_panel.contains("--out target/ripr/reports/pr-review-front-panel.json"));
-        assert!(front_panel.contains("--out-md target/ripr/reports/pr-review-front-panel.md"));
-        assert!(front_panel.contains("front_panel_has_input=true"));
-        assert!(front_panel.contains("ripr \"${front_panel_args[@]}\""));
-        assert!(front_panel.contains("No RIPR PR review front-panel inputs were available."));
-
-        let first_pr = workflow_step(&workflow, "Render RIPR first-pr start-here");
-        assert!(first_pr.contains("continue-on-error: true"));
-        assert!(first_pr.contains("ripr first-pr"));
-        assert!(first_pr.contains("--root ."));
-        assert!(first_pr.contains("--gap-ledger target/ripr/reports/gap-decision-ledger.json"));
-        assert!(first_pr.contains("--first-action target/ripr/reports/first-useful-action.json"));
-        assert!(first_pr.contains("--review-comments target/ripr/review/comments.json"));
-        assert!(first_pr.contains("--agent-packet target/ripr/workflow/agent-packet.json"));
-        assert!(first_pr.contains("--gate-decision target/ripr/reports/gate-decision.json"));
-        assert!(first_pr.contains("--receipts-dir target/ripr/receipts"));
-        assert!(first_pr.contains("--out-dir target/ripr/reports"));
-
-        let packet_index = workflow_step(&workflow, "Render RIPR report packet index");
-        assert!(packet_index.contains("continue-on-error: true"));
-        assert!(packet_index.contains("reports index"));
-        assert!(packet_index.contains("--reports-dir target/ripr/reports"));
-        assert!(packet_index.contains("--review-dir target/ripr/review"));
-        assert!(packet_index.contains("--receipts-dir target/ripr/receipts"));
-        assert!(packet_index.contains("--workflow-dir target/ripr/workflow"));
-        assert!(packet_index.contains("--agent-dir target/ripr/agent"));
-        assert!(packet_index.contains("--pilot-dir target/ripr/pilot"));
-        assert!(packet_index.contains("--ci-dir target/ci"));
-        assert!(packet_index.contains("--out target/ripr/reports/index.json"));
-        assert!(packet_index.contains("--out-md target/ripr/reports/index.md"));
-        assert!(packet_index.contains("target/ripr/reports/start-here.md"));
-        assert!(packet_index.contains("target/ripr/reports/pr-review-front-panel.md"));
-        assert!(packet_index.contains("target/ripr/review/comments.json"));
-        assert!(packet_index.contains("target/ripr/reports/policy-operations.md"));
-        assert!(packet_index.contains("target/ripr/reports/policy-history.md"));
-        assert!(packet_index.contains("target/ripr/reports/policy-promotion-baseline-check.md"));
-        assert!(
-            packet_index
-                .contains("target/ripr/reports/preview-promotion-typescript-boundary-gap.md")
-        );
-        assert!(packet_index.contains("target/ripr/reports/gate-decision.md"));
-        assert!(packet_index.contains("target/ripr/reports/agent-receipt.json"));
-        assert!(packet_index.contains("index_has_input=true"));
-        assert!(packet_index.contains("No RIPR report-packet index inputs were available."));
-
-        let annotations = workflow_step(&workflow, "Emit RIPR PR guidance annotations");
-        assert!(annotations.contains("hashFiles('target/ripr/review/comments.json')"));
-        assert!(annotations.contains("escape_github_message()"));
-        assert!(annotations.contains("escape_github_property()"));
-        assert!(annotations.contains("::warning file=$annotation_path,line=$annotation_line"));
-
-        let summary = workflow_step(&workflow, "Add RIPR advisory summary");
-        assert!(summary.contains("### PR review summary"));
-        assert!(summary.contains("#### PR review at a glance"));
-        assert!(summary.contains("target/ripr/reports/pr-review-front-panel.json"));
-        assert!(summary.contains("target/ripr/reports/pr-review-front-panel.md"));
-        assert!(summary.contains(".summary.headline // \"not_available\""));
-        assert!(summary.contains(".summary.top_issue_state // \"unknown\""));
-        assert!(summary.contains(".summary.policy_state // \"none\""));
-        assert!(summary.contains(".summary.placement // \"not_available\""));
-        assert!(summary.contains(".summary.movement_state // \"unknown\""));
-        assert!(summary.contains(".summary.coverage_grip_state // \"not_available\""));
-        assert!(summary.contains(".summary.new_policy_eligible // 0"));
-        assert!(summary.contains(".summary.baseline_still_present // 0"));
-        assert!(summary.contains(".summary.baseline_resolved // 0"));
-        assert!(summary.contains(".summary.blocking_candidates // 0"));
-        assert!(summary.contains(".top_issue.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".top_issue.suggested_test // \"not_available\""));
-        assert!(summary.contains(".top_issue.verify_command // \"not_available\""));
-        assert!(summary.contains(".top_issue.agent_command // \"not_available\""));
-        assert!(summary.contains(".top_issue.receipt.artifact // \"not_available\""));
-        assert!(summary.contains(".policy.mode // \"not_available\""));
-        assert!(summary.contains(".policy.decision // \"not_available\""));
-        assert!(summary.contains("cat target/ripr/reports/pr-review-front-panel.md"));
-        assert!(summary.contains("PR review summary was not generated"));
-        assert!(summary.contains("### Recommended next test"));
-        assert!(summary.contains("#### Recommended next test at a glance"));
-        assert!(summary.contains("#### First-run status"));
-        assert!(summary.contains("Open `target/ripr/reports/start-here.md` first"));
-        assert!(summary.contains(
-            "Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, and preview-limited evidence"
-        ));
-        assert!(summary.contains(
-            "Proof rail: verify command, receipt command, and receipt path are static movement evidence only."
-        ));
-        assert!(summary.contains("Start-here artifact: `target/ripr/reports/start-here.md`"));
-        assert!(summary.contains("start_json=target/ripr/reports/start-here.json"));
-        assert!(summary.contains(".selected.state // \"unknown\""));
-        assert!(summary.contains(".selected.kind // \"none\""));
-        assert!(summary.contains(
-            ".selected.repair.route // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(".selected.changed_behavior // \"not_available\""));
-        assert!(summary.contains(".selected.static_evidence_boundary // \"static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.\""));
-        assert!(summary.contains(
-            ".selected.missing_discriminator // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(
-            ".selected.focused_proof_intent // .selected.repair.suggested_assertion // \"not_available\""
-        ));
-        assert!(summary.contains(".selected.verify_command // \"not_available\""));
-        assert!(summary.contains(".selected.receipt_command // \"not_available\""));
-        assert!(summary.contains(".selected.receipt_path // \"not_available\""));
-        assert!(
-            summary
-                .contains(".selected.next_command // .selected.regeneration_command // \"none\"")
-        );
-        assert!(summary.contains("cat target/ripr/reports/start-here.md"));
-        assert!(summary.contains("Boundary: \\`$start_boundary\\`"));
-        assert!(summary.contains("missing_start_here"));
-        assert!(summary.contains(
-            "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json"
-        ));
-        assert!(summary.contains(".summary.start_here // \"not_available\""));
-        assert!(
-            summary.contains("Start-here artifact: `target/ripr/reports/pr-review-front-panel.md`")
-        );
-        assert!(summary.contains("Start-here artifact: `target/ripr/pilot/pilot-summary.md`"));
-        assert!(summary.contains("target/ripr/workflow/agent-packet.json"));
-        assert!(summary.contains("target/ripr/reports/first-useful-action.json"));
-        assert!(summary.contains("target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains(".action_kind // \"unknown\""));
-        assert!(summary.contains("Safe next action: \\`$first_action_kind\\`"));
-        assert!(summary.contains(".commands.verify // \"not_available\""));
-        assert!(summary.contains(".commands.receipt // \"not_available\""));
-        assert!(summary.contains(".fallback.kind // \"none\""));
-        assert!(summary.contains("cat target/ripr/reports/first-useful-action.md"));
-        assert!(summary.contains("Recommended next test was not generated"));
-        assert!(summary.contains("cat target/ripr/pilot/pilot-summary.md"));
-        assert!(summary.contains("cat target/ripr/workflow/agent-review-summary.md"));
-        assert!(summary.contains("### Uploaded review artifacts"));
-        assert!(summary.contains("#### Uploaded artifacts at a glance"));
-        assert!(summary.contains("target/ripr/reports/index.json"));
-        assert!(summary.contains("target/ripr/reports/index.md"));
-        assert!(summary.contains(".summary.entries // 0"));
-        assert!(summary.contains(".summary.available // 0"));
-        assert!(summary.contains(".summary.missing_expected // 0"));
-        assert!(summary.contains(".summary.start_here // \"not_available\""));
-        assert!(summary.contains(".summary.gate_authority // \"not_available\""));
-        assert!(summary.contains(".missing_expected[]?.label"));
-        assert!(summary.contains(".warnings[]?.kind"));
-        assert!(summary.contains("cat target/ripr/reports/index.md"));
-        assert!(summary.contains("Uploaded review artifacts summary was not generated"));
-        assert!(summary.contains("#### Gate decision at a glance"));
-        assert!(summary.contains("markdown_inline()"));
-        assert!(summary.contains("gate_status=\"$(jq -r '.status // \"unknown\"'"));
-        assert!(summary.contains("gate_mode=\"$(jq -r '.mode // \"unknown\"'"));
-        assert!(summary.contains(".summary.blocking // 0"));
-        assert!(summary.contains(".summary.acknowledged // 0"));
-        assert!(summary.contains(".summary.advisory // 0"));
-        assert!(summary.contains(".summary.suppressed // 0"));
-        assert!(summary.contains(".summary.not_applicable // 0"));
-        assert!(summary.contains(".summary.unknown_confidence // 0"));
-        assert!(summary.contains("blocking=\"$(markdown_inline \"$blocking\")\""));
-        assert!(summary.contains("Counts: blocking=\\`$blocking\\`"));
-        assert!(summary.contains("Active PR labels"));
-        assert!(summary.contains("Acknowledgement labels"));
-        assert!(summary.contains("Applied waiver label"));
-        assert!(summary.contains("Baseline artifact"));
-        assert!(summary.contains("Recommendation calibration"));
-        assert!(summary.contains("Mutation calibration"));
-        assert!(summary.contains("Blocking reason (\\`$blocking\\`): \\`$blocking_reason\\`"));
-        assert!(summary.contains("target/ripr/reports/gate-decision.json"));
-        assert!(summary.contains("target/ci/labels.json"));
-        assert!(summary.contains("cat target/ripr/reports/gate-decision.md"));
-        assert!(summary.contains("Gate decision was not run"));
-        assert!(summary.contains("### Baseline debt delta"));
-        assert!(summary.contains("#### Baseline debt movement"));
-        assert!(summary.contains("target/ripr/reports/baseline-debt-delta.json"));
-        assert!(summary.contains("target/ripr/reports/baseline-debt-delta.md"));
-        assert!(summary.contains("cat target/ripr/reports/baseline-debt-delta.md"));
-        assert!(summary.contains(".baseline.path // .inputs.baseline // \"unknown\""));
-        assert!(summary.contains(".delta.still_present // 0"));
-        assert!(summary.contains(".delta.resolved // 0"));
-        assert!(summary.contains(".delta.new_policy_eligible // 0"));
-        assert!(summary.contains(".delta.acknowledged // 0"));
-        assert!(summary.contains(".delta.suppressed // 0"));
-        assert!(summary.contains(".delta.stale_baseline_entry // 0"));
-        assert!(summary.contains(".delta.invalid_baseline_entry // 0"));
-        assert!(summary.contains(".delta.missing_current_input // 0"));
-        assert!(summary.contains("Set `RIPR_GATE_BASELINE`"));
-        assert!(summary.contains("Baseline debt delta was not run"));
-        assert!(summary.contains("Baseline debt delta was not generated"));
-        assert!(summary.contains("### RIPR Zero status"));
-        assert!(summary.contains("#### RIPR Zero at a glance"));
-        assert!(summary.contains("target/ripr/reports/ripr-zero-status.json"));
-        assert!(summary.contains("target/ripr/reports/ripr-zero-status.md"));
-        assert!(summary.contains(".ripr_zero.state // \"unknown\""));
-        assert!(summary.contains(".ripr_zero.visible_unresolved // 0"));
-        assert!(summary.contains(".ripr_zero.new_policy_eligible // 0"));
-        assert!(summary.contains(".ripr_zero.blocking_candidates // 0"));
-        assert!(summary.contains(".baseline.metadata.stale // 0"));
-        assert!(summary.contains(".top_debt_areas[0].area // \"none\""));
-        assert!(summary.contains("cat target/ripr/reports/ripr-zero-status.md"));
-        assert!(summary.contains("RIPR Zero status was not run"));
-        assert!(summary.contains("RIPR Zero status was not generated"));
-        assert!(summary.contains("### PR evidence ledger"));
-        assert!(summary.contains("#### PR movement at a glance"));
-        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.json"));
-        assert!(summary.contains("target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(summary.contains(".movement.new_policy_eligible // 0"));
-        assert!(summary.contains(".movement.baseline_still_present // 0"));
-        assert!(summary.contains(".movement.baseline_resolved // 0"));
-        assert!(summary.contains(".movement.acknowledged // 0"));
-        assert!(summary.contains(".movement.suppressed // 0"));
-        assert!(summary.contains(".movement.blocking_candidates // 0"));
-        assert!(summary.contains(".movement.visible_unresolved // 0"));
-        assert!(summary.contains(".coverage_grip_frontier.status // \"not_available\""));
-        assert!(summary.contains(".history.trend // \"not_available\""));
-        assert!(summary.contains(".top_repair_route.verify_command // \"not_available\""));
-        assert!(summary.contains(".top_repair_route.agent_command // \"not_available\""));
-        assert!(summary.contains("Pass/fail authority remains \\`ripr gate evaluate\\`"));
-        assert!(summary.contains("cat target/ripr/reports/pr-evidence-ledger.md"));
-        assert!(summary.contains("PR evidence ledger was not generated"));
-        assert!(summary.contains("PR evidence ledger was not run"));
-        assert!(summary.contains("### Policy readiness"));
-        assert!(summary.contains("#### Policy readiness at a glance"));
-        assert!(summary.contains("target/ripr/reports/policy-readiness.json"));
-        assert!(summary.contains("target/ripr/reports/policy-readiness.md"));
-        assert!(summary.contains(".recommended_mode // \"unknown\""));
-        assert!(summary.contains(".blocking_readiness.state // \"unknown\""));
-        assert!(summary.contains(".baseline_health.state // \"unknown\""));
-        assert!(summary.contains(".waiver_health.state // \"unknown\""));
-        assert!(summary.contains(".suppression_health.state // \"unknown\""));
-        assert!(summary.contains(".calibration_health.state // \"unknown\""));
-        assert!(summary.contains(".preview_evidence_boundary.state // \"unknown\""));
-        assert!(summary.contains("advisory readiness projection only"));
-        assert!(summary.contains("cat target/ripr/reports/policy-readiness.md"));
-        assert!(summary.contains("Policy readiness was not generated"));
-        assert!(summary.contains("### Policy operations"));
-        assert!(summary.contains("#### Policy operations at a glance"));
-        assert!(summary.contains("target/ripr/reports/policy-operations.json"));
-        assert!(summary.contains("target/ripr/reports/policy-operations.md"));
-        assert!(summary.contains(".current_policy_ceiling // \"unknown\""));
-        assert!(summary.contains(".recommended_next_action // \"not_available\""));
-        assert!(summary.contains(".safe_to_promote_to // [] | length"));
-        assert!(summary.contains(".not_safe_to_promote_to // [] | length"));
-        assert!(summary.contains(".promotion_blockers // [] | length"));
-        assert!(summary.contains("promotion requires manual review"));
-        assert!(summary.contains("cat target/ripr/reports/policy-operations.md"));
-        assert!(summary.contains("Policy operations was not generated"));
-        assert!(summary.contains("### Policy history"));
-        assert!(summary.contains("#### Policy history at a glance"));
-        assert!(summary.contains("target/ripr/reports/policy-history.json"));
-        assert!(summary.contains("target/ripr/reports/policy-history.md"));
-        assert!(summary.contains(".current.current_policy_ceiling // \"unknown\""));
-        assert!(summary.contains(".history_summary.entries // 0"));
-        assert!(summary.contains(".trend.ceiling.direction // \"unknown\""));
-        assert!(summary.contains(".trend.waiver_count.direction // \"unknown\""));
-        assert!(summary.contains(".trend.preview_boundary_state.direction // \"unknown\""));
-        assert!(
-            summary.contains("never appends to \\`.ripr/policy-history.jsonl\\` automatically")
-        );
-        assert!(summary.contains("cat target/ripr/reports/policy-history.md"));
-        assert!(summary.contains("Policy history was not generated"));
-        assert!(summary.contains("### Policy promotion packets"));
-        assert!(summary.contains("policy-promotion-visible-only.json"));
-        assert!(summary.contains("policy-promotion-acknowledgeable.json"));
-        assert!(summary.contains("policy-promotion-baseline-check.json"));
-        assert!(summary.contains("policy-promotion-calibrated-gate.json"));
-        assert!(summary.contains(".why_or_why_not // \"not_available\""));
-        assert!(summary.contains("packets do not edit \\`ripr.toml\\`"));
-        assert!(summary.contains("Policy promotion packets were not generated"));
-        assert!(summary.contains("cat \"$promotion_md\""));
-        assert!(summary.contains("### Preview promotion packets"));
-        assert!(summary.contains("preview-promotion-*-*.json"));
-        assert!(summary.contains(".candidate_class // \"unknown\""));
-        assert!(summary.contains(".missing_evidence // [] | length"));
-        assert!(summary.contains("preview evidence remains visible and non-gating"));
-        assert!(summary.contains("Preview promotion packets were not generated"));
-        assert!(summary.contains("cat \"$preview_md\""));
-        assert!(summary.contains("### Waiver aging"));
-        assert!(summary.contains("#### Waiver aging at a glance"));
-        assert!(summary.contains("target/ripr/reports/waiver-aging.json"));
-        assert!(summary.contains("target/ripr/reports/waiver-aging.md"));
-        assert!(summary.contains(".summary.waiver_count // 0"));
-        assert!(summary.contains(".summary.identity_count // 0"));
-        assert!(summary.contains(".summary.repeated_seam_count // 0"));
-        assert!(summary.contains(".summary.repeated_file_count // 0"));
-        assert!(summary.contains(".summary.focused_test_candidates // 0"));
-        assert!(summary.contains(".summary.durable_suppression_candidates // 0"));
-        assert!(summary.contains("repeated waiver is a visible signal"));
-        assert!(summary.contains("cat target/ripr/reports/waiver-aging.md"));
-        assert!(summary.contains("Waiver aging was not generated"));
-        assert!(summary.contains("### Suppression health"));
-        assert!(summary.contains("#### Suppression health at a glance"));
-        assert!(summary.contains("target/ripr/reports/suppression-health.json"));
-        assert!(summary.contains("target/ripr/reports/suppression-health.md"));
-        assert!(summary.contains(".summary.suppressions // 0"));
-        assert!(summary.contains(".summary.healthy // 0"));
-        assert!(summary.contains(".summary.missing_owner // 0"));
-        assert!(summary.contains(".summary.missing_reason // 0"));
-        assert!(summary.contains(".summary.stale // 0"));
-        assert!(summary.contains(".summary.overbroad_scope // 0"));
-        assert!(summary.contains(".summary.unknown_selector // 0"));
-        assert!(summary.contains(".summary.preview_without_preview_label // 0"));
-        assert!(summary.contains("suppressions remain visible durable exceptions"));
-        assert!(summary.contains("cat target/ripr/reports/suppression-health.md"));
-        assert!(summary.contains("Suppression health was not generated"));
-        assert!(summary.contains("### Test-oracle assistant proof"));
-        assert!(summary.contains("#### Assistant proof at a glance"));
-        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.json"));
-        assert!(summary.contains("target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(summary.contains(".seam.missing_discriminator // \"not_available\""));
-        assert!(summary.contains(".recommendation.placement // \"not_available\""));
-        assert!(summary.contains(".evidence_movement.state // \"unknown\""));
-        assert!(summary.contains(".ci_projection.gate_decision // \"not_supplied\""));
-        assert!(summary.contains(".ci_projection.coverage_frontier // \"not_supplied\""));
-        assert!(summary.contains("cat target/ripr/reports/test-oracle-assistant-proof.md"));
-        assert!(summary.contains("### Agent proof status"));
-        assert!(summary.contains("#### Agent proof status at a glance"));
-        assert!(summary.contains("target/ripr/reports/assistant-loop-health.json"));
-        assert!(summary.contains("target/ripr/reports/assistant-loop-health.md"));
-        assert!(summary.contains(".summary.proofs // 0"));
-        assert!(summary.contains(".summary.complete // 0"));
-        assert!(summary.contains(".summary.partial // 0"));
-        assert!(summary.contains(".summary.missing_required_input // 0"));
-        assert!(summary.contains(".summary.missing_optional_input // 0"));
-        assert!(summary.contains(".summary.improved // 0"));
-        assert!(summary.contains(".summary.unchanged // 0"));
-        assert!(summary.contains(".summary.regressed // 0"));
-        assert!(summary.contains(".summary.unknown_movement // 0"));
-        assert!(summary.contains(".summary.repair_queue // 0"));
-        assert!(summary.contains(".warning_summary[]?"));
-        assert!(summary.contains(".repair_queue[]?.repair_kind"));
-        assert!(summary.contains("cat target/ripr/reports/assistant-loop-health.md"));
-        assert!(summary.contains("advisory static health over proof artifacts"));
-        assert!(summary.contains(".summary.comments // 0"));
-        assert!(summary.contains(".summary.summary_only // 0"));
-        assert!(summary.contains(".summary.suppressed // 0"));
-        assert!(summary.contains("No runtime mutation execution is performed"));
-
-        for step in fixture.non_blocking_steps {
+        for step in fixture.yaml_advisory_steps {
             let block = workflow_step(&workflow, step);
             assert!(
                 block.contains("continue-on-error: true"),
                 "`{step}` must remain advisory/non-blocking"
             );
         }
-
-        for step in fixture.gate_conditional_steps {
-            let block = workflow_step(&workflow, step);
+        for step in ["Upload RIPR diff findings", "Upload RIPR repo seams"] {
             assert!(
-                block.contains(
-                    "continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}"
-                ),
-                "`{step}` must be conditional on RIPR_GATE_MODE, not unconditionally advisory"
-            );
-        }
-
-        let artifact_check = workflow_step(&workflow, "Check RIPR advisory artifacts");
-        assert!(artifact_check.contains("::warning::"));
-        assert!(artifact_check.contains("target/ripr/reports/start-here.md"));
-        assert!(artifact_check.contains("gate-decision.json (RIPR_GATE_MODE is set)"));
-
-        for step in fixture.optional_sarif_steps {
-            let block = workflow_step(&workflow, step);
-            assert!(
-                block.contains("env.RIPR_UPLOAD_SARIF == 'true'"),
+                workflow_step(&workflow, step).contains("env.RIPR_UPLOAD_SARIF == 'true'"),
                 "`{step}` must stay gated by RIPR_UPLOAD_SARIF"
             );
         }
+        // The SARIF renders stay gated by RIPR_UPLOAD_SARIF inside the packet.
+        assert!(packet.contains("--format sarif"));
+        assert!(packet.contains("--format repo-sarif"));
+        assert!(packet_source.contains("let sarif = self.settings.upload_sarif == \"true\";"));
 
+        let artifact_check = packet_source
+            .split("fn check_advisory_artifacts")
+            .nth(1)
+            .unwrap_or_default();
+        assert!(artifact_check.contains("::warning::"));
+        assert!(artifact_check.contains("{GATE_DECISION} (RIPR_GATE_MODE is set)"));
+        assert!(packet_source.contains("No RIPR PR review front-panel inputs were available."));
+        assert!(packet_source.contains("No RIPR report-packet index inputs were available."));
+
+        // #3906 (F60-1): before and after would both be this HEAD, so verify
+        // has no movement to compare and exits 2 on every run. CI writes the
+        // before side only; the repair's after phase writes the rest where
+        // the test edit happens.
         for forbidden in fixture.forbidden_fragments {
             assert!(
-                !workflow.contains(forbidden),
+                !workflow.contains(forbidden) && !packet.contains(forbidden),
                 "generated workflow must not enable `{forbidden}` by default"
             );
         }
+        assert!(!packet.contains("ripr agent verify"));
+        Ok(())
     }
 
     #[test]
@@ -8606,6 +7833,62 @@ language = "rust"
         );
     }
 
+    /// #4319: the synopsis reads `[--base REV|--diff PATH]` — alternatives —
+    /// but the loader gives `--diff` precedence and never validates `--base`
+    /// beside it, so both flags on one command line silently analyzed the
+    /// diff while appearing to assert the base. The conflict must fail at
+    /// parse time (before any pipeline run), in either flag order, and before
+    /// the selector requirement. Message pinned verbatim.
+    #[test]
+    fn explain_rejects_base_and_diff_together_at_parse_time() {
+        let expected = Err(
+            "explain --base cannot be combined with --diff: --base and --diff are alternative diff sources; pass one"
+                .to_string(),
+        );
+        assert_eq!(
+            explain(&args(&[
+                "--diff",
+                "sample.diff",
+                "--base",
+                "refs/heads/nope",
+                "probe:src_lib.rs:error_path:abcd",
+            ])),
+            expected
+        );
+        assert_eq!(
+            explain(&args(&[
+                "--base",
+                "refs/heads/nope",
+                "--diff",
+                "sample.diff"
+            ])),
+            expected,
+            "the conflict must not depend on flag order or selector presence"
+        );
+    }
+
+    /// `--from` scope flags are assertions verified against the recording
+    /// (RIPR-SPEC-0140, `app/check_artifact.rs::verify_scope_assertions`),
+    /// not alternative diff sources, so the fresh-run conflict must not fire
+    /// on the reuse path. The parse proceeds past the gate and fails later,
+    /// on the missing artifact — never with the conflict message.
+    #[test]
+    fn explain_keeps_base_and_diff_as_from_artifact_assertions() {
+        let result = explain(&args(&[
+            "--from",
+            "does-not-exist.json",
+            "--diff",
+            "sample.diff",
+            "--base",
+            "refs/heads/nope",
+            "probe:src_lib.rs:error_path:abcd",
+        ]));
+        assert!(
+            !matches!(&result, Err(message) if message.contains("cannot be combined with --diff")),
+            "`--from` + `--base` + `--diff` is the reuse-verification path, not a diff-source conflict: {result:?}"
+        );
+    }
+
     #[test]
     fn lsp_accepts_stdio_flag() {
         // lsp function doesn't reject --stdio, it just processes it
@@ -8615,121 +7898,6 @@ language = "rust"
     #[test]
     fn lsp_version_returns_ok_with_short_flag() {
         assert_eq!(lsp(&args(&["-V"])), Ok(()));
-    }
-
-    #[test]
-    fn review_comments_diff_route_records_timeout_at_injected_deadline() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-clock-diff");
-        std::fs::create_dir_all(root.join("src"))
-            .map_err(|err| format!("create fixture source: {err}"))?;
-        std::fs::write(
-            root.join("Cargo.toml"),
-            "[package]\nname = \"review_comments_clock_fixture\"\nversion = \"0.1.0\"\nedition = \"2024\"\n",
-        )
-        .map_err(|err| format!("write fixture manifest: {err}"))?;
-        std::fs::write(root.join("src/lib.rs"), "pub fn value() -> i32 { 1 }\n")
-            .map_err(|err| format!("write fixture source: {err}"))?;
-
-        let out = root.join("target/ripr/review/comments.json");
-        let start = Instant::now();
-        let calls = std::cell::Cell::new(0);
-        let result = review_comments_with_diff_loader_at(
-            &args(&[
-                "--root",
-                &root.display().to_string(),
-                "--base",
-                "BASE",
-                "--head",
-                "HEAD",
-                "--timeout-ms",
-                "1000",
-                "--out",
-                &out.display().to_string(),
-            ]),
-            |_root, _base, _head| Ok(String::new()),
-            || {
-                let call = calls.get();
-                calls.set(call + 1);
-                if call == 0 {
-                    start
-                } else {
-                    start + Duration::from_secs(1)
-                }
-            },
-        );
-        if result != Err("review-comments timed out during diff_discovery".to_string()) {
-            return Err(format!(
-                "diff route must expose the injected timeout: {result:?}"
-            ));
-        }
-
-        let receipt_path = out.with_file_name("run-receipt.json");
-        let receipt: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&receipt_path)
-                .map_err(|err| format!("read timeout receipt: {err}"))?,
-        )
-        .map_err(|err| format!("parse timeout receipt: {err}"))?;
-        if receipt["status"] != "limited_timeout" || receipt["active_phase"] != "diff_discovery" {
-            return Err(format!("unexpected diff timeout receipt: {receipt}"));
-        }
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
-        Ok(())
-    }
-
-    #[test]
-    fn review_comments_gap_ledger_records_timeout_at_injected_deadline() -> Result<(), String> {
-        let root = unique_command_test_dir("review-comments-clock-gap-ledger");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create fixture: {err}"))?;
-        let gap_ledger = root.join("gap-ledger.json");
-        let out = root.join("target/ripr/review/comments.json");
-        std::fs::write(&gap_ledger, r#"{"records":[]}"#)
-            .map_err(|err| format!("write gap ledger: {err}"))?;
-
-        let start = Instant::now();
-        let calls = std::cell::Cell::new(0);
-        let result = review_comments_with_diff_loader_at(
-            &args(&[
-                "--root",
-                &root.display().to_string(),
-                "--base",
-                "BASE",
-                "--head",
-                "HEAD",
-                "--gap-ledger",
-                &gap_ledger.display().to_string(),
-                "--timeout-ms",
-                "1000",
-                "--out",
-                &out.display().to_string(),
-            ]),
-            |_root, _base, _head| Err("diff loader must not run".to_string()),
-            || {
-                let call = calls.get();
-                calls.set(call + 1);
-                if call == 0 {
-                    start
-                } else {
-                    start + Duration::from_secs(1)
-                }
-            },
-        );
-        if result != Err("review-comments timed out during configuration".to_string()) {
-            return Err(format!(
-                "gap-ledger route must expose the injected timeout: {result:?}"
-            ));
-        }
-
-        let receipt_path = out.with_file_name("run-receipt.json");
-        let receipt: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(&receipt_path)
-                .map_err(|err| format!("read timeout receipt: {err}"))?,
-        )
-        .map_err(|err| format!("parse timeout receipt: {err}"))?;
-        if receipt["status"] != "limited_timeout" || receipt["active_phase"] != "configuration" {
-            return Err(format!("unexpected gap-ledger timeout receipt: {receipt}"));
-        }
-        std::fs::remove_dir_all(&root).map_err(|err| format!("remove fixture: {err}"))?;
-        Ok(())
     }
 
     pub(super) fn outcome_before_json() -> &'static str {

@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -30,6 +30,6 @@ pub trait Buf {
+     }
+
+     fn try_get_int(&mut self, nbytes: usize) -> Result<i64, TryGetError> {
+-        Ok(self.try_get_uint(nbytes)? as i64)
++        Ok(sign_extend(self.try_get_uint(nbytes)?, nbytes))
+     }
+ }

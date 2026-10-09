@@ -1,26 +1,19 @@
-use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
-use super::super::rust_index::{
-    PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH, PROBE_SHAPE_FIELD_CONSTRUCTION,
-    PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE, PROBE_SHAPE_RETURN_VALUE,
-    PROBE_SHAPE_SIDE_EFFECT, is_known_probe_shape,
-};
+use super::super::facts::ProbeShapeKind;
 use crate::domain::{DeltaKind, ProbeFamily};
 
-pub fn family_for_probe_shape(kind: &str) -> Option<ProbeFamily> {
-    if !is_known_probe_shape(kind) {
-        return None;
-    }
-
+pub fn family_for_probe_shape(kind: ProbeShapeKind) -> ProbeFamily {
+    // Total: the closed kind vocabulary (#5415 step 1) cannot hold an
+    // unknown string. Unknown wire strings fail at the decode boundary and
+    // the cache entry takes the corrupt-entry quarantine path.
     match kind {
-        PROBE_SHAPE_PREDICATE => Some(ProbeFamily::Predicate),
-        PROBE_SHAPE_RETURN_VALUE => Some(ProbeFamily::ReturnValue),
-        PROBE_SHAPE_ERROR_PATH => Some(ProbeFamily::ErrorPath),
-        PROBE_SHAPE_CALL_DELETION => Some(ProbeFamily::CallDeletion),
-        PROBE_SHAPE_FIELD_CONSTRUCTION => Some(ProbeFamily::FieldConstruction),
-        PROBE_SHAPE_SIDE_EFFECT => Some(ProbeFamily::SideEffect),
-        PROBE_SHAPE_MATCH_ARM => Some(ProbeFamily::MatchArm),
-        PROBE_SHAPE_UNSAFE_BOUNDARY => Some(ProbeFamily::StaticUnknown),
-        _ => None,
+        ProbeShapeKind::Predicate => ProbeFamily::Predicate,
+        ProbeShapeKind::ReturnValue => ProbeFamily::ReturnValue,
+        ProbeShapeKind::ErrorPath => ProbeFamily::ErrorPath,
+        ProbeShapeKind::CallDeletion => ProbeFamily::CallDeletion,
+        ProbeShapeKind::FieldConstruction => ProbeFamily::FieldConstruction,
+        ProbeShapeKind::SideEffect => ProbeFamily::SideEffect,
+        ProbeShapeKind::MatchArm => ProbeFamily::MatchArm,
+        ProbeShapeKind::UnsafeBoundary => ProbeFamily::StaticUnknown,
     }
 }
 
@@ -58,24 +51,25 @@ mod tests {
     }
 
     #[test]
-    fn family_for_probe_shape_maps_known_shape_strings() {
+    fn family_for_probe_shape_maps_every_kind() {
         let cases = [
-            (PROBE_SHAPE_PREDICATE, ProbeFamily::Predicate),
-            (PROBE_SHAPE_RETURN_VALUE, ProbeFamily::ReturnValue),
-            (PROBE_SHAPE_ERROR_PATH, ProbeFamily::ErrorPath),
-            (PROBE_SHAPE_CALL_DELETION, ProbeFamily::CallDeletion),
+            (ProbeShapeKind::Predicate, ProbeFamily::Predicate),
+            (ProbeShapeKind::ReturnValue, ProbeFamily::ReturnValue),
+            (ProbeShapeKind::ErrorPath, ProbeFamily::ErrorPath),
+            (ProbeShapeKind::CallDeletion, ProbeFamily::CallDeletion),
             (
-                PROBE_SHAPE_FIELD_CONSTRUCTION,
+                ProbeShapeKind::FieldConstruction,
                 ProbeFamily::FieldConstruction,
             ),
-            (PROBE_SHAPE_SIDE_EFFECT, ProbeFamily::SideEffect),
-            (PROBE_SHAPE_MATCH_ARM, ProbeFamily::MatchArm),
-            (PROBE_SHAPE_UNSAFE_BOUNDARY, ProbeFamily::StaticUnknown),
+            (ProbeShapeKind::SideEffect, ProbeFamily::SideEffect),
+            (ProbeShapeKind::MatchArm, ProbeFamily::MatchArm),
+            (ProbeShapeKind::UnsafeBoundary, ProbeFamily::StaticUnknown),
         ];
 
         for (shape, family) in cases {
-            assert_eq!(family_for_probe_shape(shape), Some(family));
+            assert_eq!(family_for_probe_shape(shape), family);
         }
-        assert_eq!(family_for_probe_shape("opaque_shape"), None);
+        // Unknown wire strings no longer reach this function: they fail at
+        // the decode boundary (see probe_shape_kind_rejects_unknown_wire_strings_at_decode).
     }
 }

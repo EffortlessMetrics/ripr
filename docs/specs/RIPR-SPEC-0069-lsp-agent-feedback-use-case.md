@@ -316,6 +316,33 @@ actionability (RIPR-SPEC-0061) plus runtime completeness. It does
 not re-derive state from raw findings, and an empty diagnostic set
 is a scope statement, never an all-clear.
 
+### Profile-withholding disclosure (#5276)
+
+The `actionable` profile deliberately excludes the `*_unknown` classes
+(`static_unknown`, `infection_unknown`, `propagation_unknown`) from
+diagnostics and from `hidden_gaps` (locked by #4418: missing static
+evidence is neither a diagnostic nor a gap). That exclusion is unchanged.
+When such candidate-current findings exist, every agent-facing surface must
+disclose the suppression, so "analysis complete, nothing to do" is never
+the only word about a live finding:
+
+- `ripr/listActionableItems` carries `withheld_unknown_count`, a bounded
+  `withheld_unknown_findings` list (`finding_id`, `file`, `line`,
+  `class`; each id is a valid `ripr.collectContext` `finding_id`),
+  `withheld_unknown_truncated`, and a `suppression_disclosure` sentence.
+  Withheld findings still never appear in `hidden_gaps` or as
+  diagnostics.
+- `ripr/analysisStatus` carries `withheld_findings` — `count`, the
+  withheld `classes`, and a `recovery_route` naming the
+  `diagnostic_profile = "full"` escape hatch — so the status reconciles
+  with `analysis_outcome.finding_count` on the wire. No snapshot renders
+  `null`; the `full` profile renders a zero count with no route.
+- The pull channel (`textDocument/diagnostic`, `workspace/diagnostic`)
+  emits the same one-line disclosure naming the count and the escape
+  hatch when items are withheld, and the completion log carries
+  `withheld_unknown=N` beside the existing `findings` and `diagnostics`
+  counts.
+
 ## Non-Goals
 
 - No autonomous edits. The LSP never modifies source; every command

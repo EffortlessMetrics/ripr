@@ -8,7 +8,7 @@ Linked specs:
 - `docs/specs/RIPR-SPEC-0021-evidence-record.md`
 - `docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md`
 Linked ADRs: n/a
-Active goal: `.ripr/goals/active.toml`
+Active goal: (historical; `.ripr/goals/active.toml` retired in #1701)
 GitHub issue: [ripr-swarm #285](https://github.com/EffortlessMetrics/ripr-swarm/issues/285)
 
 ## Current State
@@ -49,7 +49,7 @@ first behavior-bearing work item ready.
 
 Docs and goal-manifest wiring only:
 
-- `.ripr/goals/active.toml`
+- `.ripr/goals/active.toml` (historical)
 - this implementation plan
 - Lane 1 tracker and docs indexes
 - implementation campaign and campaign map entries
@@ -94,7 +94,7 @@ git diff --check
 
 ### Rollback
 
-Restore `.ripr/goals/active.toml` to the closed no-current-goal state and
+Restore repository tracking to the closed state and
 remove the new plan/tracker/index references. Leave issue #285 open only if a
 new successor selection PR will replace this one.
 

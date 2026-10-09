@@ -1,0 +1,474 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":14,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:regex-syntax_src_hir_mod.rs:call_deletion:5ca77ad5",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:regex-syntax_src_hir_mod.rs:call_deletion:5ca77ad5",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace/regex-syntax/src/hir/mod.rs",
+        "line": 343,
+        "expression": "info.set_match_empty(true)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach word_boundary: class_canonicalize_bytes, class_canonicalize_unicode, class_case_fold_bytes"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence call effect: info.set_match_empty(true)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: whole-object equality assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach word_boundary: class_canonicalize_bytes, class_canonicalize_unicode, class_case_fold_bytes", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: info.set_match_empty(true)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: whole-object equality assertion", "local flow reaches call effect: info.set_match_empty(true) (line 343)", "related test regex-syntax/src/hir/mod.rs:1679 class_canonicalize_bytes uses strong exact value oracle: assert_eq!(expected, branges(&cls));", "related test regex-syntax/src/hir/mod.rs:1641 class_canonicalize_unicode uses strong exact value oracle: assert_eq!(expected, uranges(&cls));", "related test regex-syntax/src/hir/mod.rs:1807 class_case_fold_bytes uses strong exact value oracle: assert_eq!(expected, bcasefold(&cls));", "related test regex-syntax/src/hir/mod.rs:1718 class_case_fold_unicode uses strong exact value oracle: assert_eq!(expected, ucasefold(&cls));", "related test regex-syntax/src/hir/mod.rs:1777 class_case_fold_unicode_disabled uses weak broad error oracle: assert!(cls.try_case_fold_simple().is_err());", "source table row value 'a' at line 1642", "source table row value 'c' at line 1642", "source table row value 'x' at line 1642", "source table row value 'z' at line 1642", "source table row value 'a' at line 1643", "source table row value 'c' at line 1643", "source table row value 'x' at line 1643", "source table row value 'z' at line 1643"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"info.set_match_empty(true)","line":343}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence call effect: info.set_match_empty(true)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach word_boundary: class_canonicalize_bytes, class_canonicalize_unicode, class_case_fold_bytes", "Strong oracle found: whole-object equality assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "1642": "let cls = uclass(&[('a', 'c'), ('x', 'z')]);",
+        "1643": "let expected = vec![('a', 'c'), ('x', 'z')];",
+        "1646": "let cls = uclass(&[('x', 'z'), ('a', 'c')]);",
+        "1647": "let expected = vec![('a', 'c'), ('x', 'z')];",
+        "1650": "let cls = uclass(&[('x', 'z'), ('w', 'y')]);",
+        "1651": "let expected = vec![('w', 'z')];",
+        "1655": "('c', 'f'),",
+        "1656": "('a', 'g'),",
+        "1657": "('d', 'j'),",
+        "1658": "('a', 'c'),",
+        "1659": "('m', 'p'),"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 1642,
+            "value": "'a'",
+            "context": "table_row"
+          },
+          {
+            "line": 1642,
+            "value": "'c'",
+            "context": "table_row"
+          },
+          {
+            "line": 1642,
+            "value": "'x'",
+            "context": "table_row"
+          },
+          {
+            "line": 1642,
+            "value": "'z'",
+            "context": "table_row"
+          },
+          {
+            "line": 1643,
+            "value": "'a'",
+            "context": "table_row"
+          },
+          {
+            "line": 1643,
+            "value": "'c'",
+            "context": "table_row"
+          },
+          {
+            "line": 1643,
+            "value": "'x'",
+            "context": "table_row"
+          },
+          {
+            "line": 1643,
+            "value": "'z'",
+            "context": "table_row"
+          },
+          {
+            "line": 1646,
+            "value": "'a'",
+            "context": "table_row"
+          },
+          {
+            "line": 1646,
+            "value": "'c'",
+            "context": "table_row"
+          },
+          {
+            "line": 1646,
+            "value": "'x'",
+            "context": "table_row"
+          },
+          {
+            "line": 1646,
+            "value": "'z'",
+            "context": "table_row"
+          },
+          {
+            "line": 1647,
+            "value": "'a'",
+            "context": "table_row"
+          },
+          {
+            "line": 1647,
+            "value": "'c'",
+            "context": "table_row"
+          },
+          {
+            "line": 1647,
+            "value": "'x'",
+            "context": "table_row"
+          },
+          {
+            "line": 1647,
+            "value": "'z'",
+            "context": "table_row"
+          },
+          {
+            "line": 1650,
+            "value": "'w'",
+            "context": "table_row"
+          },
+          {
+            "line": 1650,
+            "value": "'x'",
+            "context": "table_row"
+          },
+          {
+            "line": 1650,
+            "value": "'y'",
+            "context": "table_row"
+          },
+          {
+            "line": 1650,
+            "value": "'z'",
+            "context": "table_row"
+          },
+          {
+            "line": 1651,
+            "value": "'w'",
+            "context": "table_row"
+          },
+          {
+            "line": 1651,
+            "value": "'z'",
+            "context": "table_row"
+          },
+          {
+            "line": 1655,
+            "value": "'c'",
+            "context": "table_row"
+          },
+          {
+            "line": 1655,
+            "value": "'f'",
+            "context": "table_row"
+          },
+          {
+            "line": 1656,
+            "value": "'a'",
+            "context": "table_row"
+          },
+          {
+            "line": 1656,
+            "value": "'g'",
+            "context": "table_row"
+          },
+          {
+            "line": 1657,
+            "value": "'d'",
+            "context": "table_row"
+          },
+          {
+            "line": 1657,
+            "value": "'j'",
+            "context": "table_row"
+          },
+          {
+            "line": 1658,
+            "value": "'a'",
+            "context": "table_row"
+          },
+          {
+            "line": 1658,
+            "value": "'c'",
+            "context": "table_row"
+          },
+          {
+            "line": 1659,
+            "value": "'m'",
+            "context": "table_row"
+          },
+          {
+            "line": 1659,
+            "value": "'p'",
+            "context": "table_row"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 1642,
+          "value": "'a'",
+          "context": "table_row"
+        },
+        {
+          "line": 1642,
+          "value": "'c'",
+          "context": "table_row"
+        },
+        {
+          "line": 1642,
+          "value": "'x'",
+          "context": "table_row"
+        },
+        {
+          "line": 1642,
+          "value": "'z'",
+          "context": "table_row"
+        },
+        {
+          "line": 1643,
+          "value": "'a'",
+          "context": "table_row"
+        },
+        {
+          "line": 1643,
+          "value": "'c'",
+          "context": "table_row"
+        },
+        {
+          "line": 1643,
+          "value": "'x'",
+          "context": "table_row"
+        },
+        {
+          "line": 1643,
+          "value": "'z'",
+          "context": "table_row"
+        },
+        {
+          "line": 1646,
+          "value": "'a'",
+          "context": "table_row"
+        },
+        {
+          "line": 1646,
+          "value": "'c'",
+          "context": "table_row"
+        },
+        {
+          "line": 1646,
+          "value": "'x'",
+          "context": "table_row"
+        },
+        {
+          "line": 1646,
+          "value": "'z'",
+          "context": "table_row"
+        },
+        {
+          "line": 1647,
+          "value": "'a'",
+          "context": "table_row"
+        },
+        {
+          "line": 1647,
+          "value": "'c'",
+          "context": "table_row"
+        },
+        {
+          "line": 1647,
+          "value": "'x'",
+          "context": "table_row"
+        },
+        {
+          "line": 1647,
+          "value": "'z'",
+          "context": "table_row"
+        },
+        {
+          "line": 1650,
+          "value": "'w'",
+          "context": "table_row"
+        },
+        {
+          "line": 1650,
+          "value": "'x'",
+          "context": "table_row"
+        },
+        {
+          "line": 1650,
+          "value": "'y'",
+          "context": "table_row"
+        },
+        {
+          "line": 1650,
+          "value": "'z'",
+          "context": "table_row"
+        },
+        {
+          "line": 1651,
+          "value": "'w'",
+          "context": "table_row"
+        },
+        {
+          "line": 1651,
+          "value": "'z'",
+          "context": "table_row"
+        },
+        {
+          "line": 1655,
+          "value": "'c'",
+          "context": "table_row"
+        },
+        {
+          "line": 1655,
+          "value": "'f'",
+          "context": "table_row"
+        },
+        {
+          "line": 1656,
+          "value": "'a'",
+          "context": "table_row"
+        },
+        {
+          "line": 1656,
+          "value": "'g'",
+          "context": "table_row"
+        },
+        {
+          "line": 1657,
+          "value": "'d'",
+          "context": "table_row"
+        },
+        {
+          "line": 1657,
+          "value": "'j'",
+          "context": "table_row"
+        },
+        {
+          "line": 1658,
+          "value": "'a'",
+          "context": "table_row"
+        },
+        {
+          "line": 1658,
+          "value": "'c'",
+          "context": "table_row"
+        },
+        {
+          "line": 1659,
+          "value": "'m'",
+          "context": "table_row"
+        },
+        {
+          "line": 1659,
+          "value": "'p'",
+          "context": "table_row"
+        }
+      ],
+      "observed_values_total": 698,
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 8,
+      "related_tests": [
+        {
+          "name": "class_canonicalize_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1679,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, branges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_canonicalize_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1641,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, uranges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1807,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bcasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1718,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, ucasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1777,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(cls.try_case_fold_simple().is_err());",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled_panics",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1793,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2169,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bdifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2106,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, udifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

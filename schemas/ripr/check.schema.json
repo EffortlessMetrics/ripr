@@ -44,10 +44,42 @@
       "type": "array",
       "items": { "$ref": "#/$defs/preview_language" }
     },
-    "finding_alignment": { "$ref": "#/$defs/finding_alignment" }
+    "finding_alignment": { "$ref": "#/$defs/finding_alignment" },
+    "test_harnesses": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/test_harness" }
+    },
+    "source_subject": { "$ref": "#/$defs/source_subject" }
   },
   "$defs": {
     "nullable_string": { "type": ["string", "null"] },
+    "source_subject": {
+      "description": "Content digests, read in this analysis run, of every workspace file a gap ledger derived from this output would name (#4544). Present only when that set is non-empty.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest_algorithm", "files"],
+      "properties": {
+        "digest_algorithm": { "const": "sha256" },
+        "files": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "digest"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "digest": {
+                "anyOf": [
+                  { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                  { "type": "null" }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "summary": {
       "type": "object",
       "additionalProperties": false,
@@ -234,7 +266,8 @@
         "oracle_kind",
         "oracle_strength",
         "recommended_next_step",
-        "suggested_next_action"
+        "suggested_next_action",
+        "source_currentness"
       ],
       "properties": {
         "id": { "type": "string", "minLength": 1 },
@@ -255,6 +288,7 @@
         "assertion_texts": { "type": "object" },
         "activation": { "$ref": "#/$defs/activation" },
         "observed_values": { "type": "array", "items": { "$ref": "#/$defs/value_fact" } },
+        "observed_values_total": { "type": "integer", "minimum": 0 },
         "missing_discriminators": { "type": "array", "items": { "$ref": "#/$defs/missing_discriminator" } },
         "related_tests_total": { "type": "integer", "minimum": 0 },
         "related_tests": { "type": "array", "items": { "type": "object" } },
@@ -267,8 +301,8 @@
         "stop_reasons": { "type": "array", "items": { "type": "string" } },
         "oracle_kind": { "type": "string", "minLength": 1 },
         "oracle_strength": { "type": "string", "minLength": 1 },
-        "recommended_next_step": { "type": "string", "minLength": 1 },
-        "suggested_next_action": { "type": "string", "minLength": 1 },
+        "recommended_next_step": { "type": "string" },
+        "suggested_next_action": { "type": "string" },
         "language": { "type": "string" },
         "language_status": { "type": "string" },
         "owner_kind": { "type": "string" },
@@ -277,7 +311,69 @@
         "changed_sink": { "type": "string" },
         "observed_sink": { "type": "string" },
         "oracle_alignment": { "type": "string" },
-        "alignment_reason": { "type": "string" }
+        "alignment_reason": { "type": "string" },
+        "source_currentness": { "$ref": "#/$defs/source_currentness" }
+      }
+    },
+    "source_currentness": {
+      "description": "Producer-owned disposition of the finding's source expression on the candidate side. Always emitted; `unresolved_subject` is the explicit unknown for producers that do not resolve it, never an omission or a fabricated disposition.",
+      "enum": ["candidate_current", "base_deleted", "moved_or_renamed", "unresolved_subject"]
+    },
+    "test_harness": {
+      "description": "One registered test-harness projection. Emitted only when the repository registered harnesses under `[analysis.test_harnesses]` and the run carried harness facts. Advisory: it states what the registration established, never that any subject was executed.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registration_id",
+        "harness_kind",
+        "adapter",
+        "marker",
+        "target",
+        "provenance",
+        "subjects",
+        "limitations"
+      ],
+      "properties": {
+        "registration_id": { "type": "string", "minLength": 1 },
+        "harness_kind": { "enum": ["custom_harness", "registered_attribute"] },
+        "adapter": { "enum": ["libtest_mimic_v1", "exact_attribute_v1"] },
+        "marker": { "type": "string", "minLength": 1 },
+        "target": { "type": "string", "minLength": 1 },
+        "provenance": { "type": "string", "minLength": 1 },
+        "subjects": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/test_harness_subject" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/test_harness_limitation" }
+        }
+      }
+    },
+    "test_harness_subject": {
+      "description": "One source-level subject the registration established. `selector` records that a selector route is known, never that it ran: passive analysis starts neither Cargo nor a harness.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "file", "start_line", "end_line", "selector", "claim"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 },
+        "selector": { "enum": ["none", "named_unexecuted"] },
+        "claim": { "enum": ["named_invocation", "named_function"] }
+      }
+    },
+    "test_harness_limitation": {
+      "description": "One typed shape the registration saw but could not classify, or a bounded reachability disclosure. `code` is an open string rather than an enum: the producer builds these labels at each site, and docs/OUTPUT_SCHEMA.md is their register.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "file", "line", "detail"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 0 },
+        "detail": { "type": "string", "minLength": 1 }
       }
     },
     "probe": {
@@ -326,6 +422,7 @@
       }
     },
     "value_fact": {
+      "description": "A value found or statically derived from test source. This does not establish assertion execution, oracle admission or observation of the changed behavior; source facts from refused assertions may be retained.",
       "type": "object",
       "additionalProperties": true,
       "required": ["line", "value", "context"],
@@ -342,7 +439,7 @@
       "properties": {
         "value": { "type": "string", "minLength": 1 },
         "reason": { "type": "string", "minLength": 1 },
-        "flow_sink": { "type": "object" }
+        "flow_sink": { "type": ["object", "null"] }
       }
     },
     "language_run": {

@@ -6,9 +6,15 @@ use ra_ap_syntax::{Edition, SourceFile, SyntaxKind};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
+mod calibration;
 mod host_run;
 mod packet;
+mod release_judgments;
+mod rolling_observation;
+mod rust_analysis_feedback;
 mod subject;
+
+pub(crate) use release_judgments::check_release_judgments;
 
 pub(crate) const MANIFEST_PATH: &str = "metrics/rust-judged-behavior-panel/manifest.json";
 const DIFF_ROOT: &str = "metrics/rust-judged-behavior-panel/diffs";
@@ -26,7 +32,32 @@ pub(crate) struct RustJudgedPanelManifest {
     selection_status: String,
     limits: Vec<String>,
     required_directions: Vec<String>,
+    /// Release tier only: one explicit read-only scope record per selected
+    /// repository (#3805). Absent in the seed manifest, which must not
+    /// carry any.
+    #[serde(default)]
+    repository_scopes: Vec<RepositoryScope>,
     items: Vec<RustJudgedPanelItem>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RepositoryScope {
+    repository: String,
+    status: String,
+    /// Exact commit identities the challenge may materialize. Every row's
+    /// base and head must be listed; anything else is out of scope.
+    subjects: Vec<String>,
+    operations: Vec<String>,
+    network_policy: String,
+    retention: String,
+    bounds: String,
+    actor: String,
+    /// Link to the actor's own words granting the scope. Required for
+    /// `authorized`, explicit null for `proposed_unauthorized`.
+    #[serde(default)]
+    authority_ref: Nullable<String>,
+    expiry: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +99,12 @@ struct RustJudgedPanelItem {
     disposition: String,
     must_not_claim: Vec<String>,
     reason: String,
+    /// Release tier only: files the replay must opt in through
+    /// `[analysis] production_like_targets`, because the default source-role
+    /// policy skips them (e.g. `xtask/`) and the case would replay as a
+    /// silent zero. Each entry must be a file the frozen diff changes.
+    #[serde(default)]
+    production_like_targets: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,7 +298,7 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
         [subcommand] if subcommand == "check" => {
             let manifest = check_at(Path::new("."))?;
             println!(
-                "Rust judged panel seed, subjects, and portable packets valid: manifest={MANIFEST_PATH} items={} directions={}",
+                "Rust judged panel seed, subjects, portable packets, rolling observation, calibration scorecard, and feedback ledger valid: manifest={MANIFEST_PATH} items={} directions={}",
                 manifest.items.len(),
                 manifest.required_directions.join(",")
             );
@@ -283,8 +320,12 @@ pub(crate) fn run(args: &[String]) -> Result<(), String> {
             let manifest = check_seed_at(Path::new("."))?;
             packet::publish(Path::new("."), &manifest, current)
         }
+        [subcommand, rest @ ..] if subcommand == "calibrate" => calibration::run(rest),
+        args if args.first().map(String::as_str) == Some("feedback") => {
+            rust_analysis_feedback::run_feedback(&args[1..])
+        }
         [] => Err(format!(
-            "rust-judged-panel requires `check`, `replay [--out target/ripr/<path>]`, or `packet [--host-current target/ripr/<path>/current.json]`\nrerun: {RERUN_COMMAND}"
+            "rust-judged-panel requires `check`, `replay [--out target/ripr/<path>]`, `packet [--host-current target/ripr/<path>/current.json]`, `calibrate [--records <dir>] [--out <dir>] [--check]`, or `feedback [--out <dir>] [--check]`\nrerun: {RERUN_COMMAND}"
         )),
         _ => Err(format!(
             "unknown rust-judged-panel arguments `{}`\nrerun: {RERUN_COMMAND}",
@@ -300,6 +341,9 @@ pub(crate) fn check_canonical() -> Result<(), String> {
 fn check_at(root: &Path) -> Result<RustJudgedPanelManifest, String> {
     let manifest = check_seed_at(root)?;
     packet::validate_at(root, &manifest)?;
+    rolling_observation::validate_at(root, &manifest)?;
+    rust_analysis_feedback::validate_at(root)?;
+    calibration::validate_retained_at(root)?;
     Ok(manifest)
 }
 
@@ -355,6 +399,21 @@ fn validate_manifest(root: &Path, manifest: &RustJudgedPanelManifest) -> Vec<Str
         "EffortlessMetrics/ripr-swarm#3164",
     );
     require_equal(&mut violations, "manifest.tier", &manifest.tier, "seed");
+    if !manifest.repository_scopes.is_empty() {
+        violations
+            .push("manifest.repository_scopes: seed carries no release scope records".to_string());
+    }
+    for item in &manifest.items {
+        if !matches!(item.diff_sha256, Nullable::Missing)
+            || !matches!(item.scope_authorization, Nullable::Missing)
+            || !matches!(item.anchor.anchor_kind, Nullable::Missing)
+        {
+            violations.push(format!(
+                "items ({}): seed items carry no diff_sha256, scope_authorization, or anchor_kind",
+                item.id
+            ));
+        }
+    }
     require_equal(
         &mut violations,
         "manifest.selection_status",
@@ -669,6 +728,11 @@ fn validate_direction_contract(
 }
 
 fn validate_seed_judgment(item: &RustJudgedPanelItem, subject: &str, violations: &mut Vec<String>) {
+    if !item.production_like_targets.is_empty() {
+        violations.push(format!(
+            "{subject}.production_like_targets: seed carries no replay configuration"
+        ));
+    }
     if matches!(item.labels.false_actionable, Nullable::Value(true))
         && matches!(item.labels.false_exposed, Nullable::Value(true))
     {
@@ -1109,7 +1173,9 @@ fn normalize_path(path: &Path) -> String {
 pub(crate) const RELEASE_SELECTION_PATH: &str =
     "metrics/rust-judged-behavior-panel/release-selection.json";
 const RELEASE_RERUN_COMMAND: &str = "cargo xtask check-release-challenge-selection";
-const RELEASE_AUTHORITY: &str = "EffortlessMetrics/ripr#1675";
+/// The swarm owns the 0.11 challenge (#3804); the source-side freeze
+/// (EffortlessMetrics/ripr#1675) is the precedent this manifest carries.
+const RELEASE_AUTHORITY: &str = "EffortlessMetrics/ripr-swarm#3804";
 const RELEASE_TIER: &str = "release-challenge";
 const RELEASE_FROZEN: &str = "frozen";
 
@@ -1128,13 +1194,27 @@ const RELEASE_ACTIONABILITY: [&str; 4] = [
     "limited_route",
     "undetermined",
 ];
-const RELEASE_DISPOSITIONS: [&str; 4] = [
+const RELEASE_DISPOSITIONS: [&str; 5] = [
     "judged_first_pass",
     "tentative_pending_freeze",
     "needs_freeze_sampling",
     "needs_freeze_verification",
+    "selected_unjudged",
 ];
-const RELEASE_SCOPE_FLAGS: [&str; 3] = ["authorized", "proposed_unauthorized", "not_applicable"];
+/// A row selected by #3805 and not yet adjudicated (#3806): all labels
+/// null and no judgment provenance. Selection is not judgment.
+const RELEASE_UNJUDGED: &str = "selected_unjudged";
+/// Scope is explicit per repository (#3805): public visibility or
+/// repository ownership is never an implied `not_applicable`.
+const RELEASE_SCOPE_FLAGS: [&str; 2] = ["authorized", "proposed_unauthorized"];
+/// Conservative classes a `should_limit` row may expect. A limit row that
+/// expects `exposed` or a repairable gap is a relabelled direction.
+const RELEASE_LIMIT_CLASSIFICATIONS: [&str; 4] = [
+    "no_static_path",
+    "static_unknown",
+    "propagation_unknown",
+    "infection_unknown",
+];
 
 pub(crate) fn check_release_selection() -> Result<(), String> {
     let manifest = check_release_selection_at(Path::new("."))?;
@@ -1150,8 +1230,9 @@ pub(crate) fn check_release_selection() -> Result<(), String> {
         body.push_str(&format!("direction {direction}: {count}\n"));
     }
     body.push_str(&format!(
-        "baseline-quiet rows: {}\nauthorized swarm rows: {}\n",
-        floors.quiet_baseline, floors.authorized_swarm_rows,
+        "baseline-quiet rows: {}\nauthorized repositories: {}\n",
+        floors.quiet_baseline,
+        floors.authorized_repositories.len(),
     ));
     for floor in &floors.unmet {
         body.push_str(&format!("floor UNMET: {floor}\n"));
@@ -1183,7 +1264,7 @@ pub(crate) fn check_release_selection() -> Result<(), String> {
             })
             .collect::<serde_json::Map<String, serde_json::Value>>(),
         "quiet_baseline_rows": floors.quiet_baseline,
-        "authorized_swarm_rows": floors.authorized_swarm_rows,
+        "authorized_repositories": floors.authorized_repositories,
         "unmet_floors": floors.unmet,
     });
     let floors_json = format!(
@@ -1233,7 +1314,7 @@ struct ReleaseFloors {
     repositories: Vec<String>,
     per_direction: BTreeMap<String, usize>,
     quiet_baseline: usize,
-    authorized_swarm_rows: usize,
+    authorized_repositories: Vec<String>,
     unmet: Vec<String>,
 }
 
@@ -1242,7 +1323,6 @@ fn release_floor_status(manifest: &RustJudgedPanelManifest) -> ReleaseFloors {
     let mut repositories = BTreeSet::new();
     let mut per_direction: BTreeMap<String, usize> = BTreeMap::new();
     let mut quiet_baseline = 0usize;
-    let mut authorized_swarm_rows = 0usize;
     for item in &manifest.items {
         cases.insert(item.diff_path.clone());
         repositories.insert(item.repository.clone());
@@ -1257,15 +1337,13 @@ fn release_floor_status(manifest: &RustJudgedPanelManifest) -> ReleaseFloors {
         {
             quiet_baseline += 1;
         }
-        if item.repository.contains("ripr-swarm")
-            && item
-                .scope_authorization
-                .value()
-                .is_some_and(|flag| flag == "authorized")
-        {
-            authorized_swarm_rows += 1;
-        }
     }
+    let authorized_repositories: Vec<String> = manifest
+        .repository_scopes
+        .iter()
+        .filter(|scope| scope.status == "authorized" && repositories.contains(&scope.repository))
+        .map(|scope| scope.repository.clone())
+        .collect();
     let mut unmet = Vec::new();
     if cases.len() < FLOOR_MIN_CASES {
         unmet.push(format!(
@@ -1292,18 +1370,20 @@ fn release_floor_status(manifest: &RustJudgedPanelManifest) -> ReleaseFloors {
             "baseline-quiet rows: {quiet_baseline} < {FLOOR_MIN_QUIET_BASELINE}"
         ));
     }
-    if authorized_swarm_rows == 0 && repositories.iter().any(|repo| repo.contains("ripr-swarm")) {
-        unmet.push(
-            "swarm scope: 0 authorized rows (second-repo scope proposed, not authorized)"
-                .to_string(),
-        );
+    // Rows in a repository without authorized scope stay selected but are
+    // not runnable; the floor counts only explicitly authorized scope.
+    if authorized_repositories.len() < FLOOR_MIN_REPOS {
+        unmet.push(format!(
+            "authorized repositories: {} < {FLOOR_MIN_REPOS} (explicit read-only scope)",
+            authorized_repositories.len()
+        ));
     }
     ReleaseFloors {
         cases: cases.len(),
         repositories: repositories.into_iter().collect(),
         per_direction,
         quiet_baseline,
-        authorized_swarm_rows,
+        authorized_repositories,
         unmet,
     }
 }
@@ -1385,7 +1465,124 @@ fn validate_release_selection(root: &Path, manifest: &RustJudgedPanelManifest) -
         }
         validate_release_item(root, item, &subject, &mut violations);
     }
+    validate_release_duplicate_behavior(manifest, &mut violations);
+    validate_release_scopes(manifest, &mut violations);
     violations
+}
+
+/// One behavior item under two display names inflates the denominator.
+/// Row slices of one capture may share an anchor only when they expect
+/// different directions (e.g. the quiet and gap slices of one diff).
+fn validate_release_duplicate_behavior(
+    manifest: &RustJudgedPanelManifest,
+    violations: &mut Vec<String>,
+) {
+    // `changed_behavior` is not part of the key: the anchor proof accepts
+    // any token subsequence of the line, so rewording it would rename the
+    // same behavior.
+    let mut seen: BTreeMap<(&str, &str, &str, u64, &str), &str> = BTreeMap::new();
+    for item in &manifest.items {
+        let key = (
+            item.repository.as_str(),
+            item.head.value().map_or("", String::as_str),
+            item.anchor.file.as_str(),
+            item.anchor.line,
+            item.expected_direction.as_str(),
+        );
+        if let Some(first) = seen.insert(key, &item.id) {
+            violations.push(format!(
+                "items ({}): duplicates behavior item `{first}` (same repository, head, anchor, and direction)",
+                item.id
+            ));
+        }
+    }
+}
+
+/// Every selected repository carries one explicit read-only scope record
+/// (#3805), and each row's scope stance and Git identities must be inside
+/// it. A missing record is a violation, never an implied authorization.
+fn validate_release_scopes(manifest: &RustJudgedPanelManifest, violations: &mut Vec<String>) {
+    let mut scopes: BTreeMap<&str, &RepositoryScope> = BTreeMap::new();
+    for (index, scope) in manifest.repository_scopes.iter().enumerate() {
+        let subject = format!("repository_scopes[{index}] ({})", scope.repository);
+        if scopes.insert(scope.repository.as_str(), scope).is_some() {
+            violations.push(format!("{subject}: duplicate scope record"));
+        }
+        if !RELEASE_SCOPE_FLAGS.contains(&scope.status.as_str()) {
+            violations.push(format!(
+                "{subject}.status: require one of {}",
+                RELEASE_SCOPE_FLAGS.join(", ")
+            ));
+        }
+        for (field, value) in [
+            ("repository", &scope.repository),
+            ("network_policy", &scope.network_policy),
+            ("retention", &scope.retention),
+            ("bounds", &scope.bounds),
+            ("actor", &scope.actor),
+            ("expiry", &scope.expiry),
+        ] {
+            require_non_empty(violations, &format!("{subject}.{field}"), value);
+        }
+        for (field, values) in [
+            ("subjects", &scope.subjects),
+            ("operations", &scope.operations),
+        ] {
+            if values.is_empty() || values.iter().any(|value| value.trim().is_empty()) {
+                violations.push(format!("{subject}.{field}: require non-empty entries"));
+            }
+        }
+        match (scope.status.as_str(), &scope.authority_ref) {
+            ("authorized", Nullable::Value(link))
+                if link.starts_with("https://") && link.len() > "https://".len() => {}
+            ("authorized", _) => violations.push(format!(
+                "{subject}.authority_ref: `authorized` requires an https link to the actor's grant"
+            )),
+            (_, Nullable::Null) => {}
+            (_, _) => violations.push(format!(
+                "{subject}.authority_ref: `{}` requires explicit null",
+                scope.status
+            )),
+        }
+    }
+    let selected: BTreeSet<&str> = manifest
+        .items
+        .iter()
+        .map(|item| item.repository.as_str())
+        .collect();
+    for repository in scopes.keys() {
+        if !selected.contains(repository) {
+            violations.push(format!(
+                "repository_scopes ({repository}): no selected row uses this repository"
+            ));
+        }
+    }
+    for (index, item) in manifest.items.iter().enumerate() {
+        let subject = format!("items[{index}] ({})", item.id);
+        let Some(scope) = scopes.get(item.repository.as_str()) else {
+            violations.push(format!(
+                "{subject}.repository: `{}` has no repository_scopes record",
+                item.repository
+            ));
+            continue;
+        };
+        if item.scope_authorization.value() != Some(&scope.status) {
+            violations.push(format!(
+                "{subject}.scope_authorization: must match the `{}` scope status `{}`",
+                item.repository, scope.status
+            ));
+        }
+        for (field, identity) in [("base", item.base.value()), ("head", item.head.value())] {
+            if let Some(identity) = identity
+                && !scope.subjects.iter().any(|allowed| allowed == identity)
+            {
+                violations.push(format!(
+                    "{subject}.{field}: `{identity}` is outside the `{}` scope subjects",
+                    item.repository
+                ));
+            }
+        }
+    }
 }
 
 fn validate_release_item(
@@ -1571,16 +1768,21 @@ fn validate_release_item(
         )),
         Err(error) => violations.push(format!("{subject}.diff_path: {error}")),
     }
-    // Scope authorization is explicit per row: swarm rows must take a
-    // stance (authorized vs proposed_unauthorized), never stay silent.
-    match item.scope_authorization.value() {
-        Some(flag) if RELEASE_SCOPE_FLAGS.contains(&flag.as_str()) => {
-            if item.repository.contains("ripr-swarm") && flag == "not_applicable" {
-                violations.push(format!(
-                    "{subject}.scope_authorization: swarm rows must record authorized or proposed_unauthorized"
-                ));
-            }
+    for target in &item.production_like_targets {
+        let changed = body
+            .lines()
+            .any(|line| line.strip_prefix("+++ b/") == Some(target.as_str()));
+        if !changed {
+            violations.push(format!(
+                "{subject}.production_like_targets: `{target}` is not a file changed by `{}`",
+                item.diff_path
+            ));
         }
+    }
+    // Scope authorization is explicit per row and must match the
+    // repository's scope record (enforced in validate_release_scopes).
+    match item.scope_authorization.value() {
+        Some(flag) if RELEASE_SCOPE_FLAGS.contains(&flag.as_str()) => {}
         _ => violations.push(format!(
             "{subject}.scope_authorization: require one of {}",
             RELEASE_SCOPE_FLAGS.join(", ")
@@ -1604,27 +1806,46 @@ fn validate_release_item(
             RELEASE_DISPOSITIONS.join(", ")
         ));
     }
-    require_non_empty(
-        violations,
-        &format!("{subject}.judgment_source"),
-        item.judgment_source
-            .value()
-            .map_or("", |source| source.as_str()),
-    );
-    if item.judged_by.is_empty() || item.judged_by.iter().any(|name| name.trim().is_empty()) {
-        violations.push(format!(
-            "{subject}.judged_by: require at least one non-empty reviewer identity"
-        ));
+    if item.disposition == RELEASE_UNJUDGED {
+        // Selection is not judgment: a newly selected row carries no
+        // labels and no judgment provenance until #3806 adjudicates it.
+        if !item.labels.all_explicitly_null() {
+            violations.push(format!(
+                "{subject}.labels: `{RELEASE_UNJUDGED}` requires every label explicitly null"
+            ));
+        }
+        if !item.judgment_source.is_null()
+            || !item.judged_at.is_null()
+            || !item.judged_by.is_empty()
+        {
+            violations.push(format!(
+                "{subject}.judgment_identity: `{RELEASE_UNJUDGED}` requires null source/time and no reviewers"
+            ));
+        }
+    } else {
+        require_non_empty(
+            violations,
+            &format!("{subject}.judgment_source"),
+            item.judgment_source
+                .value()
+                .map_or("", |source| source.as_str()),
+        );
+        if item.judged_by.is_empty() || item.judged_by.iter().any(|name| name.trim().is_empty()) {
+            violations.push(format!(
+                "{subject}.judged_by: require at least one non-empty reviewer identity"
+            ));
+        }
+        // `judged_at` is part of the release item model alongside
+        // `judgment_source` and `judged_by`; no timestamp format is enforced,
+        // but a missing, null, or blank value leaves judgment provenance
+        // incomplete, so presence is required.
+        require_non_empty(
+            violations,
+            &format!("{subject}.judged_at"),
+            item.judged_at.value().map_or("", |stamp| stamp.as_str()),
+        );
     }
-    // `judged_at` is part of the release item model alongside
-    // `judgment_source` and `judged_by`; no timestamp format is enforced,
-    // but a missing, null, or blank value leaves judgment provenance
-    // incomplete, so presence is required.
-    require_non_empty(
-        violations,
-        &format!("{subject}.judged_at"),
-        item.judged_at.value().map_or("", |stamp| stamp.as_str()),
-    );
+    validate_release_limit_contract(item, subject, violations);
     require_non_empty(
         violations,
         &format!("{subject}.expected_classification"),
@@ -1710,6 +1931,93 @@ fn validate_release_item(
     {
         violations.push(format!(
             "{subject}.runtime_calibration: `not_run` requires null outcome and evidence_ref"
+        ));
+    }
+}
+
+/// A `should_limit` row must name the exact unresolved static boundary
+/// (#3805): a registered product `StaticLimitKind`, a conservative class,
+/// no repair routing, no aligned observer, and the missing edge in words.
+/// Any other direction carries no limit kind. These are shape checks: they
+/// force a relabelled row to state a boundary, but whether that boundary is
+/// real is the independent adjudicator's call (#3806).
+fn validate_release_limit_contract(
+    item: &RustJudgedPanelItem,
+    subject: &str,
+    violations: &mut Vec<String>,
+) {
+    // Exact bytes: a padded or empty kind is not the registered token.
+    let kind = item.expected_static_limit_kind.value().map(String::as_str);
+    if item.expected_direction != "should_limit" {
+        if kind.is_some() {
+            violations.push(format!(
+                "{subject}.expected_static_limit_kind: `{}` requires a null static limit",
+                item.expected_direction
+            ));
+        }
+        // A quiet row routes nothing, and a gap row may not carry a limit's
+        // class or route: otherwise a limit hides in a gap row by dropping
+        // only its kind, and still counts toward the gap floor.
+        if item.expected_direction == "should_stay_quiet"
+            && item.expected_actionability != "no_action"
+        {
+            violations.push(format!(
+                "{subject}.expected_actionability: `should_stay_quiet` requires `no_action`, found `{}`",
+                item.expected_actionability
+            ));
+        }
+        if item.expected_direction == "should_gap"
+            && (item.expected_actionability == "limited_route"
+                || RELEASE_LIMIT_CLASSIFICATIONS.contains(&item.expected_classification.as_str()))
+        {
+            violations.push(format!(
+                "{subject}: `should_gap` must not expect a limit class or `limited_route`"
+            ));
+        }
+        return;
+    }
+    match kind {
+        Some(kind)
+            if !kind.is_empty()
+                && serde_json::from_value::<ripr::domain::StaticLimitKind>(
+                    serde_json::Value::String(kind.to_string()),
+                )
+                .is_ok() => {}
+        Some(kind) => violations.push(format!(
+            "{subject}.expected_static_limit_kind: `{kind}` is not a registered StaticLimitKind"
+        )),
+        None => violations.push(format!(
+            "{subject}.expected_static_limit_kind: `should_limit` requires a named static limit"
+        )),
+    }
+    if !RELEASE_LIMIT_CLASSIFICATIONS.contains(&item.expected_classification.as_str()) {
+        violations.push(format!(
+            "{subject}.expected_classification: `should_limit` requires one of {}, found `{}`",
+            RELEASE_LIMIT_CLASSIFICATIONS.join(", "),
+            item.expected_classification
+        ));
+    }
+    if item.expected_actionability == "repair_candidate"
+        || item.expected_actionability == "no_action"
+    {
+        violations.push(format!(
+            "{subject}.expected_actionability: `should_limit` requires `limited_route` or `undetermined`, found `{}`",
+            item.expected_actionability
+        ));
+    }
+    if !item.test_evidence.aligned_observer.is_null() {
+        violations.push(format!(
+            "{subject}.test_evidence.aligned_observer: `should_limit` requires explicit null"
+        ));
+    }
+    if item
+        .test_evidence
+        .missing
+        .value()
+        .is_none_or(|missing| missing.trim().is_empty())
+    {
+        violations.push(format!(
+            "{subject}.test_evidence.missing: `should_limit` must name the unresolved edge"
         ));
     }
 }
@@ -2364,6 +2672,22 @@ mod tests {
     }
 
     #[test]
+    fn seed_rejects_release_only_fields() -> Result<(), String> {
+        let fixture = TempFixture::new("seed-release-fields")?;
+        let mut manifest = valid_alternate_manifest(&fixture)?;
+        // The seed tier ignores these fields, so accepting them would let a
+        // seed row claim a release binding it never enforces.
+        manifest["items"][0]["anchor"]["anchor_kind"] = json!("string_literal");
+        manifest["items"][1]["scope_authorization"] = json!("authorized");
+        manifest["repository_scopes"] = json!([]);
+        expect_rejection(
+            &fixture,
+            &manifest,
+            &["seed items carry no diff_sha256, scope_authorization, or anchor_kind"],
+        )
+    }
+
+    #[test]
     fn parser_rejects_duplicate_and_unknown_keys() -> Result<(), String> {
         let fixture = TempFixture::new("duplicate-key")?;
         let path = fixture.root.join(MANIFEST_PATH);
@@ -2537,6 +2861,59 @@ mod tests {
         })
     }
 
+    fn release_scope(repository: &str) -> Value {
+        json!({
+            "repository": repository,
+            "status": "proposed_unauthorized",
+            "subjects": ["aaaaaaa1", "bbbbbbb2"],
+            "operations": ["read the listed commits"],
+            "network_policy": "fetch the listed commits only",
+            "retention": "committed diff captures only",
+            "bounds": "one materialization per subject",
+            "actor": "test-owner",
+            "authority_ref": null,
+            "expiry": "test challenge end"
+        })
+    }
+
+    /// A newly selected, unjudged `should_limit` row with a named boundary.
+    fn make_selected_limit(item: &mut Value) {
+        item["expected_classification"] = json!("no_static_path");
+        item["expected_static_limit_kind"] = json!("rust_subprocess_binary_reach_unresolved");
+        item["expected_actionability"] = json!("limited_route");
+        item["test_evidence"]["aligned_observer"] = Value::Null;
+        item["test_evidence"]["missing"] = json!("the subprocess edge is unresolved");
+        item["labels"] = json!({
+            "structural_judgment": null,
+            "false_actionable": null,
+            "false_exposed": null,
+            "static_under_credit": null,
+            "wrong_target": null,
+            "limitation_correct": null
+        });
+        item["judgment_source"] = Value::Null;
+        item["judged_at"] = Value::Null;
+        item["judged_by"] = json!([]);
+        item["disposition"] = json!("selected_unjudged");
+    }
+
+    /// Writes `manifest` and returns the rejection text, failing if it passed.
+    fn release_rejection(fixture: &TempFixture, manifest: &Value) -> Result<String, String> {
+        write_release_manifest(fixture, manifest)?;
+        super::check_release_selection_at(&fixture.root)
+            .err()
+            .ok_or_else(|| "broken release manifest passed validation".to_string())
+    }
+
+    fn require_fragments(error: &str, fragments: &[&str]) -> Result<(), String> {
+        for fragment in fragments {
+            if !error.contains(fragment) {
+                return Err(format!("violation `{fragment}` not named: {error}"));
+            }
+        }
+        Ok(())
+    }
+
     fn write_release_manifest(fixture: &TempFixture, manifest: &Value) -> Result<(), String> {
         let path = fixture.root.join(super::RELEASE_SELECTION_PATH);
         let parent = path
@@ -2550,17 +2927,22 @@ mod tests {
     fn valid_release_manifest(fixture: &TempFixture) -> Result<Value, String> {
         let quiet_path = fixture.write_diff("release-quiet", "src/quiet.rs", "quiet_behavior()")?;
         let gap_path = fixture.write_diff("release-gap", "src/gap.rs", "gap_behavior()")?;
+        let limit_path = fixture.write_diff("release-limit", "src/limit.rs", "limit_behavior()")?;
         // The digest validator hashes file bytes, so record the real digest
         // of each staged diff rather than the placeholder above.
         let mut manifest = json!({
             "schema_version": "0.1",
             "kind": "rust_judged_behavior_panel_manifest",
-            "authority": "EffortlessMetrics/ripr#1675",
+            "authority": "EffortlessMetrics/ripr-swarm#3804",
             "tier": "release-challenge",
             "description": "Test release selection proving tier-dispatched validation.",
             "selection_status": "frozen",
             "limits": ["test non-claims"],
             "required_directions": ["should_gap", "should_stay_quiet", "should_limit"],
+            "repository_scopes": [
+                release_scope("EffortlessMetrics/ripr"),
+                release_scope("EffortlessMetrics/ripr-swarm"),
+            ],
             "items": []
         });
         let mut items = Vec::new();
@@ -2572,7 +2954,7 @@ mod tests {
                 "should_stay_quiet",
                 "EffortlessMetrics/ripr",
                 quiet_path,
-                "not_applicable",
+                "proposed_unauthorized",
                 "src/quiet.rs",
                 "quiet_behavior()",
             ),
@@ -2584,6 +2966,15 @@ mod tests {
                 "proposed_unauthorized",
                 "src/gap.rs",
                 "gap_behavior()",
+            ),
+            (
+                "release-limit-id",
+                "should_limit",
+                "EffortlessMetrics/ripr-swarm",
+                limit_path,
+                "proposed_unauthorized",
+                "src/limit.rs",
+                "limit_behavior()",
             ),
         ] {
             let bytes = fs::read(fixture.root.join(&path)).map_err(|error| error.to_string())?;
@@ -2597,6 +2988,9 @@ mod tests {
             );
             let digest = crate::python_judged_panel_replay::sha256_hex(&bytes);
             item["diff_sha256"] = json!(digest[..8].to_string());
+            if direction == "should_limit" {
+                make_selected_limit(&mut item);
+            }
             items.push(item);
         }
         manifest["items"] = Value::Array(items);
@@ -2609,9 +3003,9 @@ mod tests {
         let manifest = valid_release_manifest(&fixture)?;
         write_release_manifest(&fixture, &manifest)?;
         let parsed = super::check_release_selection_at(&fixture.root)?;
-        if parsed.items.len() != 2 {
+        if parsed.items.len() != 3 {
             return Err(format!(
-                "release denominator must contain 2 items, found {}",
+                "release denominator must contain 3 items, found {}",
                 parsed.items.len()
             ));
         }
@@ -2665,14 +3059,14 @@ mod tests {
         let fixture = TempFixture::new("release-floors")?;
         let manifest = valid_release_manifest(&fixture)?;
         write_release_manifest(&fixture, &manifest)?;
-        // Structurally valid (2 items) but far below every acceptance floor.
+        // Structurally valid (3 items) but far below every acceptance floor.
         super::check_release_selection_at(&fixture.root).map(|_| ())?;
         let parsed = super::check_release_selection_at(&fixture.root)?;
         let floors = super::release_floor_status(&parsed);
         if floors.unmet.is_empty() {
             return Err("two-item selection must report unmet floors".to_string());
         }
-        for fragment in ["direction should_limit", "swarm scope"] {
+        for fragment in ["direction should_limit", "authorized repositories: 0"] {
             if !floors.unmet.iter().any(|floor| floor.contains(fragment)) {
                 return Err(format!(
                     "floor `{fragment}` not reported: {:?}",
@@ -2681,6 +3075,259 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn release_selection_counts_only_authorized_repository_scope() -> Result<(), String> {
+        let fixture = TempFixture::new("release-authorized")?;
+        let mut manifest = valid_release_manifest(&fixture)?;
+        for index in 0..2 {
+            manifest["repository_scopes"][index]["status"] = json!("authorized");
+            manifest["repository_scopes"][index]["authority_ref"] =
+                json!("https://example.invalid/grant");
+        }
+        for index in 0..3 {
+            manifest["items"][index]["scope_authorization"] = json!("authorized");
+        }
+        write_release_manifest(&fixture, &manifest)?;
+        let parsed = super::check_release_selection_at(&fixture.root)?;
+        let floors = super::release_floor_status(&parsed);
+        if floors.authorized_repositories.len() != 2
+            || floors
+                .unmet
+                .iter()
+                .any(|floor| floor.contains("authorized repositories"))
+        {
+            return Err(format!(
+                "two authorized scopes must meet the repository floor: {:?}",
+                floors.unmet
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn release_selection_rejects_missing_or_inconsistent_scope() -> Result<(), String> {
+        let fixture = TempFixture::new("release-scope")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        // A grant must be an https link, and a proposed scope must spell its
+        // missing grant as explicit null rather than omit it.
+        let mut broken = manifest.clone();
+        broken["repository_scopes"][0]["status"] = json!("authorized");
+        broken["repository_scopes"][0]["authority_ref"] = json!("x");
+        broken["items"][0]["scope_authorization"] = json!("authorized");
+        broken["repository_scopes"][1]
+            .as_object_mut()
+            .ok_or_else(|| "fixture scope must be an object".to_string())?
+            .remove("authority_ref");
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &[
+                "(EffortlessMetrics/ripr).authority_ref: `authorized` requires an https link",
+                "(EffortlessMetrics/ripr-swarm).authority_ref: `proposed_unauthorized` requires explicit null",
+            ],
+        )?;
+        // A repository with rows but no record is never implied authorized.
+        let mut broken = manifest.clone();
+        broken["repository_scopes"] = json!([release_scope("EffortlessMetrics/ripr")]);
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(&error, &["has no repository_scopes record"])?;
+        // Row stance drift, an identity outside the subjects, a record with
+        // no rows, a duplicate record, and grant/stance mismatches all fail.
+        let mut broken = manifest.clone();
+        broken["items"][0]["scope_authorization"] = json!("authorized");
+        broken["items"][1]["head"] = json!("ddddddd4");
+        broken["repository_scopes"][0]["status"] = json!("authorized");
+        broken["repository_scopes"][1]["authority_ref"] = json!("https://example.invalid/grant");
+        let mut orphan = release_scope("EffortlessMetrics/elsewhere");
+        orphan["operations"] = json!([]);
+        broken["repository_scopes"]
+            .as_array_mut()
+            .ok_or_else(|| "scopes are not an array".to_string())?
+            .extend([orphan, release_scope("EffortlessMetrics/ripr")]);
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &[
+                "(EffortlessMetrics/ripr).authority_ref: `authorized` requires an https link",
+                "(EffortlessMetrics/ripr-swarm).authority_ref: `proposed_unauthorized` requires explicit null",
+                "(EffortlessMetrics/elsewhere): no selected row uses this repository",
+                "(EffortlessMetrics/elsewhere).operations: require non-empty entries",
+                "duplicate scope record",
+                "(release-gap-id).head: `ddddddd4` is outside",
+                "(release-quiet-id).scope_authorization: must match",
+            ],
+        )?;
+        // `not_applicable` is retired: scope is explicit for every repository.
+        let mut broken = manifest;
+        broken["items"][0]["scope_authorization"] = json!("not_applicable");
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &["(release-quiet-id).scope_authorization: require one of"],
+        )
+    }
+
+    #[test]
+    fn release_selection_rejects_relabelled_or_unnamed_limits() -> Result<(), String> {
+        let fixture = TempFixture::new("release-limit")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        // A limit row must name a registered product StaticLimitKind, expect a
+        // conservative class, route no repair, credit no observer, and name
+        // the missing edge; a gap row may not carry a limit kind.
+        let mut broken = manifest.clone();
+        broken["items"][2]["expected_static_limit_kind"] = json!("horoscope");
+        broken["items"][2]["expected_classification"] = json!("weakly_exposed");
+        broken["items"][2]["expected_actionability"] = json!("repair_candidate");
+        broken["items"][2]["test_evidence"]["aligned_observer"] = json!("some_test");
+        broken["items"][2]["test_evidence"]["missing"] = json!("  ");
+        broken["items"][1]["expected_static_limit_kind"] = json!("dynamic_dispatch");
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &[
+                "`horoscope` is not a registered StaticLimitKind",
+                "(release-limit-id).expected_classification: `should_limit` requires one of",
+                "(release-limit-id).expected_actionability: `should_limit` requires",
+                "(release-limit-id).test_evidence.aligned_observer",
+                "(release-limit-id).test_evidence.missing",
+                "(release-gap-id).expected_static_limit_kind: `should_gap` requires a null",
+            ],
+        )?;
+        let mut broken = manifest.clone();
+        broken["items"][2]["expected_static_limit_kind"] = Value::Null;
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(&error, &["`should_limit` requires a named static limit"])?;
+        // Exact tokens only: padding or an empty string is not the kind, and
+        // a limit may not claim `no_action` either.
+        let mut broken = manifest.clone();
+        broken["items"][2]["expected_static_limit_kind"] =
+            json!(" rust_subprocess_binary_reach_unresolved");
+        broken["items"][2]["expected_actionability"] = json!("no_action");
+        broken["items"][1]["expected_static_limit_kind"] = json!("");
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &[
+                "(release-limit-id).expected_static_limit_kind: ` rust_subprocess_binary_reach_unresolved` is not a registered",
+                "(release-limit-id).expected_actionability: `should_limit` requires",
+                "(release-gap-id).expected_static_limit_kind: `should_gap` requires a null",
+            ],
+        )?;
+        // Dropping only the kind does not hide a limit in a gap row, and a
+        // quiet row may not route work.
+        let mut broken = manifest;
+        broken["items"][1]["expected_classification"] = json!("no_static_path");
+        broken["items"][1]["expected_actionability"] = json!("limited_route");
+        broken["items"][0]["expected_actionability"] = json!("repair_candidate");
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &[
+                "(release-gap-id): `should_gap` must not expect a limit class",
+                "(release-quiet-id).expected_actionability: `should_stay_quiet` requires `no_action`",
+            ],
+        )
+    }
+
+    #[test]
+    fn release_selection_keeps_selection_separate_from_judgment() -> Result<(), String> {
+        let fixture = TempFixture::new("release-unjudged")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        // A selected_unjudged row carrying a verdict or reviewer provenance
+        // would smuggle adjudication into the selection freeze.
+        let mut broken = manifest.clone();
+        broken["items"][2]["labels"]["limitation_correct"] = json!(true);
+        broken["items"][2]["judged_by"] = json!(["selector"]);
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(
+            &error,
+            &[
+                "(release-limit-id).labels: `selected_unjudged` requires every label explicitly null",
+                "(release-limit-id).judgment_identity",
+            ],
+        )?;
+        // Each provenance field alone, and a missing (not null) one, fails.
+        for (field, value) in [
+            ("judgment_source", json!("selector notes")),
+            ("judged_at", json!("2026-09-27T00:00:00Z")),
+        ] {
+            let mut broken = manifest.clone();
+            broken["items"][2][field] = value;
+            let error = release_rejection(&fixture, &broken)?;
+            require_fragments(&error, &["(release-limit-id).judgment_identity"])?;
+            let mut broken = manifest.clone();
+            broken["items"][2]
+                .as_object_mut()
+                .ok_or_else(|| "fixture item must be an object".to_string())?
+                .remove(field);
+            let error = release_rejection(&fixture, &broken)?;
+            require_fragments(&error, &["(release-limit-id).judgment_identity"])?;
+        }
+        // A judged row without provenance still fails as before.
+        let mut broken = manifest;
+        broken["items"][0]["judged_by"] = json!([]);
+        let error = release_rejection(&fixture, &broken)?;
+        require_fragments(&error, &["(release-quiet-id).judged_by"])
+    }
+
+    #[test]
+    fn release_selection_binds_replay_targets_to_the_frozen_diff() -> Result<(), String> {
+        let fixture = TempFixture::new("release-targets")?;
+        let mut manifest = valid_release_manifest(&fixture)?;
+        manifest["items"][0]["production_like_targets"] = json!(["src/quiet.rs"]);
+        write_release_manifest(&fixture, &manifest)?;
+        super::check_release_selection_at(&fixture.root)?;
+        // A target the diff does not change would opt the replay into
+        // unrelated code; a prefix of a changed path is not that path.
+        manifest["items"][0]["production_like_targets"] = json!(["src/other.rs", "src/quiet"]);
+        let error = release_rejection(&fixture, &manifest)?;
+        require_fragments(
+            &error,
+            &[
+                "`src/other.rs` is not a file changed by",
+                "`src/quiet` is not a file changed by",
+            ],
+        )
+    }
+
+    #[test]
+    fn release_selection_rejects_duplicate_behavior_under_new_name() -> Result<(), String> {
+        let fixture = TempFixture::new("release-duplicate")?;
+        let manifest = valid_release_manifest(&fixture)?;
+        let mut duplicated = manifest.clone();
+        let mut copy = duplicated["items"][1].clone();
+        copy["id"] = json!("release-gap-renamed");
+        duplicated["items"]
+            .as_array_mut()
+            .ok_or_else(|| "items are not an array".to_string())?
+            .push(copy.clone());
+        let error = release_rejection(&fixture, &duplicated)?;
+        require_fragments(
+            &error,
+            &["(release-gap-renamed): duplicates behavior item `release-gap-id`"],
+        )?;
+        // Rewording the behavior to another token subsequence of the same
+        // anchored line is still the same behavior.
+        duplicated["items"][3]["anchor"]["changed_behavior"] = json!("gap_behavior");
+        let error = release_rejection(&fixture, &duplicated)?;
+        require_fragments(
+            &error,
+            &["(release-gap-renamed): duplicates behavior item `release-gap-id`"],
+        )?;
+        // The same anchor under a different direction is a row slice, not a
+        // duplicate (e.g. the quiet and gap slices of one capture).
+        let mut sliced = manifest;
+        copy["expected_direction"] = json!("should_stay_quiet");
+        copy["expected_classification"] = json!("exposed");
+        copy["expected_actionability"] = json!("no_action");
+        sliced["items"]
+            .as_array_mut()
+            .ok_or_else(|| "items are not an array".to_string())?
+            .push(copy);
+        write_release_manifest(&fixture, &sliced)?;
+        super::check_release_selection_at(&fixture.root).map(|_| ())
     }
 
     #[test]
@@ -2791,17 +3438,29 @@ mod tests {
             .parent()
             .ok_or_else(|| "xtask manifest has no repository parent".to_string())?;
         let manifest = super::check_release_selection_at(repository_root)?;
-        if manifest.items.len() != 18 {
+        if manifest.items.len() != 21 {
             return Err(format!(
-                "frozen release denominator must contain 18 items, found {}",
+                "frozen release denominator must contain 21 items, found {}",
                 manifest.items.len()
             ));
         }
         let floors = super::release_floor_status(&manifest);
-        if floors.cases != 10 {
+        if floors.cases != 13 {
             return Err(format!(
-                "frozen selection must span 10 cases, found {}",
+                "frozen selection must span 13 cases, found {}",
                 floors.cases
+            ));
+        }
+        // #3805 floor: the direction and case floors are met by real rows;
+        // the only floor still open is the owner's repository scope grant.
+        if floors.per_direction.get("should_limit").copied() != Some(3)
+            || floors.unmet.len() != 1
+            || !floors.unmet[0].starts_with("authorized repositories: 0")
+        {
+            return Err(format!(
+                "frozen selection floors drifted: limit={:?} unmet={:?}",
+                floors.per_direction.get("should_limit"),
+                floors.unmet
             ));
         }
         Ok(())

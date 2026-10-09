@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 37775de..4c7b106 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -28,7 +28,7 @@ pub fn postage_zone(country: &str) -> u32 {
+ pub fn suit_color(suit: char) -> &'static str {
+     match suit {
+         'H' | 'D' => "red",
+-        'C' | 'S' => "black",
++        'S' | 'C' => "black",
+         _ => "unknown",
+     }
+ }

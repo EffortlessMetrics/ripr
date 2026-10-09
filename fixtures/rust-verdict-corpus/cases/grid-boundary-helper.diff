@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 19d0213..919ae25 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn can_retire(age: u32) -> bool {
+ }
+ 
+ pub fn passes(score: u32) -> bool {
+-    score >= 50
++    50 <= score
+ }
+ 
+ pub fn overweight(grams: u32) -> bool {

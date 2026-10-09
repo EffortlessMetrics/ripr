@@ -5,9 +5,11 @@ Spec: RIPR-SPEC-0087
 ## Given
 
 A TypeScript production module changes its boundary predicate (`>` → `>=`) in
-`computePrice`. The test calls `expect(result).toBe(expected)` where `expected`
-is a local variable produced by `getExpectedValue()` — a non-literal dynamic
-expression.
+`computePrice`. The test calls `expect(computePrice(0, 2)).toBe(expected)`
+where `expected` is a local variable produced by `getExpectedValue()` — a
+non-literal dynamic expression. The observed call sits at the changed boundary
+(`base == 0`), so the strong oracle witnesses the changed comparison
+(RIPR-SPEC-0027 boundary witness).
 
 This fixture models F1/F2 (dynamic/non-literal oracle): the `.toBe(...)` matcher
 receives a dynamic argument, so `has_dynamic_matcher_arg == true` and

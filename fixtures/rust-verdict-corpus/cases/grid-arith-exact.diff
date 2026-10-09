@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index ce6a28e..8d2e34e 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Arithmetic, one function per test style.
+ 
+ pub fn line_total(price: u64, qty: u64) -> u64 {
+-    price * qty
++    qty * price
+ }
+ 
+ pub fn area(width: u32, height: u32) -> u32 {

@@ -1,0 +1,23 @@
+{
+  "schema_version": "ripr_provider_capabilities.v1",
+  "provider": "ripr",
+  "provider_version": "0.11.0",
+  "capabilities": [
+    {
+      "capability": "test_grip_summary",
+      "reads_source": true,
+      "writes_source": false,
+      "executes_project_commands": false,
+      "uses_network": false,
+      "supported_request_schema": "ripr_analysis_request.v1",
+      "supported_receipt_schema": "ripr_analysis_receipt.v1",
+      "claim_boundary": "Static RIPR evidence for one exact source snapshot and selected seam; no runtime test execution, mutation adequacy, semantic correctness, or merge-readiness claim.",
+      "excluded_claims": [
+        "runtime_test_execution",
+        "mutation_adequacy",
+        "semantic_correctness",
+        "merge_readiness"
+      ]
+    }
+  ]
+}

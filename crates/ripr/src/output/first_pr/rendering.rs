@@ -1,5 +1,12 @@
-use super::{STATIC_EVIDENCE_BOUNDARY, string_path};
-use crate::output::markdown::powershell_command;
+use super::{
+    ProofPathLabels, RECEIPT_BOUNDARY_LABEL, RECEIPT_BOUNDARY_STEP, RECEIPT_STATUS_LABEL,
+    REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP, STATIC_EVIDENCE_BOUNDARY,
+    STATIC_RECHECK_LABEL, receipt_status_step, string_path,
+};
+use crate::agent::loop_commands::display_path;
+use crate::output::markdown::{
+    PowershellForm, code_span, powershell_command, powershell_form, push_context_command,
+};
 use crate::output::start_here_state::{
     START_HERE_PREVIEW_LIMITED, normalize_start_here_output_state,
 };
@@ -67,7 +74,7 @@ pub(super) fn start_here_cli_summary(
     let selected = packet.get("selected").unwrap_or(&Value::Null);
     let state = string_path(selected, &["state"]).unwrap_or_else(|| "unknown".to_string());
     let mut out = String::new();
-    out.push_str(&format!("Start here: {}\n", markdown_path.display()));
+    out.push_str(&format!("Start here: {}\n", display_path(markdown_path)));
     out.push_str(&format!("State: {}\n", cli_state_label(&state)));
     out.push_str(&format!(
         "Output state: {}\n",
@@ -100,11 +107,44 @@ pub(super) fn start_here_cli_summary(
             if let Some(intent) = string_path(selected, &["focused_proof_intent"]) {
                 out.push_str(&format!("Focused proof intent: {intent}\n"));
             }
-            if let Some(command) = string_path(selected, &["verify_command"]) {
-                out.push_str(&format!("Verify command: `{command}`\n"));
+            // The carried review-card repair start (#3906) leads the proof
+            // path; its before phase prints the after-phase command, which
+            // runs verify and writes the receipt.
+            let labels = proof_path_labels(selected);
+            if let Some(command) = string_path(selected, &["repair_command"]) {
+                out.push_str(&format!("Start repair: `{command}`\n"));
+                out.push_str(&format!(
+                    "{REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+                ));
+            }
+            if !push_context_command(
+                &mut out,
+                selected.get("command_context"),
+                "verify",
+                labels.verify,
+            ) && let Some(command) = string_path(selected, &["verify_command"])
+            {
+                out.push_str(&format!("{}: `{command}`\n", labels.verify));
             }
             if let Some(command) = string_path(selected, &["receipt_command"]) {
-                out.push_str(&format!("Receipt command: `{command}`\n"));
+                if !push_context_command(
+                    &mut out,
+                    selected.get("command_context"),
+                    "receipt",
+                    labels.receipt,
+                ) {
+                    out.push_str(&format!("{}: `{command}`\n", labels.receipt));
+                }
+                if let Some(step) = receipt_status_step(&command) {
+                    out.push_str(&format!("{RECEIPT_STATUS_LABEL}: {step}\n"));
+                }
+            }
+            if let Some(command) = string_path(selected, &["static_recheck_command"]) {
+                out.push_str(&format!("{STATIC_RECHECK_LABEL}: `{command}`\n"));
+                push_recovery_powershell_variant(&mut out, STATIC_RECHECK_LABEL, &command);
+                out.push_str(&format!(
+                    "{RECEIPT_BOUNDARY_LABEL}: {RECEIPT_BOUNDARY_STEP}\n"
+                ));
             }
             out.push_str(&format!(
                 "Receipt path: `{}`\n",
@@ -121,6 +161,20 @@ pub(super) fn start_here_cli_summary(
             }
             if let Some(command) = string_path(selected, &["regeneration_command"]) {
                 out.push_str(&format!("Regeneration command: `{command}`\n"));
+                push_recovery_powershell_variant(&mut out, "Regeneration command", &command);
+            }
+            if let Some(also_missing) = selected.get("also_missing").and_then(Value::as_array) {
+                for artifact in also_missing {
+                    let label = string_path(artifact, &["label"])
+                        .unwrap_or_else(|| "Required artifact".to_string());
+                    let path =
+                        string_path(artifact, &["path"]).unwrap_or_else(|| "unknown".to_string());
+                    out.push_str(&format!("Also missing: {label} at `{path}`\n"));
+                    if let Some(command) = string_path(artifact, &["regeneration_command"]) {
+                        out.push_str(&format!("Then run: `{command}`\n"));
+                        push_recovery_powershell_variant(&mut out, "Then run", &command);
+                    }
+                }
             }
             out.push_str("Receipt path: `not_applicable`\n");
         }
@@ -138,14 +192,15 @@ pub(super) fn start_here_cli_summary(
             }
             if let Some(command) = string_path(selected, &["next_command"]) {
                 out.push_str(&format!("Next command: `{command}`\n"));
+                push_recovery_powershell_variant(&mut out, "Next command", &command);
             }
             out.push_str("Receipt path: `not_applicable`\n");
         }
     }
     out.push_str(&format!(
         "Artifacts: `{}`, `{}`\n",
-        json_path.display(),
-        markdown_path.display()
+        display_path(json_path),
+        display_path(markdown_path)
     ));
     out.push_str(&format!("Boundary: {STATIC_EVIDENCE_BOUNDARY}\n"));
     out
@@ -249,11 +304,53 @@ fn render_preflight_markdown(packet: &Value, out: &mut String) {
         .unwrap_or("unknown");
     out.push_str(&format!("Status: `{status}`\n"));
     out.push_str(&format!("Mode: `{mode}`\n"));
-    if let Some(command) = preflight.get("next_command").and_then(Value::as_str) {
+    let recovery_commands = preflight
+        .get("recovery_commands")
+        .and_then(Value::as_array)
+        .filter(|commands| !commands.is_empty());
+    if recovery_commands.is_none()
+        && let Some(command) = preflight.get("next_command").and_then(Value::as_str)
+    {
         out.push_str(&format!(
             "Next command: {}\n",
             markdown_code_or_text(command)
         ));
+    }
+    // The producer carries guidance and executable commands separately, so
+    // quoting is never recovered from prose. Legacy JSON remains unchanged.
+    if let Some(commands) = recovery_commands {
+        if let Some(guidance) = preflight.get("recovery_guidance").and_then(Value::as_str) {
+            out.push_str(&format!("Recovery: {guidance}\n"));
+        }
+        for (index, command) in commands.iter().filter_map(Value::as_str).enumerate() {
+            out.push('\n');
+            if command.contains(['\r', '\n']) {
+                out.push_str(&format!(
+                    "Recovery step {} unavailable: use a single-line root/ref alias and rerun first-pr.\n",
+                    index + 1
+                ));
+                continue;
+            }
+            let label = format!("Recovery step {}", index + 1);
+            out.push_str(&format!("{label}:\n{}\n", code_span(command)));
+            match powershell_form(command) {
+                PowershellForm::Translated(line) => {
+                    out.push_str(&format!("{label} (PowerShell):\n{}\n", code_span(&line)));
+                    out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
+                }
+                PowershellForm::SameAsBash => {
+                    out.push_str(
+                        "It runs unchanged in Bash and PowerShell; cmd.exe is not supported.\n",
+                    );
+                }
+                PowershellForm::Unavailable => {
+                    out.push_str(&format!(
+                        "{}; use the Bash form. cmd.exe is not supported.\n",
+                        crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+                    ));
+                }
+            }
+        }
     }
     out.push('\n');
     if let Some(checks) = preflight.get("checks").and_then(Value::as_array) {
@@ -317,11 +414,52 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
     if let Some(intent) = selected.get("focused_proof_intent").and_then(Value::as_str) {
         out.push_str(&format!("- Focused proof intent: {intent}\n"));
     }
-    if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
-        out.push_str(&format!("- Verify command: `{command}`\n"));
+    let labels = proof_path_labels(selected);
+    if let Some(command) = string_path(selected, &["repair_command"]) {
+        out.push_str(&format!("- Start repair: `{command}`\n"));
+        out.push_str(&format!(
+            "- {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+        ));
+    }
+    if let Some(command) = selected
+        .get("analysis_outcome_command")
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!(
+            "- Analysis outcome for the receipt: `{command}`\n"
+        ));
+    }
+    if !push_context_command(
+        out,
+        selected.get("command_context"),
+        "verify",
+        &format!("- {}", labels.verify),
+    ) && let Some(command) = selected.get("verify_command").and_then(Value::as_str)
+    {
+        out.push_str(&format!("- {}: `{command}`\n", labels.verify));
     }
     if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
-        out.push_str(&format!("- Receipt command: `{command}`\n"));
+        if !push_context_command(
+            out,
+            selected.get("command_context"),
+            "receipt",
+            &format!("- {}", labels.receipt),
+        ) {
+            out.push_str(&format!("- {}: `{command}`\n", labels.receipt));
+        }
+        if let Some(step) = receipt_status_step(command) {
+            out.push_str(&format!("- {RECEIPT_STATUS_LABEL}: {step}\n"));
+        }
+    }
+    if let Some(command) = selected
+        .get("static_recheck_command")
+        .and_then(Value::as_str)
+    {
+        out.push_str(&format!("- {STATIC_RECHECK_LABEL}: `{command}`\n"));
+        push_recovery_powershell_variant(out, &format!("- {STATIC_RECHECK_LABEL}"), command);
+        out.push_str(&format!(
+            "- {RECEIPT_BOUNDARY_LABEL}: {RECEIPT_BOUNDARY_STEP}\n"
+        ));
     }
     if let Some(path) = selected.get("receipt_path").and_then(Value::as_str) {
         out.push_str(&format!("- Receipt path: `{path}`\n"));
@@ -371,15 +509,55 @@ fn render_top_gap_markdown(selected: &Value, out: &mut String) {
         }
         out.push('\n');
     }
-    if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
-        push_shell_command_pair(out, "Verify command", command, true);
+    if let Some(command) = string_path(selected, &["repair_command"]) {
+        push_shell_command_pair(out, "Start repair", &command, true);
+        out.push_str(&format!(
+            "{REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n\n"
+        ));
     }
+    if let Some(command) = selected
+        .get("analysis_outcome_command")
+        .and_then(Value::as_str)
+    {
+        push_shell_command_pair(out, "Analysis outcome for the receipt", command, true);
+    }
+    if push_context_command(
+        out,
+        selected.get("command_context"),
+        "verify",
+        labels.verify,
+    ) {
+        out.push_str("The first form is written for Bash; cmd.exe is not supported.\n\n");
+    } else if let Some(command) = selected.get("verify_command").and_then(Value::as_str) {
+        push_shell_command_pair(out, labels.verify, command, true);
+    }
+    let agent_packet_command = selected.get("agent_packet_command").and_then(Value::as_str);
     if let Some(command) = selected.get("receipt_command").and_then(Value::as_str) {
-        push_shell_command_pair(out, "Receipt command", command, true);
+        // A review-card selection has no agent packet block, so the receipt
+        // block closes the section without a trailing blank line.
+        if push_context_command(
+            out,
+            selected.get("command_context"),
+            "receipt",
+            labels.receipt,
+        ) {
+            out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
+            if agent_packet_command.is_some() {
+                out.push('\n');
+            }
+        } else {
+            push_shell_command_pair(out, labels.receipt, command, agent_packet_command.is_some());
+        }
     }
-    if let Some(command) = selected.get("agent_packet_command").and_then(Value::as_str) {
+    if let Some(command) = agent_packet_command {
         push_shell_command_pair(out, "Agent packet command", command, false);
     }
+}
+
+/// Labels for the selected gap's low-level verify and receipt commands,
+/// through the shared selector (#3906).
+fn proof_path_labels(selected: &Value) -> ProofPathLabels {
+    ProofPathLabels::for_repair_start(string_path(selected, &["repair_command"]).is_some())
 }
 
 /// Present one generated start-here command for both shells (#2628).
@@ -399,20 +577,69 @@ fn push_shell_command_pair(
 ) {
     out.push_str(&format!("{label}:\n"));
     out.push_str(&format!("`{command}`\n\n"));
-    match powershell_command(command) {
-        Some(line) => {
+    match powershell_form(command) {
+        PowershellForm::Translated(line) => {
             out.push_str(&format!("{label} (PowerShell):\n"));
             out.push_str(&format!("`{line}`\n\n"));
+            out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
         }
-        None => out.push_str(&format!(
-            "{}: `{command}`\n\n",
-            crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
-        )),
+        PowershellForm::SameAsBash => {
+            out.push_str("It runs unchanged in Bash and PowerShell; cmd.exe is not supported.\n");
+        }
+        PowershellForm::Unavailable => {
+            out.push_str(&format!(
+                "{}: `{command}`\n\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE
+            ));
+            out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
+        }
     }
-    out.push_str("The first form is written for Bash; cmd.exe is not supported.\n");
     if trailing_blank_line {
         out.push('\n');
     }
+}
+
+/// Append the PowerShell form of one funnel recovery command (#3870).
+///
+/// The bash line stays authoritative and byte-identical. When the shared
+/// translator rewrites the command (a real `>` redirect becomes a guarded
+/// BOM-free UTF-8 write), the variant is printed so stock Windows
+/// PowerShell does not manufacture UTF-16 artifacts that readers reject.
+/// Commands the translator leaves unchanged render no second line.
+fn push_recovery_powershell_variant(out: &mut String, label: &str, command: &str) {
+    match powershell_command(command) {
+        Some(line) if line != command => {
+            out.push_str(&format!("{label} (PowerShell): `{line}`\n"));
+        }
+        None => push_compound_powershell_variant(out, label, command),
+        Some(_) => {}
+    }
+}
+
+/// Append numbered PowerShell steps for the canonical two-step `&&`
+/// recovery bridge (default Python/TypeScript check-then-ledger route).
+///
+/// The shared translator rejects compound Bash as one line, but each half
+/// is independently translatable. Halves render as ordered steps because
+/// `;`-joining would rerun the second half after a first-half failure.
+/// Anything that is not exactly two translatable halves under-emits (no
+/// variant): a mis-split quoted `&&` or an untranslatable half fails one
+/// of the per-half translations and the bash-only line stands alone.
+fn push_compound_powershell_variant(out: &mut String, label: &str, command: &str) {
+    let halves: Vec<&str> = command.split(" && ").collect();
+    if halves.len() != 2 {
+        return;
+    }
+    let (Some(first), Some(second)) =
+        (powershell_command(halves[0]), powershell_command(halves[1]))
+    else {
+        return;
+    };
+    if first == halves[0] && second == halves[1] {
+        return;
+    }
+    out.push_str(&format!("{label} (PowerShell 1/2): `{first}`\n"));
+    out.push_str(&format!("{label} (PowerShell 2/2): `{second}`\n"));
 }
 
 fn top_gap_language_label(selected: &Value) -> &'static str {
@@ -447,6 +674,21 @@ fn render_missing_artifact_markdown(selected: &Value, out: &mut String) {
     out.push_str(&format!("- Artifact path: `{path}`\n"));
     if let Some(command) = selected.get("regeneration_command").and_then(Value::as_str) {
         out.push_str(&format!("- Regeneration command: `{command}`\n"));
+        push_recovery_powershell_variant(out, "- Regeneration command", command);
+    }
+    if let Some(also_missing) = selected.get("also_missing").and_then(Value::as_array) {
+        for artifact in also_missing {
+            let label = artifact
+                .get("label")
+                .and_then(Value::as_str)
+                .unwrap_or("required artifact");
+            let path = artifact.get("path").and_then(Value::as_str).unwrap_or("");
+            out.push_str(&format!("- Also missing: {label} at `{path}`\n"));
+            if let Some(command) = artifact.get("regeneration_command").and_then(Value::as_str) {
+                out.push_str(&format!("- Then run: `{command}`\n"));
+                push_recovery_powershell_variant(out, "- Then run", command);
+            }
+        }
     }
 }
 
@@ -493,6 +735,7 @@ fn render_blocked_markdown(selected: &Value, out: &mut String) {
     out.push_str(&format!("- Reason: {message}\n"));
     if let Some(command) = selected.get("next_command").and_then(Value::as_str) {
         out.push_str(&format!("- Next command: `{command}`\n"));
+        push_recovery_powershell_variant(out, "- Next command", command);
     }
 }
 
@@ -505,4 +748,171 @@ fn sentence_case(value: &str) -> String {
         out.push(ch.to_ascii_lowercase());
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::{Path, PathBuf};
+
+    fn mixed_separator_paths() -> (PathBuf, PathBuf) {
+        // A literal backslash survives inside a path on every host, so the
+        // normalization is pinned even where the OS join never mixes.
+        let dir = PathBuf::from("/Repo/out\\Reports");
+        (dir.join("start-here.json"), dir.join("start-here.md"))
+    }
+
+    #[test]
+    fn preflight_recovery_preserves_markdown_backticks_and_discloses_unsupported_forms() {
+        let command = "ripr first-pr --root 'owner'\\''s `repo`' --base HEAD --head HEAD";
+        let packet = serde_json::json!({
+            "preflight": {
+                "status": "needs_attention", "mode": "write",
+                "recovery_commands": [command, "ripr first-pr --root $(whoami)"],
+            },
+        });
+        let mut out = String::new();
+        render_preflight_markdown(&packet, &mut out);
+        assert!(
+            out.contains(&crate::output::markdown::code_span(command)),
+            "{out}"
+        );
+        assert!(out.contains("Recovery step 1 (PowerShell):"), "{out}");
+        assert!(!out.contains("Recovery step 2 (PowerShell):"), "{out}");
+        assert!(
+            out.contains(crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn preflight_recovery_keeps_legacy_and_withholds_multiline_commands() {
+        let legacy = serde_json::json!({
+            "preflight": {
+                "status": "needs_attention", "mode": "write",
+                "next_command": "Choose a head, then rerun `ripr first-pr`.",
+            },
+        });
+        let mut out = String::new();
+        render_preflight_markdown(&legacy, &mut out);
+        assert!(
+            out.contains("Next command: Choose a head, then rerun `ripr first-pr`."),
+            "{out}"
+        );
+        assert!(!out.contains("Recovery step"), "{out}");
+
+        let packet = serde_json::json!({
+            "preflight": {
+                "status": "needs_attention", "mode": "write",
+                "next_command": "legacy prose",
+                "recovery_guidance": "Commit PR work before rerunning.",
+                "recovery_commands": ["ripr first-pr --root .", "ripr first-pr --root 'line\nbreak'"],
+            },
+        });
+        out.clear();
+        render_preflight_markdown(&packet, &mut out);
+        assert!(
+            out.contains("Recovery: Commit PR work before rerunning."),
+            "{out}"
+        );
+        assert!(
+            out.contains("It runs unchanged in Bash and PowerShell"),
+            "{out}"
+        );
+        assert!(
+            out.contains("Recovery step 2 unavailable: use a single-line root/ref alias"),
+            "{out}"
+        );
+        assert!(!out.contains("line break"), "{out}");
+        assert!(!out.contains("legacy prose"), "{out}");
+    }
+
+    #[test]
+    fn cli_summary_renders_stable_separators() {
+        let (json_path, markdown_path) = mixed_separator_paths();
+        let packet = serde_json::json!({
+            "selected": {"state": "no_action", "reason": "nothing to do"},
+        });
+        let summary = start_here_cli_summary(&packet, &json_path, &markdown_path);
+        assert!(summary.contains("Start here: /Repo/out/Reports/start-here.md"));
+        assert!(summary.contains(
+            "Artifacts: `/Repo/out/Reports/start-here.json`, `/Repo/out/Reports/start-here.md`"
+        ));
+        assert!(!summary.contains('\\'));
+    }
+
+    fn missing_artifact_packet(command: &str) -> Value {
+        serde_json::json!({
+            "selected": {
+                "state": "missing_artifact",
+                "artifact": {"label": "Repo exposure report"},
+                "regeneration_command": command,
+            }
+        })
+    }
+
+    #[test]
+    fn cli_summary_pairs_redirect_regeneration_with_powershell_form() {
+        let bash = "ripr check --root . --mode instant --format repo-exposure-json > target/ripr/reports/repo-exposure.json";
+        let summary = start_here_cli_summary(
+            &missing_artifact_packet(bash),
+            Path::new("target/ripr/reports/start-here.json"),
+            Path::new("target/ripr/reports/start-here.md"),
+        );
+        assert!(summary.contains(&format!("Regeneration command: `{bash}`")));
+        assert!(summary.contains("Regeneration command (PowerShell): `"));
+        assert!(summary.contains("WriteAllText"));
+        assert!(summary.contains("UTF8Encoding"));
+    }
+
+    #[test]
+    fn markdown_pairs_redirect_regeneration_with_powershell_bullet() {
+        let bash = "ripr check --root . --mode instant --format repo-exposure-json > target/ripr/reports/repo-exposure.json";
+        let selected = serde_json::json!({"regeneration_command": bash});
+        let mut out = String::new();
+        render_missing_artifact_markdown(&selected, &mut out);
+        assert!(out.contains(&format!("- Regeneration command: `{bash}`")));
+        assert!(out.contains("- Regeneration command (PowerShell): `"));
+        assert!(out.contains("WriteAllText"));
+    }
+
+    #[test]
+    fn cli_summary_splits_compound_bridge_into_powershell_steps() {
+        let bash = "ripr check --root . --base origin/main --json > target/ripr/reports/check.json && ripr reports gap-ledger --check-output target/ripr/reports/check.json --root . --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md";
+        let packet = missing_artifact_packet(bash);
+        let summary = start_here_cli_summary(
+            &packet,
+            Path::new("target/ripr/reports/start-here.json"),
+            Path::new("target/ripr/reports/start-here.md"),
+        );
+        assert!(summary.contains(&format!("Regeneration command: `{bash}`")));
+        assert!(summary.contains("Regeneration command (PowerShell 1/2): `"));
+        assert!(summary.contains("Regeneration command (PowerShell 2/2): `"));
+        assert!(summary.contains("WriteAllText"));
+    }
+
+    #[test]
+    fn cli_summary_under_emits_untranslatable_compound() {
+        let bash = "ripr check --root $(whoami) --json > check.json && ripr reports gap-ledger --out ledger.json";
+        let packet = missing_artifact_packet(bash);
+        let summary = start_here_cli_summary(
+            &packet,
+            Path::new("target/ripr/reports/start-here.json"),
+            Path::new("target/ripr/reports/start-here.md"),
+        );
+        assert!(summary.contains(&format!("Regeneration command: `{bash}`")));
+        assert!(!summary.contains("(PowerShell"));
+    }
+
+    #[test]
+    fn cli_summary_leaves_plain_regeneration_without_powershell_line() {
+        let bash = "ripr reports gap-ledger --repo-exposure target/ripr/reports/repo-exposure.json --out target/ripr/reports/gap-decision-ledger.json --out-md target/ripr/reports/gap-decision-ledger.md";
+        let summary = start_here_cli_summary(
+            &missing_artifact_packet(bash),
+            Path::new("target/ripr/reports/start-here.json"),
+            Path::new("target/ripr/reports/start-here.md"),
+        );
+        assert!(summary.contains(&format!("Regeneration command: `{bash}`")));
+        assert!(!summary.contains("(PowerShell)"));
+    }
 }

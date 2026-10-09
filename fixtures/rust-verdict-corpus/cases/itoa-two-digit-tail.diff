@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 74cd9b4..992de94 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -296,7 +296,7 @@ macro_rules! impl_Unsigned {
+                 }
+ 
+                 // Format per two digits from the lookup table.
+-                if remain > 9 {
++                if remain >= 10 {
+                     offset -= 2;
+ 
+                     let (last, pair) = divmod100(remain as u32);

@@ -30,10 +30,16 @@ runs:
           }
         fi
 
+    # Inputs reach the shell through env, never through `${{ }}` inside
+    # `run:`, so an input value cannot inject shell syntax.
     - name: Run ripr check
       shell: bash
+      env:
+        RIPR_INPUT_BASE: ${{ inputs.base }}
+        RIPR_INPUT_MODE: ${{ inputs.mode }}
+        RIPR_INPUT_FORMAT: ${{ inputs.format }}
       run: |
-        ripr check --root . --base ${{ inputs.base }} --mode ${{ inputs.mode }} --format ${{ inputs.format }}
+        ripr check --root . --base "$RIPR_INPUT_BASE" --mode "$RIPR_INPUT_MODE" --format "$RIPR_INPUT_FORMAT"
 
 branding:
   icon: 'shield'

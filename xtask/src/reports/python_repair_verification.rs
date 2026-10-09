@@ -1678,18 +1678,31 @@ mod python_repair_verification_semantics {
         }))
     }
 
+    /// A per-call scratch directory. The name comes from a process-wide
+    /// sequence, not the clock: on Windows two parallel tests read the same
+    /// `SystemTime` often enough to share a directory, overwrite each other's
+    /// receipt, and fail on a field neither of them changed.
+    fn check_directory() -> std::path::PathBuf {
+        static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let sequence = SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "ripr-verify-check-{}-{sequence}",
+            std::process::id()
+        ))
+    }
+
+    #[test]
+    fn check_directories_are_distinct_within_one_process() {
+        assert_ne!(check_directory(), check_directory());
+    }
+
     /// Writes manifest + receipt to a temp directory, runs the offline check,
     /// and returns the outcome (cleaning up regardless of the result).
     fn check(mutate: impl FnOnce(&mut Value)) -> Result<VerificationCheckOutcome, String> {
         let (manifest_value, manifest_sha) = fixture_manifest()?;
         let mut record = fixture_receipt(&manifest_sha)?;
         mutate(&mut record);
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_err(|error| format!("clock: {error}"))?
-            .as_nanos();
-        let directory =
-            std::env::temp_dir().join(format!("ripr-verify-check-{}-{stamp}", std::process::id()));
+        let directory = check_directory();
         std::fs::create_dir_all(&directory).map_err(|error| format!("create temp dir: {error}"))?;
         let written = (|| -> Result<(), String> {
             let manifest_text = serde_json::to_string_pretty(&manifest_value)

@@ -3,5 +3,5 @@ pub(crate) fn first_pr(args: &[String]) -> Result<(), String> {
     cli_args.push("ripr".to_string());
     cli_args.push("first-pr".to_string());
     cli_args.extend(args.iter().cloned());
-    ripr::cli::run(cli_args)
+    ripr::cli::run(cli_args).map_err(|error| error.to_string())
 }

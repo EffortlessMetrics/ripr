@@ -10,9 +10,12 @@ use crate::review_input::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(test)]
+use std::time::Instant;
 pub(crate) const REVIEW_ANALYSIS_IDENTITY_SCHEMA: &str = "ripr.review_analysis_identity.v1";
 // Keep this admission bound synchronized with the producer projection limit.
 const REVIEW_INPUT_PROJECTION_LIMIT: u64 = 10;
@@ -51,6 +54,7 @@ pub(crate) struct ProducerAdmissionError {
     pub(crate) category: &'static str,
     pub(crate) message: String,
 }
+#[cfg(test)]
 pub(crate) fn run_analysis_with_timeout<T>(
     timeout_ms: u64,
     work: impl FnOnce() -> Result<T, String>,
@@ -107,6 +111,25 @@ impl ProducerAdmissionError {
         }
     }
 }
+fn validate_configuration_for_producer_admission(
+    outcome_envelope: &Value,
+    config: &RiprConfig,
+) -> Result<(), ProducerAdmissionError> {
+    super::pr_evidence::validate_pr_evidence_check_configuration_core(outcome_envelope, config)
+        .map_err(|error| ProducerAdmissionError {
+            category: match error {
+                super::pr_evidence::PrEvidenceConfigurationError::Missing
+                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => {
+                    "malformed_producer"
+                }
+                super::pr_evidence::PrEvidenceConfigurationError::Mismatch => {
+                    "producer_identity_mismatch"
+                }
+            },
+            message: error.message().to_string(),
+        })
+}
+
 pub(crate) fn admit_producer_evidence(
     check_path: &Path,
     input: &CheckInput,
@@ -116,7 +139,7 @@ pub(crate) fn admit_producer_evidence(
     diff_text: &str,
 ) -> Result<AdmittedReviewAnalysis, ProducerAdmissionError> {
     let subject_path = check_path.with_extension("subject.json");
-    let subject_bytes = std::fs::read(&subject_path).map_err(|error| {
+    let subject_bytes = crate::bounded_input::read(&subject_path).map_err(|error| {
         let message = format!(
             "producer subject receipt {} is unreadable: {error}",
             subject_path.display()
@@ -133,6 +156,9 @@ pub(crate) fn admit_producer_evidence(
             subject_path.display()
         ))
     })?;
+    if let Some(error) = crate::reject_pr_evidence_error_packet(&subject) {
+        return Err(ProducerAdmissionError::malformed(error));
+    }
     require_equal(
         "subject_schema_version",
         required_string(&subject, "schema_version")?,
@@ -161,7 +187,7 @@ pub(crate) fn admit_producer_evidence(
         require_equal(field, required_string(&subject, field)?, expected)?;
     }
     let review_input_path = check_path.with_file_name("review-input.json");
-    let review_input_bytes = std::fs::read(&review_input_path).map_err(|error| {
+    let review_input_bytes = crate::bounded_input::read(&review_input_path).map_err(|error| {
         let message = format!(
             "producer review input {} is unreadable: {error}",
             review_input_path.display()
@@ -214,12 +240,13 @@ pub(crate) fn admit_producer_evidence(
         review_input.total_finding_count,
         Some(&canonical_projection_from_subject(&subject)?),
     )?;
-    let outcome_value = required_value(&subject, "analysis_outcome")?.clone();
-    let outcome_value = outcome_value.get("outcome").cloned().ok_or_else(|| {
+    let outcome_envelope = required_value(&subject, "analysis_outcome")?;
+    let outcome_value = outcome_envelope.get("outcome").cloned().ok_or_else(|| {
         ProducerAdmissionError::malformed(
             "producer review input analysis_outcome is missing outcome",
         )
     })?;
+    validate_configuration_for_producer_admission(outcome_envelope, config)?;
     let outcome: AnalysisOutcome = serde_json::from_value(outcome_value).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
             "producer review input analysis_outcome is invalid: {error}"
@@ -239,12 +266,257 @@ pub(crate) fn admit_producer_evidence(
                 "producer review input projection is invalid: {error}"
             ))
         })?;
+    // Diff discovery and receipt validation may outlive the caller's config load.
+    let current_config = crate::config::load_for_root(&input.root).map_err(|error| {
+        ProducerAdmissionError::malformed(format!("load producer evidence configuration: {error}"))
+    })?;
+    validate_configuration_for_producer_admission(outcome_envelope, &current_config)?;
+    require_equal(
+        "configuration_fingerprint",
+        &repo_exposure_config_identity_hash(&current_config),
+        &identity.configuration_fingerprint,
+    )?;
     Ok(AdmittedReviewAnalysis {
         identity,
         outcome,
         producer_projection,
     })
 }
+/// String failures are ordinary source/format failures unless they carry the
+/// existing named input-ceiling guard. Abort origin is carried separately by
+/// typed checkpoints/CoreError, never by rendered text.
+pub(crate) fn live_guidance_failure(message: String) -> ProducerAdmissionError {
+    let category = if message.starts_with("review_guidance_oversized:") {
+        "review_guidance_oversized"
+    } else {
+        "malformed_producer"
+    };
+    ProducerAdmissionError { category, message }
+}
+
+pub(crate) fn live_guidance_cancelled(
+    error: crate::analysis::cancellation::AnalysisCancellation,
+) -> ProducerAdmissionError {
+    let category = match error.kind {
+        crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded => "producer_timeout",
+        _ => "producer_cancelled",
+    };
+    ProducerAdmissionError {
+        category,
+        message: error.to_string(),
+    }
+}
+
+pub(crate) fn live_guidance_git_failure(
+    error: crate::core_error::CoreError,
+) -> ProducerAdmissionError {
+    let message = error.to_string();
+    if error.is_git_invocation_timeout() {
+        return ProducerAdmissionError {
+            category: "producer_timeout",
+            message,
+        };
+    }
+    let mut cause = &error;
+    while let crate::core_error::CoreError::Context { source, .. } = cause {
+        cause = source;
+    }
+    let category = match cause {
+        crate::core_error::CoreError::AnalysisCancelled(cancelled) => {
+            live_guidance_cancelled(*cancelled).category
+        }
+        crate::core_error::CoreError::Message(cause) => {
+            live_guidance_failure(cause.clone()).category
+        }
+        _ => "malformed_producer",
+    };
+    ProducerAdmissionError { category, message }
+}
+
+/// Classify actual HEAD metadata under the owning cooperative budget,
+/// retaining its original spelling for the later strict membership probe.
+pub(crate) fn live_guidance_head_metadata(
+    root: &Path,
+    head_paths: &[PathBuf],
+    config: &RiprConfig,
+) -> Result<std::collections::BTreeMap<PathBuf, PathBuf>, ProducerAdmissionError> {
+    let mut metadata = std::collections::BTreeMap::new();
+    for path in head_paths {
+        crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
+        if let Some(identity) = crate::analysis::seam_cache::review_guidance_metadata_input_identity(
+            root,
+            path,
+            config.suppressions().path(),
+        ) && metadata.insert(identity, path.clone()).is_some()
+        {
+            return Err(ProducerAdmissionError {
+                category: "producer_identity_mismatch",
+                message: "HEAD contains ambiguous live-guidance metadata owner aliases; restore one concrete owned input and regenerate PR evidence".to_string(),
+            });
+        }
+    }
+    Ok(metadata)
+}
+
+/// Explicit fresh guidance requires Git's clean tracked image. Selected Rust
+/// corpus files, changed-owner files, and manifest/lock/intent/suppression/marker
+/// inputs must be regular tracked files at HEAD. Configuration is admitted
+/// separately by the producer's consumed settings; the fresh key binds current
+/// raw configuration text before/after analysis. This selection does not add a
+/// configuration path solely because it is the loaded configuration source.
+/// This retains Git's clean-file authority; it is not an atomic byte freeze.
+pub(crate) fn admit_live_guidance_sources(
+    root: &Path,
+    head_sha: &str,
+    files: &[PathBuf],
+    config: &RiprConfig,
+    capture_limit: usize,
+) -> Result<(), ProducerAdmissionError> {
+    crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
+    require_equal(
+        "live_head_sha",
+        &resolve_revision(root, "HEAD", "commit")?,
+        head_sha,
+    )?;
+    let tracked = crate::git::run_git_output_with_optional_deadline_and_limit(
+        root,
+        &["diff", "--quiet", "HEAD", "--"],
+        Some(Duration::from_secs(5)),
+        capture_limit,
+    )
+    .map_err(live_guidance_git_failure)?;
+    if tracked.status.code() == Some(1) {
+        return Err(ProducerAdmissionError {
+            category: "producer_identity_mismatch",
+            message: "live repair guidance requires the admitted HEAD's clean tracked workspace, including manifests and metadata; commit or restore changes and regenerate PR evidence".to_string(),
+        });
+    }
+    if !tracked.status.success() {
+        return Err(ProducerAdmissionError::malformed(format!(
+            "live guidance tracked-image probe failed: {}",
+            String::from_utf8_lossy(&tracked.stderr),
+        )));
+    }
+    let head_paths = crate::analysis::committed_source::regular_head_paths(root, capture_limit)
+        .map_err(live_guidance_git_failure)?;
+    let expected_metadata = live_guidance_head_metadata(root, &head_paths, config)?;
+    let mut current_metadata = std::collections::BTreeMap::new();
+    for path in files {
+        crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
+        if let Some(identity) = crate::analysis::seam_cache::review_guidance_metadata_input_identity(
+            root,
+            path,
+            config.suppressions().path(),
+        ) {
+            current_metadata.insert(path.clone(), identity);
+        }
+    }
+    let expected_identities = expected_metadata
+        .keys()
+        .collect::<std::collections::BTreeSet<_>>();
+    let current_identities = current_metadata
+        .values()
+        .collect::<std::collections::BTreeSet<_>>();
+    if expected_identities != current_identities {
+        return Err(ProducerAdmissionError {
+            category: "producer_identity_mismatch",
+            message: "live repair-guidance manifest/lock/intent/suppression/marker presence differs from the admitted HEAD; restore the metadata and regenerate PR evidence".to_string(),
+        });
+    }
+    // Python source-directory presence participates in this Rust owner's
+    // workspace-role key. Compare the exact presence predicate, not Python
+    // contents or an invented cross-language analysis denominator.
+    for marker in crate::config::PYTHON_SOURCE_DIR_MARKERS {
+        crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
+        let mut expected_presence = false;
+        for path in &head_paths {
+            crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
+            let first = path
+                .components()
+                .next()
+                .and_then(|part| part.as_os_str().to_str());
+            if first.and_then(crate::config::python_source_dir_marker_name) == Some(*marker)
+                && !crate::config::is_detectable_excluded_python_path(path)
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(crate::config::is_detectable_python_source_name)
+            {
+                expected_presence = true;
+                break;
+            }
+        }
+        if expected_presence
+            != crate::config::source_dir_contains_detectable_python_cancellable(root, marker)
+                .map_err(live_guidance_git_failure)?
+        {
+            return Err(ProducerAdmissionError {
+                category: "producer_identity_mismatch",
+                message: format!(
+                    "live repair-guidance Python source-role presence below {marker} differs from HEAD; restore the inputs and regenerate PR evidence"
+                ),
+            });
+        }
+    }
+    for chunk in files.chunks(64) {
+        let mut args = vec!["--literal-pathspecs", "ls-files", "--error-unmatch", "--"];
+        for path in chunk {
+            crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)?;
+            if path.as_os_str().is_empty()
+                || path
+                    .components()
+                    .any(|component| !matches!(component, std::path::Component::Normal(_)))
+            {
+                return Err(ProducerAdmissionError::malformed(
+                    "live guidance source must be root-relative",
+                ));
+            }
+            let metadata = std::fs::symlink_metadata(root.join(path)).map_err(|error| {
+                ProducerAdmissionError::malformed(format!(
+                    "stat live guidance source {}: {error}",
+                    path.display()
+                ))
+            })?;
+            if !metadata.file_type().is_file() {
+                return Err(ProducerAdmissionError {
+                    category: "producer_identity_mismatch",
+                    message: format!(
+                        "live guidance source {} is not a regular source at the admitted HEAD",
+                        path.display()
+                    ),
+                });
+            }
+            let tracked_path = if let Some(identity) = current_metadata.get(path) {
+                expected_metadata.get(identity).ok_or_else(|| {
+                    ProducerAdmissionError::malformed("admitted metadata identity has no HEAD path")
+                })?
+            } else {
+                path
+            };
+            args.push(tracked_path.to_str().ok_or_else(|| {
+                ProducerAdmissionError::malformed("live guidance source path is not UTF-8")
+            })?);
+        }
+        let output = crate::git::run_git_output_with_optional_deadline_and_limit(
+            root,
+            &args,
+            Some(Duration::from_secs(5)),
+            capture_limit,
+        )
+        .map_err(live_guidance_git_failure)?;
+        if !output.status.success() {
+            return Err(ProducerAdmissionError {
+                category: "producer_identity_mismatch",
+                message: format!(
+                    "live repair-guidance inputs are not tracked at the admitted HEAD; commit or restore them and regenerate PR evidence: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ),
+            });
+        }
+    }
+    crate::analysis::cancellation::checkpoint_typed().map_err(live_guidance_cancelled)
+}
+
 pub(crate) fn admit_review_input(
     review_input_path: &Path,
     root: &Path,
@@ -252,7 +524,7 @@ pub(crate) fn admit_review_input(
     producer_finding_count: u64,
     producer_projection: Option<&[crate::review_input::ReviewFindingProjectionV1]>,
 ) -> Result<AdmittedReviewInput, ProducerAdmissionError> {
-    let bytes = std::fs::read(review_input_path).map_err(|error| {
+    let bytes = crate::bounded_input::read(review_input_path).map_err(|error| {
         let message = format!(
             "producer review input {} is unreadable: {error}",
             review_input_path.display()
@@ -269,6 +541,9 @@ pub(crate) fn admit_review_input(
             review_input_path.display()
         ))
     })?;
+    if let Some(error) = crate::reject_pr_evidence_error_packet(&raw) {
+        return Err(ProducerAdmissionError::malformed(error));
+    }
     require_equal(
         "review_input_schema_version",
         required_string(&raw, "schema_version")?,
@@ -491,16 +766,19 @@ fn resolve_revision(
     kind: &str,
 ) -> Result<String, ProducerAdmissionError> {
     let object = format!("{revision}^{{{kind}}}");
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["rev-parse", "--verify", &object])
-        .output()
-        .map_err(|error| {
-            ProducerAdmissionError::malformed(format!(
-                "resolve producer revision {revision:?} failed: {error}"
-            ))
-        })?;
+    let output = crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--verify", &object],
+        Some(Duration::from_secs(5)),
+    )
+    .map_err(|error| {
+        let mut failure = live_guidance_git_failure(error);
+        failure.message = format!(
+            "resolve producer revision {revision:?} failed: {}",
+            failure.message
+        );
+        failure
+    })?;
     if !output.status.success() {
         return Err(ProducerAdmissionError::malformed(format!(
             "resolve producer revision {revision:?} failed: {}",
@@ -522,15 +800,15 @@ fn resolve_revision(
     }
 }
 fn repository_identity(root: &Path) -> String {
-    let origin = std::process::Command::new("git")
-        .arg("-C")
-        .arg(root)
-        .args(["config", "--local", "--get", "remote.origin.url"])
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| output.stdout)
-        .filter(|origin| !origin.iter().all(u8::is_ascii_whitespace));
+    let origin = crate::git::run_git_output_with_deadline(
+        root,
+        &["config", "--local", "--get", "remote.origin.url"],
+        Some(Duration::from_secs(5)),
+    )
+    .ok()
+    .filter(|output| output.status.success())
+    .map(|output| output.stdout)
+    .filter(|origin| !origin.iter().all(u8::is_ascii_whitespace));
     origin_identity(origin.as_deref())
 }
 fn origin_identity(origin: Option<&[u8]>) -> String {
@@ -789,16 +1067,53 @@ mod tests {
 
     #[test]
     fn complete_producer_is_admitted_with_exact_subject_identity() -> Result<(), String> {
-        let root = std::env::current_dir().map_err(|error| error.to_string())?;
-        // Hosted test jobs use a depth-one checkout; keep the fixture
-        // independent of unavailable parent objects while still exercising
-        // exact commit/tree subject binding.
+        struct RepositoryLease(PathBuf);
+        impl Drop for RepositoryLease {
+            fn drop(&mut self) {
+                let _ = crate::testing::fixture_git::remove_fixture_tree(&self.0);
+            }
+        }
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-review-subject-{}-{nonce}",
+            std::process::id()
+        ));
+        let _lease = RepositoryLease(root.clone());
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        for args in [
+            &["-c", "init.templateDir=", "init", "--initial-branch=main"][..],
+            &[
+                "-c",
+                "user.email=ripr@example.invalid",
+                "-c",
+                "user.name=ripr test",
+                "-c",
+                "commit.gpgSign=false",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "isolated admission fixture",
+            ][..],
+        ] {
+            crate::testing::fixture_git::fixture_git_ok(&root, args)?;
+        }
+        let root = std::fs::canonicalize(root).map_err(|error| error.to_string())?;
+        let config = crate::config::load_for_root(&root)?;
+        assert!(config.source_text().is_none());
+        let input = CheckInput {
+            root: root.clone(),
+            ..CheckInput::default()
+        };
+        // An isolated empty commit binds the subject without inheriting the
+        // checkout's configuration or requiring parent objects.
         let base = "HEAD";
         let head = "HEAD";
         let diff_text = "fixture diff";
         let root_identity = logical_path(&root);
-        let configuration_fingerprint =
-            crate::config::repo_exposure_config_identity_hash(&RiprConfig::default());
+        let configuration_fingerprint = crate::config::repo_exposure_config_identity_hash(&config);
         let outcome = AnalysisOutcome::new(
             crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
             crate::analysis_outcome::AnalysisIdentity {
@@ -905,15 +1220,8 @@ mod tests {
         std::fs::write(&review_input_path, &review_input_bytes)
             .map_err(|error| format!("write review input fixture: {error}"))?;
 
-        let admitted = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .map_err(|error| error.message)?;
+        let admitted = admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+            .map_err(|error| error.message)?;
         if admitted.identity.mode != "draft"
             || admitted.identity.base_sha != base_sha
             || admitted.identity.head_sha != head_sha
@@ -925,16 +1233,10 @@ mod tests {
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
         std::fs::create_dir(&subject_path)
             .map_err(|error| format!("create unreadable subject fixture: {error}"))?;
-        let unreadable_subject = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "directory subject receipt must fail".to_string())?;
+        let unreadable_subject =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "directory subject receipt must fail".to_string())?;
         if unreadable_subject.category != "malformed_producer" {
             return Err(format!(
                 "directory subject receipt returned {}",
@@ -948,16 +1250,10 @@ mod tests {
         std::fs::remove_file(&review_input_path).map_err(|error| error.to_string())?;
         std::fs::create_dir(&review_input_path)
             .map_err(|error| format!("create unreadable review input: {error}"))?;
-        let unreadable_review_input = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "directory review input must fail".to_string())?;
+        let unreadable_review_input =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "directory review input must fail".to_string())?;
         if unreadable_review_input.category != "malformed_producer" {
             return Err(format!(
                 "directory review input returned {}",
@@ -986,16 +1282,10 @@ mod tests {
                 serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write {name} subject: {error}"))?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| format!("{name} must fail"))?;
+            let error =
+                admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                    .err()
+                    .ok_or_else(|| format!("{name} must fail"))?;
             if error.category != "malformed_producer" {
                 return Err(format!("{name} returned {}", error.category));
             }
@@ -1005,16 +1295,10 @@ mod tests {
 
         std::fs::write(&review_input_path, b"{")
             .map_err(|error| format!("write malformed review input: {error}"))?;
-        let malformed_review_input = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "malformed review input must fail".to_string())?;
+        let malformed_review_input =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "malformed review input must fail".to_string())?;
         if malformed_review_input.category != "malformed_producer" {
             return Err(format!(
                 "malformed review input returned {}",
@@ -1031,16 +1315,10 @@ mod tests {
             serde_json::to_vec(&invalid_byte_count).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write invalid byte-count subject: {error}"))?;
-        let invalid_byte_count_error = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "invalid review-input byte count must fail".to_string())?;
+        let invalid_byte_count_error =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "invalid review-input byte count must fail".to_string())?;
         if invalid_byte_count_error.category != "malformed_producer" {
             return Err(format!(
                 "invalid review-input byte count returned {}",
@@ -1072,16 +1350,10 @@ mod tests {
                 serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write {name} subject: {error}"))?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| format!("{name} must fail"))?;
+            let error =
+                admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                    .err()
+                    .ok_or_else(|| format!("{name} must fail"))?;
             if error.category != expected_category {
                 return Err(format!("{name} returned {}", error.category));
             }
@@ -1097,16 +1369,10 @@ mod tests {
             serde_json::to_vec(&mismatched_outcome).map_err(|error| error.to_string())?,
         )
         .map_err(|error| format!("write mismatched-outcome subject: {error}"))?;
-        let mismatched_outcome_error = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "mismatched outcome must fail".to_string())?;
+        let mismatched_outcome_error =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "mismatched outcome must fail".to_string())?;
         if mismatched_outcome_error.category != "incomplete_producer" {
             return Err(format!(
                 "mismatched outcome returned {}",
@@ -1117,20 +1383,14 @@ mod tests {
         std::fs::write(&subject_path, &original_subject_bytes)
             .map_err(|error| format!("restore subject before cleanup: {error}"))?;
         std::fs::remove_file(&check_path).map_err(|error| error.to_string())?;
-        admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .map_err(|error| {
-            format!(
-                "consumer unexpectedly required check.json: {}",
-                error.message
-            )
-        })?;
+        admit_producer_evidence(&check_path, &input, &config, base, head, diff_text).map_err(
+            |error| {
+                format!(
+                    "consumer unexpectedly required check.json: {}",
+                    error.message
+                )
+            },
+        )?;
 
         let original_subject = subject.clone();
         let mut incomplete_input = review_input.clone();
@@ -1149,16 +1409,10 @@ mod tests {
         .map_err(|error| format!("write incomplete subject: {error}"))?;
         std::fs::write(&review_input_path, &incomplete_bytes)
             .map_err(|error| format!("write incomplete review input: {error}"))?;
-        let incomplete = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "incomplete producer must fail closed".to_string())?;
+        let incomplete =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "incomplete producer must fail closed".to_string())?;
         if incomplete.category != "incomplete_producer" {
             return Err(format!(
                 "unexpected incomplete-producer category: {}",
@@ -1193,16 +1447,10 @@ mod tests {
                 serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
             )
             .map_err(|error| format!("write subject mutation {field}: {error}"))?;
-            let error = admit_producer_evidence(
-                &check_path,
-                &CheckInput::default(),
-                &RiprConfig::default(),
-                base,
-                head,
-                diff_text,
-            )
-            .err()
-            .ok_or_else(|| format!("subject mutation {field} must fail"))?;
+            let error =
+                admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                    .err()
+                    .ok_or_else(|| format!("subject mutation {field} must fail"))?;
             let expected_category = if field == "mode" {
                 "producer_mode_mismatch"
             } else if field == "review_input_byte_count" {
@@ -1223,16 +1471,10 @@ mod tests {
         )
         .map_err(|error| format!("restore subject before cleanup: {error}"))?;
         std::fs::remove_file(&subject_path).map_err(|error| error.to_string())?;
-        let missing_subject = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "missing subject receipt must fail closed".to_string())?;
+        let missing_subject =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "missing subject receipt must fail closed".to_string())?;
         if missing_subject.category != "missing_producer" {
             return Err(format!(
                 "unexpected missing-subject category: {}",
@@ -1240,16 +1482,10 @@ mod tests {
             ));
         }
         std::fs::write(&subject_path, b"{").map_err(|error| error.to_string())?;
-        let malformed_subject = admit_producer_evidence(
-            &check_path,
-            &CheckInput::default(),
-            &RiprConfig::default(),
-            base,
-            head,
-            diff_text,
-        )
-        .err()
-        .ok_or_else(|| "malformed subject receipt must fail closed".to_string())?;
+        let malformed_subject =
+            admit_producer_evidence(&check_path, &input, &config, base, head, diff_text)
+                .err()
+                .ok_or_else(|| "malformed subject receipt must fail closed".to_string())?;
         if malformed_subject.category != "malformed_producer" {
             return Err(format!(
                 "unexpected malformed-subject category: {}",
@@ -1585,6 +1821,97 @@ mod tests {
         let present = origin_identity(Some(b"https://github.com/example/repo.git\n"));
         if !present.starts_with("sha256:") || present == "unavailable" {
             return Err("present origin must have a digest identity".to_string());
+        }
+        Ok(())
+    }
+    #[test]
+    fn live_guidance_failure_categories_preserve_primary_source_and_cleanup() -> Result<(), String>
+    {
+        use crate::analysis::cancellation::{
+            AnalysisAbortKind, AnalysisCancellationToken, checkpoint, checkpoint_typed, with_token,
+        };
+        use crate::core_error::CoreError;
+        let active = AnalysisCancellationToken::new();
+        with_token(&active, || {
+            checkpoint()?;
+            if live_guidance_failure("source read failed".to_string()).category
+                != "malformed_producer"
+                || live_guidance_git_failure(CoreError::git_invocation_timeout(
+                    "owned probe",
+                    5,
+                    true,
+                ))
+                .category
+                    != "producer_timeout"
+            {
+                return Err("active source or typed Git timeout lost its category".to_string());
+            }
+            Ok(())
+        })?;
+        for (kind, expected) in [
+            (AnalysisAbortKind::DeadlineExceeded, "producer_timeout"),
+            (AnalysisAbortKind::Cancelled, "producer_cancelled"),
+            (AnalysisAbortKind::Superseded, "producer_cancelled"),
+        ] {
+            let token = AnalysisCancellationToken::new();
+            token.cancel(kind);
+            with_token(&token, || {
+                let cancelled = checkpoint_typed()
+                    .err()
+                    .ok_or("recorded abort did not cancel its checkpoint")?;
+                if live_guidance_cancelled(cancelled).category != expected {
+                    return Err(format!("direct {kind:?} cancellation lost its category"));
+                }
+                let contextual = CoreError::from(cancelled).with_context("committed-source probe");
+                if live_guidance_git_failure(contextual).category != expected {
+                    return Err(format!(
+                        "contextual {kind:?} cancellation lost its category"
+                    ));
+                }
+                let lookalike = format!("analysis cancelled: {kind:?}");
+                if live_guidance_failure(lookalike.clone()).category != "malformed_producer"
+                    || live_guidance_git_failure(
+                        CoreError::message(lookalike).with_context("source-error control"),
+                    )
+                    .category
+                        != "malformed_producer"
+                {
+                    return Err(format!(
+                        "rendered {kind:?} lookalike became typed authority"
+                    ));
+                }
+                let cleanup = "cancellation of owned git did not complete tree cleanup; child may still be running (suppressed wait outcome: analysis cancelled: cancelled)";
+                let failure = live_guidance_git_failure(
+                    CoreError::message(cleanup).with_context("committed-source probe"),
+                );
+                if failure.category != "malformed_producer"
+                    || !failure.message.contains(cleanup)
+                    || live_guidance_failure("actual source read failed".to_string()).category
+                        != "malformed_producer"
+                {
+                    return Err(format!(
+                        "recorded {kind:?} abort hid primary source/cleanup failure"
+                    ));
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn producer_revision_deadline_remains_a_typed_timeout() -> Result<(), String> {
+        let token = crate::analysis::cancellation::AnalysisCancellationToken::new();
+        let _ = token.cancel(crate::analysis::cancellation::AnalysisAbortKind::DeadlineExceeded);
+        let error = crate::analysis::cancellation::with_token(&token, || {
+            resolve_revision(Path::new("."), "HEAD", "commit")
+        })
+        .err()
+        .ok_or_else(|| "canceled producer revision must not resolve successfully".to_string())?;
+        if error.category != "producer_timeout" {
+            return Err(format!(
+                "producer deadline lost its typed category: {error:?}"
+            ));
         }
         Ok(())
     }

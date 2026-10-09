@@ -16,6 +16,20 @@
     "mutation_calibration": null,
     "baseline": null
   },
+  "subject": {
+    "analyzer_version": "0.11.0+0000000000000000000000000000000000000000",
+    "inputs": {
+      "pr_guidance": {
+        "content_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        "producer_subject": {
+          "root_identity": null,
+          "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "reusable_cache_identity": null
+        }
+      }
+    }
+  },
   "policy": {
     "mode": "visible-only",
     "threshold": "high_confidence_new_gap",
@@ -72,6 +86,7 @@
           "line": 42
         },
         "test_intent": "Exercise foo::dispatch and assert Event::Ready",
+        "repair_command": "ripr agent repair --root . --seam-id seam-a --phase before",
         "verify_command": "cargo test -p foo dispatches_ready_event",
         "receipt_command": "ripr receipt write --gap gap:shared",
         "inspection_command": "ripr agent brief --root . --seam-id seam-a --json",

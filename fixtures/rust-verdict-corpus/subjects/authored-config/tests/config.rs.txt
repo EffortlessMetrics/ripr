@@ -1,0 +1,79 @@
+use authored_config::{
+    load, parse_bool, parse_log_level, parse_pairs, parse_port, ConfigError, LogLevel, Settings,
+};
+
+#[test]
+fn pairs_skip_comments_and_blank_lines() {
+    let pairs = parse_pairs("# service\n\nhost = example.org\nport=9000\n").unwrap();
+    assert_eq!(
+        pairs,
+        vec![
+            ("host".to_string(), "example.org".to_string()),
+            ("port".to_string(), "9000".to_string()),
+        ]
+    );
+}
+
+#[test]
+fn missing_equals_reports_its_line() {
+    assert_eq!(
+        parse_pairs("host = a\nport 9000\n"),
+        Err(ConfigError::MissingEquals { line: 2 })
+    );
+}
+
+#[test]
+fn empty_key_is_rejected() {
+    assert!(parse_pairs("= 5").is_err());
+}
+
+#[test]
+fn duplicate_keys_name_the_key_and_line() {
+    assert_eq!(
+        parse_pairs("port = 1\n# again\nport = 2"),
+        Err(ConfigError::DuplicateKey {
+            key: "port".to_string(),
+            line: 3,
+        })
+    );
+}
+
+#[test]
+fn ports_must_be_numeric() {
+    assert_eq!(parse_port("9000"), Ok(9000));
+    assert!(parse_port("http").is_err());
+}
+
+#[test]
+fn every_log_level_spelling_parses() {
+    assert_eq!(parse_log_level("error"), Ok(LogLevel::Error));
+    assert_eq!(parse_log_level("WARN"), Ok(LogLevel::Warn));
+    assert_eq!(parse_log_level("warning"), Ok(LogLevel::Warn));
+    assert_eq!(parse_log_level("info"), Ok(LogLevel::Info));
+    assert_eq!(parse_log_level("Debug"), Ok(LogLevel::Debug));
+    assert_eq!(
+        parse_log_level("loud"),
+        Err(ConfigError::UnknownLogLevel("loud".to_string()))
+    );
+}
+
+#[test]
+fn flags_accept_common_spellings() {
+    assert_eq!(parse_bool("yes"), Some(true));
+    assert_eq!(parse_bool("1"), Some(true));
+    assert_eq!(parse_bool("maybe"), None);
+}
+
+#[test]
+fn load_applies_known_keys_over_defaults() {
+    let settings = load("host = db.internal\nport = 5432\nlog_level = debug\nverbose = on\n").unwrap();
+    assert_eq!(
+        settings,
+        Settings {
+            host: "db.internal".to_string(),
+            port: 5432,
+            log_level: LogLevel::Debug,
+            verbose: true,
+        }
+    );
+}

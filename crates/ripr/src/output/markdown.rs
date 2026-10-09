@@ -1,13 +1,13 @@
 /// Shell disclosure shown before generated command fences (#2628).
 ///
 /// The command strings are bash source (`agent::loop_commands::shell_arg`), so
-/// each fenced `bash` block is paired with a PowerShell translation derived by
-/// [`powershell_command`]. Naming both shells — and the cmd.exe boundary — in
+/// a fenced `bash` block is paired with a PowerShell translation derived by
+/// [`powershell_command`] when the translation differs ([`powershell_form`]). Naming both shells — and the cmd.exe boundary — in
 /// the prose keeps the packet honest on Windows; the wording mirrors the landed
 /// `agent_workflow` disclosure so every generated-command surface states the
 /// same contract. Shared here — beside the translation it describes — so the
 /// fenced command surfaces do not fork one disclosure per module.
-pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Commands include Bash forms and, where supported, PowerShell forms; unavailable variants are disclosed. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
+pub(crate) const COMMAND_SHELL_DISCLOSURE: &str = "Commands are written for Bash, with POSIX single-quote quoting and `>` redirection. A PowerShell form follows a command only when PowerShell needs a different one: doubled-quote escaping, the `&` call operator before a quoted program path, or a guarded BOM-free UTF-8 write in place of `>`. A command with no PowerShell form after it runs unchanged in PowerShell, unless a line says its PowerShell form is unavailable. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths keep their Windows drive-letter prefix, which WSL resolves as a relative path.\n\n";
 
 pub(crate) fn render_string_section(out: &mut String, title: &str, values: &[String]) {
     out.push_str(&format!("\n## {title}\n\n"));
@@ -24,12 +24,353 @@ pub(crate) fn markdown_text(value: &str) -> String {
     value.replace('\\', "\\\\")
 }
 
+/// Render `text` as one CommonMark inline code span, delimiters included.
+///
+/// Untrusted text (paths, changed expressions, owner and test names) reaches
+/// PR comments and step summaries through code spans. A backslash does not
+/// escape a backtick inside a code span, so a lone backtick in the text used
+/// to close a single-backtick span early and let `@mention` or raw HTML after
+/// it render live. Here the delimiter is a backtick run one longer than the
+/// longest run inside the text, so no run inside can close the span. Line
+/// endings become spaces so the span stays on one line and a blank line
+/// cannot end the paragraph. One space pads each side when the text starts or
+/// ends with a backtick, or when it starts and ends with a space (CommonMark
+/// strips exactly one such space pair). Empty text renders as `` ` ` ``.
+///
+/// Ordinary text without backticks renders as `` `text` ``, byte-identical to
+/// the plain `format!("`{text}`")` it replaces. The result is for block and
+/// list contexts; a GFM table cell additionally needs `|` escaped as `\|`.
+pub(crate) fn code_span(text: &str) -> String {
+    let text = one_line(text);
+    if text.is_empty() {
+        return "` `".to_string();
+    }
+    let mut longest_run = 0usize;
+    let mut run = 0usize;
+    for ch in text.chars() {
+        if ch == '`' {
+            run += 1;
+            longest_run = longest_run.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    let fence = "`".repeat(longest_run + 1);
+    let edge_backtick = text.starts_with('`') || text.ends_with('`');
+    let stripped_space_pair =
+        text.starts_with(' ') && text.ends_with(' ') && text.chars().any(|ch| ch != ' ');
+    let pad = if edge_backtick || stripped_space_pair {
+        " "
+    } else {
+        ""
+    };
+    format!("{fence}{pad}{text}{pad}{fence}")
+}
+
+/// Content of `text` when the whole of it is exactly one inline code span as
+/// [`code_span`] renders it, else `None`. It inverts [`code_span`] for text
+/// without line endings, so a renderer reading a section back from a posted
+/// comment body recovers the original value, backticks included.
+pub(crate) fn code_span_content(text: &str) -> Option<String> {
+    let fence_len = text.chars().take_while(|ch| *ch == '`').count();
+    if fence_len == 0 || text.len() < fence_len * 2 {
+        return None;
+    }
+    // Backticks are one byte each, so byte offsets from the fence length are
+    // exact; `get` refuses a split inside a multi-byte character.
+    let fence = text.get(..fence_len)?;
+    let inner = text.get(fence_len..text.len() - fence_len)?;
+    let closing = text.get(text.len() - fence_len..)?;
+    if closing != fence || inner.is_empty() || inner.ends_with('`') {
+        return None;
+    }
+    // A run of exactly `fence_len` backticks inside would close the span early.
+    let mut run = 0usize;
+    for ch in inner.chars().chain(std::iter::once(' ')) {
+        if ch == '`' {
+            run += 1;
+        } else {
+            if run == fence_len {
+                return None;
+            }
+            run = 0;
+        }
+    }
+    let content = match inner
+        .strip_prefix(' ')
+        .and_then(|rest| rest.strip_suffix(' '))
+    {
+        Some(stripped) if inner.chars().any(|ch| ch != ' ') => stripped,
+        _ => inner,
+    };
+    Some(content.to_string())
+}
+
+/// [`code_span`] for a GFM table cell: every `|` becomes `\|`, so a pipe in
+/// the text cannot split the cell. GFM unescapes `\|` inside the cell before
+/// it parses the code span, so the span still shows a bare `|`.
+pub(crate) fn table_code_span(text: &str) -> String {
+    code_span(text).replace('|', "\\|")
+}
+
+/// Untrusted prose for a Markdown block (a comment section or a paragraph):
+/// neutralises `@mention` and raw HTML outside code spans. See [`neutralize`].
+pub(crate) fn prose(text: &str) -> String {
+    neutralize(text, false)
+}
+
+/// Untrusted prose on one line (a list item or a heading): line endings
+/// become spaces so the text cannot start a new block, then [`prose`].
+pub(crate) fn inline_prose(text: &str) -> String {
+    neutralize(&one_line(text), false)
+}
+
+/// [`inline_prose`] that also renders `*`, `_`, `[` and `]` literally outside
+/// code spans, for free text that must not turn into emphasis or a link.
+pub(crate) fn inline_prose_literal(text: &str) -> String {
+    neutralize(&one_line(text), true)
+}
+
+/// [`inline_prose`] for a GFM table cell: `|` also becomes `\|`.
+pub(crate) fn table_cell_text(text: &str) -> String {
+    inline_prose(text).replace('|', "\\|")
+}
+
+fn one_line(text: &str) -> String {
+    text.replace("\r\n", " ").replace(['\r', '\n'], " ")
+}
+
+/// Neutralise untrusted prose outside code spans (#4468).
+///
+/// `@` followed by a username character gains a word joiner (U+2060), so
+/// GitHub renders the text but does not notify the named user or team, and
+/// `<` becomes `&lt;`, so no raw HTML or autolink renders. A code span, as
+/// CommonMark reads it, is copied unchanged: its content is already literal,
+/// and ripr renders its own spans through [`code_span`]. A backslash escape
+/// is copied as a pair, so an escaped backtick opens no span; `\@` is not a
+/// pair, since the escaped `@` still renders as a mention. The result is
+/// idempotent, so text read back from a posted body can be rendered again.
+fn neutralize(text: &str, literal_markup: bool) -> String {
+    let chars = text.chars().collect::<Vec<_>>();
+    let mut out = String::with_capacity(text.len());
+    let mut index = 0usize;
+    while let Some(&ch) = chars.get(index) {
+        match ch {
+            '\\' => match chars.get(index + 1) {
+                Some(&next) if next.is_ascii_punctuation() && next != '@' => {
+                    out.push(ch);
+                    out.push(next);
+                    index += 2;
+                }
+                _ => {
+                    out.push(ch);
+                    index += 1;
+                }
+            },
+            '`' => {
+                let run = backtick_run(&chars, index);
+                let end = closing_backtick_run(&chars, index + run, run).unwrap_or(index + run);
+                out.extend(chars.get(index..end).unwrap_or_default());
+                index = end;
+            }
+            '<' => {
+                out.push_str("&lt;");
+                index += 1;
+            }
+            '@' => {
+                out.push('@');
+                if chars
+                    .get(index + 1)
+                    .is_some_and(|next| next.is_ascii_alphanumeric() || *next == '-')
+                {
+                    out.push('\u{2060}');
+                }
+                index += 1;
+            }
+            '*' | '_' | '[' | ']' if literal_markup => {
+                out.push('\\');
+                out.push(ch);
+                index += 1;
+            }
+            _ => {
+                out.push(ch);
+                index += 1;
+            }
+        }
+    }
+    out
+}
+
+fn backtick_run(chars: &[char], start: usize) -> usize {
+    chars
+        .iter()
+        .skip(start)
+        .take_while(|ch| **ch == '`')
+        .count()
+}
+
+/// End (exclusive) of the first run of exactly `len` backticks at or after
+/// `from`, which closes a code span opened by a run of `len`.
+fn closing_backtick_run(chars: &[char], from: usize, len: usize) -> Option<usize> {
+    let mut index = from;
+    while index < chars.len() {
+        let run = backtick_run(chars, index);
+        if run == len {
+            return Some(index + run);
+        }
+        index += run.max(1);
+    }
+    None
+}
+
 /// One-line disclosure emitted in place of a PowerShell variant when the bash
 /// command is unsupported or compound and no honest translation exists
 /// (#2628). Standalone emitters append the sentence period; emitters that
 /// name the command append `: <command>`.
 pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
     "PowerShell form unavailable for unsupported or compound commands";
+
+/// What a generated-command surface prints after a Bash command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum PowershellForm {
+    /// The command runs unchanged in PowerShell; print no second form. A
+    /// byte-identical PowerShell block read as a second, different command
+    /// (onboarding re-walk F60-12).
+    SameAsBash,
+    /// PowerShell needs this different form.
+    Translated(String),
+    /// No honest translation exists (a compound command); print
+    /// [`POWERSHELL_UNAVAILABLE_DISCLOSURE`].
+    Unavailable,
+}
+
+/// Classify [`powershell_command`]'s result for one Bash command. Every
+/// generated-command surface prints a PowerShell form only for
+/// `Translated`, so the choice is made here once.
+pub(crate) fn powershell_form(command: &str) -> PowershellForm {
+    match powershell_command(command) {
+        None => PowershellForm::Unavailable,
+        Some(line) if line == command => PowershellForm::SameAsBash,
+        Some(line) => PowershellForm::Translated(line),
+    }
+}
+
+/// Advisory human forms for the current ledger selection. Raw verification
+/// and receipt strings retain their identity; this is not a CommandSpec and
+/// grants no execution, eligibility, or receipt authority.
+pub(crate) fn selected_command_context(
+    root: &std::path::Path,
+    verify: &str,
+    receipt: &str,
+) -> serde_json::Value {
+    let cwd = root
+        .canonicalize()
+        .ok()
+        .filter(|path| path.is_dir())
+        .and_then(|path| crate::output::path::command_root_display(root, &path).ok());
+    serde_json::json!({
+        "authority": "advisory_display_only",
+        "cwd": cwd,
+        "verify": rooted_command_forms(cwd.as_deref(), verify),
+        "receipt": rooted_command_forms(cwd.as_deref(), receipt),
+    })
+}
+
+fn rooted_command_forms(cwd: Option<&str>, command: &str) -> serde_json::Value {
+    let unavailable = |recovery: &str| {
+        serde_json::json!({
+            "bash": null, "powershell": null, "recovery": recovery,
+        })
+    };
+    let Some(cwd) = cwd else {
+        return unavailable(
+            "Selected root is unavailable or cannot be represented losslessly; restore access or use a UTF-8 alias and rerun first-pr with --root naming the existing repository.",
+        );
+    };
+    if cwd.contains(['\r', '\n']) || command.contains(['\r', '\n']) {
+        return unavailable(
+            "Selected-root command form is unavailable for multiline paths or commands; use a single-line alias or command and regenerate the packet.",
+        );
+    }
+    // Bash argument syntax has its own bounded decision: PowerShell
+    // translation eligibility must not suppress valid Bash arguments.
+    if command.trim().is_empty() || has_unsupported_shell_syntax(command.trim(), true) {
+        return unavailable(
+            "Selected-root command form is unavailable for unsupported shell syntax; inspect the raw command in JSON, run it from the selected repository, and preserve its exit status before recording a receipt.",
+        );
+    }
+    let root = crate::agent::loop_commands::shell_arg(cwd);
+    serde_json::json!({
+        "bash": format!("(cd -P -- {root} && {command})"),
+        "powershell": null,
+        "recovery": "PowerShell selected-root form is unavailable because generic shell text does not establish native exit-status semantics. Use the Bash form, or inspect the raw command in JSON and run it from the selected repository in PowerShell, checking its result before recording a receipt.",
+    })
+}
+
+/// Consume a carried presentation context, without interpreting raw command
+/// strings again. Returning false preserves the explicit legacy no-context
+/// route. A present but incomplete context under-emits instead of falling back
+/// to an unrooted command.
+pub(crate) fn push_context_command(
+    out: &mut String,
+    context: Option<&serde_json::Value>,
+    step: &str,
+    label: &str,
+) -> bool {
+    let Some(context) = context else {
+        return false;
+    };
+    let forms = context.get(step);
+    let bash = forms
+        .and_then(|value| value.get("bash"))
+        .and_then(serde_json::Value::as_str);
+    let powershell = forms
+        .and_then(|value| value.get("powershell"))
+        .and_then(serde_json::Value::as_str);
+    if let Some(command) = bash {
+        out.push_str(&format!("{label}: {}\n", code_span(command)));
+    }
+    if let Some(command) = powershell {
+        out.push_str(&format!("{label} (PowerShell): {}\n", code_span(command)));
+    }
+    if bash.is_none() || powershell.is_none() {
+        let recovery = forms.and_then(|value| value.get("recovery"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("Command context is unavailable; rerun first-pr with --root naming the existing repository.");
+        let unavailable_label = if bash.is_some() {
+            format!("{label} (PowerShell)")
+        } else {
+            label.to_string()
+        };
+        out.push_str(&format!(
+            "{unavailable_label} unavailable: {}\n",
+            inline_prose(recovery)
+        ));
+    }
+    true
+}
+
+/// Statement that makes PowerShell decode the captured producer stdout as
+/// UTF-8. PowerShell decodes native stdout with `[Console]::OutputEncoding`,
+/// which is the OEM code page (437, 850, ...) in Windows PowerShell 5.1 and
+/// in pwsh without the UTF-8 system locale, so a non-ASCII byte such as the
+/// `—` in check JSON was re-encoded as `ΓÇö` before the BOM-free write and
+/// broke `agent verify` content commitments. The setter fails without an
+/// attached console; the `catch` keeps the command running in that case,
+/// where there is also no console code page to misdecode through.
+const POWERSHELL_UTF8_STDOUT: &str =
+    "try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; ";
+
+/// Saves the session's console encoding before [`POWERSHELL_UTF8_STDOUT`]
+/// so the capture can restore it: the setting is process-wide, and a pasted
+/// line must not leave later native tools in a long-lived session decoding
+/// their OEM output as UTF-8.
+const POWERSHELL_SAVE_ENCODING: &str = "$riprEncoding = [Console]::OutputEncoding; ";
+
+/// Restores the saved encoding in a `finally`, so a throwing capture
+/// restores it too.
+const POWERSHELL_RESTORE_ENCODING: &str =
+    " finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }";
 
 /// Translate a bash-rendered advisory command into its PowerShell form.
 ///
@@ -66,6 +407,19 @@ pub(crate) const POWERSHELL_UNAVAILABLE_DISCLOSURE: &str =
 ///   block — so in a composed fence a failed snapshot stops the sequence
 ///   before its outcome command — while leaving an interactive session open
 ///   where `exit` would close it (PR #3625 follow-up review).
+/// - The captured text is normalized back to LF before the write:
+///   `Out-String` reflows producer stdout to CRLF line endings, which
+///   rewrote every byte of a pasted snapshot and broke `agent verify`
+///   content commitments (issue #3966). Producers emit LF-only stdout, so
+///   collapsing CRLF pairs restores the exact producer bytes the
+///   commitment was computed over; the write then preserves them with
+///   BOM-free UTF-8. A producer emitting raw CR bytes would need a
+///   different transport — none exists on main.
+/// - Capture decodes stdout as UTF-8 ([`POWERSHELL_UTF8_STDOUT`]), and the
+///   write target resolves against the PowerShell location: .NET resolves a
+///   relative path against the process directory, which `Set-Location` does
+///   not move, so `cd repo` followed by the pasted line wrote the artifact
+///   into the directory PowerShell started in.
 ///
 /// cmd.exe has no translation: it has no quoting form that keeps an argv token
 /// literal, so a generated command is deliberately not offered for it. This
@@ -81,6 +435,7 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
         return None;
     }
     let command = command.replace("'\\''", "''");
+    let command = powershell_safe_quotes(&command)?;
     if let Some(index) = powershell_redirect_offset(&command) {
         let invocation = invoke_quoted_program(command[..index].trim_end());
         let target = command[index + 1..].trim();
@@ -93,10 +448,70 @@ pub(crate) fn powershell_command(command: &str) -> Option<String> {
         }
         let output = powershell_literal(target);
         return Some(format!(
-            "$ripr = (({invocation}) | Out-String); if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText({output}, $ripr, [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
+            "{POWERSHELL_SAVE_ENCODING}{POWERSHELL_UTF8_STDOUT}try {{ $ripr = (({invocation}) | Out-String) }}{POWERSHELL_RESTORE_ENCODING}; if ($LASTEXITCODE -eq 0) {{ [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath({output}), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }} else {{ throw \"ripr exited with code $LASTEXITCODE\" }}"
         ));
     }
     Some(invoke_quoted_program(&command))
+}
+
+/// PowerShell's tokenizer treats U+2018-U+201B as single-quote characters and
+/// U+201C-U+201E as double-quote characters, exactly like ASCII `'` and `"`.
+/// Bash treats all of them as ordinary data, and `shell_arg` leaves them
+/// unescaped inside its `'...'` span. Pasted into PowerShell, a lone `’` in a
+/// path or ref (`Steven’s repo`, macOS and Word-style names) therefore closes
+/// the literal early: the line fails to parse, and a crafted name such as
+/// `x’; calc; ‘y` runs `calc`.
+///
+/// Inside a single-quoted span the fix is PowerShell's own doubling idiom, which
+/// applies to every quote character in the set (a pair of quote characters is
+/// one literal character, so doubling `’` yields `’`). A typographic double
+/// quote inside a double-quoted span has no such rewrite that bash would read
+/// the same way, so the translation withholds there. Outside quotes these
+/// characters never reach this function: [`is_compound_bash_command`] already
+/// withholds any unlisted character.
+///
+/// Runs after the `'\''` rewrite, so `''` inside a span is an escaped
+/// apostrophe and stays as is.
+fn powershell_safe_quotes(command: &str) -> Option<String> {
+    let mut out = String::with_capacity(command.len());
+    let mut chars = command.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+    while let Some(ch) = chars.next() {
+        if in_single_quote {
+            out.push(ch);
+            if ch == '\'' {
+                if chars.peek() == Some(&'\'') {
+                    out.extend(chars.next());
+                } else {
+                    in_single_quote = false;
+                }
+            } else if is_powershell_single_quote_lookalike(ch) {
+                out.push(ch);
+            }
+        } else if in_double_quote {
+            if is_powershell_double_quote_lookalike(ch) {
+                return None;
+            }
+            in_double_quote = ch != '"';
+            out.push(ch);
+        } else {
+            in_single_quote = ch == '\'';
+            in_double_quote = ch == '"';
+            out.push(ch);
+        }
+    }
+    Some(out)
+}
+
+/// A non-ASCII character PowerShell reads as a single quote (U+2018-U+201B).
+fn is_powershell_single_quote_lookalike(ch: char) -> bool {
+    matches!(ch, '\u{2018}'..='\u{201b}')
+}
+
+/// A non-ASCII character PowerShell reads as a double quote (U+201C-U+201E).
+fn is_powershell_double_quote_lookalike(ch: char) -> bool {
+    matches!(ch, '\u{201c}'..='\u{201e}')
 }
 
 /// A quoted program path in command position is a string expression in
@@ -182,10 +597,18 @@ fn powershell_redirect_offset(command: &str) -> Option<usize> {
 /// mistaken for part of an artifact path. Quoted line separators are argument
 /// data and keep the normal translation path.
 fn is_compound_bash_command(command: &str) -> bool {
+    has_unsupported_shell_syntax(command, false)
+}
+
+/// Share the quote/expansion boundary while allowing literal `=` in Bash
+/// arguments only. Rooted Bash forms never admit redirection or assignments
+/// before the program; PowerShell retains its existing translation boundary.
+fn has_unsupported_shell_syntax(command: &str, rooted_bash: bool) -> bool {
     let chars: Vec<char> = command.chars().collect();
     let mut index = 0;
     let mut in_single_quote = false;
     let mut in_double_quote = false;
+    let mut argument_position = false;
     while index < chars.len() {
         let ch = chars[index];
         let next = chars.get(index + 1).copied();
@@ -211,21 +634,35 @@ fn is_compound_bash_command(command: &str) -> bool {
             }
             index += 1;
         } else {
+            if ch.is_ascii_whitespace() && index > 0 {
+                argument_position = true;
+            }
             match ch {
                 '\'' => in_single_quote = true,
                 '"' => in_double_quote = true,
                 '\\' => match chars.get(index + 1).copied() {
-                    // `\'` outside quotes closes, escapes, and reopens a
-                    // single-quoted region (`'it'\''s'`); it is quoting, not
-                    // a compound form.
-                    Some('\'') => index += 1,
+                    // `\'` outside quotes is quoting only as the middle of
+                    // the close-escape-reopen idiom `'\''` (`'it'\''s'`),
+                    // which `powershell_command` rewrites to `''`. A bare
+                    // `a\'b` is one Bash argument but an unmatched quote in
+                    // PowerShell, so it withholds.
+                    Some('\'')
+                        if index > 0
+                            && chars[index - 1] == '\''
+                            && chars.get(index + 2) == Some(&'\'') =>
+                    {
+                        index += 1;
+                    }
                     // Any other escape (`\;`, `\&`, `\ `, `\\`...) changes
                     // how the shells tokenize the line.
                     Some(_) => return true,
-                    None => index += 1,
+                    None => return true,
                 },
                 ';' | '\n' | '\r' => return true,
                 '>' => {
+                    if rooted_bash {
+                        return true;
+                    }
                     // Only the spaced ` > ` operator translates (detected by
                     // `powershell_redirect_offset`); any other `>` form
                     // (`2>err`, `>&2`, `>>`, `a>b`) tokenizes differently
@@ -251,6 +688,7 @@ fn is_compound_bash_command(command: &str) -> bool {
                 '{' | '}' => return true,
                 '(' | ')' => return true,
                 '@' => return true,
+                '=' if rooted_bash && argument_position => {}
                 '~' if index == 0
                     || chars
                         .get(index - 1)
@@ -280,12 +718,281 @@ fn powershell_literal(value: &str) -> String {
     if value.len() >= 2 && value.starts_with('\'') && value.ends_with('\'') {
         return value.to_string();
     }
-    format!("'{}'", value.replace('\'', "''"))
+    let mut literal = String::from("'");
+    for ch in value.chars() {
+        literal.push(ch);
+        if ch == '\'' || is_powershell_single_quote_lookalike(ch) {
+            literal.push(ch);
+        }
+    }
+    literal.push('\'');
+    literal
+}
+
+/// The PowerShell form of one generated command for plain-text surfaces, which
+/// print a bash command with no fenced PowerShell block. `Some` only when
+/// PowerShell needs a different line (an apostrophe or typographic quote in a
+/// path or ref, a `>` redirect); a command that runs unchanged, or has no
+/// honest translation, prints nothing extra. Same translation as the fenced
+/// surfaces ([`powershell_form`]); no second quoting implementation.
+pub(crate) fn powershell_text_variant(command: &str) -> Option<String> {
+    match powershell_form(command) {
+        PowershellForm::Translated(line) => Some(line),
+        PowershellForm::SameAsBash | PowershellForm::Unavailable => None,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rooted_bash_accepts_literal_argument_equals_without_powershell_translation() {
+        let command = "cargo test example -- --test-threads=1";
+        assert!(powershell_command(command).is_none());
+        let forms = rooted_command_forms(Some("/selected repo"), command);
+        assert_eq!(
+            forms["bash"],
+            "(cd -P -- '/selected repo' && cargo test example -- --test-threads=1)"
+        );
+        assert!(forms["powershell"].is_null());
+        assert!(
+            forms["recovery"]
+                .as_str()
+                .is_some_and(|text| text.contains("exit-status"))
+        );
+    }
+
+    #[test]
+    fn rooted_bash_withholds_unbounded_or_malformed_commands() {
+        for command in [
+            "",
+            "   ",
+            "cargo test\nexample",
+            "cargo test\rexample",
+            "cargo test && true",
+            "cargo test || true",
+            "cargo test; true",
+            "cargo test &",
+            "cargo test | cat",
+            "cargo test > out",
+            "cargo test 2>out",
+            "cargo test < input",
+            "cargo test $(true)",
+            "cargo test `true`",
+            "cargo test $HOME",
+            "cargo test *.rs",
+            "cargo test 'unterminated",
+            "cargo test \"unterminated",
+            "cargo test # comment",
+            "MODE=1 cargo test",
+            " MODE=1 cargo test",
+        ] {
+            let forms = rooted_command_forms(Some("/selected"), command);
+            assert!(forms["bash"].is_null(), "must withhold {command:?}");
+            assert!(forms["powershell"].is_null());
+        }
+        for command in [
+            "cargo test -- --test-threads=1",
+            "cargo test 'literal=two words'",
+            "cargo test 'it'\\''s=value'",
+            "cargo test \"literal=two words\"",
+        ] {
+            assert!(rooted_command_forms(Some("/selected"), command)["bash"].is_string());
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rooted_bash_executes_from_selected_directory_preserving_arguments_and_status()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let selected = native_proof_root("rooted-bash-selected").map_err(std::io::Error::other)?;
+        let _selected_guard = RemoveOnDrop(selected.clone());
+        let foreign = native_proof_root("rooted-bash-foreign").map_err(std::io::Error::other)?;
+        let _foreign_guard = RemoveOnDrop(foreign.clone());
+        std::fs::write(
+            selected.join("verify"),
+            "printf '%s\\n' \"$PWD\" \"$1\" \"$2\"\nexit 23\n",
+        )?;
+        let command = "bash ./verify --test-threads=1 'literal=two words'";
+        let root = selected.canonicalize()?;
+        let forms = rooted_command_forms(root.to_str(), command);
+        let bash = forms["bash"].as_str().ok_or("missing Bash form")?;
+        let stdout_path = foreign.join("stdout");
+        let mut command = std::process::Command::new("bash");
+        command
+            .args(["-c", bash])
+            .current_dir(&foreign)
+            .stdout(std::fs::File::create(&stdout_path)?)
+            .stderr(std::fs::File::create(foreign.join("stderr"))?);
+        let mut child = crate::process_owner::OwnedProcess::spawn(command)?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if std::time::Instant::now() >= deadline {
+                child.terminate_tree().map_err(std::io::Error::other)?;
+                return Err("rooted Bash fixture exceeded its deadline".into());
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert_eq!(status.code(), Some(23));
+        assert_eq!(
+            std::fs::read_to_string(stdout_path)?,
+            format!("{}\n--test-threads=1\nliteral=two words\n", root.display())
+        );
+        assert!(forms["powershell"].is_null());
+        Ok(())
+    }
+
+    #[test]
+    fn rooted_bash_withholds_unquoted_tildes_in_equals_arguments() {
+        // A failed guarded `~` arm still reaches the scanner's final rejection.
+        // Keep these as parser data: no shell invocation is needed to pin it.
+        for command in ["tool KEY=~", "tool KEY=before:~", "tool MODE=~/fixture"] {
+            let forms = rooted_command_forms(Some("/selected"), command);
+            assert!(forms["bash"].is_null(), "must withhold {command:?}");
+        }
+        for command in [
+            "tool --test-threads=1",
+            "tool 'KEY=~'",
+            "tool KEY='~'",
+            "tool \"KEY=~\"",
+        ] {
+            assert!(rooted_command_forms(Some("/selected"), command)["bash"].is_string());
+        }
+    }
+
+    /// Every case must read back unchanged, and its span must hold no
+    /// backtick run as long as its fence (else the span closes early).
+    fn assert_code_span(text: &str, expected: &str) {
+        let rendered = code_span(text);
+        assert_eq!(rendered, expected, "code span for {text:?}");
+        let fence_len = rendered.chars().take_while(|ch| *ch == '`').count();
+        let inner = rendered
+            .get(fence_len..rendered.len() - fence_len)
+            .unwrap_or_default();
+        let mut run = 0usize;
+        for ch in inner.chars().chain(std::iter::once(' ')) {
+            if ch == '`' {
+                run += 1;
+            } else {
+                assert_ne!(run, fence_len, "inner run closes {rendered:?}");
+                run = 0;
+            }
+        }
+        let one_line = text.replace("\r\n", " ").replace(['\r', '\n'], " ");
+        let expected_content = if one_line.is_empty() {
+            " ".to_string()
+        } else {
+            one_line
+        };
+        assert_eq!(
+            code_span_content(&rendered),
+            Some(expected_content),
+            "round trip for {text:?}"
+        );
+    }
+
+    #[test]
+    fn code_span_keeps_plain_text_byte_identical() {
+        assert_code_span(
+            "amount >= discount_threshold",
+            "`amount >= discount_threshold`",
+        );
+        assert_code_span("src/lib.rs:12", "`src/lib.rs:12`");
+        assert_code_span("a | b", "`a | b`");
+    }
+
+    #[test]
+    fn code_span_single_backtick_cannot_close_the_span() {
+        assert_code_span(
+            "\"x` @octocat <img src=x onerror=alert(1)> | y\" (equality boundary)",
+            "``\"x` @octocat <img src=x onerror=alert(1)> | y\" (equality boundary)``",
+        );
+    }
+
+    #[test]
+    fn code_span_double_backtick_run_gets_a_longer_fence() {
+        assert_code_span("a``b @octocat", "```a``b @octocat```");
+        assert_code_span("a`b``c```d", "````a`b``c```d````");
+    }
+
+    #[test]
+    fn code_span_pads_text_that_starts_or_ends_with_a_backtick() {
+        assert_code_span("`x", "`` `x ``");
+        assert_code_span("x`", "`` x` ``");
+        assert_code_span("`", "`` ` ``");
+        assert_code_span("``x``", "``` ``x`` ```");
+    }
+
+    #[test]
+    fn code_span_replaces_line_endings_with_spaces() {
+        assert_code_span("a\nb\r\nc\rd", "`a b c d`");
+        assert_code_span("x\n\n@octocat <img>", "`x  @octocat <img>`");
+    }
+
+    #[test]
+    fn code_span_preserves_an_edge_space_pair_and_empty_text() {
+        assert_code_span(" a ", "`  a  `");
+        assert_code_span("", "` `");
+        assert_eq!(code_span_content("plain"), None);
+        assert_eq!(code_span_content("`a` and `b`"), None);
+        assert_eq!(code_span_content("``a`"), None);
+        assert_eq!(code_span_content("`é"), None);
+    }
+
+    #[test]
+    fn table_code_span_escapes_pipes_after_choosing_the_fence() {
+        assert_eq!(table_code_span("a | b"), "`a \\| b`");
+        assert_eq!(table_code_span("x`|@y"), "``x`\\|@y``");
+        assert_eq!(table_code_span("plain"), "`plain`");
+    }
+
+    #[test]
+    fn prose_neutralises_mentions_and_raw_html() {
+        assert_eq!(prose("ping @octocat now"), "ping @\u{2060}octocat now");
+        assert_eq!(prose("@org/team"), "@\u{2060}org/team");
+        assert_eq!(prose("<script>x</script>"), "&lt;script>x&lt;/script>");
+        // `@` without a username character after it stays as written.
+        assert_eq!(prose("a @ b, a@"), "a @ b, a@");
+        assert_eq!(prose("line\n@octocat"), "line\n@\u{2060}octocat");
+        // An escaped `@` still renders as a mention, so it is neutralised.
+        assert_eq!(prose("\\@octocat"), "\\@\u{2060}octocat");
+    }
+
+    #[test]
+    fn prose_leaves_text_inside_code_spans_untouched() {
+        let span = code_span("a` @octocat <img>");
+        let text = format!("Add an assertion for {span} and tell @octocat <b>");
+        assert_eq!(
+            prose(&text),
+            format!("Add an assertion for {span} and tell @\u{2060}octocat &lt;b>")
+        );
+        // An unclosed backtick run is literal text, so what follows it is not
+        // protected by it.
+        assert_eq!(prose("a ` @octocat"), "a ` @\u{2060}octocat");
+        assert_eq!(prose("``x` @octocat"), "``x` @\u{2060}octocat");
+        // An escaped backtick opens no span.
+        assert_eq!(prose("\\`@octocat`"), "\\`@\u{2060}octocat`");
+    }
+
+    #[test]
+    fn prose_is_idempotent() {
+        let once = prose("@octocat <img> `@x` \\@y");
+        assert_eq!(prose(&once), once);
+    }
+
+    #[test]
+    fn inline_and_table_prose_stay_on_one_line_and_in_one_cell() {
+        assert_eq!(inline_prose("a\r\n# b\n@c"), "a # b @\u{2060}c");
+        assert_eq!(table_cell_text("a | @b\n<i>"), "a \\| @\u{2060}b &lt;i>");
+        assert_eq!(
+            inline_prose_literal("*a* [l](u) `*k*` snake_case"),
+            "\\*a\\* \\[l\\](u) `*k*` snake\\_case"
+        );
+    }
 
     #[test]
     fn markdown_text_escapes_backslashes() {
@@ -305,6 +1012,16 @@ mod tests {
     }
 
     #[test]
+    fn powershell_command_withholds_ansi_c_quoted_arguments() {
+        // `shell_arg` spells control characters as `"$(printf '\033')"`; PowerShell has no
+        // translation for that form, so no variant is offered (#6309).
+        assert_eq!(
+            powershell_command("ripr explain --root 'esc'\"$(printf '\\033')\"'dir' --base main"),
+            None
+        );
+    }
+
+    #[test]
     fn powershell_command_handles_unredirected_quoted_and_unicode_commands() {
         assert_eq!(
             powershell_command("ripr check --root 'a > b'"),
@@ -312,7 +1029,7 @@ mod tests {
         );
         assert_eq!(
             powershell_command("ripr check --root 'café' > 'résumé.json'"),
-            Some("$ripr = ((ripr check --root 'café') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root 'café') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('résumé.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -332,7 +1049,7 @@ mod tests {
     fn powershell_command_finds_real_redirect_after_double_quoted_argument() {
         assert_eq!(
             powershell_command("ripr check --root \"café > owner's repo\" > 'résumé.json'"),
-            Some("$ripr = ((ripr check --root \"café > owner's repo\") | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root \"café > owner's repo\") | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('résumé.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -340,7 +1057,7 @@ mod tests {
     fn powershell_command_keeps_double_quote_literal_inside_single_quotes() {
         assert_eq!(
             powershell_command("cargo test 'a \" > b' > evidence.txt"),
-            Some("$ripr = ((cargo test 'a \" > b') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('evidence.txt', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((cargo test 'a \" > b') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('evidence.txt'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -368,6 +1085,10 @@ mod tests {
             powershell_command(bash),
             Some("ripr receipt write --gap 'it''s'".to_string())
         );
+        // A bare escaped apostrophe outside the idiom is one Bash argument
+        // (`a'b`) but an unmatched quote in PowerShell: withhold it.
+        assert_eq!(powershell_command("cargo test a\\'b"), None);
+        assert_eq!(powershell_command("cargo test 'a'\\'b"), None);
         // A quoted `>` inside an argument must not be mistaken for a redirect.
         assert_eq!(
             powershell_command("ripr receipt write --gap 'gap > file'"),
@@ -388,7 +1109,7 @@ mod tests {
         );
         assert_eq!(
             powershell_command("'my tools\\recorder.exe' --gap > 'out\\after.json'"),
-            Some("$ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out\\after.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((& 'my tools\\recorder.exe' --gap) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('out\\after.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
         assert_eq!(
             powershell_command("cargo test --gap"),
@@ -413,7 +1134,7 @@ mod tests {
             powershell_command(
                 "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json"
             ),
-            Some("$ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/pilot/after.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('target/ripr/pilot/after.repo-exposure.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -428,7 +1149,7 @@ mod tests {
         assert_eq!(powershell_command("ripr check --root . > it's.json"), None);
         assert_eq!(
             powershell_command("ripr check --root . > 'it'\\''s.json'"),
-            Some("$ripr = ((ripr check --root .) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('it''s.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root .) | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('it''s.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -497,7 +1218,7 @@ mod tests {
         // branch throws with the invocation's exit status instead of exiting.
         assert!(
             line.contains(
-                "if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/agent-packet.json', $ripr, [System.Text.UTF8Encoding]::new($false)) }"
+                "if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('target/ripr/workflow/agent-packet.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) }"
             ),
             "write must be guarded by the success branch:\n{line}"
         );
@@ -514,6 +1235,25 @@ mod tests {
                 || line.contains("if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText("),
             "no unguarded WriteAllText may appear:\n{line}"
         );
+        Ok(())
+    }
+
+    /// The redirect write must restore LF bytes before writing (issue #3966):
+    /// `Out-String` reflows captured producer stdout to CRLF, which rewrote
+    /// every byte of a pasted snapshot and broke `agent verify` content
+    /// commitments, while the bash `>` form preserves bytes. Producers emit
+    /// LF-only stdout, so collapsing CRLF pairs restores the exact producer
+    /// bytes. String-pinned here; the executed proof lives in the #3937
+    /// native PowerShell packet (V1 row on the fixed template).
+    #[test]
+    fn powershell_command_redirect_write_restores_lf_bytes() -> Result<(), String> {
+        let line = powershell_command("ripr check --root . --json > out.json")
+            .ok_or_else(|| "simple redirect must translate".to_string())?;
+        if !line.contains("$ripr.Replace(\"`r`n\", \"`n\")") {
+            return Err(format!(
+                "redirect write must collapse Out-String CRLF reflow back to LF:\n{line}"
+            ));
+        }
         Ok(())
     }
 
@@ -601,7 +1341,7 @@ mod tests {
     fn powershell_command_keeps_redirect_after_quoted_newline() {
         assert_eq!(
             powershell_command("ripr check --root 'café\nrepo' > 'résumé.json'"),
-            Some("$ripr = ((ripr check --root 'café\nrepo') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('résumé.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
+            Some("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr check --root 'café\nrepo') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('résumé.json'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }".to_string())
         );
     }
 
@@ -629,7 +1369,7 @@ fn main() -> ExitCode {
             fs::write(&record, &out).unwrap();
         }
     }
-    println!("RECORDER_OK");
+    println!("RECORDER_OK café —");
     let code: u8 = env::var("RIPR_EXIT_CODE")
         .ok()
         .and_then(|value| value.parse().ok())
@@ -637,6 +1377,21 @@ fn main() -> ExitCode {
     ExitCode::from(code)
 }
 "#;
+
+    /// Exact stdout of [`NATIVE_PROOF_RECORDER`]: UTF-8 with non-ASCII text,
+    /// LF-terminated as `println!` writes it.
+    #[cfg(windows)]
+    const RECORDER_STDOUT: &[u8] = "RECORDER_OK café —\n".as_bytes();
+
+    /// Removes a native-proof root when the case ends, pass or fail, so
+    /// repeated runs do not accumulate compiled recorders under the temp dir.
+    struct RemoveOnDrop(std::path::PathBuf);
+
+    impl Drop for RemoveOnDrop {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
 
     /// Disposable root for one native-proof case. Unique per call (timestamp
     /// plus pid) so parallel tests never share it.
@@ -697,6 +1452,7 @@ fn main() -> ExitCode {
     #[test]
     fn native_proof_recorder_source_compiles() -> Result<(), String> {
         let root = native_proof_root("compile")?;
+        let _cleanup = RemoveOnDrop(root.clone());
         let exe = compile_native_proof_recorder(&root)?;
         assert!(exe.exists(), "recorder executable missing after compile");
         Ok(())
@@ -758,9 +1514,13 @@ fn main() -> ExitCode {
         use crate::agent::loop_commands::shell_arg;
 
         let root = native_proof_root("argv")?;
+        let _cleanup = RemoveOnDrop(root.clone());
         let recorder = compile_native_proof_recorder(&root)?;
-        resolve_pwsh("pwsh").map_err(|error| {
-            format!("pwsh is required for the native proof and was not found: failing closed instead of skipping: {error}")
+        resolve_pwsh("pwsh").map_err(|reason| {
+            format!(
+                "pwsh is required for the native proof and was not found ({reason}): \
+                 failing closed instead of skipping"
+            )
         })?;
         let recorder_arg = shell_arg(
             recorder
@@ -821,11 +1581,102 @@ fn main() -> ExitCode {
         if artifact_bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
             return Err("artifact carries a UTF-8 BOM".to_string());
         }
-        if !artifact_bytes
-            .windows(b"RECORDER_OK".len())
-            .any(|window| window == b"RECORDER_OK")
-        {
-            return Err("artifact misses the recorder stdout marker".to_string());
+        // Byte-exact: `Out-String` ends the captured line with CRLF, so this
+        // fails if the `.Replace` LF normalization is dropped or altered.
+        if artifact_bytes != RECORDER_STDOUT {
+            return Err(format!(
+                "artifact bytes {artifact_bytes:?} are not exactly the recorder's UTF-8 stdout"
+            ));
+        }
+
+        // Encoding control: under the OEM console code page Windows
+        // PowerShell 5.1 defaults to, the non-ASCII stdout bytes still reach
+        // the artifact unchanged. The same line without the UTF-8 capture
+        // statement must garble them, which proves this instrument can see
+        // the misdecode rather than passing on a UTF-8 host.
+        let oem = "[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437); ";
+        // The trailing probe prints the session's encoding after the line,
+        // so the capture must also have restored code page 437.
+        let probe = "; [Console]::OutputEncoding.CodePage";
+        let oem_output = run_pwsh_line(
+            &format!("{oem}{redirect_line}{probe}"),
+            &root,
+            &redirect_record,
+            "0",
+        )?;
+        if !oem_output.status.success() {
+            return Err(format!(
+                "translated redirect under code page 437 failed: {}",
+                String::from_utf8_lossy(&oem_output.stderr)
+            ));
+        }
+        if String::from_utf8_lossy(&oem_output.stdout).trim() != "437" {
+            return Err(format!(
+                "the capture left the session encoding changed: {:?}",
+                String::from_utf8_lossy(&oem_output.stdout)
+            ));
+        }
+        // A failing invocation throws inside the capture; `finally` must
+        // still restore the session encoding.
+        let failed_restore = run_pwsh_line(
+            &format!("{oem}try {{ {redirect_line} }} catch {{}}{probe}"),
+            &root,
+            &redirect_record,
+            "1",
+        )?;
+        if String::from_utf8_lossy(&failed_restore.stdout).trim() != "437" {
+            return Err(format!(
+                "a failing capture left the session encoding changed: {:?}",
+                String::from_utf8_lossy(&failed_restore.stdout)
+            ));
+        }
+        let oem_bytes = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to read code page 437 artifact: {error}"))?;
+        if oem_bytes != RECORDER_STDOUT {
+            return Err(format!(
+                "code page 437 capture changed the artifact bytes to {oem_bytes:?}"
+            ));
+        }
+        let unguarded = format!(
+            "{oem}{}",
+            redirect_line.replacen(POWERSHELL_UTF8_STDOUT, "", 1)
+        );
+        run_pwsh_line(&unguarded, &root, &redirect_record, "0")?;
+        let garbled = std::fs::read(&artifact)
+            .map_err(|error| format!("failed to read unguarded artifact: {error}"))?;
+        if garbled == RECORDER_STDOUT {
+            return Err(
+                "control failed: without the UTF-8 capture statement code page 437 still \
+                 produced exact bytes, so this host cannot observe the misdecode"
+                    .to_string(),
+            );
+        }
+
+        // Location control: a relative target lands under the PowerShell
+        // location after `Set-Location`, not under the directory pwsh
+        // started in, which `Set-Location` does not move.
+        let elsewhere = root.join("started-here");
+        std::fs::create_dir_all(&elsewhere)
+            .map_err(|error| format!("failed to stage start directory: {error}"))?;
+        let relative_line = powershell_command(&format!("{bash} > relative.json"))
+            .ok_or_else(|| "relative redirect must translate".to_string())?;
+        let root_literal = root
+            .to_str()
+            .ok_or_else(|| "native proof root is not UTF-8".to_string())?
+            .replace('\'', "''");
+        let located = format!("Set-Location -LiteralPath '{root_literal}'; {relative_line}");
+        let located_output = run_pwsh_line(&located, &elsewhere, &redirect_record, "0")?;
+        if !located_output.status.success() {
+            return Err(format!(
+                "relative redirect after Set-Location failed: {}",
+                String::from_utf8_lossy(&located_output.stderr)
+            ));
+        }
+        if !root.join("relative.json").is_file() || elsewhere.join("relative.json").exists() {
+            return Err(
+                "relative artifact target did not resolve against the PowerShell location"
+                    .to_string(),
+            );
         }
 
         // Failure control: a nonzero invocation throws without publishing
@@ -862,6 +1713,165 @@ fn main() -> ExitCode {
             !ghost.exists(),
             "withheld forms must take no subprocess/output action"
         );
+        Ok(())
+    }
+    /// PowerShell reads U+2018-U+201B as single quotes, so `shell_arg`'s
+    /// unescaped `’` inside `'...'` closes the literal early. The translation
+    /// doubles each one, which PowerShell reads back as the same character.
+    #[test]
+    fn powershell_command_doubles_typographic_single_quotes_inside_literals() {
+        assert_eq!(
+            powershell_command("ripr check --root 'Steven’s repo'").as_deref(),
+            Some("ripr check --root 'Steven’’s repo'")
+        );
+        assert_eq!(
+            powershell_command("ripr check --root '‘a’ ‚b‛ it'\\''s'").as_deref(),
+            Some("ripr check --root '‘‘a’’ ‚‚b‛‛ it''s'")
+        );
+        // A redirect target is a PowerShell literal too.
+        let line = powershell_command("ripr check --root . > 'out/it’s.json'").unwrap_or_default();
+        assert!(
+            line.contains("GetUnresolvedProviderPathFromPSPath('out/it’’s.json')"),
+            "redirect target must double the typographic quote:\n{line}"
+        );
+        // A plain non-ASCII path still needs no PowerShell form.
+        assert!(matches!(
+            powershell_form("ripr check --root 'café repo'"),
+            PowershellForm::SameAsBash
+        ));
+        assert!(matches!(
+            powershell_form("ripr check --root 'Steven’s repo'"),
+            PowershellForm::Translated(_)
+        ));
+    }
+
+    /// Typographic double quotes close a PowerShell double-quoted span, and
+    /// bash reads them as data, so no translation is honest there; they never
+    /// pass unquoted either.
+    #[test]
+    fn powershell_command_withholds_typographic_double_quotes() {
+        assert_eq!(powershell_command("echo \"a“b\""), None);
+        assert_eq!(powershell_command("echo \"a”b\""), None);
+        assert_eq!(powershell_command("echo “ab”"), None);
+        assert_eq!(powershell_command("echo ’ab"), None);
+    }
+
+    /// Plain-text surfaces print the PowerShell form only when it differs.
+    #[test]
+    fn powershell_text_variant_prints_only_a_different_form() {
+        assert_eq!(powershell_text_variant("ripr check --root 'a b'"), None);
+        assert_eq!(
+            powershell_text_variant("ripr check --root 'it'\\''s'").as_deref(),
+            Some("ripr check --root 'it''s'")
+        );
+        assert_eq!(powershell_text_variant("a && b"), None);
+    }
+
+    /// Run `line` in a real `pwsh` with a `ripr` function that records its
+    /// argv, so the oracle is what PowerShell actually bound, not a string.
+    /// Returns the recorded `(count, args)`. `Ok(None)` when no `pwsh` exists
+    /// on a non-Windows host; the Windows lane fails closed, like the native
+    /// proof above.
+    fn pwsh_recorded_argv(
+        line: &str,
+        cwd: &std::path::Path,
+    ) -> Result<Option<(usize, Vec<String>)>, String> {
+        if resolve_pwsh("pwsh").is_err() {
+            if cfg!(windows) {
+                return Err("pwsh is required on the Windows lane".to_string());
+            }
+            return Ok(None);
+        }
+        let record = cwd.join("argv.record");
+        let script = cwd.join("run.ps1");
+        let body = format!(
+            "$ErrorActionPreference = 'Stop'\nfunction ripr {{ [System.IO.File]::WriteAllText($env:RIPR_ARGV_RECORD, ($args.Count.ToString() + \"`n\" + ($args -join \"`n\")), [System.Text.UTF8Encoding]::new($false)) }}\n{line}\n"
+        );
+        std::fs::write(&script, body.as_bytes())
+            .map_err(|error| format!("failed to write script: {error}"))?;
+        let output = std::process::Command::new("pwsh")
+            .arg("-NoProfile")
+            .arg("-File")
+            .arg(&script)
+            .current_dir(cwd)
+            .env("RIPR_ARGV_RECORD", &record)
+            .output()
+            .map_err(|error| format!("failed to run pwsh: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "pwsh rejected {line:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        let recorded = std::fs::read_to_string(&record)
+            .map_err(|error| format!("recorder did not run for {line:?}: {error}"))?;
+        let (count, rest) = recorded.split_once('\n').unwrap_or((&recorded, ""));
+        let count: usize = count
+            .parse()
+            .map_err(|error| format!("bad argv count {count:?}: {error}"))?;
+        Ok(Some((
+            count,
+            rest.split('\n').map(str::to_string).collect(),
+        )))
+    }
+
+    /// Native proof for the quoting contract: every value `shell_arg` renders
+    /// reaches PowerShell as exactly one argv entry with its original text,
+    /// through the same translation the surfaces print. Covers apostrophe,
+    /// space, non-ASCII, every typographic quote, and an injection payload that
+    /// runs a command when pasted untranslated.
+    #[test]
+    fn powershell_translation_binds_hostile_paths_as_one_argument() -> Result<(), String> {
+        use crate::agent::loop_commands::shell_arg;
+
+        let root = native_proof_root("quotes")?;
+        let _cleanup = RemoveOnDrop(root.clone());
+        let injection = "x’; New-Item -ItemType File injected-marker; ‘y";
+        let values = [
+            ("apostrophe", "it's"),
+            ("space", "a b"),
+            ("non-ASCII", "café résumé"),
+            ("right quote", "Steven’s repo"),
+            ("left quote", "‘draft’"),
+            ("low and reversed quotes", "a‚b‛c"),
+            ("mixed", "it's Steven’s café"),
+            ("injection", injection),
+        ];
+        for (label, value) in values {
+            let bash = format!("ripr --root {} --base HEAD", shell_arg(value));
+            let line = powershell_command(&bash)
+                .ok_or_else(|| format!("{label}: supported command must translate: {bash}"))?;
+            let Some((count, args)) = pwsh_recorded_argv(&line, &root)? else {
+                return Ok(());
+            };
+            let expected: Vec<String> = ["--root", value, "--base", "HEAD"]
+                .iter()
+                .map(|arg| arg.to_string())
+                .collect();
+            if count != 4 || args != expected {
+                return Err(format!(
+                    "{label}: PowerShell bound {count} arguments {args:?}, wanted the value \
+                     {value:?} as one (line {line:?})"
+                ));
+            }
+        }
+        if root.join("injected-marker").exists() {
+            return Err("the translated injection payload ran a command".to_string());
+        }
+
+        // Negative control: the untranslated bash form of the same payload does
+        // run the command, which proves this instrument can observe the break.
+        let raw = format!("ripr --root {}", shell_arg(injection));
+        let Some(_) = pwsh_recorded_argv(&raw, &root)? else {
+            return Ok(());
+        };
+        if !root.join("injected-marker").exists() {
+            return Err(
+                "control failed: the untranslated payload did not run, so this host \
+                 cannot observe the injection"
+                    .to_string(),
+            );
+        }
         Ok(())
     }
 }

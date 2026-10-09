@@ -1,0 +1,239 @@
+{
+  "binary": "ripr",
+  "cases": [
+    {
+      "case": "semver-1.0.23",
+      "steps": [
+        {
+          "command": "ripr doctor",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.16,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 33,
+          "step": "doctor"
+        },
+        {
+          "command": "ripr check",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.36,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 38,
+          "step": "check"
+        },
+        {
+          "command": "ripr check --format json",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.46,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 73,
+          "step": "check_json"
+        },
+        {
+          "command": "ripr pilot --root .",
+          "exit": 0,
+          "friction": [],
+          "secs": 1.97,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 26,
+          "step": "pilot"
+        },
+        {
+          "command": "ripr explain --root . probe:src_parse.rs:predicate:259a7345",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.4,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 38,
+          "step": "explain"
+        },
+        {
+          "command": "ripr init --ci github",
+          "exit": 0,
+          "friction": [
+            "generated workflow is 2374 lines, over the 1500-line review budget"
+          ],
+          "secs": 0.05,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 4,
+          "step": "init_ci"
+        },
+        {
+          "command": "ripr doctor",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.16,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 34,
+          "step": "doctor_after"
+        }
+      ],
+      "verdict": "infection_unknown",
+      "workflow_installs_with_cargo": true,
+      "workflow_lines": 2374
+    },
+    {
+      "case": "fastrand-2.3.0",
+      "steps": [
+        {
+          "command": "ripr doctor",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.16,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 33,
+          "step": "doctor"
+        },
+        {
+          "command": "ripr check",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.35,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 31,
+          "step": "check"
+        },
+        {
+          "command": "ripr check --format json",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.46,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 63,
+          "step": "check_json"
+        },
+        {
+          "command": "ripr pilot --root .",
+          "exit": 0,
+          "friction": [
+            "1 stderr line(s) beyond progress, first: ripr: lexical fallback was used for 1 Rust file(s): benches/bench.rs; repo seam inventory may under-credit these files because lexical fallback emits no probe shapes."
+          ],
+          "secs": 0.52,
+          "stderr_lines_beyond_progress": 1,
+          "stdout_lines": 22,
+          "step": "pilot"
+        },
+        {
+          "command": "ripr explain --root . probe:src_lib.rs:predicate:24a6c866",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.37,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 37,
+          "step": "explain"
+        },
+        {
+          "command": "ripr init --ci github",
+          "exit": 0,
+          "friction": [
+            "generated workflow is 2374 lines, over the 1500-line review budget"
+          ],
+          "secs": 0.01,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 4,
+          "step": "init_ci"
+        },
+        {
+          "command": "ripr doctor",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.16,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 34,
+          "step": "doctor_after"
+        }
+      ],
+      "verdict": "infection_unknown",
+      "workflow_installs_with_cargo": true,
+      "workflow_lines": 2374
+    },
+    {
+      "case": "bytesize-1.3.0",
+      "steps": [
+        {
+          "command": "ripr doctor",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.16,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 33,
+          "step": "doctor"
+        },
+        {
+          "command": "ripr check",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.35,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 32,
+          "step": "check"
+        },
+        {
+          "command": "ripr check --format json",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.46,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 483,
+          "step": "check_json"
+        },
+        {
+          "command": "ripr pilot --root .",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.65,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 22,
+          "step": "pilot"
+        },
+        {
+          "command": "ripr explain --root . probe:src_lib.rs:predicate:23080bf2",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.39,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 50,
+          "step": "explain"
+        },
+        {
+          "command": "ripr init --ci github",
+          "exit": 0,
+          "friction": [
+            "generated workflow is 2374 lines, over the 1500-line review budget"
+          ],
+          "secs": 0.01,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 4,
+          "step": "init_ci"
+        },
+        {
+          "command": "ripr doctor",
+          "exit": 0,
+          "friction": [],
+          "secs": 0.16,
+          "stderr_lines_beyond_progress": 0,
+          "stdout_lines": 34,
+          "step": "doctor_after"
+        }
+      ],
+      "verdict": "infection_unknown",
+      "workflow_installs_with_cargo": true,
+      "workflow_lines": 2374
+    }
+  ],
+  "ripr": "ripr 0.11.0 (a7a089e1c51dfa51a1727eeefe7e561aaecd7abc)",
+  "schema_version": "first_run.v1",
+  "setup": [
+    {
+      "command": "cargo vendor --versioned-dirs vendored",
+      "exit": 0,
+      "friction": [],
+      "secs": 0.17,
+      "stderr_lines_beyond_progress": 9,
+      "stdout_lines": 5,
+      "step": "fetch_sources"
+    }
+  ]
+}

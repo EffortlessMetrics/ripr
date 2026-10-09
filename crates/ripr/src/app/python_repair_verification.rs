@@ -26,8 +26,8 @@
 use crate::app::python_repair_binding::APPLY_RECORD_COMPAT_PATH;
 use crate::app::python_repair_binding::{self, RetainedBinding, VerifiedSelection};
 use crate::app::repair_attempt::{
-    RepairAttemptId, RepairAttemptState, find_manifest_artifact_by_role, load_edit_cage_policy,
-    load_repair_attempt_manifest, replace_file_atomically,
+    RepairAttemptId, RepairAttemptState, find_manifest_artifact_by_role,
+    load_edit_cage_policy_from, load_repair_attempt_manifest_from, replace_file_atomically,
 };
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -131,6 +131,7 @@ pub(crate) struct VerificationOptions<'a> {
     pub(crate) attempt_id: &'a str,
     pub(crate) authorization: VerifyAuthorization,
     pub(crate) rollback: bool,
+    pub(crate) store: Option<&'a Path>,
 }
 
 /// SHA-256 over bytes, lowercase hex (no prefix) — the binding digest shape.
@@ -226,10 +227,11 @@ struct RevalidatedAttempt {
 /// naming the drifted identity.
 fn revalidate_for_verification(
     root: &Path,
+    store: Option<&Path>,
     attempt_id: &RepairAttemptId,
     authority: &str,
 ) -> Result<RevalidatedAttempt, String> {
-    let manifest = load_repair_attempt_manifest(root, attempt_id)?;
+    let manifest = load_repair_attempt_manifest_from(root, store, attempt_id)?;
 
     // Durable state gate: only an applied, current, compliant attempt
     // carries a post-edit state a verification could observe.
@@ -296,7 +298,7 @@ fn revalidate_for_verification(
     // phases keep writing between finish and verification) are not the edit
     // and are excluded from the identity on both sides.
     let baseline = load_baseline(root, &manifest, attempt_id)?;
-    let policy = load_edit_cage_policy(root, attempt_id)?;
+    let policy = load_edit_cage_policy_from(root, store, attempt_id)?;
     let (_, verdict) = crate::edit_cage::evaluate_repository_edit_cage_with_delta(&baseline)?;
     if verdict.status != crate::edit_cage::EditCageVerdictStatus::Compliant {
         return Err(format!(
@@ -376,7 +378,7 @@ fn revalidate_for_verification(
     // alignment with the packet's selected edit target, the packet digest,
     // and the authorization authority. The verify invocation must re-affirm
     // the SAME authority that authorized the edit.
-    let binding = python_repair_binding::load_retained_binding(root, attempt_id)?.ok_or_else(
+    let binding = python_repair_binding::load_retained_binding_from(root, store, attempt_id)?.ok_or_else(
         || {
             format!(
                 "python repair verification refuses attempt `{}`: the attempt records no python repair-trust binding; the verification phase runs only for trust-bound attempts",
@@ -473,7 +475,7 @@ fn revalidate_for_verification(
         .unwrap_or_default()
         .to_string();
     let command_route: Option<(String, String)> =
-        match crate::agent::command_specs::agent_command_spec_from_display(&command_display) {
+        match crate::agent::command_specs::agent_command_spec_from_display(&command_display, root) {
             Some(command_spec) => {
                 let digest = crate::domain::command_spec_sha256(&command_spec).map_err(|error| {
                     format!(
@@ -655,9 +657,11 @@ fn check_apply_record(
 }
 
 /// The analyzed root's config identity (the same real producer the binding
-/// uses: `ripr.toml` presence under the analyzed root).
+/// uses: `ripr.toml` presence under the analyzed root). Presence uses the
+/// same rule as config discovery: a dangling `ripr.toml` link is present,
+/// not defaults.
 fn detect_config_profile(root: &Path) -> String {
-    if root.join("ripr.toml").is_file() {
+    if crate::config::config_present_at_root(root) {
         "subject-ripr-toml".to_string()
     } else {
         "default".to_string()
@@ -854,9 +858,15 @@ fn map_execution_state(
 /// identity is the current binary/config/input).
 fn write_after_verification_snapshot(root: &Path) -> Result<(String, String), String> {
     let config = crate::config::load_for_root(root)?;
-    let (classified, limit_info) =
-        crate::analysis::inventory_classified_seams_at_with_config(root, &config)?;
-    let ts_guidance = crate::output::render::detect_ts_full_repo_guidance_pub(root, &classified);
+    let report = crate::analysis::inventory_classified_seams_report_at_with_config(root, &config)?;
+    let ts_guidance =
+        crate::output::render::detect_ts_full_repo_guidance_pub(root, &report.classified);
+    let python_guidance =
+        crate::output::render::detect_python_repo_exposure_guidance_pub(root, &report.classified);
+    let generated_skip = crate::output::repo_exposure::GeneratedRustSkip::from_paths(
+        report.skipped_generated,
+        report.naming_only_skips,
+    );
     let context = crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
         root.to_path_buf(),
         "ready".to_string(),
@@ -873,19 +883,21 @@ fn write_after_verification_snapshot(root: &Path) -> Result<(String, String), St
         .map(|duration| duration.as_nanos())
         .unwrap_or(0);
     let temporary = path.with_extension(format!("json.tmp-{}-{nonce}", std::process::id()));
-    let run_status = if limit_info.is_some() {
+    let run_status = if report.limit_info.is_some() {
         "seam_limit_applied".to_string()
     } else {
         "complete".to_string()
     };
     let write_result = (|| -> Result<(), String> {
-        let file = std::fs::File::create(&temporary)
+        let file = crate::output::file_write::create_exclusive(&temporary)
             .map_err(|error| format!("create {} failed: {error}", temporary.display()))?;
         let mut writer = std::io::BufWriter::new(file);
         crate::output::repo_exposure::write_repo_exposure_json_with_context(
-            &classified,
-            limit_info.as_ref(),
+            &report.classified,
+            report.limit_info.as_ref(),
             ts_guidance.as_ref(),
+            python_guidance.as_ref(),
+            generated_skip.as_ref(),
             &context,
             &mut writer,
         )
@@ -1571,7 +1583,7 @@ pub(crate) fn run_verification_phase(options: VerificationOptions<'_>) -> Result
     }
 
     // 1. Revalidate every identity BEFORE anything runs.
-    let revalidated = revalidate_for_verification(&root, &attempt_id, &authority)?;
+    let revalidated = revalidate_for_verification(&root, options.store, &attempt_id, &authority)?;
 
     // 2-4. Execute the producer-owned typed route through the bounded rails
     // (cwd/root confinement, environment floor, timeout, bounded output,
@@ -1626,7 +1638,7 @@ pub(crate) fn run_verification_phase(options: VerificationOptions<'_>) -> Result
     let rollback = if options.rollback {
         let baseline = load_baseline(
             &root,
-            &load_repair_attempt_manifest(&root, &attempt_id)?,
+            &load_repair_attempt_manifest_from(&root, options.store, &attempt_id)?,
             &attempt_id,
         )?;
         run_rollback(
@@ -2099,6 +2111,48 @@ mod python_repair_verification_semantics {
         Ok(())
     }
 
+    /// A dangling `ripr.toml` is present: verification must detect the same
+    /// subject profile as config discovery, not built-in defaults.
+    #[cfg(unix)]
+    #[test]
+    fn dangling_ripr_toml_symlink_is_subject_config_not_defaults() -> Result<(), String> {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| format!("clock: {error}"))?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-python-repair-verification-dangling-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        if detect_config_profile(&root) != "default" {
+            let _ = std::fs::remove_dir_all(&root);
+            return Err("an absent ripr.toml must stay the default profile".to_string());
+        }
+        std::os::unix::fs::symlink("no-such-target.toml", root.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+        let load_error = match crate::config::load_for_root(&root) {
+            Ok(_) => {
+                let _ = std::fs::remove_dir_all(&root);
+                return Err("load_for_root must refuse a dangling ripr.toml".to_string());
+            }
+            Err(error) => error,
+        };
+        let profile = detect_config_profile(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        if !load_error.contains("ripr.toml") {
+            return Err(format!(
+                "load_for_root must name ripr.toml for a dangling link: {load_error}"
+            ));
+        }
+        if profile != "subject-ripr-toml" {
+            return Err(format!(
+                "a dangling ripr.toml must be subject-ripr-toml, not {profile}"
+            ));
+        }
+        Ok(())
+    }
+
     #[test]
     fn non_claims_never_carry_forbidden_lifecycle_words() {
         for non_claim in VERIFICATION_NON_CLAIMS {
@@ -2176,6 +2230,8 @@ mod python_repair_verification_semantics {
             allowed_edit_surface: vec![crate::edit_cage::CagePathRule::exact("tests/pricing.rs")?],
             forbidden_paths: Vec::new(),
             expected_operational_writes: Vec::new(),
+            ignored_build_output: None,
+            untracked_build_lockfile: None,
         })
     }
 

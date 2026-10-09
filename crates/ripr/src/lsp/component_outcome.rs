@@ -309,6 +309,37 @@ pub(super) fn bounded_message(message: &str) -> String {
 mod tests {
     use super::{AnalysisComponent, ComponentOutcome, ComponentState, degradation_signature};
 
+    /// #4350: the editor bounds failure text, and the long-root failure
+    /// reaches it behind the workspace-analysis and diff prefixes. The
+    /// remedy must survive that cut, not only the diagnosis.
+    #[test]
+    fn bounded_long_root_failure_keeps_the_remedy() {
+        // `check-local-context` forbids drive-letter literals; assemble one.
+        let drive = "D:";
+        let root = format!("{drive}\\{}", "long-path-segment\\".repeat(20));
+        let describe = format!("git -C {root} [\"diff\", \"--no-color\"]");
+        let err = std::io::Error::from_raw_os_error(267);
+        let message = format!(
+            "workspace analysis failed: failed to run git diff: {}",
+            crate::git::windows_path_limit_message(
+                "git",
+                root.encode_utf16().count(),
+                &err,
+                &describe
+            )
+        );
+        let bounded = super::bounded_message(&message);
+        assert!(
+            bounded.ends_with('…'),
+            "fixture must exceed the bound: {bounded}"
+        );
+        assert!(
+            bounded.contains("clone or move the repository to a shorter path"),
+            "{bounded}"
+        );
+        assert!(bounded.contains("(MAX_PATH)"), "{bounded}");
+    }
+
     #[test]
     fn degraded_states_are_exactly_limited_and_failed() {
         let mut degraded = ComponentOutcome::complete(AnalysisComponent::Diff);

@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7417343..a76c8ae 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,6 +1,6 @@
+ //! A threshold check with one non-asserting boundary test and one far test.
+ 
+-pub fn gate(input: u32) -> bool { input >= 10 }
++pub fn gate(input: u32) -> bool { 10 <= input }
+ 
+ #[cfg(test)]
+ mod tests {

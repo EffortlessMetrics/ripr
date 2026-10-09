@@ -2,13 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_noop_docstring_change/input
 
-Summary: 0 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 0 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 0 of 0 finding(s) unsuppressed
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
-Analysis outcome: no_behavioral_candidates (analysis complete).
+Analysis outcome: no changed line is behavior ripr checks (analysis complete; no_behavioral_candidates).
   Counts: 1 changed file(s), 2 changed line(s), 0 candidate line(s), 0 probe(s), 0 finding(s).
 
 No diff-derived static exposure probes found.
 
-Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

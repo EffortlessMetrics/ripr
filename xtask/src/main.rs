@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -21,6 +22,8 @@ use ripr::output::start_here_state::{
 };
 
 mod agent_skills;
+mod blind_journey;
+mod blind_journey_execute;
 mod branch_inventory;
 mod cache;
 #[cfg(test)]
@@ -34,9 +37,24 @@ mod droid_admit;
 mod evidence_audit;
 mod evidence_promotion;
 mod evidence_quality;
+mod first_run;
 mod fixture_contracts;
+mod public_proof;
+// #4544: one definition of the gap `source_subject` contract, shared with the
+// ripr crate's LSP validator without widening ripr's public API.
+#[path = "../../crates/ripr/src/output/gap_source_subject/shared.rs"]
+mod gap_source_subject_shared;
+mod identity_registry;
+mod issue_lifecycle_attempt;
+mod issue_lifecycle_contract_plan;
+mod issue_lifecycle_intake;
 mod no_panic;
+mod orchestration_attempt;
+mod output_enum_contracts;
+mod package_qualification;
 mod policy;
+#[cfg(test)]
+mod portable_consumer;
 mod product_gate_plan;
 mod public_api_surface;
 mod python_judged_panel;
@@ -52,6 +70,7 @@ mod ripr_swarm;
 mod run;
 mod rust_judged_panel;
 mod rust_region_scan;
+mod schema_producer_sweep;
 #[cfg(test)]
 mod test_binary;
 mod verification_contracts;
@@ -65,8 +84,8 @@ use command::{
 use command::{help_message, unknown_command_message};
 #[cfg(test)]
 pub(crate) use dogfood::{
-    BunUbPreviewSummaryArgs, ConfiguredBridgeInventoryArgs, CrossLanguageOracleGraphCase,
-    CrossLanguageOracleGraphRawRef, DogfoodBunUbCrossLanguageRun,
+    ArtifactRouterInput, BunUbPreviewSummaryArgs, ConfiguredBridgeInventoryArgs,
+    CrossLanguageOracleGraphCase, CrossLanguageOracleGraphRawRef, DogfoodBunUbCrossLanguageRun,
     DogfoodBunUbCrossLanguageScenario, DogfoodEditorFirstPrBridgeRun, DogfoodEditorGapCockpitRun,
     DogfoodFindingAlignmentRun, DogfoodFindingAlignmentScenario, DogfoodFirstActionRun,
     DogfoodFirstPrRun, DogfoodFrontPanelRun, DogfoodGateRun, DogfoodGeneratedCiCockpitRun,
@@ -79,28 +98,32 @@ pub(crate) use dogfood::{
     DogfoodUserSurfaceProjectionRun, GENERATED_CI_FIRST_ACTION_REPAIR,
     GENERATED_CI_FIRST_PR_REPAIR, GENERATED_CI_FRONT_PANEL_REPAIR,
     GENERATED_CI_PACKET_INDEX_REPAIR, TypeScriptBunUbCalibrationCase,
-    bun_ub_calibration_report_markdown, bun_ub_calibration_report_value,
-    bun_ub_preview_summary_markdown, bun_ub_preview_summary_report_value,
-    configured_bridge_inventory_markdown, configured_bridge_inventory_report_value,
-    cross_language_oracle_graph_cases, cross_language_oracle_graph_corpus_path,
-    dogfood_bun_ub_cross_language_scenarios, dogfood_class_counts,
-    dogfood_editor_first_pr_bridge_run, dogfood_editor_first_pr_bridge_scenarios,
-    dogfood_editor_gap_cockpit_run, dogfood_editor_gap_cockpit_scenarios,
+    artifact_router_path_violation, bun_ub_calibration_report_markdown,
+    bun_ub_calibration_report_value, bun_ub_preview_summary_markdown,
+    bun_ub_preview_summary_report_value, configured_bridge_inventory_markdown,
+    configured_bridge_inventory_report_value, cross_language_oracle_graph_cases,
+    cross_language_oracle_graph_corpus_path, dogfood_bun_ub_cross_language_scenarios,
+    dogfood_class_counts, dogfood_editor_first_pr_bridge_run,
+    dogfood_editor_first_pr_bridge_scenarios, dogfood_editor_gap_cockpit_run,
+    dogfood_editor_gap_cockpit_scenarios, dogfood_failed_families, dogfood_first_action_run,
     dogfood_first_action_scenarios, dogfood_first_pr_metrics, dogfood_first_pr_run,
     dogfood_first_pr_scenarios, dogfood_gate_adoption_run, dogfood_gate_adoption_scenarios,
-    dogfood_generated_ci_cockpit_run_from_workflow, dogfood_language_preview_run,
-    dogfood_language_preview_scenarios, dogfood_pr_inline_comment_run,
-    dogfood_pr_inline_comment_scenarios, dogfood_pr_review_front_panel_run,
-    dogfood_pr_review_front_panel_scenarios, dogfood_push_python_quality_ratio_json,
-    dogfood_push_python_ranked_findings_json, dogfood_python_no_action_eval_scenarios,
-    dogfood_python_ranked_findings, dogfood_python_real_repo_eval_scenarios,
-    dogfood_python_static_limit_eval_scenarios, dogfood_report_json, dogfood_report_markdown,
-    dogfood_report_packet_index_run, dogfood_report_packet_index_scenarios,
+    dogfood_gate_result, dogfood_generated_ci_cockpit_run_from_surfaces,
+    dogfood_language_preview_run, dogfood_language_preview_scenarios,
+    dogfood_pr_inline_comment_run, dogfood_pr_inline_comment_scenarios,
+    dogfood_pr_review_front_panel_run, dogfood_pr_review_front_panel_scenarios,
+    dogfood_push_python_quality_ratio_json, dogfood_push_python_ranked_findings_json,
+    dogfood_python_no_action_eval_scenarios, dogfood_python_ranked_findings,
+    dogfood_python_real_repo_eval_scenarios, dogfood_python_static_limit_eval_scenarios,
+    dogfood_report_json, dogfood_report_markdown, dogfood_report_packet_index_run,
+    dogfood_report_packet_index_scenarios, dogfood_report_status,
     dogfood_typescript_false_actionable_audit_summary,
     dogfood_typescript_preview_repair_loop_scenarios, finding_alignment_verify_command_is_missing,
-    json_number_after, parse_bun_ub_preview_summary_args, parse_configured_bridge_inventory_args,
-    repo_rooted_fixture_path, typescript_bun_ub_calibration_cases,
-    typescript_preview_false_actionable_audit_cases,
+    front_panel_case_inputs, json_number_after, parse_bun_ub_preview_summary_args,
+    parse_configured_bridge_inventory_args, pin_report_packet_index_generated_at,
+    repo_rooted_fixture_path, report_packet_index_case_id_violation,
+    report_packet_index_generated_at_violation, report_packet_index_render_plan,
+    typescript_bun_ub_calibration_cases, typescript_preview_false_actionable_audit_cases,
 };
 pub(crate) use dogfood::{
     DogfoodSurfaceProjectionAlignmentScenario, DogfoodUserSurfaceProjectionScenario,
@@ -163,8 +186,9 @@ pub(crate) use evidence_audit::{
     lane1_runtime_status_limited_input, lane1_runtime_status_priority,
     lane1_runtime_status_push_markdown, lane1_runtime_status_with_input_path,
     lane1_static_limitation_backlog_sample_json, repo_exposure_latency_trace_json,
-    static_limitation_backlog_packet_non_claims, static_limitation_repair_route,
-    static_limitation_unlock_condition, static_limitation_why_not_actionable,
+    stamp_actionable_gaps_source_subject, static_limitation_backlog_packet_non_claims,
+    static_limitation_repair_route, static_limitation_unlock_condition,
+    static_limitation_why_not_actionable,
 };
 #[cfg(test)]
 pub(crate) use evidence_promotion::{
@@ -175,7 +199,8 @@ pub(crate) use evidence_promotion::{
     evidence_promotion_external_failure_kind, evidence_promotion_external_semantic_violations,
     evidence_promotion_human_class_line_matches, evidence_promotion_human_oracle_line_matches,
     evidence_promotion_pure_failure_kind, evidence_promotion_semantic_violations,
-    validate_evidence_promotion_honesty_corpus_at, write_evidence_promotion_external_report,
+    evidence_promotion_semantic_violations_scoped, validate_evidence_promotion_honesty_corpus_at,
+    write_evidence_promotion_external_report,
 };
 pub(crate) use evidence_promotion::{
     check_evidence_promotion_honesty, validate_evidence_promotion_honesty_corpus,
@@ -251,7 +276,7 @@ use policy::{
     check_droid_review_config, check_executable_files, check_file_policy, check_local_context,
     check_network_policy, check_no_panic_family, check_positioning_language, check_process_policy,
     check_product_copy, check_proof_packs, check_release_targets, check_static_language,
-    check_workflows,
+    check_workflows, qualify_python_wheelhouse,
 };
 use public_api_surface::public_api_surface;
 #[cfg(test)]
@@ -287,14 +312,15 @@ pub(crate) use reports::{
     extract_json_object_usize_map, extract_json_string, extract_json_warnings,
     limited_badge_artifacts_json, limited_badge_artifacts_markdown,
     parse_repo_badge_artifact_options, parse_repo_exposure_summary_counts,
-    read_repo_exposure_summary_artifact, repo_badge_artifact_command_args,
-    repo_badge_artifact_jobs, repo_badge_artifact_stdout_from_output,
-    repo_badge_artifact_timeout_ms_from_env, repo_badge_artifacts_summary_markdown,
-    ripr_plus_receipt_from_badge, ripr_plus_receipt_from_options,
-    ripr_plus_receipt_from_repo_badge_json, ripr_plus_receipt_from_repo_exposure_summary_json,
+    read_badge_artifact_diff_governed, read_repo_exposure_summary_artifact,
+    repo_badge_artifact_command_args, repo_badge_artifact_jobs,
+    repo_badge_artifact_stdout_from_output, repo_badge_artifact_timeout_ms_from_env,
+    repo_badge_artifacts_summary_markdown, ripr_plus_receipt_from_badge,
+    ripr_plus_receipt_from_options, ripr_plus_receipt_from_repo_badge_json,
+    ripr_plus_receipt_from_repo_exposure_summary_json,
     ripr_plus_receipt_from_repo_exposure_summary_json_with_source, ripr_plus_receipt_markdown,
     run_repo_badge_artifact_command, validate_shields_endpoint_bytes,
-    write_badge_artifacts_after_build, write_badge_artifacts_from_diff,
+    write_badge_artifacts_after_build, write_badge_artifacts_from_diff, write_badge_input_identity,
 };
 pub(crate) use reports::{
     FixtureCheckFormat, fixture_dirs, goldens_check, is_manifest_only_fixture_dir,
@@ -355,8 +381,9 @@ pub(crate) use ripr_swarm::{
 use run::{
     TimedFileOutput, TimedOutput, capture_output, capture_output_with_timeout,
     capture_stdout_to_file_with_timeout, command_success_owned, run, run_in_dir,
-    run_in_dir_with_envs, run_output, run_output_optional, run_output_owned, run_owned,
-    run_with_envs,
+    run_in_dir_with_envs, run_output, run_output_bytes, run_output_optional,
+    run_output_optional_bytes, run_output_owned, run_output_owned_in,
+    run_output_owned_with_timeout, run_owned, run_with_envs, tool_build_timeout,
 };
 
 /// Process-wide fair reader-writer gate serialising tests that mutate the process
@@ -548,6 +575,7 @@ const PRECOMMIT_GATE_COMMANDS: &[&str] = &[
     "check-fixture-contracts",
     "check-rust-judged-panel",
     "check-release-challenge-selection",
+    "check-release-challenge-judgments",
     "check-python-judged-panel",
     "check-traceability",
     "check-capabilities",
@@ -556,6 +584,7 @@ const PRECOMMIT_GATE_COMMANDS: &[&str] = &[
     "check-rust-source-role-authority",
     "check-public-api",
     "check-output-contracts",
+    "check-identity-registry",
     "check-doc-artifacts",
     "check-doc-index",
     "check-readme-state",
@@ -572,6 +601,10 @@ const PRECOMMIT_GATE_COMMANDS: &[&str] = &[
     "check-network-policy",
     "check-lint-policy",
 ];
+
+fn check_identity_registry() -> Result<(), String> {
+    identity_registry::check_identity_registry()
+}
 
 fn precommit() -> Result<(), String> {
     ensure_reports_dir()?;
@@ -590,6 +623,7 @@ fn precommit() -> Result<(), String> {
     check_fixture_contracts()?;
     check_rust_judged_panel()?;
     check_release_challenge_selection()?;
+    check_release_challenge_judgments()?;
     check_python_judged_panel()?;
     check_traceability()?;
     check_capabilities()?;
@@ -598,6 +632,7 @@ fn precommit() -> Result<(), String> {
     check_rust_source_role_authority()?;
     check_public_api()?;
     check_output_contracts()?;
+    check_identity_registry()?;
     check_doc_artifacts()?;
     check_doc_index()?;
     check_readme_state()?;
@@ -623,6 +658,10 @@ fn check_rust_judged_panel() -> Result<(), String> {
 
 fn check_release_challenge_selection() -> Result<(), String> {
     rust_judged_panel::check_release_selection()
+}
+
+fn check_release_challenge_judgments() -> Result<(), String> {
+    rust_judged_panel::check_release_judgments()
 }
 
 fn check_python_judged_panel() -> Result<(), String> {
@@ -769,9 +808,13 @@ fn categorize_changed_files(files: &[String]) -> ChangedFileCategories {
 }
 
 fn changed_files_vs_base(root: &Path) -> Result<Vec<String>, String> {
+    // Raw NUL-delimited inventory (#4006): `-z` output is never C-quoted,
+    // so exotic names survive byte-exact; parsing rules come from the
+    // shared authority in `decode_changed_files`, not from line splitting
+    // here. The spawn site is unchanged (gate-runner policy entry).
     let output = std::process::Command::new("git")
         .current_dir(root)
-        .args(["diff", "--name-only", "origin/main...HEAD"])
+        .args(["diff", "--name-only", "-z", "origin/main...HEAD"])
         .output()
         .map_err(|err| format!("git diff --name-only failed: {err}"))?;
     if !output.status.success() {
@@ -785,8 +828,28 @@ fn changed_files_vs_base(root: &Path) -> Result<Vec<String>, String> {
             "git diff --name-only origin/main...HEAD failed: {detail};              if origin/main is not available, run `git fetch origin main` first"
         ));
     }
-    let text = String::from_utf8_lossy(&output.stdout);
-    Ok(text.lines().map(String::from).collect())
+    decode_changed_files(&output.stdout)
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8 or empty records fail loudly
+/// instead of collapsing through lossy conversion.
+fn decode_changed_files(output: &[u8]) -> Result<Vec<String>, String> {
+    ripr::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("changed-file inventory: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "changed-file inventory: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
 }
 
 /// Origin-main rooted selector for callers that run from the repository
@@ -867,6 +930,61 @@ mod check_fast_selector_tests {
             report.contains("Selector: failed") && report.contains("Base: origin/main"),
             "report must disclose selector status and base: {report}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn exotic_names_survive_the_changed_file_selector() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory (#4006): a non-ASCII name
+        // must decode byte-exact; the old line parser kept git's C-quoted
+        // octal form. Asserts through the real `changed_files_vs_base`
+        // production path.
+        let root =
+            std::env::temp_dir().join(format!("ripr-check-fast-names-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|err| format!("create names fixture: {err}"))?;
+        let run = |args: &[&str]| run_fixture_git(&root, args);
+        run(&["init", "--initial-branch=main"])?;
+        run(&["config", "user.email", "ripr@example.invalid"])?;
+        run(&["config", "user.name", "ripr test"])?;
+        std::fs::write(root.join("base.txt"), "fixture\n")
+            .map_err(|err| format!("write names fixture: {err}"))?;
+        run(&["add", "."])?;
+        run(&["commit", "-m", "fixture"])?;
+        run(&["update-ref", "refs/remotes/origin/main", "HEAD"])?;
+        std::fs::write(root.join("sp ace.txt"), "spaces\n")
+            .map_err(|err| format!("write names fixture: {err}"))?;
+        std::fs::write(root.join("uni-\u{e9}.txt"), "unicode\n")
+            .map_err(|err| format!("write names fixture: {err}"))?;
+        run(&["add", "-A"])?;
+        run(&["commit", "-m", "exotic"])?;
+
+        let mut files = changed_files_vs_base(&root)?;
+        files.sort();
+        let expected = vec!["sp ace.txt".to_string(), "uni-\u{e9}.txt".to_string()];
+        let _ = std::fs::remove_dir_all(&root);
+        if files != expected {
+            return Err(format!(
+                "exotic selector inventory mismatch: got {files:?}, want {expected:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strict_selector_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the selector
+        // decode boundary: non-UTF-8 records fail loudly instead of
+        // collapsing through lossy conversion.
+        let err = match decode_changed_files(b"ok.txt\0\xffbad\0") {
+            Err(err) => err,
+            Ok(files) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {files:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
         Ok(())
     }
 
@@ -1235,6 +1353,7 @@ fn run_policy_checks() -> Result<(), String> {
     check_architecture()?;
     check_public_api()?;
     check_output_contracts()?;
+    check_identity_registry()?;
     check_doc_artifacts()?;
     check_doc_index()?;
     check_readme_state()?;
@@ -1385,9 +1504,7 @@ fn vscode_package_admitted(
     let vsix_path = extension_dir.join("dist").join(&vsix_name);
     let packaged = read_vsix_catalog(&vsix_path)?;
     verify_packaged_catalog_against_admission(&packaged, &admission_value)?;
-    let inventory = read_vsix_inventory(&vsix_path)?;
-    check_vsix_inventory(&inventory, VSIX_MAX_ENTRIES, VSIX_MAX_UNCOMPRESSED_BYTES)
-        .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
+    let (inventory, _inventory_summary) = verify_packaged_vsix_inventory(&vsix_path)?;
     let (inventory_uncompressed, inventory_compressed) = vsix_size_totals(&inventory)
         .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
     let vsix_sha256 = sha256_file(&vsix_path)?;
@@ -1458,6 +1575,20 @@ fn admit_distribution_catalog(
         .map_err(|err| format!("admission receipt is not UTF-8: {err}"))
 }
 
+/// Reads the built VSIX and applies the production inventory bounds. Returns
+/// the validated entries for the package receipt and the compatibility summary.
+fn verify_packaged_vsix_inventory(vsix_path: &Path) -> Result<(Vec<VsixEntry>, String), String> {
+    let inventory = read_vsix_inventory(vsix_path)?;
+    check_vsix_inventory(&inventory, VSIX_MAX_ENTRIES, VSIX_MAX_UNCOMPRESSED_BYTES)
+        .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
+    let summary = format!(
+        "VSIX inventory: {} entries, {} bytes unpacked",
+        inventory.len(),
+        vsix_size_totals(&inventory)?.0
+    );
+    Ok((inventory, summary))
+}
+
 /// Upper bounds on the packaged VSIX. The 0.11 extension packs about 410
 /// entries and 3 MiB uncompressed. Packing `editors/vscode/target/` (#1775)
 /// produced 2,805 entries and about 2.3 GB. The bounds leave room for
@@ -1513,6 +1644,11 @@ fn vsix_size_totals(entries: &[VsixEntry]) -> Result<(u64, u64), String> {
     Ok((uncompressed, compressed))
 }
 
+/// Rejects workspace build output in the packaged extension (#1775). The
+/// `cargo xtask` alias builds into a cwd-relative target directory, so
+/// `npm run compile` in `editors/vscode` leaves Cargo output beside the
+/// extension. The check reads the real archive entries rather than trusting
+/// `.vscodeignore`, so a lost ignore rule fails here instead of shipping.
 fn check_vsix_inventory(
     entries: &[VsixEntry],
     max_entries: usize,
@@ -4789,7 +4925,7 @@ fn receipts_report_markdown(
 }
 
 fn precommit_report_body() -> String {
-    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-covered-by`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-rust-judged-panel`\n- `cargo xtask check-release-challenge-selection`\n- `cargo xtask check-python-judged-panel`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-rust-source-role-authority`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-doc-artifacts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-command-catalog`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n- `cargo xtask check-proof-packs`\n- `cargo xtask check-release-targets`\n- `cargo xtask check-dependencies`\n- `cargo xtask check-process-policy`\n- `cargo xtask check-network-policy`\n- `cargo xtask check-lint-policy`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
+    "# ripr precommit report\n\nStatus: pass\n\nChecks:\n\n- `cargo fmt --check`\n- `cargo xtask check-static-language`\n- `cargo xtask check-no-panic-family`\n- `cargo xtask check-allow-attributes`\n- `cargo xtask check-local-context`\n- `cargo xtask check-file-policy`\n- `cargo xtask check-covered-by`\n- `cargo xtask check-executable-files`\n- `cargo xtask check-workflows`\n- `cargo xtask check-droid-review-config`\n- `cargo xtask check-spec-format`\n- `cargo xtask check-spec-numbering`\n- `cargo xtask check-fixture-contracts`\n- `cargo xtask check-rust-judged-panel`\n- `cargo xtask check-release-challenge-selection`\n- `cargo xtask check-release-challenge-judgments`\n- `cargo xtask check-python-judged-panel`\n- `cargo xtask check-traceability`\n- `cargo xtask check-capabilities`\n- `cargo xtask check-workspace-shape`\n- `cargo xtask check-architecture`\n- `cargo xtask check-rust-source-role-authority`\n- `cargo xtask check-public-api`\n- `cargo xtask check-output-contracts`\n- `cargo xtask check-identity-registry`\n- `cargo xtask check-doc-artifacts`\n- `cargo xtask check-doc-index`\n- `cargo xtask check-readme-state`\n- `cargo xtask markdown-links`\n- `cargo xtask check-pr-shape`\n- `cargo xtask check-command-catalog`\n- `cargo xtask check-generated`\n- `cargo xtask check-badge-diff-policy`\n- `cargo xtask check-generated-clean`\n- `cargo xtask check-proof-packs`\n- `cargo xtask check-release-targets`\n- `cargo xtask check-dependencies`\n- `cargo xtask check-process-policy`\n- `cargo xtask check-network-policy`\n- `cargo xtask check-lint-policy`\n\nNext command:\n\n```bash\ncargo xtask check-pr\n```\n".to_string()
 }
 
 /// Compose the check-pr report for either terminal state (#3036). One
@@ -5100,8 +5236,36 @@ fn check_allow_attributes_impl() -> Result<(), String> {
         }
     }
 
+    let violations = allow_attribute_budget_violations(&allowlist, &counts, &guarded);
+
+    finish_policy_report(
+        PolicyReportSpec {
+            report_file: "allow-attributes.md",
+            check: "check-allow-attributes",
+            why_it_matters: "Lint suppressions should not be used to hide repo guardrails. If a suppression is unavoidable, it needs a narrow reviewed exception with a reason. A count row higher than the current source count is the same unread budget.",
+            fix_kind: FixKind::PolicyExceptionRequired,
+            recommended_fixes: &[
+                "Remove the lint suppression and fix the underlying warning.",
+                "If the suppression is temporary and intentional, add a narrow allowlist entry with a reason.",
+                "Tighten or remove a `.ripr/allow-attributes.txt` row whose max_count is higher than the current source count.",
+                "Do not allowlist panic-family, unsafe, or broad warning suppressions unless the PR explicitly owns that exception.",
+            ],
+            rerun_command: "cargo xtask check-allow-attributes",
+            exception_template: Some(
+                ".ripr/allow-attributes.txt entry:\npath/to/file.rs|allow(clippy::unwrap_used)|1|reason",
+            ),
+        },
+        &violations,
+    )
+}
+
+fn allow_attribute_budget_violations(
+    allowlist: &BTreeMap<(String, String), usize>,
+    counts: &BTreeMap<(String, String), Vec<usize>>,
+    guarded: &BTreeSet<&'static str>,
+) -> Vec<String> {
     let mut violations = Vec::new();
-    for ((path, attribute), lines) in &counts {
+    for ((path, attribute), lines) in counts {
         let allowed = allowlist
             .get(&(path.clone(), attribute.clone()))
             .copied()
@@ -5115,7 +5279,7 @@ fn check_allow_attributes_impl() -> Result<(), String> {
         }
     }
 
-    for ((path, attribute), allowed) in &allowlist {
+    for ((path, attribute), allowed) in allowlist {
         if !guarded.contains(attribute_lint_name(attribute).unwrap_or(attribute)) {
             violations.push(format!(
                 ".ripr/allow-attributes.txt contains unsupported guarded attribute `{attribute}` for {path}; remove stale or out-of-scope exceptions"
@@ -5130,27 +5294,15 @@ fn check_allow_attributes_impl() -> Result<(), String> {
             violations.push(format!(
                 "{path} contains `{attribute}` {actual} time(s), allowed {allowed}"
             ));
+        } else if actual < *allowed {
+            // #3923: a row that outlives the suppressions it budgets is unread
+            // debt. Exact equality is the steady state, matching check-local-context.
+            violations.push(format!(
+                "{path} `{attribute}` allowlist count is stale: found {actual}, allowed {allowed}; tighten max_count to {actual} or remove the entry"
+            ));
         }
     }
-
-    finish_policy_report(
-        PolicyReportSpec {
-            report_file: "allow-attributes.md",
-            check: "check-allow-attributes",
-            why_it_matters: "Lint suppressions should not be used to hide repo guardrails. If a suppression is unavoidable, it needs a narrow reviewed exception with a reason.",
-            fix_kind: FixKind::PolicyExceptionRequired,
-            recommended_fixes: &[
-                "Remove the lint suppression and fix the underlying warning.",
-                "If the suppression is temporary and intentional, add a narrow allowlist entry with a reason.",
-                "Do not allowlist panic-family, unsafe, or broad warning suppressions unless the PR explicitly owns that exception.",
-            ],
-            rerun_command: "cargo xtask check-allow-attributes",
-            exception_template: Some(
-                ".ripr/allow-attributes.txt entry:\npath/to/file.rs|allow(clippy::unwrap_used)|1|reason",
-            ),
-        },
-        &violations,
-    )
+    violations
 }
 
 fn check_local_context_impl() -> Result<(), String> {
@@ -5290,6 +5442,18 @@ fn non_rust_source_conversion_candidate(path: &str) -> Option<RustConversionCand
             current_surface: "VS Code extension TypeScript".to_string(),
             recommendation: "Keep this code in the editor adapter; only move server behavior into ripr Rust modules or xtask.".to_string(),
             reason: "The VS Code Extension Host API is TypeScript-native, so this is an approved adapter boundary rather than core automation.".to_string(),
+        });
+    }
+
+    if path.starts_with("tools/python/portable-ripr-consumer/") && path.ends_with(".py") {
+        return Some(RustConversionCandidate {
+            path: path.to_string(),
+            line: None,
+            kind: "retained_external_runtime".to_string(),
+            priority: "retained".to_string(),
+            current_surface: "portable native-ripr consumer packet".to_string(),
+            recommendation: "Keep packet-local transport in stdlib Python; keep packet staging, policy, and oracles in Rust/xtask.".to_string(),
+            reason: "The consumer has to run in Python-capable agent environments that cannot compile or search PATH for ripr (#4713).".to_string(),
         });
     }
 
@@ -5492,19 +5656,7 @@ fn rust_conversion_candidates_json(
 fn check_executable_files_impl() -> Result<(), String> {
     let allowlist = read_path_allowlist_optional("policy/executable_allowlist.txt")?;
     let output = run_output("git", &["ls-files", "--stage"])?;
-    let mut violations = Vec::new();
-
-    for line in output.lines() {
-        let Some((mode, path)) = parse_git_stage_line(line) else {
-            continue;
-        };
-        let normalized = normalize_slashes(path);
-        if mode == "100755" && !allowlist.contains(&normalized) {
-            violations.push(format!(
-                "checked-in executable file is not allowlisted: {normalized}\n  preferred: use cargo xtask instead of executable scripts"
-            ));
-        }
-    }
+    let violations = executable_file_violations(&allowlist, &output);
 
     finish_policy_report(
         PolicyReportSpec {
@@ -5516,12 +5668,59 @@ fn check_executable_files_impl() -> Result<(), String> {
                 "Remove the executable bit from ordinary files.",
                 "Move script behavior into xtask.",
                 "If an executable file is truly required, add a reviewed allowlist entry.",
+                "If an allowlist path is missing or no longer mode 100755, remove the entry.",
             ],
             rerun_command: "cargo xtask check-executable-files",
             exception_template: Some("policy/executable_allowlist.txt entry:\npath/to/file"),
         },
         &violations,
     )
+}
+
+fn executable_file_violations(
+    allowlist: &BTreeSet<String>,
+    git_ls_files_stage: &str,
+) -> Vec<String> {
+    let mut staged_modes = BTreeMap::new();
+    let mut violations = Vec::new();
+
+    for line in git_ls_files_stage.lines() {
+        let Some((mode, path)) = parse_git_stage_line(line) else {
+            continue;
+        };
+        let normalized = normalize_slashes(path);
+        staged_modes.insert(normalized.clone(), mode);
+        if mode == "100755" && !allowlist.contains(&normalized) {
+            violations.push(format!(
+                "checked-in executable file is not allowlisted: {normalized}\n  preferred: use cargo xtask instead of executable scripts"
+            ));
+        }
+    }
+
+    violations.extend(executable_allowlist_stale_row_violations(
+        allowlist,
+        &staged_modes,
+    ));
+    violations
+}
+
+fn executable_allowlist_stale_row_violations(
+    allowlist: &BTreeSet<String>,
+    staged_modes: &BTreeMap<String, &str>,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    for path in allowlist {
+        match staged_modes.get(path).copied() {
+            Some("100755") => {}
+            Some(mode) => violations.push(format!(
+                "{path} allowlist entry is stale: mode is {mode}, expected 100755; remove the entry"
+            )),
+            None => violations.push(format!(
+                "{path} allowlist entry is stale: path is not in git ls-files --stage; remove the entry"
+            )),
+        }
+    }
+    violations
 }
 
 fn check_workflows_impl() -> Result<(), String> {
@@ -5582,9 +5781,11 @@ fn check_workflows_impl() -> Result<(), String> {
             }
         }
     }
+    violations.extend(composite_action_run_block_violations(&budgets)?);
     violations.extend(repository_owned_review_thread_mutation_violations()?);
     validate_assistant_loop_health_fixture_corpus(&mut violations)?;
     violations.extend(routed_rust_workflow_contract_violations_for_repo()?);
+    violations.extend(policy::ci_scratch::scratch_lease_contract_violations_for_repo()?);
 
     finish_policy_report(
         PolicyReportSpec {
@@ -5606,6 +5807,51 @@ fn check_workflows_impl() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+/// Budget composite-action run blocks like workflow run blocks.
+///
+/// A local composite action is executed by the workflows that call it, so
+/// shell moved into `.github/actions/*/action.yml` must not escape the
+/// visible run-block budget that `policy/workflow_allowlist.txt` keeps for
+/// workflow YAML (#3841 moved scratch reclamation into such an action).
+fn composite_action_run_block_violations(
+    budgets: &BTreeMap<String, WorkflowBudget>,
+) -> Result<Vec<String>, String> {
+    let root = Path::new(".github/actions");
+    if !root.exists() {
+        return Ok(Vec::new());
+    }
+    let mut violations = Vec::new();
+    for path in collect_files(root)? {
+        let normalized = normalize_path(&path);
+        if !(normalized.ends_with("/action.yml") || normalized.ends_with("/action.yaml")) {
+            continue;
+        }
+        let text = read_text_lossy(&path)?;
+        let blocks = extract_workflow_run_blocks(&text);
+        if blocks.is_empty() {
+            continue;
+        }
+        let Some(budget) = budgets.get(&normalized) else {
+            violations.push(format!(
+                "missing composite action run-block budget for {normalized} in policy/workflow_allowlist.txt"
+            ));
+            continue;
+        };
+        for block in blocks {
+            if block.non_empty_lines > budget.max_non_empty_lines {
+                violations.push(format!(
+                    "{normalized}:{} run block has {} non-empty line(s), allowed {} ({})",
+                    block.line_number,
+                    block.non_empty_lines,
+                    budget.max_non_empty_lines,
+                    budget.reason
+                ));
+            }
+        }
+    }
+    Ok(violations)
 }
 
 /// Keep the scratch-GC matrix isolated by pool.
@@ -7671,17 +7917,30 @@ fn routed_rust_job_block_any(
     false
 }
 
-fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) -> bool {
+fn routed_rust_concurrency_group_matches(workflow: &str, expected: &str) -> bool {
+    routed_rust_concurrency_value_matches(workflow, "group", expected)
+}
+
+/// Match one direct plain-scalar field in workflow-level concurrency.
+/// A comment, nested mapping, block scalar, or duplicate field cannot serve
+/// as the actual concurrency control.
+fn routed_rust_concurrency_value_matches(workflow: &str, key: &str, expected: &str) -> bool {
+    let prefix = format!("  {key}: ");
     let mut in_concurrency = false;
+    let mut matched = None;
     for line in workflow.lines() {
-        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
-            in_concurrency = line.trim() == "concurrency:";
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
             continue;
         }
-        if in_concurrency && let Some(value) = line.strip_prefix("  group: ") {
+        if !line.starts_with(' ') {
+            in_concurrency = line.trim_end() == "concurrency:";
+            continue;
+        }
+        if in_concurrency && let Some(value) = line.strip_prefix(prefix.as_str()) {
+            if matched.is_some() {
+                return false;
+            }
             let value = value.trim_start();
-            // Only the workflow's plain scalar style is supported. Text in
-            // a YAML comment must never satisfy the isolation contract.
             if value.starts_with(['\'', '"', '|', '>']) {
                 return false;
             }
@@ -7695,10 +7954,10 @@ fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) 
                 .then_some(index)
             });
             let value = &value[..comment.unwrap_or(value.len())];
-            return value.trim_end().ends_with(isolation);
+            matched = Some(value.trim_end() == expected);
         }
     }
-    false
+    matched.unwrap_or(false)
 }
 
 fn routed_rust_job_block_has_deadline(workflow: &str, job: &str) -> bool {
@@ -7716,8 +7975,219 @@ fn routed_rust_workflow_contract_violations(
     routed_rust_workflow_contract_violations_with_reusable(workflow, None, settings, lane_whitelist)
 }
 
-const SOURCE_RUST_EVENT_GUARD: &str = r#"github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')"#;
-const SOURCE_RUST_IGNORED_EVENT: &str = "github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci'))";
+/// How Routed Rust Small treats one GitHub event after reading the workflow YAML.
+///
+/// The workflow file is the authority. This classifier inspects `on.pull_request.types`
+/// so a re-added Draft or label event cannot be hidden behind a hardcoded
+/// desired policy (#4380, #4986).
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RoutedRustEventRoute {
+    LaunchFullGate,
+    WorkflowNotTriggered,
+}
+
+const ROUTED_RUST_REQUIRED_RESULT_NAME: &str = "Ripr Rust Small Result";
+const ROUTED_RUST_READY_EVENT: &str = "ready_for_review";
+const ROUTED_RUST_CONCURRENCY_GROUP_SNIPPET: &str = "group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}";
+const ROUTED_RUST_READY_CANCEL_SNIPPET: &str =
+    "cancel-in-progress: ${{ github.event_name == 'pull_request' }}";
+const ROUTED_RUST_IGNORED_LABEL_RESULT_NAME: &str = "Ripr Rust Small Ignored Label Event";
+const ROUTED_RUST_DRAFT_GUARD_SNIPPET: &str = "github.event.pull_request.draft";
+
+fn routed_rust_pull_request_types(workflow: &str) -> Option<Vec<String>> {
+    let mut in_events = false;
+    let mut in_pull_request = false;
+    for line in workflow.lines() {
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if !line.starts_with(' ') {
+            in_events = line.trim_end() == "on:";
+            in_pull_request = false;
+            continue;
+        }
+        if !in_events {
+            continue;
+        }
+        if line.starts_with("  ") && !line.starts_with("   ") {
+            in_pull_request = line.strip_prefix("  ").map(str::trim_end) == Some("pull_request:");
+            continue;
+        }
+        if !in_pull_request || !line.starts_with("    ") || line.starts_with("     ") {
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("    types:") {
+            // This contract deliberately admits the workflow's exact inline
+            // array style. Other events, comments and block scalars cannot
+            // provide the pull_request admission declaration.
+            let values = rest.trim().strip_prefix('[')?.strip_suffix(']')?;
+            return Some(
+                values
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect(),
+            );
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+fn routed_rust_event_route(
+    workflow: &str,
+    event_name: &str,
+    action: Option<&str>,
+    _label: Option<&str>,
+) -> RoutedRustEventRoute {
+    if event_name == "pull_request" {
+        let action = action.unwrap_or("");
+        if let Some(types) = routed_rust_pull_request_types(workflow)
+            && !types.iter().any(|value| value == action)
+        {
+            return RoutedRustEventRoute::WorkflowNotTriggered;
+        }
+    }
+    RoutedRustEventRoute::LaunchFullGate
+}
+
+/// Enforce the Ready-only pull-request admission law declared by
+/// `.github/workflows/routed-rust.yml` (#4986).
+///
+/// The native Draft -> Ready transition is the sole pull-request qualification
+/// request. A skipped required job reports success, so this validator fails
+/// closed on every path that could resurrect Draft or label participation in
+/// the protected required context. The old label-event law (opened /
+/// synchronize / reopened / labeled admission, the ignored-label pseudo-result,
+/// and the synchronize-only cancellation) is rejected here as the actual
+/// failure mode instead of being mandated.
+/// Inspect only the named job's own condition under the real jobs mapping.
+/// Folded condition continuations belong to that field; comments outside it,
+/// with values and step-level cleanup conditions do not.
+fn routed_rust_job_condition_has_always(workflow: &str, job: &str) -> bool {
+    let header = format!("{job}:");
+    let mut in_jobs = false;
+    let mut in_job = false;
+    let mut in_condition = false;
+    for line in workflow.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if !line.starts_with(' ') {
+            in_jobs = line.trim_end() == "jobs:";
+            in_job = false;
+            in_condition = false;
+            continue;
+        }
+        if line.starts_with("  ") && !line.starts_with("   ") {
+            in_job = in_jobs && line.trim_end().strip_prefix("  ") == Some(header.as_str());
+            in_condition = false;
+            continue;
+        }
+        if !in_job {
+            continue;
+        }
+        let expression = if line.starts_with("    ") && !line.starts_with("     ") {
+            match line.strip_prefix("    if:") {
+                Some(value) => {
+                    in_condition = true;
+                    value
+                }
+                None => {
+                    in_condition = false;
+                    continue;
+                }
+            }
+        } else if in_condition && line.starts_with("      ") {
+            trimmed
+        } else {
+            in_condition = false;
+            continue;
+        };
+        let normalized: String = expression
+            .chars()
+            .filter(|character| !character.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if normalized.contains("always()") {
+            return true;
+        }
+    }
+    false
+}
+
+fn routed_rust_ready_event_contract_violations(workflow: &str) -> Vec<String> {
+    let has_pull_request_trigger = workflow
+        .lines()
+        .map(str::trim)
+        .any(|line| line == "pull_request:");
+    if !has_pull_request_trigger {
+        return Vec::new();
+    }
+    let Some(types) = routed_rust_pull_request_types(workflow) else {
+        return vec![
+            ".github/workflows/routed-rust.yml must declare an inline pull_request types array so the Ready-only admission contract is auditable (#4986)".to_string(),
+        ];
+    };
+    let mut violations = Vec::new();
+    let ready_only = [ROUTED_RUST_READY_EVENT];
+    let unexpected: Vec<&str> = types
+        .iter()
+        .map(String::as_str)
+        .filter(|value| !ready_only.contains(value))
+        .collect();
+    if !unexpected.is_empty() || types.len() != ready_only.len() {
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml pull_request types must be exactly `[{ROUTED_RUST_READY_EVENT}]`; unexpected activity types: {unexpected:?}. The Draft -> Ready transition is the sole pull-request qualification request and every other pull_request activity type must stay withheld (#4986)"
+        ));
+    }
+    let expected_group = ROUTED_RUST_CONCURRENCY_GROUP_SNIPPET
+        .strip_prefix("group: ")
+        .unwrap_or("");
+    if !routed_rust_concurrency_group_matches(workflow, expected_group) {
+        violations.push(
+            ".github/workflows/routed-rust.yml must keep the event-qualified concurrency group `${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}` so push and manual work cannot replace each other (#4986)".to_string(),
+        );
+    }
+    let expected_cancellation = ROUTED_RUST_READY_CANCEL_SNIPPET
+        .strip_prefix("cancel-in-progress: ")
+        .unwrap_or("");
+    if !routed_rust_concurrency_value_matches(workflow, "cancel-in-progress", expected_cancellation)
+    {
+        violations.push(
+            ".github/workflows/routed-rust.yml must keep `cancel-in-progress: ${{ github.event_name == 'pull_request' }}` so a second Ready transition replaces the prior admission attempt without cancelling push or manual runs (#4986)".to_string(),
+        );
+    }
+    for job in ["rust-cx43", "rust-cpx42", "rust-cx53", "rust-github"] {
+        if routed_rust_job_condition_has_always(workflow, job) {
+            violations.push(format!(
+                ".github/workflows/routed-rust.yml implementation job `{job}` must not use `always()` in its job condition; a job-level `always()` survives cancellation, so a second Ready transition queues behind the obsolete head's full gate. Use `!cancelled()` (#6729)"
+            ));
+        }
+    }
+    if workflow.contains(ROUTED_RUST_DRAFT_GUARD_SNIPPET) {
+        violations.push(
+            ".github/workflows/routed-rust.yml must not gate jobs on `github.event.pull_request.draft`; a skipped required job reports success, so job guards cannot distinguish withheld context from proof (#4986)".to_string(),
+        );
+    }
+    if workflow.contains(ROUTED_RUST_IGNORED_LABEL_RESULT_NAME) {
+        violations.push(
+            ".github/workflows/routed-rust.yml must not post the retired `Ripr Rust Small Ignored Label Event` pseudo-result; the required context is either earned by an exact Ready-head run or absent (#4986)".to_string(),
+        );
+    }
+    let required_name_line = format!("name: {ROUTED_RUST_REQUIRED_RESULT_NAME}");
+    if !routed_rust_job_block_any(workflow, "result", |line| {
+        line.trim() == required_name_line.as_str()
+    }) {
+        violations.push(format!(
+            ".github/workflows/routed-rust.yml result job must post the static `{ROUTED_RUST_REQUIRED_RESULT_NAME}` context on every run; a conditional or renamed result can hide Draft or label activity from branch protection (#4986)"
+        ));
+    }
+    violations
+}
 
 fn routed_rust_workflow_contract_violations_with_reusable(
     workflow: &str,
@@ -7727,31 +8197,19 @@ fn routed_rust_workflow_contract_violations_with_reusable(
 ) -> Vec<String> {
     let mut violations = Vec::new();
 
+    // The Ready-only trigger owns PR admission. Retired event guards would
+    // skip admitted Ready jobs and could leave a misleading terminal result.
     for job in ["route", "detect-docs-only"] {
-        if !routed_rust_job_block_any(workflow, job, |line| {
-            line.trim() == format!("if: {SOURCE_RUST_EVENT_GUARD}")
-        }) {
+        if routed_rust_job_block_any(workflow, job, |line| line.trim_start().starts_with("if:")) {
             violations.push(format!(
-                "source routed Rust job `{job}` lacks the exact proof-event guard"
+                "source routed Rust job `{job}` must not retain a job-level event guard under Ready-only admission"
             ));
         }
     }
-    if !routed_rust_job_block_any(workflow, "result", |line| {
-        line.trim() == format!("if: always() && ({SOURCE_RUST_EVENT_GUARD})")
-    }) {
-        violations.push("source routed Rust result lacks the exact proof-event guard".to_string());
-    }
-    let result_name = format!(
-        "name: ${{{{ {SOURCE_RUST_IGNORED_EVENT} && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}}}"
-    );
-    if !routed_rust_job_block_any(workflow, "result", |line| line.trim() == result_name) {
+    if !routed_rust_job_block_any(workflow, "result", |line| line.trim() == "if: always()") {
         violations.push(
-            "source ignored label event must not occupy the required result name".to_string(),
+            "source routed Rust result job must run unconditionally with if: always() under Ready-only admission".to_string(),
         );
-    }
-    let isolation = format!("${{{{ {SOURCE_RUST_IGNORED_EVENT} && '-label-ignore' || '' }}}}");
-    if !routed_rust_concurrency_group_has_isolation(workflow, &isolation) {
-        violations.push("source ignored label event lacks concurrency isolation".to_string());
     }
 
     // ripr#1446: the source repository proves its own pull requests on
@@ -7952,6 +8410,8 @@ fn routed_rust_workflow_contract_violations_with_reusable(
             );
         }
     }
+
+    violations.extend(routed_rust_ready_event_contract_violations(workflow));
 
     violations.sort();
     violations.dedup();
@@ -8383,6 +8843,14 @@ fn finish_traceability_report(violations: &[String], advisories: &[String]) -> R
          discoverable for long-context human and agent work.",
     );
     body.push_str("\n\n");
+    body.push_str("## Scope of this result\n\n");
+    body.push_str(
+        "A pass checks the authored `[[behavior]]` entries, spec coverage, fixture spec IDs, \
+         and the file paths named by registered references. It does not enumerate Rust tests. \
+         It does not require every newly added test to appear in `.ripr/traceability.toml`. \
+         A `::symbol` suffix remains advisory and is not proof that the symbol exists, has \
+         a test role, ran, or establishes the behavior (see #2345).\n\n",
+    );
 
     if violations.is_empty() {
         body.push_str("## Violations\n\nNone detected.\n\n");
@@ -12270,6 +12738,33 @@ struct RepoExposureLatencyRun {
     stdout_bytes: usize,
     stderr_bytes: usize,
     trace: Vec<RepoExposureLatencyTrace>,
+    file_fact_cache: Option<RepoExposureFileFactCache>,
+    file_fact_cache_limitation: Option<String>,
+    resource_cost: Option<RepoExposureResourceCost>,
+    resource_cost_limitation: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct RepoExposureFileFactCache {
+    schema_version: String,
+    hits: usize,
+    misses: usize,
+    invalidated: usize,
+    corrupt_ignored: usize,
+    stores: usize,
+    store_errors: usize,
+    store_failures: Vec<RepoExposureStoreFailure>,
+    store_failures_dropped: usize,
+}
+
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct RepoExposureStoreFailure {
+    /// `None` when the producer found no portable spelling for the file.
+    path: Option<String>,
+    stage: String,
+    error: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -12277,6 +12772,59 @@ struct RepoExposureLatencyTrace {
     phase: String,
     status: String,
     duration_ms: u128,
+}
+
+/// Prefix of the analyzer's end-of-run resource-cost receipt (#5213). The
+/// receipt rides the same opt-in trace switch as the phase lines above.
+const REPO_EXPOSURE_RESOURCE_COST_PREFIX: &str = "ripr_resource_cost_receipt ";
+
+/// The analyzer's own process cost: CPU time and peak resident memory, either
+/// observed on the analyzer's host or explicitly unavailable with a named
+/// reason. Independent mirror of the producer's wire shape rather than a
+/// reuse, so a drift between producer and consumer fails this parse instead of
+/// being silently accepted by shared code.
+#[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct RepoExposureResourceCost {
+    schema_version: String,
+    /// Attribution: the numbers belong to the analyzed `ripr` process, not to
+    /// this harness.
+    observer: String,
+    observer_pid: u32,
+    host_os: String,
+    host_arch: String,
+    cpu: RepoExposureCpuCost,
+    peak_resident_bytes: RepoExposureMeasurement,
+}
+
+/// CPU time split into user and kernel. Observed or not at all, so a partial
+/// CPU reading can never reach the report as a complete one.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+// A receipt that adds a number to the unavailable arm is a producer defect, not
+// a new field to accept: refusing it keeps a zero from reading as an
+// observation this consumer then renders.
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+enum RepoExposureCpuCost {
+    Observed {
+        source_unit: String,
+        source_unit_per_second: u64,
+        user_source: u64,
+        system_source: u64,
+        user_ms: u64,
+        system_ms: u64,
+    },
+    Unavailable {
+        reason: String,
+    },
+}
+
+/// One resource number. `Observed` carries the value; `Unavailable` carries a
+/// reason and never a zero standing in for an absent observation.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(tag = "state", rename_all = "snake_case", deny_unknown_fields)]
+enum RepoExposureMeasurement {
+    Observed { value: u64 },
+    Unavailable { reason: String },
 }
 
 /// Write a bounded repo exposure latency report without changing the
@@ -12335,6 +12883,10 @@ where
             stdout_bytes: 0,
             stderr_bytes: 0,
             trace: Vec::new(),
+            file_fact_cache: None,
+            file_fact_cache_limitation: Some("format_skipped".to_string()),
+            resource_cost: None,
+            resource_cost_limitation: Some("format_skipped".to_string()),
         });
     }
 
@@ -12396,6 +12948,10 @@ fn repo_exposure_latency_run_from_output(
     } else {
         "fail"
     };
+    let (file_fact_cache, file_fact_cache_limitation) =
+        repo_exposure_file_fact_cache_from_stderr(&output.stderr);
+    let (resource_cost, resource_cost_limitation) =
+        repo_exposure_resource_cost_from_stderr(&output.stderr);
     RepoExposureLatencyRun {
         format: format.to_string(),
         status: status.to_string(),
@@ -12404,7 +12960,82 @@ fn repo_exposure_latency_run_from_output(
         stdout_bytes: output.stdout.len(),
         stderr_bytes: output.stderr.len(),
         trace: repo_exposure_latency_trace(&output.stderr),
+        file_fact_cache,
+        file_fact_cache_limitation,
+        resource_cost,
+        resource_cost_limitation,
     }
+}
+
+fn repo_exposure_resource_cost_from_stderr(
+    stderr: &str,
+) -> (Option<RepoExposureResourceCost>, Option<String>) {
+    let mut records = stderr
+        .lines()
+        .filter_map(|line| line.strip_prefix(REPO_EXPOSURE_RESOURCE_COST_PREFIX));
+    let Some(record) = records.next() else {
+        return (None, Some("resource_cost_receipt_not_observed".to_string()));
+    };
+    if records.next().is_some() {
+        return (None, Some("duplicate_resource_cost_receipt".to_string()));
+    }
+    let Ok(cost) = serde_json::from_str::<RepoExposureResourceCost>(record) else {
+        return (None, Some("malformed_resource_cost_receipt".to_string()));
+    };
+    // The producer owns these identities. A receipt that misattributes its
+    // cost, or that claims a schema this consumer does not know, is not
+    // usable evidence even when it parses.
+    if cost.schema_version != "0.1"
+        || cost.observer != "ripr_process_self"
+        || cost.observer_pid == 0
+    {
+        return (None, Some("invalid_resource_cost_receipt".to_string()));
+    }
+    (Some(cost), None)
+}
+
+fn repo_exposure_file_fact_cache_from_stderr(
+    stderr: &str,
+) -> (Option<RepoExposureFileFactCache>, Option<String>) {
+    const PREFIX: &str = "ripr_file_fact_cache_receipt ";
+    // Mirrors the producer's `MAX_STORE_FAILURE_ROWS` row cap.
+    const MAX_RETAINED_STORE_FAILURES: usize = 32;
+    let mut records = stderr.lines().filter_map(|line| line.strip_prefix(PREFIX));
+    let Some(record) = records.next() else {
+        return (None, Some("cache_phase_not_observed".to_string()));
+    };
+    if records.next().is_some() {
+        return (None, Some("duplicate_cache_receipt".to_string()));
+    }
+    let Ok(value) = serde_json::from_str::<RepoExposureFileFactCache>(record) else {
+        return (None, Some("malformed_cache_receipt".to_string()));
+    };
+    if value.schema_version != "0.1"
+        || value.store_failures.len() > MAX_RETAINED_STORE_FAILURES
+        || value
+            .store_failures
+            .len()
+            .checked_add(value.store_failures_dropped)
+            .is_none_or(|count| count != value.store_errors)
+        || (value.store_failures.len() < MAX_RETAINED_STORE_FAILURES
+            && value.store_failures_dropped > 0)
+        || value.store_failures.iter().any(|row| {
+            !matches!(row.stage.as_str(), "create_dir" | "encode" | "write")
+                || row.path.as_deref().is_some_and(|path| {
+                    path.is_empty()
+                        || path.starts_with('/')
+                        || path
+                            .split('/')
+                            .any(|part| part == "." || part == ".." || part.is_empty())
+                        || path.contains('\\')
+                        || path.contains(':')
+                        || path.chars().any(char::is_control)
+                })
+        })
+    {
+        return (None, Some("invalid_cache_receipt".to_string()));
+    }
+    (Some(value), None)
 }
 
 fn repo_exposure_latency_status(runs: &[RepoExposureLatencyRun]) -> String {
@@ -12449,7 +13080,10 @@ fn repo_exposure_latency_trace(stderr: &str) -> Vec<RepoExposureLatencyTrace> {
 fn repo_exposure_latency_json(report: &RepoExposureLatencyReport) -> String {
     let mut body = String::new();
     body.push_str("{\n");
-    body.push_str("  \"schema_version\": \"0.1\",\n");
+    // 0.3 adds the analyzer's own `resource_cost` block (#5213). The bump is
+    // because the JSON gained fields a 0.2 reader does not know; nothing in
+    // the 0.2 shape changed.
+    body.push_str("  \"schema_version\": \"0.3\",\n");
     body.push_str("  \"tool\": \"ripr\",\n");
     body.push_str("  \"report\": \"repo-exposure-latency\",\n");
     body.push_str(&format!(
@@ -12482,6 +13116,28 @@ fn repo_exposure_latency_json(report: &RepoExposureLatencyReport) -> String {
         }
         body.push_str(&format!("      \"stdout_bytes\": {},\n", run.stdout_bytes));
         body.push_str(&format!("      \"stderr_bytes\": {},\n", run.stderr_bytes));
+        body.push_str("      \"file_fact_cache\": ");
+        match &run.file_fact_cache {
+            Some(cache) => body.push_str(&serde_json::json!(cache).to_string()),
+            None => body.push_str("null"),
+        }
+        body.push_str(",\n      \"file_fact_cache_limitation\": ");
+        match &run.file_fact_cache_limitation {
+            Some(limitation) => body.push_str(&serde_json::json!(limitation).to_string()),
+            None => body.push_str("null"),
+        }
+        body.push_str(",\n");
+        body.push_str("      \"resource_cost\": ");
+        match &run.resource_cost {
+            Some(cost) => body.push_str(&serde_json::json!(cost).to_string()),
+            None => body.push_str("null"),
+        }
+        body.push_str(",\n      \"resource_cost_limitation\": ");
+        match &run.resource_cost_limitation {
+            Some(limitation) => body.push_str(&serde_json::json!(limitation).to_string()),
+            None => body.push_str("null"),
+        }
+        body.push_str(",\n");
         body.push_str("      \"trace\": [");
         for (trace_index, trace) in run.trace.iter().enumerate() {
             if trace_index > 0 {
@@ -12546,6 +13202,99 @@ fn repo_exposure_latency_markdown(report: &RepoExposureLatencyReport) -> String 
             body.push('\n');
         }
     }
+    body.push_str("\n## Analyzer Resource Cost\n\n");
+    body.push_str(
+        "Measured by the analyzed `ripr` process about itself, not by this \
+         harness. CPU time and peak resident memory are reported only when the \
+         host offers a safe per-process source; otherwise the named unavailable \
+         state is reported and no zero is inferred.\n\n",
+    );
+    for run in &report.runs {
+        body.push_str(&format!("### `{}`\n\n", run.format));
+        let Some(cost) = &run.resource_cost else {
+            body.push_str(&format!(
+                "Unavailable: `{}`. No zero CPU or memory figures are inferred.\n\n",
+                run.resource_cost_limitation.as_deref().unwrap_or("unknown")
+            ));
+            continue;
+        };
+        body.push_str(&format!(
+            "Observed on `{}`/`{}`; observer `{}` (pid `{}`).\n\n",
+            latency_markdown_cell(&cost.host_os),
+            latency_markdown_cell(&cost.host_arch),
+            latency_markdown_cell(&cost.observer),
+            cost.observer_pid
+        ));
+        match &cost.cpu {
+            RepoExposureCpuCost::Observed {
+                source_unit,
+                source_unit_per_second,
+                user_source,
+                system_source,
+                user_ms,
+                system_ms,
+            } => {
+                body.push_str(&format!(
+                    "CPU: user {} ms ({} source units), system {} ms ({} source units); \
+                     source unit `{}` at {} per second.\n\n",
+                    user_ms,
+                    user_source,
+                    system_ms,
+                    system_source,
+                    source_unit,
+                    source_unit_per_second
+                ));
+            }
+            RepoExposureCpuCost::Unavailable { reason } => {
+                body.push_str(&format!(
+                    "CPU unavailable: `{}`. No zero CPU time is inferred.\n\n",
+                    latency_markdown_cell(reason)
+                ));
+            }
+        }
+        match &cost.peak_resident_bytes {
+            RepoExposureMeasurement::Observed { value } => {
+                body.push_str(&format!("Peak resident: {} bytes.\n\n", value))
+            }
+            RepoExposureMeasurement::Unavailable { reason } => body.push_str(&format!(
+                "Peak resident unavailable: `{}`. No zero memory figure is inferred.\n\n",
+                latency_markdown_cell(reason)
+            )),
+        }
+    }
+    body.push_str("\n## File Fact Cache\n\n");
+    for run in &report.runs {
+        body.push_str(&format!("### `{}`\n\n", run.format));
+        if let Some(cache) = &run.file_fact_cache {
+            body.push_str(&format!(
+                "Hits: {}; misses: {}; invalidated: {}; corrupt ignored: {}; stores: {}; store errors: {}; retained failures: {}; dropped failures: {}.\n\n",
+                cache.hits, cache.misses, cache.invalidated, cache.corrupt_ignored,
+                cache.stores, cache.store_errors, cache.store_failures.len(), cache.store_failures_dropped
+            ));
+            if !cache.store_failures.is_empty() {
+                body.push_str("| Path | Stage | Error |\n| --- | --- | --- |\n");
+                for row in &cache.store_failures {
+                    body.push_str(&format!(
+                        "| {} | {} | {} |\n",
+                        row.path.as_deref().map_or_else(
+                            || "_unrepresentable path_".to_string(),
+                            latency_markdown_cell
+                        ),
+                        row.stage,
+                        latency_markdown_cell(&row.error)
+                    ));
+                }
+                body.push('\n');
+            }
+        } else {
+            body.push_str(&format!(
+                "Unavailable: `{}`. No zero cache counts are inferred.\n\n",
+                run.file_fact_cache_limitation
+                    .as_deref()
+                    .unwrap_or("unknown")
+            ));
+        }
+    }
     body.push_str("\n## Next Step\n\n");
     body.push_str(
         "Use this report to identify whether the repo-exposure path is waiting on \
@@ -12553,6 +13302,23 @@ cache collection, cache load, cold compute, cache store, or rendering before \
 changing cache behavior.\n",
     );
     body
+}
+
+fn latency_markdown_cell(value: &str) -> String {
+    let mut escaped = String::new();
+    for ch in value.chars() {
+        match ch {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '`' => escaped.push_str("&#96;"),
+            '\\' => escaped.push_str("&#92;"),
+            '|' => escaped.push_str("\\|"),
+            control if control.is_control() => escaped.push(' '),
+            other => escaped.push(other),
+        }
+    }
+    escaped
 }
 
 /// Run the agent seam packet renderer and write
@@ -12591,6 +13357,10 @@ struct LspCockpitFixture {
 struct LspCockpitContext {
     seam_packet_available: bool,
     targeted_test_brief_available: bool,
+    /// The repair start (`ripr agent repair ... --phase before`) is offered
+    /// only for a seam past the repair-packet flip, so it is reported on its
+    /// own and is not part of `agent_loop_commands_available` (#3906).
+    agent_repair_command_available: bool,
     agent_packet_command_available: bool,
     agent_brief_command_available: bool,
     after_snapshot_command_available: bool,
@@ -12805,6 +13575,10 @@ fn lsp_cockpit_fixture_report(
             "ripr.copyTargetedTestBrief" => {
                 context.targeted_test_brief_available = action_has_string_argument(action, "brief");
             }
+            "ripr.copyAgentRepairCommand" => {
+                context.agent_repair_command_available =
+                    action_has_string_argument(action, "command");
+            }
             "ripr.copyAgentPacketCommand" => {
                 context.agent_packet_command_available =
                     action_has_string_argument(action, "command");
@@ -12969,6 +13743,7 @@ fn lsp_cockpit_report_json(report: &LspCockpitReport) -> Result<String, String> 
                 "context": {
                     "seam_packet_available": fixture.context.seam_packet_available,
                     "targeted_test_brief_available": fixture.context.targeted_test_brief_available,
+                    "agent_repair_command_available": fixture.context.agent_repair_command_available,
                     "agent_packet_command_available": fixture.context.agent_packet_command_available,
                     "agent_brief_command_available": fixture.context.agent_brief_command_available,
                     "after_snapshot_command_available": fixture.context.after_snapshot_command_available,
@@ -13040,6 +13815,10 @@ fn lsp_cockpit_report_markdown(report: &LspCockpitReport) -> String {
         out.push_str(&format!(
             "- targeted test brief available: {}\n",
             yes_no(fixture.context.targeted_test_brief_available)
+        ));
+        out.push_str(&format!(
+            "- agent repair command available: {}\n",
+            yes_no(fixture.context.agent_repair_command_available)
         ));
         out.push_str(&format!(
             "- agent packet command available: {}\n",
@@ -14511,25 +15290,20 @@ fn check_workspace_shape() -> Result<(), String> {
 }
 
 fn check_architecture() -> Result<(), String> {
-    let rules = read_pipe_records("policy/architecture.txt", 3)?;
+    let records = read_pipe_records("policy/architecture.txt", 3)?;
     let files = tracked_files()?;
-    let mut violations = Vec::new();
-    for rule in rules {
-        let glob = &rule[0];
-        let forbidden = &rule[1];
-        let reason = &rule[2];
-        for file in &files {
-            if !glob_matches(glob, file) {
-                continue;
-            }
-            let text = read_text_lossy(Path::new(file))?;
-            if text.contains(forbidden) {
-                violations.push(format!(
-                    "{file} contains forbidden architecture pattern `{forbidden}`\n  reason: {reason}"
-                ));
-            }
+    let rule_globs = records
+        .iter()
+        .filter(|record| !record[0].starts_with('!'))
+        .map(|record| record[0].as_str())
+        .collect::<Vec<_>>();
+    let mut file_texts = Vec::new();
+    for file in &files {
+        if rule_globs.iter().any(|glob| glob_matches(glob, file)) {
+            file_texts.push((file.clone(), read_text_lossy(Path::new(file))?));
         }
     }
+    let mut violations = architecture_rule_violations(&records, &file_texts);
 
     for file in files
         .iter()
@@ -14576,10 +15350,230 @@ fn check_architecture() -> Result<(), String> {
                 "Update policy/architecture.txt only when the architecture rule itself changes.",
             ],
             rerun_command: "cargo xtask check-architecture",
-            exception_template: Some("glob|forbidden_pattern|reason"),
+            exception_template: Some(
+                "glob|forbidden_pattern|reason\n!path|forbidden_pattern|reason (scoped exception: a literal tracked-file path, never a glob; suppresses only the exact pattern in exactly that path; an exception that matches no current violation fails the gate as stale)",
+            ),
         },
         &violations,
     )
+}
+
+/// Applies `policy/architecture.txt` records to the tracked file texts.
+/// Plain records are deny rules (`glob|forbidden_pattern|reason`). A record
+/// whose first field is prefixed `!` is a scoped exception
+/// (`!path|forbidden_pattern|reason`): it suppresses a deny-rule violation
+/// only when BOTH the literal file path and the exact forbidden pattern
+/// match. Exception paths are literal tracked-file paths, never globs, so
+/// one entry can never waive a rule for other files or other patterns
+/// (#4146). An exception that suppresses nothing is itself a violation,
+/// mirroring the count-policy stale/orphan convention (#2413): exception
+/// budget that matches nothing is invisible slack, so the entry must be
+/// removed or the denied usage restored.
+fn architecture_rule_violations(
+    records: &[Vec<String>],
+    file_texts: &[(String, String)],
+) -> Vec<String> {
+    let mut rules = Vec::new();
+    let mut exceptions = Vec::new();
+    for record in records {
+        match record[0].strip_prefix('!') {
+            Some(glob) => exceptions.push((glob.to_string(), record[1].clone(), record[2].clone())),
+            None => rules.push((record[0].clone(), record[1].clone(), record[2].clone())),
+        }
+    }
+
+    let mut suppressed = vec![false; exceptions.len()];
+    let mut violations = Vec::new();
+    for (glob, forbidden, reason) in &rules {
+        for (path, text) in file_texts {
+            if !glob_matches(glob, path) || !text.contains(forbidden) {
+                continue;
+            }
+            let exception_index =
+                exceptions
+                    .iter()
+                    .position(|(exception_path, exception_pattern, _)| {
+                        exception_pattern == forbidden && exception_path == path
+                    });
+            match exception_index {
+                Some(index) => suppressed[index] = true,
+                None => violations.push(format!(
+                    "{path} contains forbidden architecture pattern `{forbidden}`\n  reason: {reason}"
+                )),
+            }
+        }
+    }
+
+    for ((exception_path, exception_pattern, _), suppressed) in exceptions.iter().zip(&suppressed) {
+        if !suppressed {
+            violations.push(format!(
+                "!{exception_path} exception for `{exception_pattern}` is stale: it matches no current architecture violation; remove the entry or restore the denied usage"
+            ));
+        }
+    }
+    violations
+}
+
+#[cfg(test)]
+mod architecture_rule_tests {
+    use super::architecture_rule_violations;
+
+    fn record(line: &str) -> Vec<String> {
+        line.split('|').map(str::trim).map(str::to_string).collect()
+    }
+
+    const BROAD_RULE: &str =
+        "crates/ripr/src/analysis/**|crate::output|analysis must not render user output";
+    const RUNNER_TESTS_PATH: &str =
+        "crates/ripr/src/analysis/language/perl/static_limit/runner_tests.rs";
+    const EXCEPTION: &str = concat!(
+        "!crates/ripr/src/analysis/language/perl/static_limit/runner_tests.rs|crate::output|",
+        "#4146: cfg(test) assertions verify the missing-runner guidance IS rendered - ",
+        "the rendered output is the discriminator under test; production rendering paths remain denied by the broad rule"
+    );
+
+    #[test]
+    fn scoped_exception_suppresses_exact_path_and_pattern() {
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "let human = crate::output::human::render_finding(&observed);".to_string(),
+            )],
+        );
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn exception_does_not_suppress_other_patterns_in_same_file() {
+        let violations = architecture_rule_violations(
+            &[
+                record(BROAD_RULE),
+                record(
+                    "crates/ripr/src/analysis/**|serde_json|analysis must not know JSON rendering",
+                ),
+                record(EXCEPTION),
+            ],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "serde_json::from_str(&text);".to_string(),
+            )],
+        );
+        // The serde_json violation survives, and because the exception
+        // suppressed nothing it is also reported stale.
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("forbidden architecture pattern `serde_json`"))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
+
+    #[test]
+    fn exception_does_not_suppress_other_files() {
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                "crates/ripr/src/analysis/workspace/classify.rs".to_string(),
+                "use crate::output::human;".to_string(),
+            )],
+        );
+        // The other file's violation survives; the exception is also stale.
+        assert_eq!(violations.len(), 2);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains(
+                    "crates/ripr/src/analysis/workspace/classify.rs contains forbidden architecture pattern `crate::output`"
+                ))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
+
+    #[test]
+    fn stale_exception_is_reported() {
+        // Pattern no longer present anywhere: the exception matches nothing.
+        let stale = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "let human = render_locally(&observed);".to_string(),
+            )],
+        );
+        assert_eq!(stale.len(), 1);
+        assert!(stale[0].contains("is stale: it matches no current architecture violation"));
+
+        // File removed: the exception matches nothing either. The unrelated
+        // file's own violation survives, and the stale exception is reported.
+        let orphaned = architecture_rule_violations(
+            &[record(BROAD_RULE), record(EXCEPTION)],
+            &[(
+                "crates/ripr/src/analysis/other.rs".to_string(),
+                "crate::output".to_string(),
+            )],
+        );
+        assert_eq!(
+            orphaned.len(),
+            2,
+            "unrelated file violation plus stale exception expected: {orphaned:?}"
+        );
+        assert!(
+            orphaned
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
+
+    #[test]
+    fn plain_rules_still_deny_without_exceptions() {
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE)],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "crate::output::json::render(&output)".to_string(),
+            )],
+        );
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].contains(RUNNER_TESTS_PATH));
+    }
+
+    #[test]
+    fn wildcard_exception_suppresses_nothing_and_is_stale() {
+        // Exception paths are literal, never globs: a wildcarded exception
+        // cannot act as a blanket waiver for every matching file.
+        let wildcard = record("!crates/ripr/src/analysis/**|crate::output|temporary waiver");
+        let violations = architecture_rule_violations(
+            &[record(BROAD_RULE), wildcard],
+            &[(
+                RUNNER_TESTS_PATH.to_string(),
+                "crate::output::human::render_finding(&observed);".to_string(),
+            )],
+        );
+        assert_eq!(
+            violations.len(),
+            2,
+            "wildcard exception must neither suppress nor be silently ignored: {violations:?}"
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains(RUNNER_TESTS_PATH))
+        );
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation.contains("is stale"))
+        );
+    }
 }
 
 /// #3534: Rust source-role authority. Producer modules derive source role
@@ -14612,7 +15606,7 @@ fn check_rust_source_role_authority() -> Result<(), String> {
     /// the reason it is not a role authority. New entries need the reason in
     /// the surrounding code and a review that the check stays display- or
     /// identity-scoped.
-    const ALLOWED_SITE_PATTERNS: [(&str, &str, &str); 7] = [
+    const ALLOWED_SITE_PATTERNS: [(&str, &str, &str); 8] = [
         (
             "crates/ripr/src/output/review_comments.rs",
             "starts_with(\"tests",
@@ -14642,6 +15636,11 @@ fn check_rust_source_role_authority() -> Result<(), String> {
             "crates/ripr/src/analysis/classify/related_tests.rs",
             "starts_with(\"tests",
             "package_prefix/package_scope derive package identity from paths, which the source-role contract explicitly permits; they do not classify role",
+        ),
+        (
+            "crates/ripr/src/analysis/classify/owner_pin/tests.rs",
+            "\"#[cfg(test)]\"",
+            "owner-pin collectability preservation fixture in the cfg(test)-gated tests module; source spelling is input data, while cfg_predicates owns the production availability decision (#4478)",
         ),
         (
             "crates/ripr/src/lsp/tests.rs",
@@ -14677,13 +15676,27 @@ fn check_rust_source_role_authority() -> Result<(), String> {
     /// authority may be consumed only by this inventoried set; new consumers
     /// extend the inventory here with a reason so role consumers stay
     /// reviewable.
-    const IS_TEST_FILE_CONSUMERS: [&str; 6] = [
+    const IS_TEST_FILE_CONSUMERS: [&str; 10] = [
         "crates/ripr/src/analysis/classify/owner_shape.rs",
         "crates/ripr/src/analysis/test_grip_evidence.rs",
         "crates/ripr/src/analysis/test_grip_evidence/related_tests/context.rs",
         "crates/ripr/src/analysis/source_role_corpus.rs",
         "crates/ripr/src/analysis/mod.rs",
-        "crates/ripr/src/analysis/language/rust.rs",
+        "crates/ripr/src/analysis/language/rust/mod.rs",
+        // RIPR-SPEC-0118: a transitive witness from an integration test names
+        // the public-API path limit. Moved here from `language/rust/mod.rs`
+        // so `ripr check` and seam reach (#5411) share one mapping.
+        "crates/ripr/src/analysis/classify/transitive_reach.rs",
+        // #4775: consulted unchanged lexical-fallback files that live under
+        // `tests/**` are test evidence even when the lexical scanner extracted
+        // no TestFact. The layout authority stays `is_test_file`; this module
+        // does not re-derive role from names or cfg strings.
+        "crates/ripr/src/analysis/language/rust/lexical_test_grip.rs",
+        // InlineUnit admission refuses tests/** owners as InlineUnitOutOfScope
+        // rather than inventing a second path heuristic (#4784). Integration
+        // admission uses the same authority for proposed tests/*.rs leaves (#4576).
+        "crates/ripr/src/analysis/new_test_target.rs",
+        "crates/ripr/src/analysis/new_test_target/integration.rs",
     ];
 
     let files = tracked_files()?;
@@ -15057,7 +16070,9 @@ fn check_output_contracts() -> Result<(), String> {
         "crates/ripr/src/domain/mod.rs",
         "crates/ripr/src/domain/classification.rs",
         "crates/ripr/src/domain/evidence.rs",
+        "crates/ripr/src/domain/language.rs",
         "crates/ripr/src/domain/probe.rs",
+        "crates/ripr/src/domain/repair_card.rs",
         "crates/ripr/src/domain/summary.rs",
         "crates/ripr/src/domain/support.rs",
     ] {
@@ -15065,6 +16080,7 @@ fn check_output_contracts() -> Result<(), String> {
         domain.push('\n');
     }
     let app = read_text_lossy(Path::new("crates/ripr/src/app.rs"))?;
+    let repair_card_domain = read_text_lossy(Path::new("crates/ripr/src/domain/repair_card.rs"))?;
     let evidence_record = read_text_lossy(Path::new("crates/ripr/src/output/evidence_record.rs"))?;
     let mutation_calibration =
         read_text_lossy(Path::new("crates/ripr/src/output/mutation_calibration.rs"))?;
@@ -15153,6 +16169,38 @@ fn check_output_contracts() -> Result<(), String> {
                 );
                 validate_evidence_record_contract_schema_version(value, &mut violations)?;
             }
+            "repair_card_schema_version" => {
+                require_contract_value(
+                    "crates/ripr/src/domain/repair_card.rs",
+                    &repair_card_domain,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
+            "repair_card_budget_version" => {
+                require_contract_value(
+                    "crates/ripr/src/domain/repair_card.rs",
+                    &repair_card_domain,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
             "context_version" => {
                 require_contract_value(
                     "crates/ripr/src/output/json/",
@@ -15185,9 +16233,22 @@ fn check_output_contracts() -> Result<(), String> {
                     &mut violations,
                 );
             }
-            "exposure_class" | "severity" | "probe_family" | "delta" | "flow_sink"
-            | "stage_state" | "confidence" | "oracle_kind" | "oracle_strength" | "stop_reason"
-            | "value_context" | "oracle_alignment" | "source_currentness" => {
+            "exposure_class"
+            | "severity"
+            | "probe_family"
+            | "delta"
+            | "flow_sink"
+            | "stage_state"
+            | "confidence"
+            | "oracle_kind"
+            | "oracle_strength"
+            | "stop_reason"
+            | "value_context"
+            | "oracle_alignment"
+            | "related_test_miss"
+            | "source_currentness"
+            | "static_limit_kind"
+            | "agent_card_refusal_kind" => {
                 require_contract_value(
                     "crates/ripr/src/domain/",
                     &domain,
@@ -15298,6 +16359,26 @@ fn check_output_contracts() -> Result<(), String> {
                 let path = "xtask/src/reports/release_final_subjects.rs";
                 let source = read_text_lossy(Path::new(path))?;
                 require_contract_value(path, &source, value, kind, &mut violations);
+            }
+            "kind" => {
+                let producer = match value.as_str() {
+                    "agent_card_refusal" => "crates/ripr/src/cli/commands/agent_card.rs",
+                    "python_repair_driver_binding" => {
+                        "crates/ripr/src/app/python_repair_binding.rs"
+                    }
+                    "python_repair_verification_receipt" => {
+                        "crates/ripr/src/app/python_repair_verification.rs"
+                    }
+                    "python_repair_verification_check_report" => {
+                        "xtask/src/reports/python_repair_verification.rs"
+                    }
+                    other => {
+                        violations.push(format!("unrecognized output kind `{other}`"));
+                        continue;
+                    }
+                };
+                let source = read_text_lossy(Path::new(producer))?;
+                require_contract_value(producer, &source, value, kind, &mut violations);
                 require_contract_value(
                     "docs/OUTPUT_SCHEMA.md",
                     &schema,
@@ -15309,6 +16390,34 @@ fn check_output_contracts() -> Result<(), String> {
             other => violations.push(format!(
                 "policy/output_contracts.txt uses unsupported kind `{other}`"
             )),
+        }
+    }
+
+    let mut registry: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for entry in &seen {
+        if let Some((kind, value)) = entry.split_once('|') {
+            registry
+                .entry(kind.to_string())
+                .or_default()
+                .insert(value.to_string());
+        }
+    }
+    output_enum_contracts::check_enum_completeness(
+        &registry,
+        &schema,
+        &|path| read_text_lossy(Path::new(path)),
+        &mut violations,
+    )?;
+
+    // These producer-owned kinds are durable artifacts in the governed Python
+    // repair path. Removing a registry row must fail too, not just a bad row.
+    for value in [
+        "python_repair_driver_binding",
+        "python_repair_verification_check_report",
+        "python_repair_verification_receipt",
+    ] {
+        if !seen.contains(&format!("kind|{value}")) {
+            violations.push(format!("missing output contract entry: kind|{value}"));
         }
     }
 
@@ -16756,6 +17865,43 @@ fn display_repo_path(root: &Path, path: &Path) -> String {
     normalize_path(display_path)
 }
 
+/// #4395(a): README, CONFIGURATION, and SUPPORT_TIERS must describe marker-auto
+/// Python when no `ripr.toml` exists, not an unconditional Rust-only default.
+fn python_marker_auto_docs_violations(
+    configuration: &str,
+    readme: &str,
+    support: &str,
+) -> Vec<String> {
+    let mut violations = Vec::new();
+    if !(configuration.contains("with no `ripr.toml`")
+        && configuration.contains("keep Python preview off"))
+    {
+        violations.push(
+            "docs/CONFIGURATION.md `[languages].enabled` default must state absent-config marker-auto Python and the rust-only opt-out".to_string(),
+        );
+    }
+    if configuration.contains("opt-in TypeScript, JavaScript, and Python evidence") {
+        violations.push(
+            "docs/CONFIGURATION.md must not lump Python with opt-in TypeScript/JavaScript; Python is marker-auto when no ripr.toml exists".to_string(),
+        );
+    }
+    if !(readme.contains("With no `ripr.toml`") && readme.contains("enables Python preview")) {
+        violations.push("README.md must state marker-auto Python activation".to_string());
+    }
+    if !(readme.contains(r#"enabled = ["rust"]"#) && readme.contains("keeps Python off")) {
+        violations.push("README.md must state the rust-only opt-out".to_string());
+    }
+    if !(support.contains("with no `ripr.toml`")
+        && support.contains("Python project markers")
+        && support.contains(r#"enabled = ["rust"]"#))
+    {
+        violations.push(
+            "docs/status/SUPPORT_TIERS.md must reconcile marker-auto Python with the rust-only opt-out".to_string(),
+        );
+    }
+    violations
+}
+
 fn check_readme_state() -> Result<(), String> {
     let readme_path = Path::new("README.md");
     let readme = read_text_lossy(readme_path)?;
@@ -16797,6 +17943,14 @@ fn check_readme_state() -> Result<(), String> {
         }
     }
 
+    let configuration = read_text_lossy(Path::new("docs/CONFIGURATION.md"))?;
+    let support = read_text_lossy(Path::new("docs/status/SUPPORT_TIERS.md"))?;
+    violations.extend(python_marker_auto_docs_violations(
+        &configuration,
+        &readme,
+        &support,
+    ));
+
     let capabilities_source = read_text_lossy(Path::new("metrics/capabilities.toml"))?;
     let matrix = read_text_lossy(Path::new("docs/CAPABILITY_MATRIX.md"))?;
     if !matrix.contains("metrics/capabilities.toml") {
@@ -16833,6 +17987,7 @@ fn check_readme_state() -> Result<(), String> {
                 "Keep README.md linked to active planning, metrics, campaign, and automation docs.",
                 "Keep README's capability snapshot compact and aligned with docs/CAPABILITY_MATRIX.md.",
                 "Update metrics/capabilities.toml and docs/CAPABILITY_MATRIX.md when capability status or next checkpoints change.",
+                "Keep README, docs/CONFIGURATION.md, and docs/status/SUPPORT_TIERS.md aligned on marker-auto Python when no ripr.toml exists.",
             ],
             rerun_command: "cargo xtask check-readme-state",
             exception_template: None,
@@ -16843,6 +17998,7 @@ fn check_readme_state() -> Result<(), String> {
 
 fn markdown_links() -> Result<(), String> {
     let mut violations = Vec::new();
+    let mut heading_cache: BTreeMap<PathBuf, BTreeSet<String>> = BTreeMap::new();
     for file in tracked_files()? {
         if !file.ends_with(".md") {
             continue;
@@ -16856,16 +18012,44 @@ fn markdown_links() -> Result<(), String> {
         }
         let text = read_text_lossy(path)?;
         for link in markdown_links_in_text(&text) {
-            let Some(target_path) = local_markdown_target(&link.target) else {
+            let Some(target) = local_markdown_target(&link.target) else {
                 continue;
             };
-            let resolved = resolve_markdown_link(path, &target_path);
-            if !resolved.exists() {
-                violations.push(format!(
-                    "{file}:{} links to missing local target `{}`",
-                    link.line, link.target
-                ));
+            let resolved = match target.path.as_deref() {
+                Some(target_path) => {
+                    let resolved = resolve_markdown_link(path, target_path);
+                    if !resolved.exists() {
+                        violations.push(format!(
+                            "{file}:{} links to missing local target `{}`",
+                            link.line, link.target
+                        ));
+                        continue;
+                    }
+                    resolved
+                }
+                None => path.to_path_buf(),
+            };
+            let Some(fragment) = target.fragment else {
+                continue;
+            };
+            // Only a Markdown document has headings to name. A fragment on any
+            // other target (`src/lib.rs#L20`) is not this check's subject.
+            if !resolved
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+            {
+                continue;
             }
+            let slugs = match heading_cache.entry(resolved.clone()) {
+                Entry::Occupied(entry) => entry.into_mut(),
+                Entry::Vacant(entry) => {
+                    let target_text = read_text_lossy(&resolved)?;
+                    entry.insert(heading_slugs(&target_text))
+                }
+            };
+            violations.extend(missing_anchor_violation(
+                &file, &link, &resolved, &fragment, slugs,
+            ));
         }
     }
 
@@ -16873,10 +18057,11 @@ fn markdown_links() -> Result<(), String> {
         PolicyReportSpec {
             report_file: "markdown-links.md",
             check: "markdown-links",
-            why_it_matters: "Markdown links are repo state for humans and long-context agents; links to deleted or renamed docs should fail before review.",
+            why_it_matters: "Markdown links are repo state for humans and long-context agents; links to deleted or renamed docs, and deep links to headings that have been renamed, should fail before review.",
             fix_kind: FixKind::AuthorDecisionRequired,
             recommended_fixes: &[
                 "Update links when docs are renamed or deleted.",
+                "Update `#anchor` fragments when a heading is renamed.",
                 "Use relative links for repo-local Markdown targets.",
                 "Run cargo xtask markdown-links before opening docs-heavy PRs.",
             ],
@@ -16885,6 +18070,103 @@ fn markdown_links() -> Result<(), String> {
         },
         &violations,
     )
+}
+
+/// The violation a link's `#fragment` produces against the anchors `slugs`
+/// offers, or `None` when the fragment names one of them.
+///
+/// This is the decision the whole check exists to make, so it is its own
+/// function and has its own test: a refactor that stopped producing the
+/// violation would otherwise leave a tree that passes and a gate that no
+/// longer gates.
+fn missing_anchor_violation(
+    file: &str,
+    link: &MarkdownLink,
+    resolved: &Path,
+    fragment: &str,
+    slugs: &BTreeSet<String>,
+) -> Option<String> {
+    if slugs.contains(fragment) {
+        return None;
+    }
+    Some(format!(
+        "{file}:{} links to `{}`, and `{}` has no heading with that anchor",
+        link.line,
+        link.target,
+        resolved.display()
+    ))
+}
+
+/// The anchor GitHub gives a heading whose text is `text`.
+///
+/// GitHub lowercases the text, turns each space into `-`, and drops every other
+/// character that is not a letter, digit, `_` or `-`. Dropping rather than
+/// collapsing is load-bearing: an em-dash or a slash surrounded by spaces
+/// leaves both of those spaces behind and so produces a doubled dash, which
+/// links into this repository's own headings depend on.
+fn heading_slug(text: &str) -> String {
+    let mut slug = String::new();
+    for ch in text.chars() {
+        if ch.is_alphanumeric() || ch == '_' || ch == '-' {
+            slug.extend(ch.to_lowercase());
+        } else if ch == ' ' {
+            slug.push('-');
+        }
+    }
+    slug
+}
+
+/// Every anchor the headings of `text` offer.
+///
+/// Headings that slugify the same way are numbered the way GitHub numbers them:
+/// the first keeps the bare slug and later ones gain `-1`, `-2`, and so on.
+fn heading_slugs(text: &str) -> BTreeSet<String> {
+    let mut slugs = BTreeSet::new();
+    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+    let mut in_fence = false;
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        let Some(title) = atx_heading_title(trimmed) else {
+            continue;
+        };
+        let base = heading_slug(title);
+        let count = seen.entry(base.clone()).or_insert(0);
+        let slug = if *count == 0 {
+            base
+        } else {
+            format!("{base}-{count}")
+        };
+        *count += 1;
+        slugs.insert(slug);
+    }
+    slugs
+}
+
+/// The heading text of an ATX heading line, or `None` when `trimmed` is not one.
+fn atx_heading_title(trimmed: &str) -> Option<&str> {
+    let rest = trimmed.trim_start_matches('#');
+    let level = trimmed.len() - rest.len();
+    if level == 0 || level > 6 {
+        return None;
+    }
+    if !rest.is_empty() && !rest.starts_with(' ') {
+        // `#hashtag` is body text, not a heading.
+        return None;
+    }
+    let title = rest.trim();
+    // A closing sequence of hashes is decoration when a space precedes it.
+    let without_closing = title.trim_end_matches('#');
+    if without_closing.len() < title.len() && without_closing.ends_with(' ') {
+        return Some(without_closing.trim_end());
+    }
+    Some(title)
 }
 
 fn next_checkpoints_from_capabilities(text: &str) -> Result<Vec<String>, String> {
@@ -16944,7 +18226,7 @@ fn markdown_links_in_line(line: &str, line_number: usize) -> Vec<MarkdownLink> {
     links
 }
 
-fn local_markdown_target(raw_target: &str) -> Option<String> {
+fn local_markdown_target(raw_target: &str) -> Option<LocalMarkdownTarget> {
     let mut target = raw_target.trim();
     if target.starts_with('<') {
         let end = target.find('>')?;
@@ -16952,7 +18234,7 @@ fn local_markdown_target(raw_target: &str) -> Option<String> {
     } else if let Some((first, _)) = target.split_once(char::is_whitespace) {
         target = first;
     }
-    if target.is_empty() || target.starts_with('#') {
+    if target.is_empty() {
         return None;
     }
     let lower = target.to_ascii_lowercase();
@@ -16964,14 +18246,25 @@ fn local_markdown_target(raw_target: &str) -> Option<String> {
     {
         return None;
     }
-    let without_query = target.split('?').next().unwrap_or(target);
-    let without_anchor = without_query.split('#').next().unwrap_or(without_query);
-    let local = without_anchor.trim();
-    if local.is_empty() {
+    let (document, fragment) = match target.split_once('#') {
+        Some((document, fragment)) => (document, Some(fragment)),
+        None => (target, None),
+    };
+    let without_query = document.split('?').next().unwrap_or(document);
+    let local = without_query.trim();
+    let path = if local.is_empty() {
         None
     } else {
         Some(local.trim_start_matches('/').to_string())
+    };
+    let fragment = fragment
+        .map(str::trim)
+        .filter(|fragment| !fragment.is_empty())
+        .map(str::to_string);
+    if path.is_none() && fragment.is_none() {
+        return None;
     }
+    Some(LocalMarkdownTarget { path, fragment })
 }
 
 fn resolve_markdown_link(source: &Path, target: &str) -> PathBuf {
@@ -17621,6 +18914,8 @@ struct LedgerLintEntry {
     name: String,
     level: String,
     activate_when_msrv: Option<String>,
+    reason: Option<String>,
+    blocked_by: Option<String>,
     block_line: usize,
     is_planned: bool,
 }
@@ -17676,6 +18971,8 @@ fn parse_clippy_lints_ledger(text: &str) -> (Vec<LedgerLintEntry>, Vec<String>) 
                     name: String::new(),
                     level: String::new(),
                     activate_when_msrv: None,
+                    reason: None,
+                    blocked_by: None,
                     block_line: line_number,
                     is_planned,
                 });
@@ -17695,9 +18992,7 @@ fn parse_clippy_lints_ledger(text: &str) -> (Vec<LedgerLintEntry>, Vec<String>) 
         };
         let key = key.trim();
         let value = raw_value.trim();
-        let unquoted = value
-            .strip_prefix('"')
-            .and_then(|rest| rest.split_once('"').map(|(token, _)| token.to_string()));
+        let unquoted = unquote_toml_basic_string(value);
         match key {
             "name" => {
                 if let Some(name) = unquoted {
@@ -17712,6 +19007,16 @@ fn parse_clippy_lints_ledger(text: &str) -> (Vec<LedgerLintEntry>, Vec<String>) 
             "activate_when_msrv" => {
                 if let Some(msrv) = unquoted {
                     entry.activate_when_msrv = Some(msrv);
+                }
+            }
+            "reason" => {
+                if let Some(reason) = unquoted {
+                    entry.reason = Some(reason);
+                }
+            }
+            "blocked_by" => {
+                if let Some(blocked_by) = unquoted {
+                    entry.blocked_by = Some(blocked_by);
                 }
             }
             _ => {}
@@ -17732,15 +19037,409 @@ fn ledger_name_to_lookup(name: &str) -> (&str, &'static str) {
     }
 }
 
-fn check_lint_policy() -> Result<(), String> {
-    let cargo_text = fs::read_to_string("Cargo.toml")
-        .map_err(|err| format!("failed to read Cargo.toml: {err}"))?;
-    let ledger_text = fs::read_to_string("policy/clippy-lints.toml")
-        .map_err(|err| format!("failed to read policy/clippy-lints.toml: {err}"))?;
+/// Workspace MSRV from `[workspace.package] rust-version`.
+fn parse_workspace_package_rust_version(text: &str) -> Option<String> {
+    let mut in_package = false;
+    for raw in text.lines() {
+        let line = raw.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            in_package = line == "[workspace.package]";
+            continue;
+        }
+        if !in_package {
+            continue;
+        }
+        let Some((key, raw_value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() != "rust-version" {
+            continue;
+        }
+        return unquote_toml_basic_string(raw_value.trim());
+    }
+    None
+}
 
-    let cargo_clippy = parse_workspace_lints_section(&cargo_text, "clippy");
-    let cargo_rust = parse_workspace_lints_section(&cargo_text, "rust");
-    let (entries, mut violations) = parse_clippy_lints_ledger(&ledger_text);
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ClippyDebtEntry {
+    id: String,
+    lint: String,
+    level: String,
+    owner: String,
+    reason: String,
+    blocked_by: String,
+    target: String,
+    block_line: usize,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct ClippyDebtFile {
+    schema_version: String,
+    policy: String,
+    owner: String,
+    status: String,
+    debt: Vec<ClippyDebtRow>,
+}
+
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields, default)]
+struct ClippyDebtRow {
+    id: String,
+    lint: String,
+    level: String,
+    owner: String,
+    reason: String,
+    blocked_by: String,
+    target: String,
+}
+
+fn debt_id_line(text: &str, id: &str) -> usize {
+    if id.is_empty() {
+        return 0;
+    }
+    let double = format!("id = \"{id}\"");
+    let single = format!("id = '{id}'");
+    for (index, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.starts_with(&double) || line.starts_with(&single) {
+            return index + 1;
+        }
+    }
+    0
+}
+
+fn parse_clippy_debt_ledger(text: &str) -> (Vec<ClippyDebtEntry>, Vec<String>) {
+    let mut violations = Vec::new();
+    if text.trim().is_empty() {
+        return (Vec::new(), violations);
+    }
+    let parsed: ClippyDebtFile = match toml::from_str(text) {
+        Ok(file) => file,
+        Err(err) => {
+            violations.push(format!("policy/clippy-debt.toml: {err}"));
+            return (Vec::new(), violations);
+        }
+    };
+
+    let mut entries = Vec::new();
+    for row in parsed.debt {
+        let entry = ClippyDebtEntry {
+            id: row.id.trim().to_string(),
+            lint: row.lint.trim().to_string(),
+            level: row.level.trim().to_string(),
+            owner: row.owner.trim().to_string(),
+            reason: row.reason.trim().to_string(),
+            blocked_by: row.blocked_by.trim().to_string(),
+            target: row.target.trim().to_string(),
+            block_line: debt_id_line(text, row.id.trim()),
+        };
+        let mut missing = Vec::new();
+        if entry.id.is_empty() {
+            missing.push("id");
+        }
+        if entry.lint.is_empty() {
+            missing.push("lint");
+        }
+        if entry.level.is_empty() {
+            missing.push("level");
+        }
+        if entry.owner.is_empty() {
+            missing.push("owner");
+        }
+        if entry.reason.is_empty() {
+            missing.push("reason");
+        }
+        if entry.blocked_by.is_empty() {
+            missing.push("blocked_by");
+        }
+        if entry.target.is_empty() {
+            missing.push("target");
+        }
+        if !missing.is_empty() {
+            let label = if entry.id.is_empty() {
+                format!("policy/clippy-debt.toml:{}", entry.block_line)
+            } else {
+                format!(
+                    "policy/clippy-debt.toml:{} `{}`",
+                    entry.block_line, entry.id
+                )
+            };
+            violations.push(format!(
+                "{label} missing required field{}: {}",
+                if missing.len() == 1 { "" } else { "s" },
+                missing.join(", ")
+            ));
+            continue;
+        }
+        if entry.level != "deny" && entry.level != "warn" {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` has level `{}`; expected `deny` or `warn`.",
+                entry.block_line, entry.id, entry.level
+            ));
+            continue;
+        }
+        entries.push(entry);
+    }
+    (entries, violations)
+}
+
+fn collect_clippy_debt_violations(
+    debt_text: &str,
+    cargo_text: &str,
+    lints_text: &str,
+    today: &str,
+) -> Vec<String> {
+    let (entries, mut violations) = parse_clippy_debt_ledger(debt_text);
+    let cargo_clippy = parse_workspace_lints_section(cargo_text, "clippy");
+    let (lints, _) = parse_clippy_lints_ledger(lints_text);
+
+    let mut seen_ids = BTreeSet::new();
+    let mut seen_lints = BTreeSet::new();
+    let active: BTreeSet<String> = lints
+        .iter()
+        .filter(|entry| !entry.is_planned)
+        .map(|entry| entry.name.clone())
+        .collect();
+    let planned: BTreeSet<String> = lints
+        .iter()
+        .filter(|entry| entry.is_planned)
+        .map(|entry| entry.name.clone())
+        .collect();
+
+    for entry in &entries {
+        if !seen_ids.insert(entry.id.clone()) {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} duplicate debt id `{}`.",
+                entry.block_line, entry.id
+            ));
+        }
+        if !seen_lints.insert(entry.lint.clone()) {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` duplicates lint `{}`.",
+                entry.block_line, entry.id, entry.lint
+            ));
+        }
+        if !no_panic::is_valid_iso_date(&entry.target) {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` has malformed target `{}`; expected YYYY-MM-DD.",
+                entry.block_line, entry.id, entry.target
+            ));
+        } else if entry.target.as_str() < today {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` has target `{}` before today `{today}`. Renew, remove, or pay the debt.",
+                entry.block_line, entry.id, entry.target
+            ));
+        }
+        let Some(bare) = entry
+            .lint
+            .strip_prefix("clippy::")
+            .filter(|bare| !bare.is_empty())
+        else {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` has lint `{}`; expected a `clippy::` lint name.",
+                entry.block_line, entry.id, entry.lint
+            ));
+            continue;
+        };
+        if active.contains(&entry.lint) {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` records `{}` which is already `[[active]]` in policy/clippy-lints.toml. Remove the debt row or demote the active entry.",
+                entry.block_line, entry.id, entry.lint
+            ));
+        }
+        if planned.contains(&entry.lint) {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` records `{}` which is already `[[planned]]` in policy/clippy-lints.toml. Planned lints stay there; do not duplicate them into debt.",
+                entry.block_line, entry.id, entry.lint
+            ));
+        }
+        if let Some(level) = cargo_clippy.get(bare) {
+            violations.push(format!(
+                "policy/clippy-debt.toml:{} `{}` records `{}` which Cargo.toml `[workspace.lints.clippy]` already activates at level `{level}`. Pay the debt or remove the Cargo.toml line.",
+                entry.block_line, entry.id, entry.lint
+            ));
+        }
+    }
+
+    violations
+}
+
+/// First basic TOML string on a value (`"..."` or `'...'`). Table-form and
+/// multiline strings are intentionally out of scope for these ledgers.
+/// Double-quoted strings decode basic escapes so `\n` is whitespace, not the
+/// token `n`. Single-quoted strings stay literal, matching TOML.
+fn unquote_toml_basic_string(value: &str) -> Option<String> {
+    let value = value.trim();
+    if let Some(rest) = value.strip_prefix('"') {
+        return rest
+            .split_once('"')
+            .map(|(token, _)| decode_toml_basic_escapes(token));
+    }
+    if let Some(rest) = value.strip_prefix('\'') {
+        return rest.split_once('\'').map(|(token, _)| token.to_string());
+    }
+    None
+}
+
+/// Decode TOML basic-string escapes. Invalid sequences are left intact so
+/// they still count as leftover tokens in the MSRV filter.
+fn decode_toml_basic_escapes(token: &str) -> String {
+    let mut out = String::with_capacity(token.len());
+    let bytes = token.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'\\' {
+            let Some(ch) = token[index..].chars().next() else {
+                break;
+            };
+            out.push(ch);
+            index += ch.len_utf8();
+            continue;
+        }
+        let Some(esc) = bytes.get(index + 1).copied() else {
+            out.push('\\');
+            break;
+        };
+        let simple = match esc {
+            b'b' => Some('\u{0008}'),
+            b't' => Some('\t'),
+            b'n' => Some('\n'),
+            b'f' => Some('\u{000c}'),
+            b'r' => Some('\r'),
+            b'"' => Some('"'),
+            b'\\' => Some('\\'),
+            _ => None,
+        };
+        if let Some(ch) = simple {
+            out.push(ch);
+            index += 2;
+            continue;
+        }
+        let width = match esc {
+            b'u' => Some(4),
+            b'U' => Some(8),
+            _ => None,
+        };
+        if let Some(width) = width {
+            let start = index + 2;
+            let end = start + width;
+            if end <= bytes.len()
+                && let Ok(hex) = std::str::from_utf8(&bytes[start..end])
+                && let Ok(code) = u32::from_str_radix(hex, 16)
+                && let Some(ch) = char::from_u32(code)
+            {
+                out.push(ch);
+                index = end;
+                continue;
+            }
+        }
+        out.push('\\');
+        index += 1;
+    }
+    out
+}
+
+/// Parse `1.95` / `1.95.0` into a comparable triple. Rejects empty or extra parts.
+fn parse_msrv_triple(value: &str) -> Option<(u32, u32, u32)> {
+    let mut parts = value.split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = match parts.next() {
+        Some(part) => part.parse().ok()?,
+        None => 0,
+    };
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((major, minor, patch))
+}
+
+/// True when `text` is empty or only restates an MSRV/Rust-version delay.
+///
+/// This is a closed token filter, not NLP: version triples and a small
+/// MSRV-vocabulary list are stripped, then any leftover token counts as a
+/// remaining (non-MSRV) blocker. `check-lint-policy` applies it to
+/// `[[planned]]` `blocked_by` once `activate_when_msrv` is already met.
+/// `reason` is narrative and is not this gate.
+fn planned_blocker_text_is_msrv_only(text: &str) -> bool {
+    const MSRV_VOCABULARY: &[&str] = &[
+        "a",
+        "activate",
+        "activation",
+        "after",
+        "already",
+        "an",
+        "and",
+        "at",
+        "available",
+        "be",
+        "before",
+        "blocked",
+        "blocker",
+        "bump",
+        "by",
+        "exceeded",
+        "exceeds",
+        "for",
+        "hit",
+        "hits",
+        "is",
+        "met",
+        "msrv",
+        "need",
+        "needs",
+        "of",
+        "on",
+        "once",
+        "or",
+        "planned",
+        "reached",
+        "reaches",
+        "required",
+        "requires",
+        "rust",
+        "rustc",
+        "rustversion",
+        "since",
+        "still",
+        "the",
+        "to",
+        "toolchain",
+        "until",
+        "upgrade",
+        "upgraded",
+        "version",
+        "wait",
+        "waiting",
+        "when",
+    ];
+    let leftover = text
+        .to_ascii_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric() && c != '.')
+        .filter_map(|raw| {
+            let token = raw.trim_matches('.');
+            if token.is_empty() {
+                None
+            } else {
+                Some(token.to_string())
+            }
+        })
+        .filter(|token| parse_msrv_triple(token).is_none())
+        .filter(|token| !MSRV_VOCABULARY.contains(&token.as_str()))
+        .count();
+    leftover == 0
+}
+
+fn collect_lint_policy_violations(cargo_text: &str, ledger_text: &str) -> Vec<String> {
+    let cargo_clippy = parse_workspace_lints_section(cargo_text, "clippy");
+    let cargo_rust = parse_workspace_lints_section(cargo_text, "rust");
+    let (entries, mut violations) = parse_clippy_lints_ledger(ledger_text);
+    let workspace_msrv = parse_workspace_package_rust_version(cargo_text);
+    let workspace_triple = workspace_msrv.as_deref().and_then(parse_msrv_triple);
 
     for entry in &entries {
         let (bare, group) = ledger_name_to_lookup(&entry.name);
@@ -17755,6 +19454,35 @@ fn check_lint_policy() -> Result<(), String> {
                     "policy/clippy-lints.toml:{} declares `{}` as `[[planned]]` but Cargo.toml `[workspace.lints.{}]` already activates it at level `{}`. Promote the ledger entry to `[[active.<group>]]` or remove the Cargo.toml line.",
                     entry.block_line, entry.name, group, level
                 ));
+            }
+            if let Some(msrv) = entry.activate_when_msrv.as_deref() {
+                match (parse_msrv_triple(msrv), workspace_triple, workspace_msrv.as_deref()) {
+                    (None, _, _) => violations.push(format!(
+                        "policy/clippy-lints.toml:{} `{}` has unparsable `activate_when_msrv = {msrv:?}`; expected `MAJOR.MINOR` or `MAJOR.MINOR.PATCH`.",
+                        entry.block_line, entry.name
+                    )),
+                    (_, None, ws) => violations.push(format!(
+                        "policy/clippy-lints.toml:{} `{}` records `activate_when_msrv = {msrv:?}` but Cargo.toml `[workspace.package]` has no parsable `rust-version` (found {ws:?}). The gate compares those two values.",
+                        entry.block_line, entry.name
+                    )),
+                    (Some(activate), Some(workspace), Some(ws)) if activate <= workspace => {
+                        // #3990: blocked_by is the remaining-blocker field.
+                        // reason stays narrative and does not satisfy the gate.
+                        let blocked_by = entry.blocked_by.as_deref().map(str::trim).unwrap_or("");
+                        if blocked_by.is_empty() {
+                            violations.push(format!(
+                                "policy/clippy-lints.toml:{} `{}` has `activate_when_msrv = {msrv:?}` already met by workspace rust-version `{ws}`. Record a non-MSRV `blocked_by` explaining why it is still `[[planned]]`, or promote it.",
+                                entry.block_line, entry.name
+                            ));
+                        } else if planned_blocker_text_is_msrv_only(blocked_by) {
+                            violations.push(format!(
+                                "policy/clippy-lints.toml:{} `{}` has `activate_when_msrv = {msrv:?}` already met by workspace rust-version `{ws}`. `blocked_by` {blocked_by:?} is MSRV-only. Record a remaining non-MSRV blocker, or promote it.",
+                                entry.block_line, entry.name
+                            ));
+                        }
+                    }
+                    _ => {}
+                }
             }
             continue;
         }
@@ -17793,15 +19521,35 @@ fn check_lint_policy() -> Result<(), String> {
         }
     }
 
+    violations
+}
+
+fn check_lint_policy() -> Result<(), String> {
+    let cargo_text = fs::read_to_string("Cargo.toml")
+        .map_err(|err| format!("failed to read Cargo.toml: {err}"))?;
+    let ledger_text = fs::read_to_string("policy/clippy-lints.toml")
+        .map_err(|err| format!("failed to read policy/clippy-lints.toml: {err}"))?;
+    let debt_text = fs::read_to_string("policy/clippy-debt.toml")
+        .map_err(|err| format!("failed to read policy/clippy-debt.toml: {err}"))?;
+    let mut violations = collect_lint_policy_violations(&cargo_text, &ledger_text);
+    violations.extend(collect_clippy_debt_violations(
+        &debt_text,
+        &cargo_text,
+        &ledger_text,
+        &no_panic::today_date_string(),
+    ));
+
     finish_policy_report(
         PolicyReportSpec {
             report_file: "lint-policy.md",
             check: "check-lint-policy",
-            why_it_matters: "`policy/clippy-lints.toml` is the reviewable ledger of the workspace lint stance, including planned 1.94 / 1.95 flips. If Cargo.toml drifts from the ledger, reviewers lose the trajectory and the dual-rail design (clippy + semantic checker) loses its receipt.",
+            why_it_matters: "`policy/clippy-lints.toml` is the reviewable ledger of the workspace lint stance, including planned 1.94 / 1.95 flips. If Cargo.toml drifts from the ledger, reviewers lose the trajectory and the dual-rail design (clippy + semantic checker) loses its receipt. `activate_when_msrv` is compared to `[workspace.package] rust-version`; an already-met MSRV without a remaining non-MSRV `blocked_by` is overdue. `reason` is narrative and does not satisfy that gate. `policy/clippy-debt.toml` is parsed as TOML: required nonblank fields, unknown fields, duplicate keys, trailing garbage, `target` dates, and dual-rail collisions fail here rather than being trusted as comments.",
             fix_kind: FixKind::PolicyExceptionRequired,
             recommended_fixes: &[
                 "Make `Cargo.toml` and `policy/clippy-lints.toml` agree: every `[[active.<group>]]` entry must appear in `[workspace.lints.*]` at the same level, and `[[planned]]` entries must not yet appear there.",
+                "When a planned lint's `activate_when_msrv` is already met by workspace `rust-version`, record a remaining non-MSRV `blocked_by` (not an MSRV-only delay) or promote the entry. `reason` does not satisfy that gate.",
                 "When promoting a planned lint, move the ledger entry from `[[planned]]` to `[[active.<group>]]` and add the matching `Cargo.toml` line in the same PR.",
+                "Keep `policy/clippy-debt.toml` rows unique, complete, and not already active, planned, or present in Cargo.toml. A past `target` must be renewed or the debt paid.",
                 "Document `[[active.<group>]]` family blocks in `docs/CLIPPY_POLICY.md` so the public surface stays in sync.",
             ],
             rerun_command: "cargo xtask check-lint-policy",
@@ -19678,6 +21426,7 @@ fn is_docs_path(path: &str) -> bool {
         || path == "AGENTS.md"
         || path == "CONTRIBUTING.md"
         || path == "CHANGELOG.md"
+        || path.starts_with("changelog.d/")
         || path.starts_with("docs/")
         || is_plan_path(path)
 }
@@ -19793,21 +21542,32 @@ fn report_index_next_commands(
 }
 
 fn collect_pr_changes() -> Result<Vec<ChangedPath>, String> {
+    // Raw NUL-delimited inventories (#4006): every git call below passes
+    // `-z`, so records are never C-quoted and never line-split; parsing
+    // rules come from the shared authority, not from tab/line splitting
+    // here. The advisory-packet contract is unchanged (path plus status
+    // set); only identity handling is exact now.
     let mut changes = BTreeMap::<String, BTreeSet<String>>::new();
 
-    add_name_status_output(
+    add_name_status_bytes(
         &mut changes,
-        &run_output_optional("git", &["diff", "--name-status", "origin/main...HEAD"])?,
-    );
-    add_name_status_output(
+        &run_output_optional_bytes(
+            "git",
+            &["diff", "--name-status", "-z", "origin/main...HEAD"],
+        )?,
+    )?;
+    add_name_status_bytes(
         &mut changes,
-        &run_output("git", &["diff", "--name-status"])?,
-    );
-    add_name_status_output(
+        &run_output_bytes("git", &["diff", "--name-status", "-z"])?,
+    )?;
+    add_name_status_bytes(
         &mut changes,
-        &run_output("git", &["diff", "--cached", "--name-status"])?,
-    );
-    add_short_status_output(&mut changes, &run_output("git", &["status", "--short"])?);
+        &run_output_bytes("git", &["diff", "--cached", "--name-status", "-z"])?,
+    )?;
+    add_porcelain_bytes(
+        &mut changes,
+        &run_output_bytes("git", &["status", "--porcelain=v1", "-z"])?,
+    )?;
 
     Ok(changes
         .into_iter()
@@ -19817,51 +21577,115 @@ fn collect_pr_changes() -> Result<Vec<ChangedPath>, String> {
 
 fn collect_worktree_status_changes() -> Result<Vec<ChangedPath>, String> {
     let mut changes = BTreeMap::<String, BTreeSet<String>>::new();
-    add_short_status_output(&mut changes, &run_output("git", &["status", "--short"])?);
+    add_porcelain_bytes(
+        &mut changes,
+        &run_output_bytes("git", &["status", "--porcelain=v1", "-z"])?,
+    )?;
     Ok(changes
         .into_iter()
         .map(|(path, statuses)| ChangedPath { path, statuses })
         .collect())
 }
 
-fn add_name_status_output(changes: &mut BTreeMap<String, BTreeSet<String>>, output: &str) {
-    for line in output.lines() {
-        let parts = line.split('\t').collect::<Vec<_>>();
-        if parts.len() < 2 {
-            continue;
-        }
-        let status = parts[0].trim();
-        let Some(path) = parts.last() else {
-            continue;
-        };
-        add_changed_path(changes, path, status);
+/// Decode raw `--name-status -z` bytes through the shared NUL status-record
+/// authority (#4006). Strict: truncated records and non-UTF-8 fields fail
+/// loudly instead of attributing a change to half a record or collapsing
+/// through lossy conversion (the old tab-split route did both: it kept
+/// C-quoted octal names verbatim and silently dropped rename sources).
+/// Rename/copy records attribute the target path — the path present at the
+/// head — matching the old `parts.last()` projection with exact bytes.
+fn add_name_status_bytes(
+    changes: &mut BTreeMap<String, BTreeSet<String>>,
+    output: &[u8],
+) -> Result<(), String> {
+    let records = ripr::analysis::parse_git_status_records(output)
+        .map_err(|err| format!("pr-change name-status inventory: {err}"))?;
+    for record in &records {
+        let path = record.path.to_str().ok_or_else(|| {
+            format!(
+                "pr-change name-status inventory: decoded path {} is not valid UTF-8",
+                record.path.display()
+            )
+        })?;
+        add_changed_path(changes, path, &record.status);
     }
+    Ok(())
 }
 
-fn add_short_status_output(changes: &mut BTreeMap<String, BTreeSet<String>>, output: &str) {
-    for line in output.lines() {
-        if line.len() < 4 {
-            continue;
-        }
-        let status = line[..2].trim();
-        let mut path = line[3..].trim();
-        if let Some((_, new_path)) = path.split_once(" -> ") {
-            path = new_path.trim();
-        }
-        if status.is_empty() {
-            continue;
-        }
-        add_changed_path(changes, path, status);
+/// Decode raw `git status --porcelain=v1 -z` bytes (#4006). Entries are
+/// `XY␣path\0`; rename/copy entries append the source as a bare second
+/// field (`XY␣new\0old\0`, verified against real git output for both the
+/// staged `R ` and the worktree ` R` columns — the latter occurs for
+/// intent-to-add renames). Output is never C-quoted and never line-split,
+/// so exotic names survive byte-exact — including names containing ` -> `,
+/// which the old `split_once(" -> ")` projection mis-split. Rename entries
+/// attribute the target path, matching the old projection with exact bytes.
+/// A non-empty input missing its trailing NUL fails loudly: real git always
+/// terminates every record, so a missing terminator is truncation, not a
+/// final field.
+fn add_porcelain_bytes(
+    changes: &mut BTreeMap<String, BTreeSet<String>>,
+    output: &[u8],
+) -> Result<(), String> {
+    if output.is_empty() {
+        return Ok(());
     }
+    if output.last() != Some(&0) {
+        return Err(
+            "pr-change porcelain inventory: output is truncated or misframed (missing trailing NUL)"
+                .to_string(),
+        );
+    }
+    let mut fields: Vec<&[u8]> = output.split(|byte| *byte == 0).collect();
+    fields.pop();
+    let mut fields = fields.into_iter();
+    while let Some(field) = fields.next() {
+        let (status, path) = porcelain_entry(field)?;
+        if status.iter().any(|byte| matches!(byte, b'R' | b'C')) {
+            let _source = fields.next().ok_or_else(|| {
+                format!("pr-change porcelain inventory: rename entry for `{path}` is missing its paired path")
+            })?;
+        }
+        let status_text = std::str::from_utf8(status)
+            .map_err(|err| format!("pr-change porcelain inventory: status is not ASCII: {err}"))?;
+        add_changed_path(changes, path, status_text.trim());
+    }
+    Ok(())
+}
+
+/// Split one `XY␣path` porcelain field into its status prefix and path.
+/// Fails loudly on misframed input instead of inventing an entry.
+fn porcelain_entry(field: &[u8]) -> Result<(&[u8], &str), String> {
+    if field.len() < 4 || field[2] != b' ' {
+        return Err(format!(
+            "pr-change porcelain inventory: misframed entry of {} bytes",
+            field.len()
+        ));
+    }
+    let path = std::str::from_utf8(&field[3..]).map_err(|err| {
+        format!("pr-change porcelain inventory: entry path is not valid UTF-8: {err}")
+    })?;
+    if path.is_empty() {
+        return Err("pr-change porcelain inventory: entry path is empty".to_string());
+    }
+    Ok((&field[..2], path))
 }
 
 fn add_changed_path(changes: &mut BTreeMap<String, BTreeSet<String>>, path: &str, status: &str) {
-    let normalized = normalize_slashes(path.trim().trim_matches('"'));
-    if normalized.is_empty() {
+    // Identity-exact (#4006 item 5): the map key is the decoded path
+    // verbatim. All feeders pass `-z` git output, which always uses `/`
+    // separators even on Windows, so there is no separator folding to do —
+    // and folding would be wrong: the literal-backslash filename `a\b.rs`
+    // and the nested path `a/b.rs` are distinct tracked paths that folding
+    // collapsed to one key, omitting an inventory path while returning
+    // success. No trimming either: leading/trailing spaces are path bytes.
+    // Display-time normalization, if ever needed, belongs at the render
+    // call site — never in the identity map.
+    if path.is_empty() {
         return;
     }
     changes
-        .entry(normalized)
+        .entry(path.to_string())
         .or_default()
         .insert(status.to_string());
 }
@@ -21279,6 +23103,7 @@ fn detected_surface_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Stri
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || path.starts_with("changelog.d/")
                     || is_plan_path(path)
                     || matches!(
                         path,
@@ -21352,6 +23177,7 @@ fn public_contract_rows(changes: &[ChangedPath]) -> Vec<(&'static str, Vec<Strin
             "Docs",
             paths_matching(changes, |path| {
                 path.starts_with("docs/")
+                    || path.starts_with("changelog.d/")
                     || is_plan_path(path)
                     || matches!(
                         path,
@@ -21435,6 +23261,7 @@ fn is_evidence_path(path: &str) -> bool {
         || is_policy_path(path)
         || is_plan_path(path)
         || path.starts_with("docs/")
+        || path.starts_with("changelog.d/")
         || path.starts_with("metrics/")
         || matches!(
             path,
@@ -21501,8 +23328,16 @@ fn read_path_allowlist(path: &str) -> Result<BTreeSet<String>, String> {
 }
 
 fn read_count_allowlist(path: &str) -> Result<BTreeMap<(String, String), usize>, String> {
-    let mut allowed = BTreeMap::new();
     let text = read_text_lossy(Path::new(path))?;
+    parse_count_allowlist(path, &text)
+}
+
+fn parse_count_allowlist(
+    path: &str,
+    text: &str,
+) -> Result<BTreeMap<(String, String), usize>, String> {
+    let mut allowed = BTreeMap::new();
+    let mut first_line = BTreeMap::new();
     for (line_number, line) in text.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -21518,17 +23353,30 @@ fn read_count_allowlist(path: &str) -> Result<BTreeMap<(String, String), usize>,
         let max_count = parts[2]
             .parse::<usize>()
             .map_err(|err| format!("{path}:{} invalid max_count: {err}", line_number + 1))?;
-        allowed.insert(
-            (normalize_slashes(parts[0]), parts[1].to_string()),
+        insert_unique_count_allowlist_row(
+            &mut allowed,
+            &mut first_line,
+            path,
+            line_number + 1,
+            parts[0],
+            parts[1],
             max_count,
-        );
+        )?;
     }
     Ok(allowed)
 }
 
 fn read_count_policy_allowlist(path: &str) -> Result<BTreeMap<(String, String), usize>, String> {
-    let mut allowed = BTreeMap::new();
     let text = read_text_lossy(Path::new(path))?;
+    parse_count_policy_allowlist(path, &text)
+}
+
+fn parse_count_policy_allowlist(
+    path: &str,
+    text: &str,
+) -> Result<BTreeMap<(String, String), usize>, String> {
+    let mut allowed = BTreeMap::new();
+    let mut first_line = BTreeMap::new();
     for (line_number, line) in text.lines().enumerate() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -21554,12 +23402,37 @@ fn read_count_policy_allowlist(path: &str) -> Result<BTreeMap<(String, String), 
         let max_count = parts[2]
             .parse::<usize>()
             .map_err(|err| format!("{path}:{} invalid max_count: {err}", line_number + 1))?;
-        allowed.insert(
-            (normalize_slashes(parts[0]), parts[1].to_string()),
+        insert_unique_count_allowlist_row(
+            &mut allowed,
+            &mut first_line,
+            path,
+            line_number + 1,
+            parts[0],
+            parts[1],
             max_count,
-        );
+        )?;
     }
     Ok(allowed)
+}
+
+fn insert_unique_count_allowlist_row(
+    allowed: &mut BTreeMap<(String, String), usize>,
+    first_line: &mut BTreeMap<(String, String), usize>,
+    source_path: &str,
+    line_number: usize,
+    row_path: &str,
+    pattern: &str,
+    max_count: usize,
+) -> Result<(), String> {
+    let key = (normalize_slashes(row_path), pattern.to_string());
+    if let Some(&first) = first_line.get(&key) {
+        return Err(format!(
+            "{source_path}:{line_number} path|pattern `{row_path}|{pattern}` is duplicated (first declared near line {first})"
+        ));
+    }
+    first_line.insert(key.clone(), line_number);
+    allowed.insert(key, max_count);
+    Ok(())
 }
 
 fn read_local_context_allowlist(path: &str) -> Result<Vec<LocalContextAllow>, String> {
@@ -21680,19 +23553,50 @@ pub(crate) fn read_file_policy_allowlist(path: &str) -> Result<Vec<GlobAllow>, S
         .collect())
 }
 
-pub(crate) fn read_file_policy_test_commands(path: &str) -> Result<Vec<(usize, String)>, String> {
+pub(crate) fn read_file_policy_test_commands(
+    path: &str,
+) -> Result<Vec<FilePolicyTestCommand>, String> {
     let entries = parse_file_policy_allowlist(path)?;
-    Ok(entries
-        .into_iter()
-        .flat_map(|entry| {
-            entry
-                .covered_by
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|command| is_cargo_test_command(command))
-                .map(move |command| (entry.line, command))
-        })
-        .collect())
+    let mut commands = Vec::new();
+    for entry in entries {
+        for (host, values) in [
+            (None, entry.covered_by),
+            (Some(FilePolicyHost::Unix), entry.covered_by_unix),
+            (Some(FilePolicyHost::Windows), entry.covered_by_windows),
+        ] {
+            for command in values.unwrap_or_default() {
+                if is_cargo_test_command(&command) {
+                    commands.push(FilePolicyTestCommand {
+                        line: entry.line,
+                        command,
+                        host,
+                    });
+                }
+            }
+        }
+    }
+    Ok(commands)
+}
+
+impl FilePolicyHost {
+    fn parse(family: &str) -> Result<Self, String> {
+        match family {
+            "unix" => Ok(Self::Unix),
+            "windows" => Ok(Self::Windows),
+            _ => Err(format!("unsupported file-policy host family `{family}`")),
+        }
+    }
+
+    fn current() -> Result<Self, String> {
+        Self::parse(std::env::consts::FAMILY)
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Unix => "unix",
+            Self::Windows => "windows",
+        }
+    }
 }
 
 pub(crate) fn is_cargo_test_command(command: &str) -> bool {
@@ -21702,65 +23606,126 @@ pub(crate) fn is_cargo_test_command(command: &str) -> bool {
 
 fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, String> {
     let text = read_text_lossy(Path::new(path))?;
+    // Consume the same TOML parser that validates syntax and duplicate keys,
+    // retaining its spans instead of reparsing coverage arrays line by line.
+    let document = toml::de::DeTable::parse(&text)
+        .map_err(|error| format!("{path}: invalid non-Rust allowlist TOML: {error}"))?;
+    // Retain Value's numeric representability checks, even for ignored
+    // metadata, without parsing again or discarding the original spans.
+    let _: toml::Value = serde::Deserialize::deserialize(toml::de::Deserializer::from(
+        document.clone(),
+    ))
+    .map_err(|mut error: toml::de::Error| {
+        error.set_input(Some(&text));
+        format!("{path}: invalid non-Rust allowlist TOML: {error}")
+    })?;
+    let line_number = |offset| {
+        text.bytes()
+            .take(offset)
+            .filter(|byte| *byte == b'\n')
+            .count()
+            + 1
+    };
     let mut entries = Vec::new();
-    let mut current = FilePolicyAllowEntry::default();
-    let mut in_entry = false;
-
-    let lines = text.lines().collect::<Vec<_>>();
-    let mut idx = 0;
-    while idx < lines.len() {
-        let line_number = idx + 1;
-        let trimmed = lines[idx].trim();
-        idx += 1;
-        if trimmed.is_empty() || trimmed.starts_with('#') {
-            continue;
-        }
-        if trimmed == "[[allow]]" {
-            if in_entry {
-                validate_file_policy_allow_entry(path, &current)?;
-                entries.push(current);
-            }
-            current = FilePolicyAllowEntry {
-                line: line_number,
-                ..FilePolicyAllowEntry::default()
-            };
-            in_entry = true;
-            continue;
-        }
-        let Some((key, value)) = parse_toml_key_value(trimmed) else {
-            continue;
-        };
-        if !in_entry {
-            continue;
-        }
-        match key {
-            "glob" => current.glob = Some(parse_string_value(value, path, line_number)?),
-            "kind" => current.kind = Some(parse_string_value(value, path, line_number)?),
-            "owner" => current.owner = Some(parse_string_value(value, path, line_number)?),
-            "surface" => current.surface = Some(parse_string_value(value, path, line_number)?),
-            "classification" => {
-                current.classification = Some(parse_string_value(value, path, line_number)?)
-            }
-            "reason" => current.reason = Some(parse_string_value(value, path, line_number)?),
-            "generated_by" => {
-                current.generated_by = Some(parse_string_value(value, path, line_number)?)
-            }
-            "covered_by" => {
-                let value = collect_toml_array_value(path, line_number, value, &lines, &mut idx)?;
-                current.covered_by = Some(parse_inline_array(&value)?);
-            }
-            "expires" | "retired" => {}
-            other => {
+    for (key, value) in document.get_ref().iter() {
+        let key = key.get_ref().as_ref();
+        if key != "allow" {
+            let line = line_number(value.span().start);
+            if key.starts_with("covered_by") {
                 return Err(format!(
-                    "{path}:{line_number} unsupported non-Rust allowlist field `{other}`"
+                    "{path}:{line} coverage requires an [[allow]] entry"
                 ));
             }
+            if file_policy_has_table_header(value, &text) {
+                return Err(format!(
+                    "{path}:{line} unsupported non-Rust allowlist table `{key}`"
+                ));
+            }
+            continue;
         }
-    }
-
-    if in_entry {
-        validate_file_policy_allow_entry(path, &current)?;
-        entries.push(current);
+        let declarations = value.get_ref().as_array().ok_or_else(|| {
+            format!(
+                "{path}:{} expected [[allow]] entries",
+                line_number(value.span().start)
+            )
+        })?;
+        for declaration in declarations {
+            let line = line_number(declaration.span().start);
+            let fields = declaration
+                .get_ref()
+                .as_table()
+                .filter(|_| text.get(declaration.span()) == Some("[[allow]]"))
+                .ok_or_else(|| format!("{path}:{line} expected an [[allow]] entry"))?;
+            let mut entry = FilePolicyAllowEntry {
+                line,
+                ..FilePolicyAllowEntry::default()
+            };
+            let mut fields = fields.iter().collect::<Vec<_>>();
+            fields.sort_by_key(|(key, _)| key.span().start);
+            for (key, value) in fields {
+                let field_line = line_number(key.span().start);
+                let key = key.get_ref().as_ref();
+                // Keep the established scalar field reader and ignored metadata
+                // semantics; only coverage arrays adopt parsed string values.
+                let scalar = || {
+                    let raw = text.get(value.span()).ok_or_else(|| {
+                        format!("{path}:{field_line} missing non-Rust allowlist value span")
+                    })?;
+                    parse_string_value(raw, path, field_line)
+                };
+                match key {
+                    "glob" => entry.glob = Some(scalar()?),
+                    "kind" => entry.kind = Some(scalar()?),
+                    "owner" => entry.owner = Some(scalar()?),
+                    "surface" => entry.surface = Some(scalar()?),
+                    "classification" => entry.classification = Some(scalar()?),
+                    "reason" => entry.reason = Some(scalar()?),
+                    "generated_by" => entry.generated_by = Some(scalar()?),
+                    "covered_by" | "covered_by_unix" | "covered_by_windows" => {
+                        let array_error = || {
+                            format!(
+                                "{path}:{field_line} non-Rust allowlist `{key}` requires a string array"
+                            )
+                        };
+                        let commands = value
+                            .get_ref()
+                            .as_array()
+                            .ok_or_else(array_error)?
+                            .iter()
+                            .map(|item| {
+                                item.get_ref()
+                                    .as_str()
+                                    .map(str::to_string)
+                                    .ok_or_else(array_error)
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        match key {
+                            "covered_by_unix" => entry.covered_by_unix = Some(commands),
+                            "covered_by_windows" => entry.covered_by_windows = Some(commands),
+                            _ => entry.covered_by = Some(commands),
+                        }
+                    }
+                    "expires" | "retired" => {
+                        let nested = value.get_ref().is_table()
+                            && !text
+                                .get(value.span())
+                                .is_some_and(|raw| raw.starts_with('{'));
+                        if nested || file_policy_has_table_header(value, &text) {
+                            return Err(format!(
+                                "{path}:{field_line} unsupported non-Rust allowlist table `{key}`"
+                            ));
+                        }
+                    }
+                    other => {
+                        return Err(format!(
+                            "{path}:{field_line} unsupported non-Rust allowlist field `{other}`"
+                        ));
+                    }
+                }
+            }
+            validate_file_policy_allow_entry(path, &entry)?;
+            entries.push(entry);
+        }
     }
     if entries.is_empty() {
         return Err(format!("{path} has no [[allow]] entries"));
@@ -21768,29 +23733,22 @@ fn parse_file_policy_allowlist(path: &str) -> Result<Vec<FilePolicyAllowEntry>, 
     Ok(entries)
 }
 
-fn collect_toml_array_value(
-    path: &str,
-    line_number: usize,
-    first_value: &str,
-    lines: &[&str],
-    idx: &mut usize,
-) -> Result<String, String> {
-    let mut value = first_value.trim().to_string();
-    if !value.starts_with('[') || value.ends_with(']') {
-        return Ok(value);
-    }
-    while *idx < lines.len() {
-        let next = lines[*idx].trim();
-        *idx += 1;
-        value.push(' ');
-        value.push_str(next);
-        if next.ends_with(']') {
-            return Ok(value);
+// The parser owns these spans: a bracket-like string or comment cannot supply
+// a header. Inline values of ignored metadata remain ignored as before.
+fn file_policy_has_table_header(value: &toml::Spanned<toml::de::DeValue<'_>>, text: &str) -> bool {
+    match value.get_ref() {
+        toml::de::DeValue::Table(fields) => {
+            text.get(value.span())
+                .is_some_and(|raw| raw.starts_with('['))
+                || fields
+                    .values()
+                    .any(|field| file_policy_has_table_header(field, text))
         }
+        toml::de::DeValue::Array(items) => items
+            .iter()
+            .any(|item| file_policy_has_table_header(item, text)),
+        _ => false,
     }
-    Err(format!(
-        "{path}:{line_number} unterminated non-Rust allowlist array"
-    ))
 }
 
 fn validate_file_policy_allow_entry(
@@ -21824,6 +23782,19 @@ fn validate_file_policy_allow_entry(
             "{path}:{} non-Rust allowlist `covered_by` values must be non-empty",
             entry.line
         ));
+    }
+    for (field, commands) in [
+        ("covered_by_unix", &entry.covered_by_unix),
+        ("covered_by_windows", &entry.covered_by_windows),
+    ] {
+        if let Some(commands) = commands
+            && (commands.is_empty() || commands.iter().any(|value| !is_cargo_test_command(value)))
+        {
+            return Err(format!(
+                "{path}:{} `{field}` requires a non-empty array of cargo test commands",
+                entry.line
+            ));
+        }
     }
     Ok(())
 }
@@ -22477,6 +24448,17 @@ pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
 }
 
 pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
+    if path == ".github/scripts/native_readiness_artifact.py" {
+        return Some(
+            "Runner standard-library Python retains a Cargo-reported source-bound xtask image outside shared build paths and invokes the read-only readiness observer without rebuilding.",
+        );
+    }
+    if path == ".github/scripts/ready_parser_control.py" {
+        return Some(
+            "Runner standard-library Python performs the approved bounded reversible wrong-parser experiment, checks actual native test statuses, and restores exact source before the corrected controls.",
+        );
+    }
+
     if matches!(
         path,
         ".github/scripts/pypi_admission.py" | ".github/scripts/test_pypi_admission.py"
@@ -22497,9 +24479,22 @@ pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'stat
         );
     }
 
+    if matches!(
+        path,
+        "packaging/npm/launcher/bin/ripr.cjs" | "packaging/npm/launcher/lib/launcher.cjs"
+    ) || (path.starts_with("packaging/npm/launcher/test/") && path.ends_with(".test.cjs"))
+    {
+        return Some("npm launcher runtime and focused launcher contract tests");
+    }
     if path.starts_with("editors/vscode/") && path.ends_with(".ts") {
         return Some(
             "VS Code extension source and tests must run in the VS Code Extension Host TypeScript API.",
+        );
+    }
+
+    if path.starts_with("tools/python/portable-ripr-consumer/") && path.ends_with(".py") {
+        return Some(
+            "Portable packet consumer must run as stdlib Python 3.11+ in agent environments that have no Cargo/rustc.",
         );
     }
 
@@ -22563,7 +24558,9 @@ fn is_dependency_surface_candidate(path: &str) -> bool {
 }
 
 fn is_process_policy_candidate(path: &str) -> bool {
-    path.ends_with(".rs") || path.ends_with(".ts")
+    path.ends_with(".rs")
+        || path.ends_with(".ts")
+        || (path.starts_with("tools/python/") && path.ends_with(".py"))
 }
 
 fn is_network_policy_candidate(path: &str) -> bool {
@@ -22587,6 +24584,9 @@ fn process_policy_patterns() -> Vec<String> {
         concat!("cp.", "spawn"),
         concat!("cp.", "exec("),
         concat!("cp.", "execFile"),
+        concat!("subprocess.", "Popen"),
+        concat!("subprocess.", "run"),
+        concat!("os.", "system"),
     ]
     .iter()
     .map(|value| value.to_string())
@@ -23188,6 +25188,11 @@ synonym (e.g. {hint}). To intentionally allow this line, append \
     reason = "xtask test code uses unwrap/expect for fail-fast assertion. Production paths are receipted via policy/no-panic-allowlist.toml; the test scope is governed by this single module-level expect."
 )]
 mod tests;
+
+#[cfg(test)]
+mod ready_cancellation_tests;
+#[cfg(test)]
+mod ready_types_tests;
 
 #[cfg(test)]
 mod inherited_failure_tests {

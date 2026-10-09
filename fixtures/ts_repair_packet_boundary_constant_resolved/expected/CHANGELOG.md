@@ -1,0 +1,135 @@
+# Golden Output Changes
+
+## Pending — ts_repair_packet_boundary_constant_resolved (1)
+
+Reason:
+RIPR-SPEC-0087: derive the TypeScript boundary input from a read-only parameter and a literal or single immutable integer module const; a complete packet's Start-here line names its action, test file, and verify command
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (2)
+
+Reason:
+RIPR-SPEC-0122: integrate first-hour output fixes with Python and TypeScript boundary packets
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (3)
+
+Reason:
+RIPR-SPEC-0046 RIPR-SPEC-0047: check JSON now carries a top-level source_subject stamp with the analysis-time content digests of the files a derived gap ledger names (#4544); no finding, classification, or human output changed.
+RIPR-SPEC-0122: digest Next step wraps instead of cutting the remedy (#4323, main merge)
+RIPR-SPEC-0122: bounded human check output leads the exposure line with the plain word the summary uses (weak, no path, unknown) before the schema value
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (4)
+
+Reason:
+RIPR-SPEC-0122: the analysis outcome and state lines lead with plain words; the id stays in parentheses
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (5)
+
+Reason:
+RIPR-SPEC-0005: agent seam packet schema 0.4 to 0.5 (#4330) — packets state the edit cage (allowed_edit_surface, forbidden_files, must_not_change) and next.before_snapshot_command drops the POSIX-only mkdir prefix
+RIPR-SPEC-0005: agent seam packet schema_version 0.4 to 0.5 (#4329); version-string-only flip - the additive repair_attempt continuation rides only the repair-before --json success stdout, never this check.json projection
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (6)
+
+Reason:
+RIPR-SPEC-0122: bounded human surfaces disclose their windows - related-test and observed-value caps, digest missing-discriminator and related-test totals, Hidden block names omitted findings by file:line (class) with the all-base-side distinction (#4320); RIPR-SPEC-0152: all-base-side runs name base-side evidence instead of a lower-priority framing
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (7)
+
+Reason:
+#4324 / RIPR-SPEC-0122: the bounded digest names all five stage states on one compact Evidence line (reach, infection, propagation, observation, discriminator) instead of letting the positional 2-line detail window hide the decisive stages behind a bare count; the detail window keeps its two lines and the remainder line now reads `N more detail line(s) in --format human-full`. JSON output is unchanged.
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (8)
+
+Reason:
+RIPR-SPEC-0122: #4322 summary header names all seven classes with canonical tokens and a shown/total denominator
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (9)
+
+Reason:
+RIPR-SPEC-0085: TypeScript verify commands launch the framework through the package runner (npx --no-install, pnpm exec, yarn, bun run) because node_modules/.bin is not on PATH
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (10)
+
+Reason:
+RIPR-SPEC-0140: issue 5988 populates identity.config_identity from the canonical finding-affecting config fingerprint whenever a ripr.toml is loaded, so fixtures that load one record it (single-field intended flip, formatting-only 1-line drift)
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending — ts_repair_packet_boundary_constant_resolved (11)
+
+Reason:
+RIPR-SPEC-0140: issue 5988 review repair publishes the fingerprint of the exact loaded ripr.toml text in identity.config_identity, so fixtures that load one record the text fingerprint (single-field intended flip, formatting-only 1-line drift)
+
+Command:
+`cargo xtask goldens bless ts_repair_packet_boundary_constant_resolved --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

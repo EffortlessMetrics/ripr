@@ -5,6 +5,30 @@
 //! These are pure-data enums shared between the analysis adapter layer and
 //! the output renderers that emit additive optional language metadata fields.
 
+/// Program prefix of a generated pytest verify command.
+///
+/// `python -m pytest` rather than bare `pytest`: `-m` puts the working
+/// directory on `sys.path`, so a flat-layout package at the repository root
+/// imports without a `pythonpath` setting, where bare `pytest` fails
+/// collection with `ModuleNotFoundError`. The interpreter is spelled `python`,
+/// like the unittest route's `python -m unittest`: inside a virtual
+/// environment, where pytest is normally installed, `python` names the
+/// environment's interpreter on Linux, macOS and Windows alike, while
+/// `python3` is absent from Windows virtual environments.
+pub(crate) const PYTEST_VERIFY_PROGRAM: &str = "python -m pytest";
+
+/// Whether a verify command runs pytest.
+///
+/// Accepts the generated `python -m pytest ...` form and the bare
+/// `pytest ...` form earlier artifacts and recorded evals carry, so a
+/// consumer reading either keeps its pytest-specific behavior.
+pub(crate) fn is_pytest_verify_command(command: &str) -> bool {
+    command
+        .strip_prefix(PYTEST_VERIFY_PROGRAM)
+        .or_else(|| command.strip_prefix("pytest"))
+        .is_some_and(|rest| rest.starts_with(' '))
+}
+
 /// The set of source languages an adapter can report.
 ///
 /// `Rust` is the reference language. `TypeScript`, `JavaScript`, `Python`,
@@ -23,6 +47,35 @@ pub enum LanguageId {
 }
 
 impl LanguageId {
+    /// Every language id, in declaration order.
+    pub(crate) const ALL: [LanguageId; 5] = [
+        LanguageId::Rust,
+        LanguageId::TypeScript,
+        LanguageId::JavaScript,
+        LanguageId::Python,
+        LanguageId::Perl,
+    ];
+
+    /// Human-facing language name for prose (`TypeScript`, `JavaScript`),
+    /// distinct from the lowercase wire string returned by [`Self::as_str`].
+    pub(crate) fn display_name(self) -> &'static str {
+        match self {
+            LanguageId::Rust => "Rust",
+            LanguageId::TypeScript => "TypeScript",
+            LanguageId::JavaScript => "JavaScript",
+            LanguageId::Python => "Python",
+            LanguageId::Perl => "Perl",
+        }
+    }
+
+    /// Display name for a wire string, or `None` for an unknown language.
+    pub(crate) fn display_name_for_wire(wire: &str) -> Option<&'static str> {
+        Self::ALL
+            .into_iter()
+            .find(|language| language.as_str() == wire)
+            .map(Self::display_name)
+    }
+
     /// Stable wire string used when this id is serialized into the additive
     /// optional `language` output field.
     pub fn as_str(&self) -> &'static str {
@@ -32,6 +85,18 @@ impl LanguageId {
             LanguageId::JavaScript => "javascript",
             LanguageId::Python => "python",
             LanguageId::Perl => "perl",
+        }
+    }
+
+    /// Inverse of [`LanguageId::as_str`] for the stable wire string.
+    pub(crate) fn from_wire(value: &str) -> Option<Self> {
+        match value {
+            "rust" => Some(LanguageId::Rust),
+            "typescript" => Some(LanguageId::TypeScript),
+            "javascript" => Some(LanguageId::JavaScript),
+            "python" => Some(LanguageId::Python),
+            "perl" => Some(LanguageId::Perl),
+            _ => None,
         }
     }
 
@@ -54,6 +119,84 @@ impl LanguageId {
             LanguageId::Perl => "lang-perl",
         }
     }
+
+    /// What a user needs before this language can be analyzed when its
+    /// adapter is not compiled into this ripr binary.
+    ///
+    /// Single text owner for every surface that reports an unavailable
+    /// adapter (the check note, JSON/diff-report `why`, the typed outcome
+    /// recovery, the pipeline run reason, the `languages.enabled` config
+    /// error, doctor, and pilot's unavailable notice, which delegates here).
+    /// Perl names both prerequisites because enabling
+    /// `perl` in `ripr.toml` is not enough on its own: the adapter only
+    /// consumes packets from an external fact exporter, and the canonical
+    /// exporter is not yet published. Bounded well under the 512-character
+    /// analysis-outcome detail limit.
+    pub(crate) fn unavailable_adapter_recovery(self) -> String {
+        match self {
+            LanguageId::Perl => format!(
+                "Perl analysis is not available from this ripr binary. It needs both a ripr build with Cargo feature `lang-perl` (`cargo install ripr --features lang-perl`) and a compatible Perl fact exporter (`{PERL_FACT_EXPORTER}`), which is not yet published; no released ripr setup analyzes Perl yet, and adding `perl` to ripr.toml [languages] alone does not enable it"
+            ),
+            // The TypeScript adapter analyzes the whole TS/JS family, and a
+            // JavaScript-only diff is disclosed under it (#4555).
+            LanguageId::TypeScript => format!(
+                "rebuild ripr with Cargo feature `{}` to analyze TypeScript and JavaScript files",
+                LanguageId::TypeScript.required_feature()
+            ),
+            other => format!(
+                "rebuild ripr with Cargo feature `{}` to analyze {} files",
+                other.required_feature(),
+                other.as_str()
+            ),
+        }
+    }
+
+    /// Plain notice for a language whose adapter is not compiled into this
+    /// binary, or `None` when it is.
+    ///
+    /// Routes a user onward (currently `ripr pilot`) by restating the
+    /// [`LanguageId::unavailable_adapter_recovery`] wording, so every surface
+    /// names the same prerequisites.
+    pub(crate) fn unavailable_adapter_notice(self) -> Option<String> {
+        if self.is_available() {
+            return None;
+        }
+        let recovery = self.unavailable_adapter_recovery();
+        if recovery.ends_with('.') {
+            Some(recovery)
+        } else {
+            Some(format!("{recovery}."))
+        }
+    }
+
+    /// Extra prerequisite that enabling this language in `ripr.toml` does not
+    /// satisfy on its own, for builds where the adapter IS compiled in.
+    ///
+    /// Perl consumes externally produced fact packets, so enabling it still
+    /// needs a packet (`--perl-facts`) or a compatible managed exporter.
+    /// Other preview languages have no such prerequisite.
+    pub(crate) fn enable_prerequisite(self) -> Option<String> {
+        match self {
+            LanguageId::Perl => Some(format!(
+                "Perl also needs a fact packet: {}",
+                perl_fact_packet_guidance()
+            )),
+            _ => None,
+        }
+    }
+}
+
+/// Canonical name of the external Perl fact exporter that managed producer
+/// mode invokes (`<exporter> ripr-facts --schema ...`). It is not yet
+/// published, so no surface may present Perl analysis as installable.
+pub(crate) const PERL_FACT_EXPORTER: &str = "perl-ripr-facts";
+
+/// How to supply a Perl fact packet, shared by the enable prerequisite and
+/// the adapter's `unavailable` reason so the two cannot diverge.
+pub(crate) fn perl_fact_packet_guidance() -> String {
+    format!(
+        "pass --perl-facts <packet.json>, or configure [perl].producer with a compatible Perl fact exporter (`{PERL_FACT_EXPORTER}`, not yet published)"
+    )
 }
 
 /// Whether an adapter is the reference (`Stable`) implementation for a
@@ -182,6 +325,13 @@ pub enum StaticLimitKind {
     /// This label names the unresolved conversion binding, not a coverage
     /// claim. See #3700.
     WrapperErrorBindingUnresolved,
+    /// A Python test constructs or calls into the owner's class, and a
+    /// bounded same-class `self.` / `cls.` path may reach the changed
+    /// method, but the preview adapter does not relate that path. The
+    /// classification stays `no_static_path`; this label names the
+    /// unresolved method-to-method edge, not a coverage claim. See
+    /// RIPR-SPEC-0201 / #4765.
+    PythonTransitiveReachUnresolved,
 }
 
 impl StaticLimitKind {
@@ -217,6 +367,9 @@ impl StaticLimitKind {
                 "rust_subprocess_binary_reach_unresolved"
             }
             StaticLimitKind::WrapperErrorBindingUnresolved => "wrapper_error_binding_unresolved",
+            StaticLimitKind::PythonTransitiveReachUnresolved => {
+                "python_transitive_reach_unresolved"
+            }
         }
     }
 
@@ -304,7 +457,15 @@ impl StaticLimitKind {
                  limitation, not a reach, receipt, or coverage claim."
             }
             StaticLimitKind::WrapperErrorBindingUnresolved => {
-                "The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion."
+                "The changed line converts a callee's error through a boxed wrapper \
+                 (`map_err(Into::into)`), so whether the wrapper faithfully carries the \
+                 callee's error variant is not statically established; ripr cannot credit \
+                 a downcast witness to this conversion."
+            }
+            StaticLimitKind::PythonTransitiveReachUnresolved => {
+                "A Python test may reach this change through another method on the owner's \
+                 class, a bound-method alias, or a protocol entry point that ripr does not \
+                 fully trace. This is a named limitation, not a coverage claim."
             }
         }
     }
@@ -314,6 +475,30 @@ impl StaticLimitKind {
 mod tests {
     use super::*;
 
+    /// #4323: a lost string-literal continuation left ~18-space runs inside
+    /// this gloss, which rendered as mid-sentence gaps in human and JSON output.
+    #[test]
+    fn wrapper_error_binding_gloss_has_no_whitespace_runs() {
+        let gloss = StaticLimitKind::WrapperErrorBindingUnresolved.describe();
+        assert!(!gloss.contains("  "), "{gloss}");
+        assert!(
+            gloss.contains("boxed wrapper (`map_err(Into::into)`), so"),
+            "{gloss}"
+        );
+    }
+
+    #[test]
+    fn pytest_verify_command_accepts_module_and_legacy_bare_forms() {
+        assert!(is_pytest_verify_command(
+            "python -m pytest tests/test_pricing.py::test_boundary"
+        ));
+        assert!(is_pytest_verify_command("pytest tests/test_pricing.py"));
+        assert!(!is_pytest_verify_command("python -m pytestx tests"));
+        assert!(!is_pytest_verify_command("pytestx tests"));
+        assert!(!is_pytest_verify_command("python -m unittest tests.test_x"));
+        assert!(!is_pytest_verify_command("python -m pytest"));
+    }
+
     #[test]
     fn language_id_wire_strings_are_stable() {
         assert_eq!(LanguageId::Rust.as_str(), "rust");
@@ -321,6 +506,34 @@ mod tests {
         assert_eq!(LanguageId::JavaScript.as_str(), "javascript");
         assert_eq!(LanguageId::Python.as_str(), "python");
         assert_eq!(LanguageId::Perl.as_str(), "perl");
+    }
+
+    #[test]
+    fn unavailable_adapter_recovery_names_the_feature_for_non_perl_languages() {
+        assert_eq!(
+            LanguageId::TypeScript.unavailable_adapter_recovery(),
+            format!(
+                "rebuild ripr with Cargo feature `{}` to analyze TypeScript and JavaScript files",
+                LanguageId::TypeScript.required_feature()
+            )
+        );
+        for language in [LanguageId::JavaScript, LanguageId::Python] {
+            let recovery = language.unavailable_adapter_recovery();
+            assert_eq!(
+                recovery,
+                format!(
+                    "rebuild ripr with Cargo feature `{}` to analyze {} files",
+                    language.required_feature(),
+                    language.as_str()
+                )
+            );
+            assert!(
+                !recovery.contains("perl-ripr-facts"),
+                "only Perl names the external exporter: {recovery}"
+            );
+        }
+        let perl = LanguageId::Perl.unavailable_adapter_recovery();
+        assert!(perl.contains("lang-perl") && perl.contains(PERL_FACT_EXPORTER));
     }
 
     #[test]
@@ -342,6 +555,42 @@ mod tests {
         assert_eq!(LanguageId::JavaScript.required_feature(), "lang-typescript");
         assert_eq!(LanguageId::Python.required_feature(), "lang-python");
         assert_eq!(LanguageId::Perl.required_feature(), "lang-perl");
+    }
+
+    #[test]
+    fn unavailable_adapter_notice_restates_recovery_owner_only_when_missing() {
+        for language in [
+            LanguageId::Rust,
+            LanguageId::TypeScript,
+            LanguageId::JavaScript,
+            LanguageId::Python,
+            LanguageId::Perl,
+        ] {
+            assert_eq!(
+                language.unavailable_adapter_notice().is_some(),
+                !language.is_available(),
+                "{language:?}"
+            );
+            if let Some(notice) = language.unavailable_adapter_notice() {
+                let recovery = language.unavailable_adapter_recovery();
+                assert_eq!(
+                    notice,
+                    format!("{recovery}."),
+                    "the pilot notice must restate the recovery owner's wording"
+                );
+            }
+        }
+        if !cfg!(feature = "lang-perl") {
+            let perl = LanguageId::Perl.unavailable_adapter_notice();
+            assert!(
+                perl.as_deref().is_some_and(|text| {
+                    text.contains("lang-perl")
+                        && text.contains(PERL_FACT_EXPORTER)
+                        && text.contains("not yet published")
+                }),
+                "the pilot notice must name both Perl prerequisites: {perl:?}"
+            );
+        }
     }
 
     #[test]
@@ -413,6 +662,10 @@ mod tests {
             "rust_subprocess_binary_reach_unresolved"
         );
         assert_eq!(
+            StaticLimitKind::WrapperErrorBindingUnresolved.as_str(),
+            "wrapper_error_binding_unresolved"
+        );
+        assert_eq!(
             StaticLimitKind::RustMacroReachUnresolved.as_str(),
             "rust_macro_reach_unresolved"
         );
@@ -423,6 +676,10 @@ mod tests {
         assert_eq!(
             StaticLimitKind::RustMacroWrappedAssertionUnresolved.as_str(),
             "rust_macro_wrapped_assertion_unresolved"
+        );
+        assert_eq!(
+            StaticLimitKind::PythonTransitiveReachUnresolved.as_str(),
+            "python_transitive_reach_unresolved"
         );
     }
 
@@ -446,6 +703,8 @@ mod tests {
             StaticLimitKind::RustMacroWrappedAssertionUnresolved,
             StaticLimitKind::RustValuePropagationUnresolved,
             StaticLimitKind::RustSubprocessBinaryReachUnresolved,
+            StaticLimitKind::WrapperErrorBindingUnresolved,
+            StaticLimitKind::PythonTransitiveReachUnresolved,
         ];
         // Every variant has a non-empty, distinct explanation. Conservative
         // static-language vocabulary is enforced repo-wide by
@@ -470,5 +729,39 @@ mod tests {
                 .contains("depth greater than 5"),
             "transitive-reach limitation text must match RIPR-SPEC-0114's depth-5 bound"
         );
+    }
+
+    #[test]
+    fn python_transitive_reach_description_is_named_limitation_not_coverage() {
+        let described = StaticLimitKind::PythonTransitiveReachUnresolved.describe();
+        assert!(described.contains("may"));
+        assert!(described.contains("named limitation"));
+        assert!(!described.contains("covers"));
+        assert!(!described.contains("tested"));
+    }
+
+    #[test]
+    fn display_names_use_product_casing_and_round_trip_wire_strings() {
+        let pairs: Vec<(&str, &str)> = LanguageId::ALL
+            .into_iter()
+            .map(|language| (language.as_str(), language.display_name()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                ("rust", "Rust"),
+                ("typescript", "TypeScript"),
+                ("javascript", "JavaScript"),
+                ("python", "Python"),
+                ("perl", "Perl"),
+            ]
+        );
+        for language in LanguageId::ALL {
+            assert_eq!(
+                LanguageId::display_name_for_wire(language.as_str()),
+                Some(language.display_name())
+            );
+        }
+        assert_eq!(LanguageId::display_name_for_wire("cobol"), None);
     }
 }

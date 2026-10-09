@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9e763f3..8a883ff 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -7,7 +7,7 @@ pub enum E {
+ }
+ 
+ pub fn check_far(len: usize) -> Result<usize, E> {
+-    if len >= 256 { return Err(E::TooLong); }
++    if 256 <= len { return Err(E::TooLong); }
+     Ok(len)
+ }
+ 

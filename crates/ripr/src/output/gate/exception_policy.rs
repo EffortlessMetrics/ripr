@@ -25,7 +25,6 @@
 
 use crate::output::suppressions::is_iso_date;
 use serde::Deserialize;
-use std::path::Path;
 
 /// Violation kinds, stable snake_case contract terms mirrored in
 /// `docs/OUTPUT_SCHEMA.md`.
@@ -151,13 +150,14 @@ impl ExceptionPolicyReport {
 
 /// Loads and validates an exception ledger. Fail-closed: any read, parse,
 /// or validation failure is an `Err` naming the supplied path.
-pub(crate) fn load_exception_ledger(
-    resolved: &Path,
+/// Parse and validate an already-read ledger text. The gate's build reads the
+/// bytes once so the subject's `content_hash` covers exactly the bytes this
+/// parse consumed (#5263 review round 2).
+pub(crate) fn load_exception_ledger_from_text(
+    text: &str,
     display: &str,
 ) -> Result<ExceptionLedger, String> {
-    let text = std::fs::read_to_string(resolved)
-        .map_err(|err| format!("failed to read exception policy `{display}`: {err}"))?;
-    let raw: RawExceptionLedger = toml::from_str(&text)
+    let raw: RawExceptionLedger = toml::from_str(text)
         .map_err(|err| format!("exception policy `{display}` is not valid TOML: {err}"))?;
     validate_ledger(raw, display)
 }
@@ -527,17 +527,6 @@ expires = "2026-09-30"
         assert!(
             err.as_deref()
                 .is_some_and(|e| e.contains("due_review = `ignore` is not supported")),
-            "err: {err:?}"
-        );
-    }
-
-    #[test]
-    fn loader_fails_closed_on_missing_file() {
-        let err =
-            load_exception_ledger(Path::new("does/not/exist.toml"), "does/not/exist.toml").err();
-        assert!(
-            err.as_deref()
-                .is_some_and(|e| e.contains("failed to read exception policy")),
             "err: {err:?}"
         );
     }

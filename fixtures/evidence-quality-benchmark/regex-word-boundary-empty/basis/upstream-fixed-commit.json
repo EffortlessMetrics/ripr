@@ -1,0 +1,41 @@
+{
+  "sha": "88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "message": "syntax: fix 'is_match_empty' predicate\n\nThis was incorrectly defined for \\b. Previously, I had erroneously made\nit return true only for \\B since \\B matches '' and \\b does not match\n''. However, \\b does match the empty string. Like \\B, it only matches a\nsubset of empty strings, depending on what the surrounding context is.\nThe important bit is that it can match *an* empty string, not that it\nmatches *the* empty string.\n\nWe were not yet using this predicate anywhere in the regex crate, so we\njust fix the implementation and update the tests.\n\nThis does present a compatibility hazard for anyone who was using this\nfunction, but as of this time, I'm considering this a bug fix since \\b\nclearly matches an empty string.\n\nFixes #859",
+  "url": "https://api.github.com/repos/rust-lang/regex/commits/88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "html_url": "https://github.com/rust-lang/regex/commit/88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "diff": "@@ -1,8 +1,11 @@\n TBD\n ===\n+The below are changes for the next release, which is to be determined.\n \n * [BUG #680](https://github.com/rust-lang/regex/issues/680):\n   Fixes a bug where `[[:alnum:][:^ascii:]]` dropped `[:alnum:]` from the class.\n+* [BUG #859](https://github.com/rust-lang/regex/issues/859):\n+  Fixes a bug where `Hir::is_match_empty` returned `false` for `\\b`.\n \n \n 1.5.5 (2022-03-08)\n@@ -334,9 +334,13 @@ impl Hir {\n         info.set_any_anchored_end(false);\n         info.set_literal(false);\n         info.set_alternation_literal(false);\n-        // A negated word boundary matches the empty string, but a normal\n-        // word boundary does not!\n-        info.set_match_empty(word_boundary.is_negated());\n+        // A negated word boundary matches '', so that's fine. But \\b does not\n+        // match \\b, so why do we say it can match the empty string? Well,\n+        // because, if you search for \\b against 'a', it will report [0, 0) and\n+        // [1, 1) as matches, and both of those matches correspond to the empty\n+        // string. Thus, only *certain* empty strings match \\b, which similarly\n+        // applies to \\B.\n+        info.set_match_empty(true);\n         // Negated ASCII word boundaries can match invalid UTF-8.\n         if let WordBoundary::AsciiNegate = word_boundary {\n             info.set_always_utf8(false);\n@@ -661,8 +665,8 @@ impl Hir {\n     /// Return true if and only if the empty string is part of the language\n     /// matched by this regular expression.\n     ///\n-    /// This includes `a*`, `a?b*`, `a{0}`, `()`, `()+`, `^$`, `a|b?`, `\\B`,\n-    /// but not `a`, `a+` or `\\b`.\n+    /// This includes `a*`, `a?b*`, `a{0}`, `()`, `()+`, `^$`, `a|b?`, `\\b`\n+    /// and `\\B`, but not `a` or `a+`.\n     pub fn is_match_empty(&self) -> bool {\n         self.info.is_match_empty()\n     }\n@@ -3139,6 +3139,9 @@ mod tests {\n         assert!(t(r\"\\pL*\").is_match_empty());\n         assert!(t(r\"a*|b\").is_match_empty());\n         assert!(t(r\"b|a*\").is_match_empty());\n+        assert!(t(r\"a|\").is_match_empty());\n+        assert!(t(r\"|a\").is_match_empty());\n+        assert!(t(r\"a||b\").is_match_empty());\n         assert!(t(r\"a*a?(abcd)*\").is_match_empty());\n         assert!(t(r\"^\").is_match_empty());\n         assert!(t(r\"$\").is_match_empty());\n@@ -3148,6 +3151,8 @@ mod tests {\n         assert!(t(r\"\\z\").is_match_empty());\n         assert!(t(r\"\\B\").is_match_empty());\n         assert!(t_bytes(r\"(?-u)\\B\").is_match_empty());\n+        assert!(t(r\"\\b\").is_match_empty());\n+        assert!(t(r\"(?-u)\\b\").is_match_empty());\n \n         // Negative examples.\n         assert!(!t(r\"a+\").is_match_empty());\n@@ -3157,8 +3162,6 @@ mod tests {\n         assert!(!t(r\"a{1,10}\").is_match_empty());\n         assert!(!t(r\"b|a\").is_match_empty());\n         assert!(!t(r\"a*a+(abcd)*\").is_match_empty());\n-        assert!(!t(r\"\\b\").is_match_empty());\n-        assert!(!t(r\"(?-u)\\b\").is_match_empty());\n     }\n \n     #[test]",
+  "files": [
+    {
+      "filename": "CHANGELOG.md",
+      "patch": "@@ -1,8 +1,11 @@\n TBD\n ===\n+The below are changes for the next release, which is to be determined.\n \n * [BUG #680](https://github.com/rust-lang/regex/issues/680):\n   Fixes a bug where `[[:alnum:][:^ascii:]]` dropped `[:alnum:]` from the class.\n+* [BUG #859](https://github.com/rust-lang/regex/issues/859):\n+  Fixes a bug where `Hir::is_match_empty` returned `false` for `\\b`.\n \n \n 1.5.5 (2022-03-08)"
+    },
+    {
+      "filename": "regex-syntax/src/hir/mod.rs",
+      "patch": "@@ -334,9 +334,13 @@ impl Hir {\n         info.set_any_anchored_end(false);\n         info.set_literal(false);\n         info.set_alternation_literal(false);\n-        // A negated word boundary matches the empty string, but a normal\n-        // word boundary does not!\n-        info.set_match_empty(word_boundary.is_negated());\n+        // A negated word boundary matches '', so that's fine. But \\b does not\n+        // match \\b, so why do we say it can match the empty string? Well,\n+        // because, if you search for \\b against 'a', it will report [0, 0) and\n+        // [1, 1) as matches, and both of those matches correspond to the empty\n+        // string. Thus, only *certain* empty strings match \\b, which similarly\n+        // applies to \\B.\n+        info.set_match_empty(true);\n         // Negated ASCII word boundaries can match invalid UTF-8.\n         if let WordBoundary::AsciiNegate = word_boundary {\n             info.set_always_utf8(false);\n@@ -661,8 +665,8 @@ impl Hir {\n     /// Return true if and only if the empty string is part of the language\n     /// matched by this regular expression.\n     ///\n-    /// This includes `a*`, `a?b*`, `a{0}`, `()`, `()+`, `^$`, `a|b?`, `\\B`,\n-    /// but not `a`, `a+` or `\\b`.\n+    /// This includes `a*`, `a?b*`, `a{0}`, `()`, `()+`, `^$`, `a|b?`, `\\b`\n+    /// and `\\B`, but not `a` or `a+`.\n     pub fn is_match_empty(&self) -> bool {\n         self.info.is_match_empty()\n     }"
+    },
+    {
+      "filename": "regex-syntax/src/hir/translate.rs",
+      "patch": "@@ -3139,6 +3139,9 @@ mod tests {\n         assert!(t(r\"\\pL*\").is_match_empty());\n         assert!(t(r\"a*|b\").is_match_empty());\n         assert!(t(r\"b|a*\").is_match_empty());\n+        assert!(t(r\"a|\").is_match_empty());\n+        assert!(t(r\"|a\").is_match_empty());\n+        assert!(t(r\"a||b\").is_match_empty());\n         assert!(t(r\"a*a?(abcd)*\").is_match_empty());\n         assert!(t(r\"^\").is_match_empty());\n         assert!(t(r\"$\").is_match_empty());\n@@ -3148,6 +3151,8 @@ mod tests {\n         assert!(t(r\"\\z\").is_match_empty());\n         assert!(t(r\"\\B\").is_match_empty());\n         assert!(t_bytes(r\"(?-u)\\B\").is_match_empty());\n+        assert!(t(r\"\\b\").is_match_empty());\n+        assert!(t(r\"(?-u)\\b\").is_match_empty());\n \n         // Negative examples.\n         assert!(!t(r\"a+\").is_match_empty());\n@@ -3157,8 +3162,6 @@ mod tests {\n         assert!(!t(r\"a{1,10}\").is_match_empty());\n         assert!(!t(r\"b|a\").is_match_empty());\n         assert!(!t(r\"a*a+(abcd)*\").is_match_empty());\n-        assert!(!t(r\"\\b\").is_match_empty());\n-        assert!(!t(r\"(?-u)\\b\").is_match_empty());\n     }\n \n     #[test]"
+    }
+  ],
+  "repository_full_name": "rust-lang/regex",
+  "comments": null,
+  "author": {
+    "login": "BurntSushi",
+    "name": null,
+    "email": null,
+    "avatar_url": "https://avatars.githubusercontent.com/u/456674?v=4",
+    "id": 456674
+  },
+  "committer": {
+    "login": "BurntSushi",
+    "name": null,
+    "email": null,
+    "avatar_url": "https://avatars.githubusercontent.com/u/456674?v=4",
+    "id": 456674
+  },
+  "created_at": "2022-05-18T12:18:14Z",
+  "git_author_email": null,
+  "display_url": "https://github.com/rust-lang/regex/commit/88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "display_title": "syntax: fix 'is_match_empty' predicate"
+}

@@ -47,9 +47,9 @@ Status: warn
   - Generate the missing badge status input.
 - `ripr pilot --out target/ripr/pilot`
   - Open the top actionable seam packet and write one focused targeted test.
-- `ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json`
+- `ripr check --root . --mode draft --format repo-exposure-json > <cwd>/target/ripr/pilot/after.repo-exposure.json`
   - After adding the targeted test, capture the after repo-exposure snapshot.
-- `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > target/ripr/agent/agent-verify.json`
+- `ripr agent verify --root . --before target/ripr/pilot/repo-exposure.json --after target/ripr/pilot/after.repo-exposure.json --json > <cwd>/target/ripr/agent/agent-verify.json`
   - Compare the before and after static evidence snapshots for the agent loop.
 - `ripr agent receipt --root . --verify-json target/ripr/agent/agent-verify.json --seam-id 67fc764ba37d77bd --json --out target/ripr/agent/agent-receipt.json`
   - Write a focused receipt for the top seam after agent verify completes.

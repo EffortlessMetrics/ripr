@@ -590,6 +590,7 @@ pub(crate) fn related_profile_bun_tests(
                 oracle_strength,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }
         })
         .collect::<Vec<_>>();
@@ -1344,6 +1345,7 @@ pub(crate) fn bun_cross_language_finding_for_changed_rust_line_with_profile(
             missing_discriminators,
         },
         stop_reasons: bun_cross_language_stop_reasons(hint.verdict),
+        related_tests_matched_total: None,
         related_tests,
         recommended_next_step: Some(bun_cross_language_recommendation(&hint)),
         language: Some(DomainLanguageId::TypeScript),

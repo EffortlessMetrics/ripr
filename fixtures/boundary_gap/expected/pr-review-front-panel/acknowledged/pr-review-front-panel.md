@@ -14,7 +14,7 @@ Start here:
 - Focused proof intent: assert_eq!(ack(), 5)
 - Suggested focused test: assert_eq!(ack(), 5)
 - Related test: tests/ack.rs::boundary
-- Verify command: not_available
+- Verify after the test edit: not_available
 - Receipt: receipt_missing
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 

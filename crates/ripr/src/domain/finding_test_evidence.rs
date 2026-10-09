@@ -100,6 +100,7 @@ mod tests {
             oracle_strength,
             relation_confidence: relation_reason.map(RelationReason::confidence),
             relation_reason,
+            miss: None,
         }
     }
 
@@ -149,6 +150,7 @@ mod tests {
                     .collect(),
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests,
             recommended_next_step: None,
             language: None,

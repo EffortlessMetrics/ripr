@@ -4,6 +4,7 @@ use super::related_tests::{
 };
 use super::source_facts::parse_module_result;
 use super::static_limits::is_simple_python_identifier;
+use crate::analysis::diff::ChangedLine;
 use crate::domain::{OracleStrength, OwnerKind};
 use rustpython_parser::ast::{Expr, Mod, Ranged, Stmt};
 use std::path::Path;
@@ -26,6 +27,57 @@ use std::path::Path;
 pub(super) fn is_python_no_behavior_line(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.is_empty() || trimmed.starts_with('#') || is_bare_string_literal_statement(trimmed)
+}
+
+/// A line that only opens, continues, or closes a block or bracket and holds
+/// no expression of its own: `)`, `):`, `],`, `}`, `else:`, `try:`,
+/// `finally:`. Structural is not ignorable: a lone inserted `else:` or `try:`
+/// changes behavior. The diff producer skips such a line only when its
+/// contiguous added run also holds a behavioral line (Rust #4216 row 5).
+pub(super) fn is_python_structural_line(line: &str) -> bool {
+    let code = line.split('#').next().unwrap_or_default();
+    let rest = code
+        .trim_matches(|ch: char| matches!(ch, ')' | ']' | '}' | ',' | ':') || ch.is_whitespace());
+    rest.is_empty() || matches!(rest, "else" | "try" | "finally")
+}
+
+/// Whether a line begins an `import` / `from ... import` statement.
+pub(super) fn is_python_import_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.starts_with("import ") || (trimmed.starts_with("from ") && trimmed.contains(" import"))
+}
+
+/// For each added line, whether it is `quiet` (no behavior, structural, or an
+/// import) AND its contiguous added run (consecutive new-side lines) holds at
+/// least one line that is not quiet. Such a line never carries a probe: the
+/// run's behavioral lines carry the change. A run made only of quiet lines is
+/// left to the classifier, so code replaced by a comment or docstring stays
+/// analyzed.
+pub(super) fn python_quiet_lines_covered_by_run(
+    lines: &[ChangedLine],
+    quiet: impl Fn(&ChangedLine) -> bool,
+) -> Vec<bool> {
+    let mut order = (0..lines.len()).collect::<Vec<_>>();
+    order.sort_by_key(|&index| lines[index].line);
+    let quiet_by_index = lines.iter().map(&quiet).collect::<Vec<_>>();
+    let mut covered = vec![false; lines.len()];
+    let mut run_start = 0;
+    while run_start < order.len() {
+        let mut run_end = run_start + 1;
+        while run_end < order.len()
+            && lines[order[run_end - 1]].line.checked_add(1) == Some(lines[order[run_end]].line)
+        {
+            run_end += 1;
+        }
+        let run = &order[run_start..run_end];
+        if run.iter().any(|&index| !quiet_by_index[index]) {
+            for &index in run {
+                covered[index] = quiet_by_index[index];
+            }
+        }
+        run_start = run_end;
+    }
+    covered
 }
 
 /// Whether `trimmed` (already whitespace-trimmed) is exactly one Python string
@@ -163,6 +215,182 @@ pub(super) fn is_annotation_only_def_change(old_line: &str, new_line: &str) -> b
     }
 }
 
+/// Whether `line` (1-based) sits inside the multi-line `def` header that
+/// starts at or after `owner_start_line` in `source`, and its text only names
+/// parameters or opens/closes the header: `self,`, `key: int,`, `*args,`,
+/// `*,`, `def __setitem__(`, `):`, `) -> bool:`. Such a line has no runtime
+/// behavior of its own for a test to discriminate; a parameter default
+/// (`key=None,`) or any call or expression keeps its probe.
+#[cfg(test)]
+pub(super) fn is_structural_def_header_line(
+    source: &str,
+    owner_start_line: usize,
+    line: usize,
+) -> bool {
+    let Some(text) = source.lines().nth(line.wrapping_sub(1)) else {
+        return false;
+    };
+    if !is_structural_def_header_text(text) {
+        return false;
+    }
+    let Some((def_line, header_end)) = multi_line_def_header_span(source, owner_start_line) else {
+        return false;
+    };
+    (def_line..=header_end).contains(&line)
+}
+
+/// Text-only half of `is_structural_def_header_line`; also used to require
+/// that a paired old line was structural too.
+pub(super) fn is_structural_def_header_text(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed.contains('#') {
+        return false;
+    }
+    if matches!(trimmed, "*" | "*," | "/" | "/,") {
+        return true;
+    }
+    if let Some(rest) = trimmed.strip_prefix(')') {
+        let rest = rest.trim();
+        if matches!(rest, "" | ":" | ",") {
+            return true;
+        }
+        return rest
+            .strip_prefix("->")
+            .and_then(|ret| ret.trim().strip_suffix(':'))
+            .is_some_and(|ret| is_inert_annotation(ret.trim()));
+    }
+    let header = trimmed.strip_prefix("async ").unwrap_or(trimmed);
+    if let Some(name) = header
+        .strip_prefix("def ")
+        .and_then(|rest| rest.trim().strip_suffix('('))
+    {
+        return is_simple_python_identifier(name.trim());
+    }
+    let param = trimmed.strip_suffix(',').unwrap_or(trimmed).trim();
+    let param = param
+        .strip_prefix("**")
+        .or_else(|| param.strip_prefix('*'))
+        .unwrap_or(param);
+    match param.split_once(':') {
+        Some((name, annotation)) => {
+            is_simple_python_identifier(name.trim()) && is_inert_annotation(annotation.trim())
+        }
+        None => is_simple_python_identifier(param),
+    }
+}
+
+/// A plain type expression: names, attributes, subscripts, `|` unions,
+/// `None`, and string forward references. No call, default, or operator that
+/// could run code when Python evaluates the annotation.
+fn is_inert_annotation(annotation: &str) -> bool {
+    !annotation.is_empty()
+        && annotation.chars().all(|ch| {
+            ch.is_ascii_alphanumeric()
+                || matches!(ch, '_' | '.' | '[' | ']' | ',' | ' ' | '|' | '"' | '\'')
+        })
+}
+
+/// The 1-based `(def line, header end line)` of the first `def` at or after
+/// `owner_start_line` when its header spans more than one line. The header
+/// ends on the first line whose brackets balance; if that line does not end
+/// in `:` (comments aside) the shape is not understood and there is no span,
+/// so a span never reaches into the body.
+pub(super) fn multi_line_def_header_span(
+    source: &str,
+    owner_start_line: usize,
+) -> Option<(usize, usize)> {
+    let first = owner_start_line.checked_sub(1)?;
+    let mut lines = source.lines().enumerate().skip(first);
+    let (def_index, def_text) = lines.by_ref().take(64).find(|(_, text)| {
+        let trimmed = text.trim_start();
+        trimmed.starts_with("def ") || trimmed.starts_with("async def ")
+    })?;
+    let mut depth: i32 = 0;
+    for (index, text) in std::iter::once((def_index, def_text)).chain(lines.take(255)) {
+        let code = text.split_once('#').map_or(text, |(code, _)| code);
+        for ch in code.chars() {
+            match ch {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => depth -= 1,
+                _ => {}
+            }
+        }
+        if depth <= 0 {
+            return (index > def_index && code.trim_end().ends_with(':'))
+                .then_some((def_index + 1, index + 1));
+        }
+    }
+    None
+}
+
+/// Whether `line` is a complete one-line `def` header with no default values:
+/// a header alone, carrying no behavior of its own. Fails closed on a one-line
+/// `def f(x): return x` (the synthesized body does not parse), a multi-line
+/// header, and any parameter default (a default value is runtime behavior).
+pub(super) fn is_new_def_header_without_defaults(line: &str) -> bool {
+    def_signature_skeleton(line).is_some_and(|(_, _, _, _, params, _, _)| {
+        params.iter().all(|(_, default)| default.is_none())
+    }) && def_annotations_are_inert(line)
+}
+
+/// Whether every parameter and return annotation on a `def` header is a plain
+/// type expression (names, attributes, subscripts, literals, tuples/lists and
+/// `|` unions of those). Without postponed evaluation, Python evaluates
+/// annotations when it defines the function, so `def f(x: record_event()):`
+/// runs `record_event()` at definition time; such a header keeps its probe.
+/// Fails closed on anything unparseable.
+fn def_annotations_are_inert(line: &str) -> bool {
+    let snippet = format!("{}\n    pass\n", line.trim_start());
+    let Ok(Mod::Module(module)) =
+        parse_module_result(Path::new("annotation_only_probe.py"), &snippet)
+    else {
+        return false;
+    };
+    let Some((args, returns)) = module.body.iter().find_map(|stmt| match stmt {
+        Stmt::FunctionDef(f) => Some((&f.args, &f.returns)),
+        Stmt::AsyncFunctionDef(f) => Some((&f.args, &f.returns)),
+        _ => None,
+    }) else {
+        return false;
+    };
+    let annotations = args
+        .posonlyargs
+        .iter()
+        .chain(args.args.iter())
+        .chain(args.kwonlyargs.iter())
+        .filter_map(|arg| arg.def.annotation.as_deref())
+        .chain(
+            args.vararg
+                .iter()
+                .filter_map(|arg| arg.annotation.as_deref()),
+        )
+        .chain(
+            args.kwarg
+                .iter()
+                .filter_map(|arg| arg.annotation.as_deref()),
+        )
+        .chain(returns.as_deref());
+    annotations.into_iter().all(is_inert_type_expression)
+}
+
+fn is_inert_type_expression(expr: &Expr) -> bool {
+    match expr {
+        Expr::Name(_) | Expr::Constant(_) => true,
+        Expr::Attribute(attribute) => is_inert_type_expression(&attribute.value),
+        Expr::Subscript(subscript) => {
+            is_inert_type_expression(&subscript.value) && is_inert_type_expression(&subscript.slice)
+        }
+        Expr::Tuple(tuple) => tuple.elts.iter().all(is_inert_type_expression),
+        Expr::List(list) => list.elts.iter().all(is_inert_type_expression),
+        Expr::BinOp(binop) => {
+            matches!(binop.op, rustpython_parser::ast::Operator::BitOr)
+                && is_inert_type_expression(&binop.left)
+                && is_inert_type_expression(&binop.right)
+        }
+        _ => false,
+    }
+}
+
 /// The runtime-significant skeleton of a bare variable annotation line
 /// (`x: int = 5` or `x: int`), used to decide whether a change touches ONLY the
 /// annotation (#1289). Includes the target name and the optional value source
@@ -240,6 +468,10 @@ pub(super) struct ChangedDefaultParam {
     /// Whether a positional argument at `index` can bind this parameter. False for
     /// a keyword-only parameter, which a positional argument can never reach.
     pub(super) positionally_bindable: bool,
+    /// Whether a keyword argument can bind this parameter. False for a
+    /// positional-only parameter: `f(a=5)` against `def f(a=1, /, **kw)` puts
+    /// `a` in `kw` and leaves the default in place.
+    pub(super) keyword_bindable: bool,
 }
 
 /// The parameters whose default VALUE changed between two `def` headers, when the
@@ -280,6 +512,7 @@ pub(super) fn changed_default_value_params(
                     name: new_param.0.clone(),
                     index,
                     positionally_bindable: index < positional_capacity,
+                    keyword_bindable: index >= new_pos,
                 });
             }
             (Some(_), Some(_)) | (None, None) => {}
@@ -299,7 +532,7 @@ pub(super) struct CallArgShape {
 
 impl CallArgShape {
     fn binds(&self, param: &ChangedDefaultParam) -> bool {
-        if self.keywords.iter().any(|name| name == &param.name) {
+        if param.keyword_bindable && self.keywords.iter().any(|name| name == &param.name) {
             return true;
         }
         param.positionally_bindable && param.index < self.positional_count
@@ -308,7 +541,7 @@ impl CallArgShape {
 
 /// Splits a call's argument-list text into top-level argument segments, respecting
 /// quotes and nested brackets: `a, g(b, c), d=1` -> `["a", " g(b, c)", " d=1"]`.
-fn split_top_level_args(args: &str) -> Vec<&str> {
+pub(super) fn split_top_level_args(args: &str) -> Vec<&str> {
     let mut segments = Vec::new();
     let mut quote: Option<char> = None;
     let mut escaped = false;
@@ -348,7 +581,7 @@ fn split_top_level_args(args: &str) -> Vec<&str> {
 /// `Some("rate")`), or None when the segment is positional. Guards against
 /// comparison operators (`x == 1`, `a != b`, `n <= 3`) so a positional boolean
 /// expression is not misread as a keyword binding.
-fn call_segment_keyword_name(segment: &str) -> Option<&str> {
+pub(super) fn call_segment_keyword_name(segment: &str) -> Option<&str> {
     let chars: Vec<(usize, char)> = segment.char_indices().collect();
     let mut quote: Option<char> = None;
     let mut escaped = false;
@@ -422,7 +655,7 @@ pub(super) fn analyze_call_args(args: &str) -> Option<CallArgShape> {
 
 /// The byte index of the `)` that closes the `(` at `open_idx`, respecting quotes
 /// and nesting. None if unbalanced.
-fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
+pub(super) fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
     let mut depth = 0usize;
     let mut quote: Option<char> = None;
     let mut escaped = false;
@@ -462,6 +695,22 @@ fn matching_call_paren(text: &str, open_idx: usize) -> Option<usize> {
 /// (`render(...)` but not `obj.render(...)` and not `renderer(...)`). Balanced-paren
 /// aware; skips calls whose parentheses are unbalanced in the captured body text.
 pub(super) fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<&'a str> {
+    call_arglists_with_offsets(body, name, false)
+        .into_iter()
+        .map(|(_, arglist)| arglist)
+        .collect()
+}
+
+/// Every call to `name` in `body` with the byte offset of its name. With
+/// `method_call` false only direct free calls count (`render(...)`, never
+/// `obj.render(...)`); with `method_call` true only attribute calls count
+/// (`obj.render(...)`, never a bare `render(...)`). Never matches a longer
+/// identifier (`renderer(...)`) or a mention inside a comment or string.
+pub(super) fn call_arglists_with_offsets<'a>(
+    body: &'a str,
+    name: &str,
+    method_call: bool,
+) -> Vec<(usize, &'a str)> {
     let mut arglists = Vec::new();
     if name.is_empty() {
         return arglists;
@@ -471,10 +720,12 @@ pub(super) fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<
         let name_start = search_from + rel;
         let name_end = name_start + name.len();
         search_from = name_end;
-        // Word boundary before the name: not part of a longer identifier, and not a
-        // method/attribute access (`obj.render`).
-        if let Some(prev) = body[..name_start].chars().next_back()
-            && (prev == '_' || prev == '.' || prev.is_alphanumeric())
+        // Word boundary before the name: not part of a longer identifier. A
+        // preceding `.` is an attribute access, which is the only accepted
+        // form for a method call and a rejected form for a free call.
+        let prev = body[..name_start].chars().next_back();
+        if prev.is_some_and(|prev| prev == '_' || prev.is_alphanumeric())
+            || (prev == Some('.')) != method_call
         {
             continue;
         }
@@ -501,7 +752,7 @@ pub(super) fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<
         let Some(close_idx) = matching_call_paren(body, open_idx) else {
             continue;
         };
-        arglists.push(&body[open_idx + 1..close_idx]);
+        arglists.push((name_start, &body[open_idx + 1..close_idx]));
         search_from = close_idx + 1;
     }
     arglists
@@ -516,22 +767,36 @@ pub(super) fn free_function_call_arglists<'a>(body: &'a str, name: &str) -> Vec<
 /// block) when the change is not a pure default-value change, when no owner call
 /// can be analyzed, or when at least one strong call omits a changed parameter.
 /// Fails open: any untracked shape yields None so a genuine exposure is never
-/// suppressed. Scoped to free-function owners — a method/classmethod has an
-/// implicit `self`/`cls` that shifts positional binding, so those fail open.
+/// suppressed.
+///
+/// A one-line header compares the old and new signatures. A parameter line
+/// inside a multi-line header (`multi_line_header_line`) carries its own
+/// defaults: whether the line is new or its value changed, the defaults on it
+/// are what an omitting call reaches. Each name on the line must be a declared
+/// parameter of the owner with a default, which rejects a keyword inside a
+/// nested default call (`retry=dict(\n    total=3,`) and gives the parameter
+/// its real position and binding kind. Scoped to free-function owners: a
+/// method, constructor included, is also reached through receivers,
+/// subclasses and factories (`cls(...)`) this scanner does not see, so
+/// methods fail open.
 pub(super) fn changed_default_overridden_params(
     old_line_text: Option<&str>,
     new_line_text: &str,
+    multi_line_header_line: bool,
     owner: &PythonOwner,
     related_candidates: &[PythonRelatedCandidate<'_>],
 ) -> Option<Vec<String>> {
-    let old_line = old_line_text?;
     if matches!(
         owner.owner_kind,
         Some(OwnerKind::Method | OwnerKind::ClassMethod)
     ) {
         return None;
     }
-    let changed = changed_default_value_params(old_line, new_line_text)?;
+    let changed = if multi_line_header_line {
+        declared_line_defaults(owner, new_line_text)?
+    } else {
+        changed_default_value_params(old_line_text?, new_line_text)?
+    };
     let mut saw_strong = false;
     for candidate in related_candidates {
         if !candidate.relation.uses_oracle() {
@@ -565,6 +830,113 @@ pub(super) fn changed_default_overridden_params(
         return None; // no strong oracle -> the exposed branch is unreachable anyway
     }
     Some(changed.into_iter().map(|param| param.name).collect())
+}
+
+/// The defaults on one multi-line header line, each bound to the owner's
+/// declared parameter of that name. None when any name is not a declared
+/// parameter with a default.
+fn declared_line_defaults(owner: &PythonOwner, text: &str) -> Option<Vec<ChangedDefaultParam>> {
+    header_param_line_defaults(text)?
+        .into_iter()
+        .map(|name| {
+            let (index, declared) = owner
+                .parameters
+                .iter()
+                .enumerate()
+                .find(|(_, declared)| declared.name == name)?;
+            declared.default.as_ref()?;
+            Some(ChangedDefaultParam {
+                name,
+                index,
+                positionally_bindable: !declared.keyword_only,
+                keyword_bindable: !declared.positional_only,
+            })
+        })
+        .collect()
+}
+
+/// The parameters with a default on one line of a multi-line `def` header
+/// (`alias_is_default=None,`, `key: str = "k", *, strict=False,`, or a
+/// closing `limit=10) -> int:`). None when the line holds no default or is
+/// not a plain parameter list (a comment, a nested call spanning lines).
+pub(super) fn header_param_line_defaults(text: &str) -> Option<Vec<String>> {
+    let trimmed = text.trim();
+    if trimmed.contains('#') {
+        return None;
+    }
+    let header = trimmed.strip_prefix("async ").unwrap_or(trimmed);
+    let params = match header
+        .strip_prefix("def ")
+        .and_then(|rest| rest.split_once('('))
+    {
+        Some((name, rest)) if is_simple_python_identifier(name.trim()) => rest,
+        Some(_) => return None,
+        None => trimmed,
+    };
+    let params = match header_params_close(params) {
+        Some(close) => {
+            let rest = params[close + 1..].trim();
+            if !(rest.is_empty() || rest == ":" || rest == "," || rest.starts_with("->")) {
+                return None;
+            }
+            &params[..close]
+        }
+        None => params,
+    };
+    let mut defaults = Vec::new();
+    for segment in split_top_level_args(params) {
+        let segment = segment.trim();
+        if segment.is_empty() || matches!(segment, "*" | "/") || segment.starts_with('*') {
+            continue;
+        }
+        let (declaration, default) = match segment.split_once('=') {
+            Some((declaration, default)) => (declaration, Some(default.trim())),
+            None => (segment, None),
+        };
+        let name = declaration
+            .split_once(':')
+            .map_or(declaration, |(name, _)| name)
+            .trim();
+        if !is_simple_python_identifier(name) {
+            return None;
+        }
+        if default.is_some_and(|default| !default.is_empty()) {
+            defaults.push(name.to_string());
+        }
+    }
+    (!defaults.is_empty()).then_some(defaults)
+}
+
+/// The byte index of the first `)` at bracket depth zero, outside quotes: the
+/// close of a `def` header's parameter list.
+fn header_params_close(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (idx, ch) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active) = quote {
+            if ch == active {
+                quote = None;
+            }
+            continue;
+        }
+        match ch {
+            '\'' | '"' => quote = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' if depth == 0 => return Some(idx),
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            _ => {}
+        }
+    }
+    None
 }
 
 /// Backtick-quotes and comma-joins parameter names for a `missing` message.

@@ -1,0 +1,6 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "baseline_debt_delta",
+  "status": "available"
+}

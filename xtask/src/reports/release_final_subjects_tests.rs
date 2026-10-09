@@ -34,7 +34,7 @@ fn fixture(root: &Path) -> Result<(), String> {
                 .join(executable),
             target,
         )?;
-        super::release_server::release_server_archive(&[
+        super::release_server::release_server_archive_from_synthetic_payload(&[
             "--version".into(),
             VERSION.into(),
             "--target".into(),

@@ -1,0 +1,19 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -11,3 +11,3 @@ pub const BULK_ITEMS: u32 = 5 * 2;
+ pub fn discounted_total(amount: u64) -> u64 {
+-    if amount > DISCOUNT_THRESHOLD {
++    if amount >= DISCOUNT_THRESHOLD {
+         amount - amount / 10
+@@ -20,3 +20,3 @@ pub fn discounted_total(amount: u64) -> u64 {
+ pub fn bulk_rate(items: u32) -> u32 {
+-    if items > BULK_ITEMS {
++    if items >= BULK_ITEMS {
+         90
+@@ -29,3 +29,3 @@ pub fn bulk_rate(items: u32) -> u32 {
+ pub fn shipping(amount: u64) -> u64 {
+-    if amount > FREE_SHIPPING {
++    if amount >= FREE_SHIPPING {
+         0

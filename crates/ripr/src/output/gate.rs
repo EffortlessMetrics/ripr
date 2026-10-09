@@ -6,6 +6,7 @@ mod presentation;
 mod repair_route;
 
 use super::gap_decision_ledger::{self, GapRecord};
+use super::review_comments::SUMMARY_REASON_NO_SAFE_PLACEMENT;
 use crate::domain::DeltaAttribution;
 use causal::CausalDeltaAuthority;
 #[cfg(test)]
@@ -22,10 +23,32 @@ use repair_route::{
 use serde_json::Value;
 #[cfg(test)]
 use serde_json::json;
+use sha2::{Digest, Sha256};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 pub(crate) const DEFAULT_GATE_OUT: &str = "target/ripr/reports/gate-decision.json";
+/// Top-level report status when evaluation could not complete. The CLI maps
+/// this token to process exit 2 (`docs/EXIT_CODES.md`); `help --json` uses
+/// the same bytes as the `gate_evaluate` serde key.
+pub(crate) const GATE_STATUS_CONFIG_ERROR: &str = "config_error";
+/// Top-level report status when evaluation completed and blocked. The CLI
+/// maps this token to process exit 3 (`docs/EXIT_CODES.md`); `help --json`
+/// uses the same bytes as the `gate_evaluate` serde key.
+pub(crate) const GATE_STATUS_BLOCKED: &str = "blocked";
+/// The closed top-level `status` set a gate decision may carry
+/// (`schemas/ripr/gate-decision.schema.json`, in schema order), mirrored
+/// from the `top_level_status` producer. Consumers validating an unknown
+/// producer document reject anything outside this set instead of treating
+/// an out-of-contract status as a completed evaluation (#6770 review).
+pub(crate) const GATE_DECISION_KNOWN_STATUSES: [&str; 5] = [
+    "pass",
+    "advisory",
+    "acknowledged",
+    "blocked",
+    "config_error",
+];
 const SCHEMA_VERSION: &str = "0.1";
 const DEFAULT_THRESHOLD: &str = "high_confidence_new_gap";
 const DEFAULT_ACKNOWLEDGEMENT_LABEL: &str = "ripr-waive";
@@ -34,9 +57,11 @@ const LIMITS_NOTE: &str = "Optional policy over static RIPR evidence; advisory b
 pub(crate) fn build_gate_decision_report(
     input: &GateEvaluateInput,
 ) -> Result<GateDecisionReport, String> {
+    let mut consumed = input::ConsumedInputHashes::default();
+    let mut pr_guidance_bytes: Vec<u8> = Vec::new();
     let mut warnings = Vec::new();
     let mut config_errors = Vec::new();
-    let labels = read_labels(input, &mut warnings)?;
+    let labels = read_labels(input, &mut warnings, &mut consumed)?;
     if input.pr_guidance.is_none() && input.gap_ledger.is_none() {
         config_errors
             .push("gate evaluate requires --pr-guidance <path> or --gap-ledger <path>".to_string());
@@ -44,13 +69,29 @@ pub(crate) fn build_gate_decision_report(
     let pr_guidance = match input.pr_guidance.as_ref() {
         Some(path) => {
             let pr_guidance_path = resolve_root_path(&input.root, path);
-            match read_json_value_with_display(&pr_guidance_path, path) {
-                Ok(value) => {
+            // Read once: the bytes parsed here are the bytes the subject
+            // hashes, so the receipt cannot bind the decision to contents
+            // it never evaluated (review round 1, #5263).
+            match read_json_value_and_bytes_with_display(&pr_guidance_path, path) {
+                Ok((value, bytes)) => {
+                    pr_guidance_bytes = bytes;
                     if let Some(defect) = pr_guidance_document_defect(&value) {
                         config_errors.push(format!(
                             "pr-guidance {} is not a recognized review-comments guidance document: {defect}",
                             display_path(path)
                         ));
+                        Value::Null
+                    } else if let Some(bound_error) =
+                        findings_bound_input_error(&value, path, "gate input")
+                    {
+                        // Same fail-closed shape for a `limited_findings_bound`
+                        // producer run (#5203): an omitted finding can hide an
+                        // exposed sink, so a bounded denominator never passes
+                        // as a complete gate input. Checked before the older
+                        // limited states so a bounded document names its own
+                        // budget repair; no existing document carries the new
+                        // entry, so older refusals are unchanged.
+                        config_errors.push(bound_error);
                         Value::Null
                     } else if let Some(partial_error) = partial_scope_input_error(&value, path) {
                         // The document is structurally valid but discloses a
@@ -84,7 +125,7 @@ pub(crate) fn build_gate_decision_report(
         }
         None => Value::Null,
     };
-    let gap_ledger = read_gap_ledger(input, &mut config_errors);
+    let gap_ledger = read_gap_ledger(input, &mut config_errors, &mut consumed);
     warn_for_optional_json(
         &input.root,
         input.repo_exposure.as_ref(),
@@ -116,9 +157,10 @@ pub(crate) fn build_gate_decision_report(
         &mut warnings,
     );
 
-    let recommendation_calibration = read_recommendation_calibration(input, &mut warnings);
-    let mutation_calibration = read_mutation_calibration(input, &mut warnings);
-    let baseline = read_baseline(input, &mut warnings, &mut config_errors);
+    let recommendation_calibration =
+        read_recommendation_calibration(input, &mut warnings, &mut consumed);
+    let mutation_calibration = read_mutation_calibration(input, &mut warnings, &mut consumed);
+    let baseline = read_baseline(input, &mut warnings, &mut config_errors, &mut consumed);
     let causal_delta = match CausalDeltaAuthority::load(&input.root) {
         Ok(authority) => authority,
         Err(error) => {
@@ -147,7 +189,13 @@ pub(crate) fn build_gate_decision_report(
         Some(path) => {
             let resolved = resolve_root_path(&input.root, path);
             let display = display_path(path);
-            match exception_policy::load_exception_ledger(&resolved, &display) {
+            let ledger_result = consumed
+                .read_toml_text_and_record(&resolved, &display)
+                .and_then(|(text, digest)| {
+                    consumed.exception_policy = Some(digest);
+                    exception_policy::load_exception_ledger_from_text(&text, &display)
+                });
+            match ledger_result {
                 Ok(ledger) => {
                     let today = crate::output::suppressions::current_iso_date();
                     let report =
@@ -220,6 +268,14 @@ pub(crate) fn build_gate_decision_report(
         input.mode,
         causal_delta.as_ref(),
     );
+    let subject = build_gate_subject(
+        input,
+        // `Value::Null` stands in for an absent or rejected pr-guidance
+        // document; the producer-subject read treats it as absent.
+        (!pr_guidance.is_null()).then_some(&pr_guidance),
+        (!pr_guidance_bytes.is_empty()).then_some(pr_guidance_bytes.as_slice()),
+        &consumed,
+    );
     let exception_blocking = exception_policy
         .as_ref()
         .map(|report| report.blocking_count())
@@ -259,6 +315,7 @@ pub(crate) fn build_gate_decision_report(
                 .as_ref()
                 .map(|path| display_path(path)),
         },
+        subject,
         policy,
         summary,
         new_unsuppressed,
@@ -271,11 +328,134 @@ pub(crate) fn build_gate_decision_report(
     })
 }
 
+/// Subject identity of this evaluation (#5263): the writing binary's build
+/// identity plus, per consumed input, a `sha256` content hash — every
+/// CLI-supplied input that can change the decision (candidates, baseline,
+/// labels, calibration, receipts, policy ledgers) is covered, not only the
+/// candidate sources (review round 1), and each hashes exactly the bytes its
+/// reader parsed (review round 2). Only the warn-only inputs no reader
+/// parses take a fresh read at subject-build time; the read model is
+/// documented in the output contract.
+///
+/// The auto-loaded causal artifacts are outside this block by boundary, not
+/// omission: they are workspace-durable files that self-identify (the
+/// canonical-delta artifact carries its own identity fields), not invocation
+/// inputs.
+///
+/// Hashing is best-effort: an unreadable input leaves `content_hash` absent
+/// while the read failure itself already surfaces as a `config_error` or a
+/// warning, so the subject never invents an identity for bytes it did not
+/// see. Entries are keyed in a `BTreeMap`, so the rendered block is
+/// deterministic for identical inputs.
+fn build_gate_subject(
+    input: &GateEvaluateInput,
+    pr_guidance: Option<&Value>,
+    pr_guidance_bytes: Option<&[u8]>,
+    consumed: &input::ConsumedInputHashes,
+) -> GateSubject {
+    let mut inputs = BTreeMap::new();
+    for (name, path) in [
+        ("gap_ledger", input.gap_ledger.as_ref()),
+        ("pr_guidance", input.pr_guidance.as_ref()),
+        ("repo_exposure", input.repo_exposure.as_ref()),
+        ("sarif_policy", input.sarif_policy.as_ref()),
+        ("labels_json", input.labels_json.as_ref()),
+        ("agent_verify", input.agent_verify.as_ref()),
+        ("agent_receipt", input.agent_receipt.as_ref()),
+        (
+            "recommendation_calibration",
+            input.recommendation_calibration.as_ref(),
+        ),
+        ("mutation_calibration", input.mutation_calibration.as_ref()),
+        ("baseline", input.baseline.as_ref()),
+        ("exception_policy", input.exception_policy.as_ref()),
+    ] {
+        let Some(path) = path else {
+            continue;
+        };
+        // The consumed-bytes hash wins where the reader captured them; a
+        // fresh read only ever backs the advisory optional inputs.
+        // The consumed-bytes hash wins for every reader-parsed input; the
+        // fresh read only backs the warn-only inputs no reader parses.
+        let content_hash = match name {
+            "pr_guidance" => {
+                pr_guidance_bytes.map(|bytes| format!("sha256:{:x}", Sha256::digest(bytes)))
+            }
+            "gap_ledger" => consumed.gap_ledger.clone(),
+            "labels_json" => consumed.labels_json.clone(),
+            "recommendation_calibration" => consumed.recommendation_calibration.clone(),
+            "mutation_calibration" => consumed.mutation_calibration.clone(),
+            "baseline" => consumed.baseline.clone(),
+            "exception_policy" => consumed.exception_policy.clone(),
+            // repo_exposure, sarif_policy, agent_verify, agent_receipt are
+            // validated readable but not parsed for decisions; they hash a
+            // fresh read at subject-build time.
+            _ => {
+                let resolved = resolve_root_path(&input.root, path);
+                std::fs::read(&resolved)
+                    .ok()
+                    .map(|bytes| format!("sha256:{:x}", Sha256::digest(bytes)))
+            }
+        };
+        let producer_subject = if name == "pr_guidance" {
+            pr_guidance.and_then(producer_subject_from_pr_guidance)
+        } else {
+            None
+        };
+        inputs.insert(
+            name.to_string(),
+            GateSubjectInput {
+                content_hash,
+                producer_subject,
+            },
+        );
+    }
+    let labels_sha256 = (!input.labels.is_empty()).then(|| {
+        let mut hasher = Sha256::new();
+        for label in &input.labels {
+            hasher.update(label.as_bytes());
+            hasher.update([0]);
+        }
+        format!("sha256:{:x}", hasher.finalize())
+    });
+    GateSubject {
+        analyzer_version: crate::build_identity::cache_identity().to_string(),
+        inputs,
+        labels_sha256,
+    }
+}
+
+/// Copy the input document's `run_receipt` identity verbatim (#5263). The
+/// receipt must carry resolved base/head SHAs to count as a producer
+/// subject; a receipt missing them is treated as absent rather than partly
+/// quoted, so no field here is ever inferred from a different field.
+fn producer_subject_from_pr_guidance(value: &Value) -> Option<GateProducerSubject> {
+    let receipt = value.get("run_receipt")?;
+    let base_sha = receipt.get("base_sha").and_then(Value::as_str)?;
+    let head_sha = receipt.get("head_sha").and_then(Value::as_str)?;
+    if base_sha.is_empty() || head_sha.is_empty() {
+        return None;
+    }
+    Some(GateProducerSubject {
+        root_identity: receipt
+            .get("root_identity")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        base_sha: base_sha.to_string(),
+        head_sha: head_sha.to_string(),
+        reusable_cache_identity: receipt
+            .get("reusable_cache_identity")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
 fn read_labels(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> Result<Vec<String>, String> {
-    Ok(input::read_labels_impl(input, warnings))
+    Ok(input::read_labels_impl(input, warnings, consumed))
 }
 
 fn warn_for_optional_json(
@@ -290,30 +470,34 @@ fn warn_for_optional_json(
 fn read_gap_ledger(
     input: &GateEvaluateInput,
     config_errors: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> Option<Vec<GapRecord>> {
-    input::read_gap_ledger_impl(input, config_errors)
+    input::read_gap_ledger_impl(input, config_errors, consumed)
 }
 
 fn read_recommendation_calibration(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> CalibrationIndex {
-    input::read_recommendation_calibration_impl(input, warnings)
+    input::read_recommendation_calibration_impl(input, warnings, consumed)
 }
 
 fn read_mutation_calibration(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> CalibrationIndex {
-    input::read_mutation_calibration_impl(input, warnings)
+    input::read_mutation_calibration_impl(input, warnings, consumed)
 }
 
 fn read_baseline(
     input: &GateEvaluateInput,
     warnings: &mut Vec<String>,
     config_errors: &mut Vec<String>,
+    consumed: &mut input::ConsumedInputHashes,
 ) -> BaselineIndex {
-    input::read_baseline_impl(input, warnings, config_errors)
+    input::read_baseline_impl(input, warnings, config_errors, consumed)
 }
 
 fn candidates_from_pr_guidance(value: &Value) -> Vec<GateCandidate> {
@@ -398,6 +582,9 @@ fn candidate_from_guidance_item(
         .or_else(|| item.get("suppression_reason").and_then(Value::as_str))
         .map(ToOwned::to_owned);
     let summary_reason = string_field(item.get("summary_reason"));
+    let why_not_actionable = (route_facts.gap_state.as_deref() == Some("static_limitation"))
+        .then(|| string_field(item.get("why_not_actionable")))
+        .flatten();
     GateCandidate {
         source: source.to_string(),
         source_id,
@@ -431,6 +618,7 @@ fn candidate_from_guidance_item(
         configured_off: suppression_reason.as_deref() == Some("severity_off"),
         suppression_reason,
         summary_reason,
+        why_not_actionable,
         gap_ledger_gate_candidate: false,
         gap_ledger_gate_reason: None,
         gap_ledger_safe_gate_predicate: false,
@@ -496,9 +684,12 @@ fn candidate_from_gap_record(record: &GapRecord) -> GateCandidate {
                 .safe_gate_predicate
                 .as_ref()
                 .is_some_and(|predicate| predicate.suppressed),
-        configured_off: record.policy_state == "not_policy_targeted",
+        // `not_policy_targeted` also describes already-observed/no-action
+        // records. The ledger has no explicit configured-off fact to carry.
+        configured_off: false,
         suppression_reason: (record.policy_state == "suppressed").then(|| "suppressed".to_string()),
         summary_reason: None,
+        why_not_actionable: None,
         gap_ledger_gate_candidate: gate_candidate,
         gap_ledger_gate_reason: gate_reason,
         gap_ledger_safe_gate_predicate: gap_decision_ledger::safe_gate_predicate_satisfied(record),
@@ -589,6 +780,7 @@ fn gate_decision(
         &policy.acknowledgement_labels,
     );
     let repair_route = build_gate_repair_route(candidate);
+    let changed_line_anchored = !candidate_lacks_changed_line_placement(candidate);
     GateDecision {
         id: format!("ripr-gate-{}", stable_identity(candidate)),
         source: if candidate.source == "summary_only" {
@@ -629,6 +821,7 @@ fn gate_decision(
             mutation_calibration,
         },
         repair_route,
+        changed_line_anchored,
         is_baseline_new,
         baseline_match_kind,
         delta_attribution: causal_attribution,
@@ -689,6 +882,15 @@ fn candidate_is_policy_eligible_without_route(candidate: &GateCandidate) -> bool
         && candidate.placement.path.is_some()
         && candidate.placement.line.is_some()
         && !placement_excluded
+}
+
+/// A PR-guidance summary item the review producer demoted because it found
+/// no safe changed-line placement (RIPR-SPEC-0012). The seam is not anchored
+/// to this PR's changed lines, so it stays advisory and is never presented
+/// as changed code.
+fn candidate_lacks_changed_line_placement(candidate: &GateCandidate) -> bool {
+    candidate.source == "summary_only"
+        && candidate.summary_reason.as_deref() == Some(SUMMARY_REASON_NO_SAFE_PLACEMENT)
 }
 
 fn candidate_class_is_policy_eligible(class: Option<&str>) -> bool {
@@ -851,6 +1053,11 @@ fn gate_reason(
             );
         }
         if candidate.source == "gap_decision_ledger" {
+            // A closed gap needs no action whatever eligibility its projection claims.
+            if candidate.gap_state.as_deref() == Some("already_observed") {
+                return "gap decision ledger record is already observed; no action required"
+                    .to_string();
+            }
             if !candidate.gap_ledger_gate_candidate {
                 return format!(
                     "gap decision ledger record is not gate-candidate eligible: {}",
@@ -873,8 +1080,20 @@ fn gate_reason(
                     .to_string();
             }
         }
+        if candidate_lacks_changed_line_placement(candidate) {
+            return "seam is outside this PR's changed lines, so the summary-only recommendation remains visible and advisory".to_string();
+        }
         if candidate.source == "summary_only" {
             return "summary-only recommendation remains visible and advisory".to_string();
+        }
+        // The producer already declared this card non-actionable and named
+        // why (for example, no existing test reaches the changed owner).
+        // That per-card reason outranks the PR-wide nearby-test flag, which
+        // would otherwise claim a focused test changed near an owner no test
+        // reaches (#4216 row 2). Eligibility is unchanged; only the stated
+        // reason follows the producer.
+        if let Some(why) = candidate.why_not_actionable.as_deref() {
+            return format!("static limitation keeps this candidate advisory: {why}");
         }
         if candidate.nearby_test_changed {
             return "nearby focused test changed in this PR, so the candidate stays advisory"
@@ -1038,9 +1257,9 @@ fn top_level_status(
     exception_blocking: usize,
 ) -> &'static str {
     if !config_errors.is_empty() {
-        "config_error"
+        GATE_STATUS_CONFIG_ERROR
     } else if summary.blocking > 0 || exception_blocking > 0 {
-        "blocked"
+        GATE_STATUS_BLOCKED
     } else if summary.acknowledged > 0 {
         "acknowledged"
     } else if mode == GateMode::VisibleOnly
@@ -1061,6 +1280,26 @@ fn acknowledgement_labels(input: &GateEvaluateInput) -> Vec<String> {
     } else {
         input.acknowledgement_labels.clone()
     }
+}
+
+/// Bytes-once reader: the returned bytes are exactly what the returned
+/// value was parsed from, so a subject hash over them identifies the
+/// content the evaluation consumed.
+fn read_json_value_and_bytes_with_display(
+    path: &Path,
+    display: &Path,
+) -> Result<(Value, Vec<u8>), String> {
+    let display = display_path(display);
+    let bytes = fs::read(path).map_err(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            format!("read {display} failed: not found")
+        } else {
+            format!("read {display} failed: {err}")
+        }
+    })?;
+    let value =
+        serde_json::from_slice(&bytes).map_err(|err| format!("parse {display} failed: {err}"))?;
+    Ok((value, bytes))
 }
 
 fn read_json_value_with_display(path: &Path, display: &Path) -> Result<Value, String> {
@@ -1092,12 +1331,25 @@ fn canonical_gap_id_from_value(value: &Value) -> Option<String> {
         .or_else(|| string_field(value.pointer("/evidence_record/canonical_gap_id")))
 }
 
+/// Statuses `ripr review-comments` writes (or its schema admits) at the
+/// top level of a guidance document. `advisory` is the healthy producer run;
+/// `incomplete` / `error` / `timeout` are recognized failure states that
+/// [`pr_guidance_producer_error`] then fails closed on with a specific
+/// message. Any other value means the document did not come from the
+/// review-comments producer.
+const PR_GUIDANCE_KNOWN_STATUSES: [&str; 4] = ["advisory", "incomplete", "error", "timeout"];
+
 /// Returns `Some(defect_description)` if `value` is not a recognized
 /// `ripr review-comments` guidance document, or `None` if it is valid.
 ///
 /// A valid guidance document must have:
 /// - `schema_version`: a non-empty string (the ripr schema marker)
+/// - `tool`: exactly `"ripr"` (the producer marker)
+/// - `status`: one of [`PR_GUIDANCE_KNOWN_STATUSES`]
 /// - `comments`: a JSON array (the primary findings list consumed by the gate)
+///
+/// `analysis_outcome` is deliberately not required: the gap-ledger
+/// review-comments path emits none.
 ///
 /// A valid document with an empty `comments` array is accepted — that is a
 /// legitimate "zero findings" result and must still produce `status=advisory`.
@@ -1107,15 +1359,42 @@ fn pr_guidance_document_defect(value: &Value) -> Option<String> {
         .and_then(Value::as_str)
         .is_some_and(|s| !s.is_empty());
     let has_comments_array = value.get("comments").is_some_and(|v| v.is_array());
-    match (has_schema_version, has_comments_array) {
-        (false, false) => {
-            Some("missing required fields `schema_version` and `comments`".to_string())
+    let mut missing = Vec::new();
+    if !has_schema_version {
+        missing.push("`schema_version`");
+    }
+    if !has_comments_array {
+        missing.push("`comments` (expected a JSON array)");
+    }
+    if !missing.is_empty() {
+        let noun = if missing.len() == 1 {
+            "field"
+        } else {
+            "fields"
+        };
+        return Some(format!("missing required {noun} {}", missing.join(" and ")));
+    }
+    match value.get("tool") {
+        Some(Value::String(tool)) if tool == "ripr" => {}
+        Some(other) => {
+            return Some(format!(
+                "field `tool` is {other}, expected \"ripr\" (not a ripr review-comments document)"
+            ));
         }
-        (false, true) => Some("missing required field `schema_version`".to_string()),
-        (true, false) => {
-            Some("missing required field `comments` (expected a JSON array)".to_string())
+        None => return Some("missing required field `tool` (expected \"ripr\")".to_string()),
+    }
+    match value.get("status") {
+        Some(Value::String(status)) if PR_GUIDANCE_KNOWN_STATUSES.contains(&status.as_str()) => {
+            None
         }
-        (true, true) => None,
+        Some(other) => Some(format!(
+            "field `status` is {other}, expected one of {}",
+            PR_GUIDANCE_KNOWN_STATUSES.join(", ")
+        )),
+        None => Some(format!(
+            "missing required field `status` (expected one of {})",
+            PR_GUIDANCE_KNOWN_STATUSES.join(", ")
+        )),
     }
 }
 
@@ -1244,6 +1523,43 @@ pub(crate) fn discloses_limited_partial_scope(value: &Value) -> bool {
         })
 }
 
+/// Whether a JSON document discloses the `limited_findings_bound` run state
+/// (#5203): the producer rendered a findings-array prefix, not the full
+/// analysis set. The producer emits exactly one position (`run_limitations[]`,
+/// the only slot the check schema opens for this state), so only that
+/// position is read; a future producer adding positions extends this predicate.
+pub(crate) fn discloses_limited_findings_bound(value: &Value) -> bool {
+    let run_status = crate::output::json::FINDINGS_BOUND_RUN_STATUS;
+    value
+        .get("run_limitations")
+        .and_then(Value::as_array)
+        .is_some_and(|limitations| {
+            limitations.iter().any(|entry| {
+                entry.get("run_status").and_then(Value::as_str) == Some(run_status)
+                    || entry.get("category").and_then(Value::as_str) == Some(run_status)
+            })
+        })
+}
+
+/// Fail-closed refusal for gate inputs built from a findings-bounded producer
+/// run (#5203). An omitted finding can hide an exposed sink, so a bounded
+/// denominator is never a gate, baseline, badge, or RIPR Zero input — exactly
+/// like a partial-scope denominator, with the findings-budget repair route.
+fn findings_bound_input_error(value: &Value, path: &Path, role: &str) -> Option<String> {
+    if discloses_limited_findings_bound(value) {
+        Some(format!(
+            "gate input {} discloses a {} producer run; a bounded denominator is never a {} — \
+             re-run with a larger {} budget or =0 for the full set before gating",
+            display_path(path),
+            crate::output::json::FINDINGS_BOUND_RUN_STATUS,
+            role,
+            crate::output::json::CHECK_FINDINGS_BYTES_ENV,
+        ))
+    } else {
+        None
+    }
+}
+
 /// Whether a producer supplied the typed incomplete-analysis envelope.
 ///
 /// This is intentionally separate from the older run-state vocabulary: an
@@ -1254,6 +1570,36 @@ pub(crate) fn discloses_incomplete_analysis_outcome(value: &Value) -> bool {
         .pointer("/analysis_outcome/analysis_complete")
         .and_then(Value::as_bool)
         == Some(false)
+}
+
+/// Whether a gap-ledger document discloses a blocked producer run: the
+/// producer's own `status: "blocked"` verdict carrying failure warnings.
+/// `build_gap_decision_ledger_report` sets `blocked` whenever the record set
+/// is empty, which also covers a genuinely empty zero-gap ledger — those
+/// carry no warnings and stay a complete zero denominator. A blocked ledger
+/// WITH warnings is a failed producer, never a denominator (#6095 review).
+pub(crate) fn discloses_blocked_producer_outcome(value: &Value) -> bool {
+    value.pointer("/status").and_then(Value::as_str) == Some("blocked")
+        && value
+            .pointer("/warnings")
+            .and_then(Value::as_array)
+            .is_some_and(|warnings| !warnings.is_empty())
+}
+
+/// The producer-owned warnings of a blocked ledger. Consumers surface these
+/// verbatim instead of inventing a verdict from a failed producer.
+pub(crate) fn blocked_producer_warnings(value: &Value) -> Vec<String> {
+    value
+        .pointer("/warnings")
+        .and_then(Value::as_array)
+        .map(|warnings| {
+            warnings
+                .iter()
+                .filter_map(Value::as_str)
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 /// Return the producer-owned typed outcome kind for an incomplete envelope.

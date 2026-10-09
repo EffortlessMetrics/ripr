@@ -2,7 +2,7 @@ diff --git a/crates/ripr/examples/sample/src/lib.rs b/crates/ripr/examples/sampl
 index 0000000..1111111 100644
 --- a/crates/ripr/examples/sample/src/lib.rs
 +++ b/crates/ripr/examples/sample/src/lib.rs
-@@ -5,7 +5,7 @@ pub struct Quote {
+@@ -5,6 +5,7 @@ pub struct Quote {
  }
  
  pub fn price(amount: i32, discount_threshold: i32) -> Quote {
@@ -10,7 +10,7 @@ index 0000000..1111111 100644
          Quote { total: amount - 100, discount_applied: true }
      } else {
          Quote { total: amount, discount_applied: false }
-@@ -18,5 +18,5 @@ pub enum InvoiceError {
+@@ -18,4 +18,5 @@ pub enum InvoiceError {
  }
  
  pub fn validate_currency(currency: &str) -> Result<(), InvoiceError> {

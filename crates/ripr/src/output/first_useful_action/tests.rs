@@ -1,6 +1,8 @@
 use super::markdown::{push_wrapped_paragraph, str_or, with_period};
 use super::*;
+use crate::output::first_pr::{MANUAL_RECEIPT_LABEL, MANUAL_VERIFY_LABEL, VERIFY_AFTER_EDIT_LABEL};
 use crate::output::test_support::{read_file, repo_root};
+use crate::testing::cwd_placeholder::project_cwd_text;
 use std::path::Path;
 
 #[test]
@@ -38,14 +40,118 @@ fn first_useful_action_matches_actionable_fixture() -> Result<(), String> {
         editor_context_json: None,
     });
 
+    // Issue #3872: command redirects anchor at the resolved --root, so the
+    // machine prefix projects to `<cwd>/` before comparing against the
+    // checked-in expectation (placeholder rule: loop_commands).
     assert_eq!(
-        render_first_useful_action_json(&report)?,
+        project_cwd_text(&render_first_useful_action_json(&report)?),
         read_file(&base.join("first-useful-action.json"))?.trim_end()
     );
+    // #4304: the Markdown now carries the anchored verify and analysis-outcome
+    // redirects, so it takes the same projection.
     assert_eq!(
-        render_first_useful_action_markdown(&report),
+        project_cwd_text(&render_first_useful_action_markdown(&report)),
         read_file(&base.join("first-useful-action.md"))?
     );
+    Ok(())
+}
+
+/// #4304: following the actionable report's commands literally must leave
+/// every file `agent receipt` reads on disk. The receipt reads its
+/// `--verify-json` path and the `analysis-outcome.json` beside it (the path
+/// comes from the receipt's own lookup), so the verify and analysis-outcome
+/// commands must redirect to exactly those files.
+#[test]
+fn first_useful_action_actionable_commands_write_every_file_the_receipt_reads() -> Result<(), String>
+{
+    let repo_root = repo_root()?;
+    let canonical = "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical";
+    let proof = repo_root.join(format!("{canonical}/test-oracle-assistant-proof.json"));
+    let pr_guidance = repo_root.join(format!("{canonical}/pr-guidance.json"));
+    let ledger = repo_root.join(format!("{canonical}/pr-evidence-ledger.json"));
+    let root = "fixtures/boundary_gap/input";
+    let report = build_first_useful_action_report(FirstUsefulActionInput {
+        root: root.to_string(),
+        generated_at: "2026-05-09T12:00:00Z".to_string(),
+        pr_guidance_path: Some(fixture_path(&repo_root, &pr_guidance)),
+        assistant_proof_path: Some(fixture_path(&repo_root, &proof)),
+        gap_ledger_path: None,
+        ledger_path: Some(fixture_path(&repo_root, &ledger)),
+        baseline_delta_path: None,
+        receipt_path: None,
+        gate_decision_path: None,
+        coverage_frontier_path: None,
+        editor_context_path: None,
+        pr_guidance_json: Some(Ok(read_file(&pr_guidance)?)),
+        assistant_proof_json: Some(Ok(read_file(&proof)?)),
+        gap_ledger_json: None,
+        ledger_json: Some(Ok(read_file(&ledger)?)),
+        baseline_delta_json: None,
+        receipt_json: None,
+        gate_decision_json: None,
+        coverage_frontier_json: None,
+        editor_context_json: None,
+    });
+    assert_eq!(report.status, "actionable");
+
+    let commands = &report.commands;
+    let receipt = commands
+        .receipt
+        .as_deref()
+        .ok_or("receipt command missing")?;
+    let verify_json = receipt
+        .split_whitespace()
+        .skip_while(|token| *token != "--verify-json")
+        .nth(1)
+        .ok_or("receipt command names no --verify-json")?;
+    let outcome_path =
+        crate::app::analysis_outcome_artifact::analysis_outcome_artifact_path_for_verify(
+            Path::new(verify_json),
+        )?;
+    let outcome_path = outcome_path.to_string_lossy().replace('\\', "/");
+
+    let redirect_target = |command: &str| {
+        command
+            .rsplit_once(" > ")
+            .map(|(_, target)| target.to_string())
+    };
+    let verify = commands.verify.as_deref().ok_or("verify command missing")?;
+    assert_eq!(
+        redirect_target(verify),
+        Some(crate::agent::loop_commands::anchored_redirect_target(
+            root,
+            verify_json
+        )),
+        "verify must write the file the receipt reads: {verify}"
+    );
+    let outcome = commands
+        .analysis_outcome
+        .as_deref()
+        .ok_or("analysis-outcome command missing")?;
+    assert_eq!(
+        redirect_target(outcome),
+        Some(crate::agent::loop_commands::anchored_redirect_target(
+            root,
+            &outcome_path
+        )),
+        "analysis outcome must land beside the verify file: {outcome}"
+    );
+
+    let verify_spec = commands
+        .command_specs
+        .as_ref()
+        .and_then(|specs| specs.verify.as_ref())
+        .ok_or("verify command spec missing")?;
+    assert_eq!(verify_spec.expected_writes, vec![verify_json.to_string()]);
+    assert_eq!(verify_spec.display, verify);
+
+    let markdown = render_first_useful_action_markdown(&report);
+    for command in [outcome, verify, receipt] {
+        assert!(
+            markdown.contains(&format!("`{command}`")),
+            "Markdown must list `{command}`"
+        );
+    }
     Ok(())
 }
 
@@ -85,6 +191,14 @@ fn first_useful_action_matches_unchanged_after_attempt_fixture() -> Result<(), S
     let rendered = render_first_useful_action_json(&report)?;
     assert!(rendered.contains(r#""status": "missing_required_artifact""#));
     assert!(rendered.contains("receipt movement `unchanged` is not promotable"));
+    // The proof is present; what is missing is a complete receipt. The copy
+    // and the commands must send the agent there, not back to the proof
+    // (#4268).
+    assert_eq!(
+        report.title,
+        "Regenerate a complete agent receipt before routing"
+    );
+    assert_receipt_recovery_routes_to_agent_status(&report);
     Ok(())
 }
 
@@ -158,6 +272,17 @@ fn first_useful_action_routes_missing_assistant_proof() -> Result<(), String> {
     assert!(rendered.contains(r#""status": "missing_required_artifact""#));
     assert!(rendered.contains(r#""action_kind": "generate_missing_artifact""#));
     assert!(rendered.contains(DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT));
+    assert_eq!(report.title, "Generate assistant proof before routing");
+    let proof = report
+        .commands
+        .assistant_proof
+        .as_deref()
+        .unwrap_or_default();
+    assert!(
+        proof.starts_with("ripr assistant-loop proof "),
+        "proof: {proof}"
+    );
+    assert_eq!(report.commands.receipt, None);
     Ok(())
 }
 
@@ -521,7 +646,44 @@ fn read_error_triggers_missing_required_report() -> Result<(), String> {
         rendered.contains("guidance.json"),
         "expected missing path in report"
     );
+    // An unreadable input is named; no producing command is guessed for it.
+    assert_eq!(report.title, "Supply a readable PR guidance before routing");
+    assert_eq!(report.commands.assistant_proof, None);
+    assert_eq!(report.commands.receipt, None);
     Ok(())
+}
+
+#[test]
+fn unreadable_receipt_asks_for_a_complete_receipt() -> Result<(), String> {
+    let mut input = bare_input();
+    input.receipt_path = Some("receipt.json".to_string());
+    input.receipt_json = Some(Ok("not json".to_string()));
+    let report = build_first_useful_action_report(input);
+    assert_eq!(report.status, "missing_required_artifact");
+    assert_eq!(
+        report.title,
+        "Regenerate a complete agent receipt before routing"
+    );
+    assert_receipt_recovery_routes_to_agent_status(&report);
+    Ok(())
+}
+
+/// A complete receipt needs a persisted verify file and its sibling analysis
+/// outcome, and an unreadable receipt carries no seam. A bare verify/receipt
+/// pair cannot produce one, so recovery routes to `agent status`, which names
+/// the command for each missing workflow artifact.
+fn assert_receipt_recovery_routes_to_agent_status(report: &FirstUsefulActionReport) {
+    let status = report.commands.status.as_deref().unwrap_or_default();
+    assert!(status.starts_with("ripr agent status "), "status: {status}");
+    assert_eq!(report.commands.assistant_proof, None);
+    assert_eq!(report.commands.verify, None);
+    assert_eq!(report.commands.receipt, None);
+    assert_eq!(report.commands.after_snapshot, None);
+    let markdown = render_first_useful_action_markdown(report);
+    assert!(
+        markdown.contains(&format!("## Check Workflow Status\n\n`{status}`")),
+        "markdown must show the status command: {markdown}"
+    );
 }
 
 // ── receipt_report: improved/resolved ────────────────────────────────────
@@ -2020,8 +2182,427 @@ fn markdown_verify_section_present_for_actionable() -> Result<(), String> {
     let report = build_first_useful_action_report(input);
     let md = render_first_useful_action_markdown(&report);
     assert!(
-        md.contains("## Verify"),
+        md.contains("## Verify After The Test Edit"),
         "expected Verify section in actionable markdown: {md}"
+    );
+    Ok(())
+}
+
+// ── #3906: carried repair start ──────────────────────────────────────────
+
+const EXACT_LINE_COMMENTS: &str =
+    "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json";
+const EXACT_LINE_REPAIR: &str =
+    "ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before";
+
+fn exact_line_comments() -> Result<Value, String> {
+    let path = repo_root()?.join(EXACT_LINE_COMMENTS);
+    serde_json::from_str(&read_file(&path)?).map_err(|err| format!("parse comments: {err}"))
+}
+
+fn guidance_only_input(pr_guidance: &Value) -> Result<FirstUsefulActionInput, String> {
+    let mut input = bare_input();
+    input.generated_at = "2026-05-09T12:00:00Z".to_string();
+    input.pr_guidance_path = Some(EXACT_LINE_COMMENTS.to_string());
+    input.pr_guidance_json =
+        Some(Ok(serde_json::to_string(pr_guidance)
+            .map_err(|err| format!("serialize comments: {err}"))?));
+    Ok(input)
+}
+
+fn report_json(input: FirstUsefulActionInput) -> Result<Value, String> {
+    let report = build_first_useful_action_report(input);
+    serde_json::from_str(&render_first_useful_action_json(&report)?)
+        .map_err(|err| format!("parse report: {err}"))
+}
+
+fn remove_repair_command(card: &mut Value) -> Result<(), String> {
+    card.get_mut("llm_guidance")
+        .and_then(Value::as_object_mut)
+        .ok_or_else(|| "card has no llm_guidance object".to_string())?
+        .remove("repair_command")
+        .map(|_| ())
+        .ok_or_else(|| "card carried no repair_command to remove".to_string())
+}
+
+fn assert_no_repair_loop_command(rendered: &str) {
+    assert!(
+        !rendered.contains("agent repair"),
+        "no carried repair start, so none may appear: {rendered}"
+    );
+    assert!(
+        !rendered.contains("agent start"),
+        "a bare seam id must not become an agent start: {rendered}"
+    );
+}
+
+/// F60-12: the one-screen `Changed behavior` line names the changed
+/// expression the card carries, and the selection's `why` gets its own line
+/// instead of being printed under that label.
+#[test]
+fn one_screen_changed_behavior_names_the_expression_not_the_why() -> Result<(), String> {
+    let comments = exact_line_comments()?;
+    // Fixture construction: the card really names the changed expression.
+    assert_eq!(
+        comments
+            .pointer("/comments/0/seam/expression")
+            .and_then(serde_json::Value::as_str),
+        Some("amount >= discount_threshold")
+    );
+    let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+    let markdown = render_first_useful_action_markdown(&report);
+    let changed = markdown
+        .lines()
+        .find(|line| line.starts_with("- Changed behavior: "))
+        .ok_or_else(|| format!("missing Changed behavior line:\n{markdown}"))?;
+    assert_eq!(
+        changed,
+        "- Changed behavior: `amount >= discount_threshold`"
+    );
+    let why = markdown
+        .lines()
+        .find(|line| line.starts_with("- Why: "))
+        .ok_or_else(|| format!("missing Why line:\n{markdown}"))?;
+    assert!(!why.contains("amount >= discount_threshold"), "{why}");
+    assert!(
+        !markdown.contains("Changed behavior: Changed behavior"),
+        "{markdown}"
+    );
+    Ok(())
+}
+
+/// A blank `seam.expression` names nothing, so the one-screen line falls back
+/// to the card's own `changed_behavior` instead of reporting no expression.
+#[test]
+fn one_screen_changed_behavior_skips_a_blank_seam_expression() -> Result<(), String> {
+    let mut comments = exact_line_comments()?;
+    let card = comments
+        .pointer_mut("/comments/0")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("fixture must carry a first review card")?;
+    card.insert(
+        "changed_behavior".to_string(),
+        serde_json::json!("amount > discount_threshold"),
+    );
+    let seam = card
+        .get_mut("seam")
+        .and_then(serde_json::Value::as_object_mut)
+        .ok_or("fixture card must carry a seam")?;
+    seam.insert("expression".to_string(), serde_json::json!("  "));
+    let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+    let markdown = render_first_useful_action_markdown(&report);
+    assert!(
+        markdown.contains("- Changed behavior: `amount > discount_threshold`\n"),
+        "{markdown}"
+    );
+    Ok(())
+}
+
+#[test]
+fn first_useful_action_matches_repair_start_fixture() -> Result<(), String> {
+    let repo_root = repo_root()?;
+    let base = repo_root.join("fixtures/boundary_gap/expected/first-useful-action/repair-start");
+    let report = build_first_useful_action_report(guidance_only_input(&exact_line_comments()?)?);
+    assert_eq!(
+        render_first_useful_action_json(&report)?,
+        read_file(&base.join("first-useful-action.json"))?.trim_end()
+    );
+    let markdown = render_first_useful_action_markdown(&report);
+    // #3742 class (e): only the explicit RIPR_UPDATE_FIXTURES=1 opt-in
+    // rewrites the Markdown pin; JSON stays asserted.
+    if crate::testing::rebless::fixture_rebless_enabled() {
+        std::fs::write(base.join("first-useful-action.md"), &markdown)
+            .map_err(|err| format!("write repair-start Markdown: {err}"))?;
+        return Ok(());
+    }
+    assert_eq!(markdown, read_file(&base.join("first-useful-action.md"))?);
+    Ok(())
+}
+
+#[test]
+fn repair_start_carries_optional_outcome_without_inventing_it() -> Result<(), String> {
+    let command = "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json";
+    for supplied in [None, Some(command)] {
+        let mut comments = exact_line_comments()?;
+        let guidance = comments
+            .pointer_mut("/comments/0/llm_guidance")
+            .and_then(Value::as_object_mut)
+            .ok_or("fixture card has no guidance")?;
+        guidance.remove("analysis_outcome_command");
+        if let Some(command) = supplied {
+            guidance.insert(
+                "analysis_outcome_command".to_string(),
+                Value::String(command.to_string()),
+            );
+        }
+        let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+        let value: Value = serde_json::from_str(&render_first_useful_action_json(&report)?)
+            .map_err(|error| error.to_string())?;
+        if value.get("status").and_then(Value::as_str) != Some("actionable") {
+            return Err("old and new cards must retain repair-start actionability".to_string());
+        }
+        let actual = value.pointer("/commands/analysis_outcome");
+        let markdown = render_first_useful_action_markdown(&report);
+        match supplied {
+            Some(command)
+                if actual.and_then(Value::as_str) == Some(command)
+                    && markdown.contains(command) => {}
+            None if actual.is_none() && !markdown.contains(command) => {}
+            _ => return Err(format!("optional outcome was lost or invented: {value}")),
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn repair_start_for_ungripped_card_does_not_claim_related_test_reach() -> Result<(), String> {
+    let mut comments = exact_line_comments()?;
+    // An ungripped seam has no related test that reaches the change — that
+    // absence is the class definition (analysis::seam_classification) — yet a
+    // producer-admitted proposed test target can still make its card
+    // repair-ready (analysis::repair_route value_route_readiness), so the
+    // card can name both a repair start and a missing discriminator. The
+    // why text must not claim reachability for such a card.
+    comments
+        .pointer_mut("/comments/0")
+        .and_then(Value::as_object_mut)
+        .ok_or("fixture card is not an object")?
+        .insert("grip_class".to_string(), serde_json::json!("ungripped"));
+    let report = build_first_useful_action_report(guidance_only_input(&comments)?);
+    let value: Value = serde_json::from_str(&render_first_useful_action_json(&report)?)
+        .map_err(|error| error.to_string())?;
+    let why = value
+        .get("why")
+        .and_then(Value::as_str)
+        .ok_or("report carries no why")?;
+    if why.contains("a related test reaches this change") {
+        return Err(format!(
+            "ungripped repair start overclaimed reachability: {why}"
+        ));
+    }
+    if !why.contains("missing discriminator `amount == discount_threshold`") {
+        return Err(format!(
+            "ungripped repair start lost the named value: {why}"
+        ));
+    }
+    if value.get("status").and_then(Value::as_str) != Some("actionable") {
+        return Err("ungripped card must keep its repair-start actionability".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn carried_repair_start_leads_a_fresh_pr_and_its_absence_keeps_the_missing_proof_route()
+-> Result<(), String> {
+    let comments = exact_line_comments()?;
+    // Fixture construction: the canonical card really carries the command.
+    assert_eq!(
+        comments
+            .pointer("/comments/0/llm_guidance/repair_command")
+            .and_then(Value::as_str),
+        Some(EXACT_LINE_REPAIR)
+    );
+
+    let with = report_json(guidance_only_input(&comments)?)?;
+    assert_eq!(with["status"], "actionable");
+    assert_eq!(with["action_kind"], "write_focused_test");
+    assert_eq!(with["commands"]["repair"], EXACT_LINE_REPAIR);
+    assert_eq!(with["selected"]["source"], "pr_guidance");
+    assert_eq!(with["selected"]["seam_id"], "8f7fa8644fd12280");
+    assert_eq!(with["selected"]["path"], "src/pricing.rs");
+    assert_eq!(with["selected"]["line"], 88);
+    assert_eq!(
+        with["commands"]["receipt"], comments["comments"][0]["receipt_command"],
+        "the receipt command is carried from the card root"
+    );
+    assert!(with["commands"].get("assistant_proof").is_none());
+    assert!(with["fallback"].is_null());
+    let markdown = render_first_useful_action_markdown(&build_first_useful_action_report(
+        guidance_only_input(&comments)?,
+    ));
+    assert!(markdown.contains(&format!("## Start Repair\n\n`{EXACT_LINE_REPAIR}`")));
+    assert!(markdown.contains(&format!("- Repair start: `{EXACT_LINE_REPAIR}`")));
+    // #3906 (F60-14): the after phase follows the start in both places, and
+    // verify and receipt are the manual alternative.
+    assert!(markdown.contains(&format!(
+        "- Repair start: `{EXACT_LINE_REPAIR}`\n- After the test edit: run the `--attempt ... --phase after` command"
+    )));
+    assert!(markdown.contains(&format!(
+        "## Start Repair\n\n`{EXACT_LINE_REPAIR}`\n\nAfter the test edit: run the `--attempt ... --phase after` command"
+    )));
+    assert!(markdown.contains(&format!("- {MANUAL_VERIFY_LABEL}: `")));
+    assert!(markdown.contains(&format!("- {MANUAL_RECEIPT_LABEL}: `")));
+    assert!(markdown.contains("## Manual Verify Without A Repair Attempt"));
+    assert!(!markdown.contains(&format!("- {VERIFY_AFTER_EDIT_LABEL}:")));
+    assert!(!markdown.contains("## Verify After The Test Edit"));
+
+    let mut without_card = comments.clone();
+    let card = without_card
+        .pointer_mut("/comments/0")
+        .ok_or_else(|| "comments[0] missing".to_string())?;
+    remove_repair_command(card)?;
+    let input = guidance_only_input(&without_card)?;
+    let without = build_first_useful_action_report(input);
+    let rendered = render_first_useful_action_json(&without)?;
+    let without: Value =
+        serde_json::from_str(&rendered).map_err(|err| format!("parse report: {err}"))?;
+    assert_eq!(without["status"], "missing_required_artifact");
+    assert_eq!(without["action_kind"], "generate_missing_artifact");
+    assert!(without["commands"].get("repair").is_none());
+    assert_no_repair_loop_command(&rendered);
+    Ok(())
+}
+
+#[test]
+fn carried_repair_start_selects_every_field_from_the_carrying_card() -> Result<(), String> {
+    let comments = exact_line_comments()?;
+    let card = comments
+        .pointer("/comments/0")
+        .cloned()
+        .ok_or_else(|| "comments[0] missing".to_string())?;
+    let mut uncarried = card.clone();
+    remove_repair_command(&mut uncarried)?;
+    uncarried["seam_id"] = Value::from("seam-without-flip");
+    uncarried["placement"]["path"] = Value::from("src/other.rs");
+    uncarried["placement"]["line"] = Value::from(7);
+    let guidance = serde_json::json!({
+        "comments": [uncarried],
+        "summary_only": [card],
+    });
+    let report = report_json(guidance_only_input(&guidance)?)?;
+    assert_eq!(report["commands"]["repair"], EXACT_LINE_REPAIR);
+    assert_eq!(report["selected"]["seam_id"], "8f7fa8644fd12280");
+    assert_eq!(report["selected"]["path"], "src/pricing.rs");
+    assert_eq!(report["selected"]["line"], 88);
+    assert!(
+        !serde_json::to_string(&report)
+            .map_err(|err| format!("serialize: {err}"))?
+            .contains("seam-without-flip"),
+        "the uncarried card must not lend its identity to the carried command"
+    );
+    Ok(())
+}
+
+#[test]
+fn carried_repair_start_does_not_preempt_post_repair_proof() -> Result<(), String> {
+    let mut input = guidance_only_input(&exact_line_comments()?)?;
+    input.assistant_proof_path = Some("proof.json".to_string());
+    input.assistant_proof_json = Some(Ok(r#"{
+        "seam": {"seam_id": "8f7fa8644fd12280", "seam_kind": "predicate_boundary", "grip_class": "weakly_gripped"},
+        "recommendation": {}
+    }"#
+    .to_string()));
+    let report = report_json(input)?;
+    assert_eq!(report["status"], "actionable");
+    assert_eq!(report["selected"]["source"], "assistant_proof");
+    assert!(report["commands"].get("repair").is_none());
+    Ok(())
+}
+
+#[test]
+fn blank_carried_repair_start_is_not_a_repair_start() -> Result<(), String> {
+    let mut comments = exact_line_comments()?;
+    comments["comments"][0]["llm_guidance"]["repair_command"] = Value::from("  ");
+    let input = guidance_only_input(&comments)?;
+    let rendered = render_first_useful_action_json(&build_first_useful_action_report(input))?;
+    assert!(rendered.contains(r#""status": "missing_required_artifact""#));
+    assert_no_repair_loop_command(&rendered);
+    Ok(())
+}
+
+fn gap_route_input(repair_route_extra: &str) -> FirstUsefulActionInput {
+    FirstUsefulActionInput {
+        root: ".".to_string(),
+        generated_at: "2026-05-09T12:00:00Z".to_string(),
+        pr_guidance_path: Some("comments.json".to_string()),
+        assistant_proof_path: None,
+        gap_ledger_path: Some("gap-decision-ledger.json".to_string()),
+        ledger_path: None,
+        baseline_delta_path: None,
+        receipt_path: None,
+        gate_decision_path: None,
+        coverage_frontier_path: None,
+        editor_context_path: None,
+        pr_guidance_json: Some(Ok(
+            r#"{"comments":[{"seam_id":"raw-a","classification":"static_unknown"}]}"#.to_string(),
+        )),
+        assistant_proof_json: None,
+        gap_ledger_json: Some(Ok(format!(
+            r#"{{
+  "kind": "gap_decision_ledger",
+  "records": [
+    {{
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "scope": "pr_local",
+      "evidence_class": "predicate_boundary",
+      "gap_state": "actionable",
+      "policy_state": "new",
+      "repairability": "repairable",
+      "anchor": {{ "file": "src/pricing.rs", "line": 42 }},
+      "repair_route": {{
+        "route_kind": "AddBoundaryAssertion",
+        "target_file": "tests/pricing.rs",
+        "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+        "assertion_shape": "assert_eq!(discount(100, 100), 90)"{repair_route_extra}
+      }},
+      "verification_commands": ["cargo xtask fixtures boundary_gap"]
+    }}
+  ]
+}}"#
+        ))),
+        ledger_json: None,
+        baseline_delta_json: None,
+        receipt_json: None,
+        gate_decision_json: None,
+        coverage_frontier_json: None,
+        editor_context_json: None,
+    }
+}
+
+/// F60-12: a gap route that names the changed expression carries it into
+/// `selected.changed_behavior`, which the generated CI summary reads before
+/// falling back to `why`; a route that names none omits the field.
+#[test]
+fn gap_route_changed_behavior_reaches_json_and_markdown() -> Result<(), String> {
+    let named = build_first_useful_action_report(gap_route_input(
+        r#", "changed_behavior": "amount >= discount_threshold""#,
+    ));
+    // Fixture construction: the gap route really was selected.
+    let named_json = render_first_useful_action_json(&named)?;
+    assert!(
+        named_json.contains(r#""source": "gap_ledger""#),
+        "{named_json}"
+    );
+    assert!(
+        named_json.contains(r#""changed_behavior": "amount >= discount_threshold""#),
+        "{named_json}"
+    );
+
+    let unnamed =
+        build_first_useful_action_report(gap_route_input(r#", "changed_behavior": "   ""#));
+    let unnamed_json = render_first_useful_action_json(&unnamed)?;
+    assert!(
+        unnamed_json.contains(r#""source": "gap_ledger""#),
+        "{unnamed_json}"
+    );
+    assert!(
+        !unnamed_json.contains("\"changed_behavior\""),
+        "{unnamed_json}"
+    );
+
+    let named_md = render_first_useful_action_markdown(&named);
+    let unnamed_md = render_first_useful_action_markdown(&unnamed);
+    assert!(
+        named_md.contains("- Changed behavior: `amount >= discount_threshold`\n"),
+        "{named_md}"
+    );
+    assert!(
+        unnamed_md.contains("- Changed behavior: not named by the selected evidence\n"),
+        "{unnamed_md}"
     );
     Ok(())
 }

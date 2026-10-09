@@ -13,13 +13,15 @@ use super::diagnostics::{
 use super::hover::{
     classified_seam_hover_response, diagnostic_at_position, diagnostic_covers_position,
     diagnostic_hover_response, finding_hover_response, hover_response, hover_with_snapshot_status,
-    is_gap_diagnostic,
+    is_gap_diagnostic, markdown_hover,
 };
 use super::lens::{LensViewIdentity, code_lens_response, lens_view_identity};
 use super::payload_bounds::{
-    check_execute_command_arguments, check_initialization_options, check_previous_result_ids,
+    check_execute_command_arguments, check_initialization_options,
+    check_list_actionable_items_params, check_previous_result_ids,
 };
 use super::progress::{AnalysisProgressEnd, AnalysisProgressPhase, AnalysisProgressTracker};
+use super::progress_stages::{STAGE_DRAIN_BUDGET, StageReportBridge, drain_stage_reports};
 use super::refresh_scheduler::{
     RefreshAttemptOutcome, RefreshDecision, RefreshReason, RefreshRequest, RefreshScheduler,
     RefreshScope,
@@ -27,12 +29,13 @@ use super::refresh_scheduler::{
 use super::state::{
     AnalysisAttemptState, AnalysisFailure, AnalysisFailureKind, AnalysisHealth, AnalysisSnapshot,
     ConfigPullState, DocumentStalenessReason, DocumentStore, QuarantineTransition,
-    WorkspaceFolderEventRejection, WorkspaceFolderSelection, WorkspaceFolderSet,
-    WorkspaceRootAuthority, WorkspaceRootState, content_digest, format_duration,
+    WorkspaceFolderEntry, WorkspaceFolderEventRejection, WorkspaceFolderSelection,
+    WorkspaceFolderSet, WorkspaceRootAuthority, WorkspaceRootState, content_digest,
+    format_duration,
 };
 use super::uri::{
-    absolute_join, display_path, file_uri_for_path, file_uri_is_within_root, file_uris_match,
-    path_from_file_uri, path_is_within_root,
+    CappedArtifactRead, absolute_join, display_path, file_uri_for_path, file_uri_is_within_root,
+    file_uris_match, path_from_file_uri, path_is_within_root, read_artifact_capped,
 };
 use super::{
     COLLECT_CONTEXT_COMMAND, COLLECT_EVIDENCE_CONTEXT_COMMAND, COLLECT_RECEIPT_STATUS_COMMAND,
@@ -41,7 +44,7 @@ use super::{
 };
 use crate::agent::loop_commands;
 use crate::analysis::ClassifiedSeam;
-use crate::analysis::cancellation::{AnalysisAbortKind, is_cancellation_error};
+use crate::analysis::cancellation::AnalysisAbortKind;
 use crate::config::{
     CONFIG_FILE_NAME, LspDiagnosticProfile, PYTHON_PROJECT_MARKERS, PYTHON_SOURCE_DIR_MARKERS,
     is_detectable_python_source_name, is_python_excluded_dir_everywhere,
@@ -54,14 +57,15 @@ use crate::output::agent_seam_packets::{
     render_agent_gap_record_packet_json, suggested_assertion_for_classified_seam,
     targeted_test_brief_outline_for_classified_seam, validate_agent_gap_record_packet,
 };
+use crate::output::evidence_record::repair_start_command_for;
 use crate::output::first_useful_action::DEFAULT_FIRST_USEFUL_ACTION_OUT;
 use crate::output::gap_decision_ledger::{
-    DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, parse_gap_records_json,
+    DEFAULT_GAP_DECISION_LEDGER_OUT, GapRecord, parse_gap_records_json_for_root,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -70,6 +74,15 @@ use std::time::{Duration, Instant};
 /// analysis run instead of canceling and re-queuing on every keystroke.
 /// Explicit refresh and config reload bypass the debounce (#1908).
 const INTERACTIVE_REFRESH_DEBOUNCE: Duration = Duration::from_millis(200);
+
+/// Upper bound on the optional client disclosures that follow an
+/// initialize-time failure commit (#3802). The owning session failure is
+/// recorded synchronously first, so a wedged or undriven peer can delay only
+/// this advisory `window/logMessage` + status delivery window, never the
+/// failure state transition itself. Healthy delivery completes in
+/// microseconds; an expired window is recorded on the backend and the
+/// failure state is re-disclosed by the next status publication.
+const INITIALIZE_FAILURE_DISCLOSURE_BUDGET: Duration = Duration::from_secs(2);
 
 const SAVED_WORKTREE_LIMITS_NOTE: &str = "Static evidence only; staged and unstaged tracked files are analyzed; untracked files remain out of scope until staged or supplied through an explicit diff.";
 use tokio::sync::{Mutex as AsyncMutex, Notify};
@@ -82,11 +95,11 @@ use tower_lsp_server::ls_types::{
     DidOpenTextDocumentParams, DidSaveTextDocumentParams, DocumentDiagnosticParams,
     DocumentDiagnosticReport, DocumentDiagnosticReportResult, ExecuteCommandParams, FileEvent,
     Hover, HoverParams, InitializeParams, InitializeResult, InitializedParams, LSPAny,
-    LogTraceParams, MessageType, Registration, RelatedFullDocumentDiagnosticReport,
-    RelatedUnchangedDocumentDiagnosticReport, TraceValue, UnchangedDocumentDiagnosticReport, Uri,
-    WorkspaceDiagnosticParams, WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult,
-    WorkspaceDocumentDiagnosticReport, WorkspaceFullDocumentDiagnosticReport,
-    WorkspaceUnchangedDocumentDiagnosticReport,
+    LogTraceParams, MessageType, PositionEncodingKind, Registration,
+    RelatedFullDocumentDiagnosticReport, RelatedUnchangedDocumentDiagnosticReport, TraceValue,
+    UnchangedDocumentDiagnosticReport, Unregistration, Uri, WorkspaceDiagnosticParams,
+    WorkspaceDiagnosticReport, WorkspaceDiagnosticReportResult, WorkspaceDocumentDiagnosticReport,
+    WorkspaceFullDocumentDiagnosticReport, WorkspaceUnchangedDocumentDiagnosticReport,
 };
 use tower_lsp_server::{Client, LanguageServer};
 
@@ -146,15 +159,80 @@ pub(super) struct Backend {
     /// the visible lens view changed. `None` until the first commit.
     last_lens_view_identity: Mutex<Option<LensViewIdentity>>,
     dynamic_file_watch_registration: Mutex<bool>,
+    watched_files_relative_pattern_support: AtomicBool,
+    /// The diagnostics-input watcher registration (#4896). Those watchers
+    /// are anchored at one root, so they are re-registered on every root
+    /// transition; the async lock serializes concurrent transitions across
+    /// the client round trips.
+    diagnostics_input_watch: AsyncMutex<DiagnosticsInputWatch>,
     /// The degradation signature covered by the last `window/logMessage`
     /// component warning (#1997, RIPR-SPEC-0141). Compared per committed
     /// snapshot: a byte-identical repeated degradation warns once, a new
     /// signature warns again, and a cleared signature logs one recovery line.
     last_component_degradation: Mutex<Option<String>>,
+    /// Set when the bounded disclosure window after an initialize-time
+    /// failure commit expired without completing client delivery (#3802).
+    /// The owning session failure stays committed; this records the delivery
+    /// omission locally instead of dropping it silently. Reflects the most
+    /// recent disclosure attempt.
+    initialize_failure_disclosure_omitted: AtomicBool,
     refresh_scheduler: RefreshScheduler,
     workspace_revision: Mutex<u64>,
     refresh_idle: Notify,
+    /// Liveness bound for one server→client request round-trip (#5278,
+    /// `transport_bounds::CLIENT_REQUEST_TIMEOUT`): after the transport read
+    /// loop fuses, a client response can never arrive, so an unbounded await
+    /// would pin a handler task forever and leave the sidecar alive but
+    /// silent. Expiry fails the one request through its ordinary error arm.
+    client_request_timeout: Duration,
+    #[cfg(test)]
+    consumed_source_barrier: Mutex<Option<ConsumedSourceBarrier>>,
+    #[cfg(test)]
+    refresh_publication_barrier: Mutex<Option<RefreshPublicationBarrier>>,
     pub(super) progress: Arc<AnalysisProgressTracker>,
+}
+
+#[cfg(test)]
+type ConsumedSourceBarrierChannels = (
+    tokio::sync::oneshot::Receiver<(u64, AnalysisSnapshot)>,
+    tokio::sync::oneshot::Sender<()>,
+);
+
+#[cfg(test)]
+struct ConsumedSourceBarrier {
+    reached: tokio::sync::oneshot::Sender<(u64, AnalysisSnapshot)>,
+    release: tokio::sync::oneshot::Receiver<()>,
+}
+
+#[cfg(test)]
+type RefreshPublicationBarrierChannels = (
+    tokio::sync::oneshot::Receiver<u64>,
+    tokio::sync::oneshot::Sender<()>,
+);
+
+/// Pauses one refresh inside the transition-guarded publication block, after
+/// the terminal currentness check passes and before the first publish (#5202).
+/// Lets a test hold publication mid-flight (while the refresh owns
+/// `workspace_root_transition`) so a concurrent `shutdown` must serialize
+/// behind it.
+#[cfg(test)]
+struct RefreshPublicationBarrier {
+    reached: tokio::sync::oneshot::Sender<u64>,
+    release: tokio::sync::oneshot::Receiver<()>,
+}
+
+/// Registration id of the root-anchored diagnostics-input watchers (#4896).
+const DIAGNOSTICS_INPUT_WATCH_ID: &str = "ripr-diagnostics-input-watch";
+
+#[derive(Default)]
+struct DiagnosticsInputWatch {
+    /// Set by `initialized`: the client rejects server->client requests
+    /// before it, so initialize-time root transitions must not register.
+    armed: bool,
+    /// The effective root the registration was last synchronized with.
+    synced_root: Option<PathBuf>,
+    /// Whether the client currently holds the registration.
+    registered: bool,
 }
 
 #[derive(Default)]
@@ -223,12 +301,51 @@ impl Backend {
             code_lens_refresh_support: Mutex::new(false),
             last_lens_view_identity: Mutex::new(None),
             dynamic_file_watch_registration: Mutex::new(false),
+            watched_files_relative_pattern_support: AtomicBool::new(false),
+            diagnostics_input_watch: AsyncMutex::new(DiagnosticsInputWatch::default()),
             last_component_degradation: Mutex::new(None),
+            initialize_failure_disclosure_omitted: AtomicBool::new(false),
             refresh_scheduler: RefreshScheduler::default(),
             workspace_revision: Mutex::new(0),
             refresh_idle: Notify::new(),
+            client_request_timeout: crate::lsp::transport_bounds::CLIENT_REQUEST_TIMEOUT,
+            #[cfg(test)]
+            consumed_source_barrier: Mutex::new(None),
+            #[cfg(test)]
+            refresh_publication_barrier: Mutex::new(None),
             progress: Arc::new(AnalysisProgressTracker::new(client.clone())),
             client,
+        }
+    }
+
+    /// Overrides the server→client request liveness bound (#5278). The
+    /// in-process composition tests shorten it so the uniform mid-session
+    /// exit contract stays fast.
+    pub(super) fn with_client_request_timeout(mut self, timeout: Duration) -> Self {
+        self.client_request_timeout = timeout;
+        self
+    }
+
+    /// One bounded server→client request round-trip (#5278). A client that
+    /// never answers must not pin this handler task forever: after a framing
+    /// violation the transport read loop has fused, so the response can
+    /// never arrive. The expiry surfaces as an ordinary request error
+    /// (`Internal error` naming the liveness bound) so every call site's
+    /// existing failure arm discloses it.
+    async fn bounded_client_request<T>(
+        &self,
+        request: impl std::future::Future<Output = tower_lsp_server::jsonrpc::Result<T>>,
+    ) -> tower_lsp_server::jsonrpc::Result<T> {
+        match tokio::time::timeout(self.client_request_timeout, request).await {
+            Ok(result) => result,
+            Err(_) => Err(tower_lsp_server::jsonrpc::Error {
+                code: tower_lsp_server::jsonrpc::ErrorCode::InternalError,
+                message: std::borrow::Cow::Owned(format!(
+                    "ripr server-to-client request exceeded its {}s liveness bound; treating the unanswered client as failed (#5278)",
+                    self.client_request_timeout.as_secs()
+                )),
+                data: None,
+            }),
         }
     }
 
@@ -242,7 +359,7 @@ impl Backend {
     ///   and is marked `seams_deferred` (run_status = `"seams_deferred"`).
     ///   This typically completes in 33ms–11s instead of 336s cold.
     ///
-    /// - `false` (explicit `ripr.refreshDiagnostics` command): the full seam
+    /// - `false` (explicit `ripr.refresh` wire command): the full seam
     ///   inventory also runs, transitioning the snapshot to `full` (or
     ///   `limited`/`stale`/`cache_limited` per existing rules) with seam
     ///   diagnostics present.
@@ -359,6 +476,7 @@ impl Backend {
             self.refresh_scheduler
                 .record_attempt_outcome(outcome, attempt_duration);
             self.record_health_outcome(&request, outcome);
+            self.disclose_deadline_exceeded(&request, outcome).await;
             self.publish_analysis_status().await;
             self.end_progress_for_attempt(&request, outcome).await;
             self.log_refresh_attempt_outcome(outcome, attempt_duration)
@@ -394,6 +512,10 @@ impl Backend {
         self.log_refresh_started(request).await;
         let root = request.root.clone();
         let config = request.config.clone();
+        // Snapshot only admitted open paths before the blocking analysis.
+        // The Rust adapter still discovers and reads the saved bytes itself;
+        // a later document change cannot add paths to this invocation.
+        let open_rust_index_paths = self.open_rust_index_paths_for_root(&root);
         let defer_seam_inventory = request.scope.defer_seam_inventory();
         let cancellation = request.cancellation.clone();
         let execution_gate = self.refresh_scheduler.execution_gate();
@@ -410,23 +532,59 @@ impl Backend {
             tokio::time::sleep(deadline).await;
             deadline_token.cancel(AnalysisAbortKind::DeadlineExceeded);
         }));
-        let diagnostics_result = tokio::task::spawn_blocking(move || {
-            let _execution = match execution_gate.lock() {
-                Ok(guard) => guard,
-                Err(poisoned) => poisoned.into_inner(),
-            };
-            cancellation
-                .checkpoint()
-                .map_err(|error| error.to_string())?;
-            super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
-                &analysis_root,
-                &config,
-                defer_seam_inventory,
-                &cancellation,
-            )
+        // #4811: bridge the producer-owned stage boundaries onto this
+        // attempt's work-done token while the blocking analysis runs. The
+        // sink side only queues events; a drain task on the async runtime
+        // forwards them as bounded `$/progress` reports. Best-effort: the
+        // bridge can never change the analysis result, and the drain budget
+        // bounds how long a stalled client may delay result handling.
+        let stage_bridge = Arc::new(StageReportBridge::new());
+        let stage_drain = {
+            let bridge = Arc::clone(&stage_bridge);
+            let tracker = Arc::clone(&self.progress);
+            tokio::spawn(async move { drain_stage_reports(&bridge, &tracker, generation).await })
+        };
+        let bridge_for_blocking = Arc::clone(&stage_bridge);
+        // One long-lived thread runs every refresh so its allocations stay
+        // in one malloc arena (see `analysis_thread`).
+        let analysis_thread = self.refresh_scheduler.analysis_thread();
+        let diagnostics_result = analysis_thread
+            .run(move || {
+                let _execution = match execution_gate.lock() {
+                    Ok(guard) => guard,
+                    Err(poisoned) => poisoned.into_inner(),
+                };
+                cancellation
+                    .checkpoint()
+                    .map_err(|error| error.to_string())?;
+                super::diagnostics::workspace_diagnostics_with_config_and_cancellation(
+                    &analysis_root,
+                    &config,
+                    defer_seam_inventory,
+                    &cancellation,
+                    &open_rust_index_paths,
+                    Some(bridge_for_blocking.as_ref() as &dyn crate::app::AnalysisProgressSink),
+                )
+            })
+            .await;
+        drop(deadline_timer);
+        // The producer has returned: finish the bridge and let the drain
+        // task forward everything queued. The drain is bounded: a stalled
+        // client may delay, never block, diagnostics handling or the next
+        // refresh. Stage reports always precede the outcome-derived end
+        // emitted by the refresh loop after this request resolves.
+        stage_bridge.finish();
+        let _ = stage_drain.await;
+        // Defensive final forward under the same budget (the tracker
+        // suppresses consecutive duplicates, so a double forward is a
+        // no-op). Only runs when the drain task could not cover the queue.
+        let progress = &self.progress;
+        let _ = tokio::time::timeout(STAGE_DRAIN_BUDGET, async {
+            while let Some(event) = stage_bridge.pop() {
+                progress.report_stage(generation, event.stage).await;
+            }
         })
         .await;
-        drop(deadline_timer);
         let diagnostics = match diagnostics_result {
             Ok(Ok(mut diagnostics)) => {
                 diagnostics.snapshot.input_identity = Some(request.input_identity.clone());
@@ -439,7 +597,8 @@ impl Backend {
                 diagnostics
             }
             Ok(Err(err)) => {
-                if self.refresh_request_is_current(request) && !is_cancellation_error(&err) {
+                let cancelled = analysis_error_was_cancellation(&request.cancellation);
+                if self.refresh_request_is_current(request) && !cancelled {
                     self.report_refresh_failure_after(
                         request,
                         err,
@@ -449,7 +608,7 @@ impl Backend {
                     .await;
                     return RefreshAttemptOutcome::Failed;
                 }
-                if !is_cancellation_error(&err) {
+                if !cancelled {
                     self.client
                         .log_message(
                             MessageType::WARNING,
@@ -496,6 +655,9 @@ impl Backend {
             .await;
             return RefreshAttemptOutcome::Failed;
         }
+        #[cfg(test)]
+        self.wait_consumed_source_barrier(generation, &diagnostics.snapshot)
+            .await;
         let summary = RefreshLogSummary::from_snapshot(generation, &diagnostics.snapshot)
             .with_enabled_languages(&enabled_languages);
         let Some(transaction) = self.prepare_refresh_transaction(diagnostics) else {
@@ -556,6 +718,9 @@ impl Backend {
             .await;
             return cancellation_outcome(request);
         }
+        #[cfg(test)]
+        self.wait_refresh_publication_barrier(request.generation)
+            .await;
         if !self.pull_diagnostics_enabled() {
             // Read the stored delivery selection computed at refresh-transaction
             // prepare time (#1973). The push path no longer evaluates the
@@ -612,6 +777,7 @@ impl Backend {
                 }
             }
 
+            let document_omissions = selection.document_omissions();
             for batch in &plan.publish_batches {
                 if !self.refresh_request_is_current(request) {
                     self.rollback_refresh_transaction_if_authority_is_current(
@@ -630,8 +796,11 @@ impl Backend {
                 // analyzed identity is withdrawn instead (#1970): its
                 // saved-state line identity no longer matches the client's
                 // buffer.
-                let diagnostics_to_publish =
+                let mut diagnostics_to_publish =
                     selection.diagnostics_for_document(batch.uri.as_str(), &batch.diagnostics);
+                if let Some(omission) = document_omissions.get(batch.uri.as_str()) {
+                    diagnostics_to_publish.push(delivery_omission_diagnostic(omission));
+                }
                 self.publish_served_diagnostics_for_transaction(
                     &batch.uri,
                     diagnostics_to_publish,
@@ -722,6 +891,14 @@ impl Backend {
             .await;
             return RefreshAttemptOutcome::Failed;
         };
+        // Release the transition guard now that the terminal check, publish,
+        // and commit are done. Everything below is post-commit disclosure:
+        // log notifications plus `workspace/diagnostic/refresh` and code-lens
+        // refresh client round-trips that wait for a client response. Holding
+        // the guard across those round-trips would let an unresponsive client
+        // stall shutdown (which must acquire this guard to reach
+        // `refresh_scheduler.stop()` and the terminal clear) (#5202).
+        drop(_root_transition);
         // Disclose lifted quarantines symmetrically (#1970): the fresh
         // publication (push) or the next pull re-serves the document against
         // the newly analyzed saved content.
@@ -734,7 +911,9 @@ impl Backend {
         }
         if self.pull_diagnostics_enabled()
             && self.diagnostic_refresh_support_enabled()
-            && let Err(error) = self.client.workspace_diagnostic_refresh().await
+            && let Err(error) = self
+                .bounded_client_request(self.client.workspace_diagnostic_refresh())
+                .await
         {
             self.client
                 .log_message(
@@ -756,6 +935,18 @@ impl Backend {
         )
         .await;
         RefreshAttemptOutcome::Published
+    }
+
+    fn open_rust_index_paths_for_root(&self, root: &Path) -> std::collections::BTreeSet<PathBuf> {
+        let Ok(documents) = self.documents.lock() else {
+            return Default::default();
+        };
+        documents
+            .documents
+            .keys()
+            .filter_map(|uri| super::uri::file_uri_relative_to_root(root, uri))
+            .filter(|path| path.extension().is_some_and(|extension| extension == "rs"))
+            .collect()
     }
 
     pub(super) async fn report_refresh_failure_after(
@@ -812,6 +1003,74 @@ impl Backend {
         self.set_workspace_root_authority(WorkspaceRootAuthority::selected(root));
     }
 
+    #[cfg(test)]
+    pub(super) fn install_consumed_source_barrier_for_test(
+        &self,
+        config: LspAnalysisConfig,
+    ) -> Result<ConsumedSourceBarrierChannels, String> {
+        self.set_analysis_config(config);
+        let (reached, witness) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let mut slot = self
+            .consumed_source_barrier
+            .lock()
+            .map_err(|_poisoned_barrier| "consumed-source barrier lock poisoned".to_string())?;
+        if slot.is_some() {
+            return Err("consumed-source barrier already installed".to_string());
+        }
+        *slot = Some(ConsumedSourceBarrier {
+            reached,
+            release: released,
+        });
+        Ok((witness, release))
+    }
+
+    #[cfg(test)]
+    async fn wait_consumed_source_barrier(&self, generation: u64, snapshot: &AnalysisSnapshot) {
+        let barrier = self
+            .consumed_source_barrier
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        if let Some(barrier) = barrier {
+            let _ = barrier.reached.send((generation, snapshot.clone()));
+            let _ = barrier.release.await;
+        }
+    }
+
+    #[cfg(test)]
+    pub(super) fn install_refresh_publication_barrier_for_test(
+        &self,
+    ) -> Result<RefreshPublicationBarrierChannels, String> {
+        let (reached, witness) = tokio::sync::oneshot::channel();
+        let (release, released) = tokio::sync::oneshot::channel();
+        let mut slot = self
+            .refresh_publication_barrier
+            .lock()
+            .map_err(|_poisoned_barrier| "refresh-publication barrier lock poisoned".to_string())?;
+        if slot.is_some() {
+            return Err("refresh-publication barrier already installed".to_string());
+        }
+        *slot = Some(RefreshPublicationBarrier {
+            reached,
+            release: released,
+        });
+        Ok((witness, release))
+    }
+
+    #[cfg(test)]
+    async fn wait_refresh_publication_barrier(&self, generation: u64) {
+        let barrier = self
+            .refresh_publication_barrier
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        if let Some(barrier) = barrier {
+            let _ = barrier.reached.send(generation);
+            let _ = barrier.release.await;
+        }
+    }
+
     pub(super) fn prepare_refresh_transaction(
         &self,
         diagnostics: WorkspaceDiagnostics,
@@ -824,6 +1083,7 @@ impl Backend {
             snapshot.refresh.snapshot_id = Some("snapshot:legacy".to_string());
         }
         bind_seam_evidence_identity(&mut snapshot, &mut batches);
+        snapshot.prepare_diagnostic_uri_index();
         let Ok(last_diagnostics) = self.last_diagnostics.lock() else {
             return None;
         };
@@ -837,17 +1097,14 @@ impl Backend {
             snapshot.delivery_selection = Some(compute_delivery_selection(&snapshot));
         }
         let plan = diagnostic_refresh_plan(&last_diagnostics, batches);
-        // Saved-workspace authority (#1970): compute the analyzed
-        // saved-content identity this transaction will record — from the
-        // persisted bytes the analysis read, not the didSave-tracked digest —
-        // without mutating the document store. The store only advances when
-        // the snapshot commits; publication filters against this pending
-        // identity so a just-saved document is re-served and a document whose
-        // buffer diverges from the freshly analyzed bytes is withdrawn.
+        // Rust uses the raw-byte commitments carried by the completed producer,
+        // never a reread after analysis. Other languages retain their existing
+        // saved-content identity behavior. State advances only at commit.
         let Ok(documents) = self.documents.lock() else {
             return None;
         };
-        let (pending_analyzed, pending_entered) = documents.pending_analyzed_digests();
+        let (pending_analyzed, pending_entered) =
+            documents.pending_analyzed_digests(&snapshot.root, &snapshot.rust_consumed_sources);
         drop(documents);
         debug_assert!(snapshot.is_consistent());
         Some(RefreshTransaction {
@@ -875,6 +1132,9 @@ impl Backend {
         pending_entered: &[Uri],
     ) -> Option<super::state::QuarantineEdges> {
         snapshot.input_identity.as_ref()?;
+        if !snapshot.diagnostic_uri_index_is_current() {
+            snapshot.prepare_diagnostic_uri_index();
+        }
         // Final authority guard: a committed snapshot always carries its
         // delivery selection (#1973). The refresh-transaction prepare step
         // already computed it on the real path; this fills snapshots that
@@ -936,13 +1196,39 @@ impl Backend {
         if self.pull_diagnostics_enabled() {
             return;
         }
+        // A stopped scheduler is shutting down: shutdown publishes the
+        // terminal empty state itself, so a cancelled refresh must not
+        // resurrect the previous diagnostics after that clear (#5202). This
+        // single choke point covers every rollback call site, including the
+        // mid-clear-loop cancellation that bypasses the authority check.
+        if self.refresh_scheduler.is_stopping() {
+            return;
+        }
         let mut uris = previous_diagnostics
             .keys()
             .cloned()
             .collect::<BTreeSet<_>>();
         uris.extend(plan.current_uris.iter().cloned());
+        let previous_selection = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|snapshot| snapshot.as_ref()?.delivery_selection.clone());
+        let previous_omissions = previous_selection
+            .as_ref()
+            .map(|selection| selection.document_omissions())
+            .unwrap_or_default();
         for uri in uris {
-            let diagnostics = previous_diagnostics.get(&uri).cloned().unwrap_or_default();
+            let diagnostics = rollback_push_diagnostics(
+                &uri,
+                previous_diagnostics
+                    .get(&uri)
+                    .map(Vec::as_slice)
+                    .unwrap_or(&[]),
+                previous_selection.as_deref(),
+                previous_omissions.get(uri.as_str()),
+                self.document_quarantine(&uri).is_some(),
+            );
             self.client
                 .publish_diagnostics(uri, diagnostics, None)
                 .await;
@@ -1017,6 +1303,86 @@ impl Backend {
             .lock()
             .ok()
             .and_then(|authority| authority.effective_root.clone())
+    }
+
+    /// Re-anchor the diagnostics-input watchers (#4896) at the current
+    /// effective root: a registration left on a previous root would miss
+    /// the new root's ledger and branch changes. Callers must not hold the
+    /// root transition guard.
+    async fn sync_diagnostics_input_watch(&self) {
+        let supports_dynamic_registration = self
+            .dynamic_file_watch_registration
+            .lock()
+            .map(|value| *value)
+            .unwrap_or(false);
+        if !supports_dynamic_registration {
+            return;
+        }
+        let mut watch = self.diagnostics_input_watch.lock().await;
+        let root = self.effective_root();
+        if !watch.armed || watch.synced_root == root {
+            return;
+        }
+        if watch.registered {
+            watch.registered = false;
+            let unregistration = Unregistration {
+                id: DIAGNOSTICS_INPUT_WATCH_ID.to_string(),
+                method: "workspace/didChangeWatchedFiles".to_string(),
+            };
+            if let Err(error) = self
+                .bounded_client_request(self.client.unregister_capability(vec![unregistration]))
+                .await
+            {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!(
+                            "ripr could not release previous-root diagnostics watchers: {error}"
+                        ),
+                    )
+                    .await;
+            }
+        }
+        watch.synced_root = root.clone();
+        let Some(root) = root else {
+            return;
+        };
+        let relative_pattern_support = self
+            .watched_files_relative_pattern_support
+            .load(Ordering::SeqCst);
+        let watchers = match diagnostics_input_watchers(&root, relative_pattern_support) {
+            Ok(watchers) => watchers,
+            Err(reason) => {
+                self.client
+                    .log_message(
+                        MessageType::INFO,
+                        format!(
+                            "ripr does not watch the gap ledger or .git/HEAD: {reason}; refresh manually after those change"
+                        ),
+                    )
+                    .await;
+                return;
+            }
+        };
+        let registration = Registration {
+            id: DIAGNOSTICS_INPUT_WATCH_ID.to_string(),
+            method: "workspace/didChangeWatchedFiles".to_string(),
+            register_options: Some(serde_json::json!({ "watchers": watchers })),
+        };
+        match self
+            .bounded_client_request(self.client.register_capability(vec![registration]))
+            .await
+        {
+            Ok(()) => watch.registered = true,
+            Err(error) => {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("ripr diagnostics input watching unavailable: {error}"),
+                    )
+                    .await;
+            }
+        }
     }
 
     fn refresh_request_is_current(&self, request: &RefreshRequest) -> bool {
@@ -1123,7 +1489,10 @@ impl Backend {
     /// Bare `workspace/codeLens/refresh` send with log-only failure, shared
     /// by the view-changed and view-cleared paths.
     async fn send_code_lens_refresh(&self) {
-        if let Err(error) = self.client.code_lens_refresh().await {
+        if let Err(error) = self
+            .bounded_client_request(self.client.code_lens_refresh())
+            .await
+        {
             self.client
                 .log_message(
                     MessageType::WARNING,
@@ -1199,6 +1568,11 @@ impl Backend {
             health.snapshot_id = Some("snapshot:test".to_string());
             health.last_success_snapshot_id = Some("snapshot:test".to_string());
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn mark_attempt_running_for_test(&self, request: &RefreshRequest) {
+        self.mark_attempt_running(request);
     }
 
     #[cfg(test)]
@@ -1286,7 +1660,9 @@ impl Backend {
                 if health_is_for_request && health.run_status() == "full" {
                     AnalysisProgressEnd::Complete
                 } else {
-                    AnalysisProgressEnd::Limited(health.run_status().to_string())
+                    // #5003: the disclosed run status stays machine-only on
+                    // `ripr/analysisStatus`; the progress end carries no tag.
+                    AnalysisProgressEnd::Limited
                 }
             }
             RefreshAttemptOutcome::Failed => {
@@ -1325,6 +1701,10 @@ impl Backend {
         health.reason = Some(request.reason.as_str().to_string());
         health.requested_scope = Some(request.scope.as_str().to_string());
         health.current_input_identity = Some(request.input_identity_id());
+        // A prior attempt's failure (including `deadline_exceeded`) is not
+        // this attempt's outcome. `mark_attempt_queued` already clears it;
+        // the in-loop pending promotion path only calls this method.
+        health.failure = None;
         if health.pending_attempt_id == Some(request.generation) {
             health.pending_attempt_id = None;
             health.pending_reason = None;
@@ -1419,14 +1799,44 @@ impl Backend {
             }
             RefreshAttemptOutcome::Cancelled => health.state = AnalysisAttemptState::Cancelled,
             // A deadline-expired attempt is a fail-closed dropped refresh
-            // (#1972); reuse the existing cancelled health state — no new
-            // run-status or attempt-state string.
+            // (#1972, #5093). Keep `state` on the existing `cancelled`
+            // allowlist so fail-closed clients (including VS Code) still parse
+            // the payload, and distinguish it from a user or superseded cancel
+            // with `failure.kind = deadline_exceeded`.
             RefreshAttemptOutcome::DeadlineExceeded => {
                 health.state = AnalysisAttemptState::Cancelled;
+                health.failure = Some(AnalysisFailure {
+                    kind: AnalysisFailureKind::DeadlineExceeded,
+                    message: bounded_failure_message(&deadline_exceeded_log_message(
+                        refresh_deadline_ms(request.config.refresh_deadline),
+                    )),
+                });
             }
             RefreshAttemptOutcome::Superseded => health.state = AnalysisAttemptState::Superseded,
             RefreshAttemptOutcome::NotStarted => health.state = AnalysisAttemptState::Stopped,
         }
+    }
+
+    /// One bounded `window/logMessage` WARNING on `DeadlineExceeded` (#5093).
+    /// Clients without `window.workDoneProgress` never see the progress-end
+    /// "analysis deadline exceeded" string; this log names the configured
+    /// deadline and the `refreshDeadlineMs` knob. User/superseded cancels
+    /// do not emit it.
+    pub(super) async fn disclose_deadline_exceeded(
+        &self,
+        request: &RefreshRequest,
+        outcome: RefreshAttemptOutcome,
+    ) {
+        if outcome != RefreshAttemptOutcome::DeadlineExceeded {
+            return;
+        }
+        let deadline_ms = refresh_deadline_ms(request.config.refresh_deadline);
+        self.client
+            .log_message(
+                MessageType::WARNING,
+                deadline_exceeded_log_message(deadline_ms),
+            )
+            .await;
     }
 
     async fn publish_analysis_status(&self) {
@@ -1435,7 +1845,145 @@ impl Backend {
             .await;
     }
 
-    fn analysis_status_payload(&self) -> LSPAny {
+    /// The selected root to keep when a folder event leaves several folders
+    /// (#4459). Helix, and any client that shares one server across
+    /// repositories, adds each newly opened repository as a workspace folder;
+    /// treating that as ambiguous stopped analysis for the repository the
+    /// user was already in. For clients without the `riprEditor`
+    /// integration, a root that is selected, analyzable and still in the set
+    /// stays the session root and the other folders go unanalyzed. The VS
+    /// Code extension owns root selection, so it keeps the RIPR-SPEC-0139
+    /// ambiguous transition. A set with no selected root (for example two
+    /// folders at `initialize`) is still ambiguous: nothing is kept.
+    fn kept_root_for_added_folders(&self, entries: &[WorkspaceFolderEntry]) -> Option<PathBuf> {
+        let generic_client = self
+            .client_features
+            .lock()
+            .map(|features| features.ripr_editor.is_none())
+            .unwrap_or(false);
+        if !generic_client {
+            return None;
+        }
+        let current = self.workspace_root_authority();
+        if !current.allows_analysis() {
+            return None;
+        }
+        let root = current.effective_root?;
+        entries
+            .iter()
+            .any(|entry| entry.path == root)
+            .then_some(root)
+    }
+
+    /// Say which folders a kept root leaves unanalyzed, in the log and on
+    /// screen, so a user who opened a second repository learns why it has no
+    /// evidence.
+    async fn disclose_kept_root(&self, root: &Path, others: &[PathBuf]) {
+        let listed = others
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let message = format!(
+            "ripr keeps analyzing {}. Not analyzed by this server: {listed}. ripr analyzes one workspace root per server; open another repository in its own editor session to analyze it.",
+            root.display()
+        );
+        self.client
+            .log_message(MessageType::INFO, message.clone())
+            .await;
+        self.client.show_message(MessageType::INFO, message).await;
+    }
+
+    /// Warn when a workspace-folder change moves the root into a blocked
+    /// state the client has not been told about. Startup is covered by
+    /// [`Self::disclose_blocked_startup_root`]; an unchanged blocked state is
+    /// not repeated.
+    async fn disclose_blocked_root_transition(&self, previous: &WorkspaceRootAuthority) {
+        let current = self.workspace_root_authority();
+        if current.state == previous.state
+            && current.candidate_roots == previous.candidate_roots
+            && current.detail == previous.detail
+        {
+            return;
+        }
+        self.disclose_blocked_root(&current).await;
+    }
+
+    /// Warn once at startup when the workspace root blocks analysis.
+    async fn disclose_blocked_startup_root(&self) {
+        let root = self.workspace_root_authority();
+        self.disclose_blocked_root(&root).await;
+    }
+
+    /// Emit one bounded `window/logMessage` per recognized initialization
+    /// option that was present but ignored (#5092). The session stays up;
+    /// `session_value_sources` already attributes the effective fallback.
+    async fn disclose_ignored_initialization_options(&self) {
+        let Some(config) = self.analysis_config() else {
+            return;
+        };
+        for warning in config.ignored_initialization_option_warnings() {
+            self.client.log_message(MessageType::WARNING, warning).await;
+        }
+    }
+
+    /// The warning always goes to the log; clients without the `riprEditor`
+    /// integration also get `window/showMessage`, because `ripr/analysisStatus`
+    /// is the only other place the blocked state appears and generic editors
+    /// do not render it. The VS Code extension renders its own root state.
+    async fn disclose_blocked_root(&self, root: &WorkspaceRootAuthority) {
+        let Some(message) = blocked_root_message(root) else {
+            return;
+        };
+        let message = format!("ripr {message}");
+        self.client
+            .log_message(MessageType::WARNING, message.clone())
+            .await;
+        let generic_client = self
+            .client_features
+            .lock()
+            .map(|features| features.ripr_editor.is_none())
+            .unwrap_or(true);
+        if generic_client {
+            self.client
+                .show_message(MessageType::WARNING, message)
+                .await;
+        }
+    }
+
+    /// Deliver the optional client disclosures that follow an
+    /// initialize-time failure commit — one `window/logMessage` warning plus
+    /// one analysis-status publication — within
+    /// [`INITIALIZE_FAILURE_DISCLOSURE_BUDGET`] (#3802). The owning failure
+    /// is already committed when this runs, so a wedged or undriven peer can
+    /// never delay the state transition through these awaits: an expired
+    /// window is recorded on the backend instead of being dropped silently,
+    /// and the committed failure is re-disclosed by the next status
+    /// publication.
+    ///
+    /// `shown` is the `window/showMessage` warning for clients without the
+    /// `riprEditor` integration (#4532): they render neither the log nor
+    /// `ripr/analysisStatus`, so without it analysis stops with nothing on
+    /// screen saying why. The client profile is not stored yet at
+    /// initialize, so the caller decides from the negotiated profile.
+    async fn deliver_initialize_failure_disclosures(&self, warning: String, shown: Option<String>) {
+        self.initialize_failure_disclosure_omitted
+            .store(false, Ordering::Release);
+        let delivery = tokio::time::timeout(INITIALIZE_FAILURE_DISCLOSURE_BUDGET, async {
+            self.client.log_message(MessageType::WARNING, warning).await;
+            if let Some(shown) = shown {
+                self.client.show_message(MessageType::WARNING, shown).await;
+            }
+            self.publish_analysis_status().await;
+        })
+        .await;
+        if delivery.is_err() {
+            self.initialize_failure_disclosure_omitted
+                .store(true, Ordering::Release);
+        }
+    }
+
+    pub(super) fn analysis_status_payload(&self) -> LSPAny {
         let health = self.analysis_health_snapshot();
         self.analysis_status_payload_for_health(&health)
     }
@@ -1454,15 +2002,17 @@ impl Backend {
                         .map(|outcome| outcome.status_payload(value.input_identity_id().as_deref()))
                         .collect::<Vec<_>>(),
                     value.analysis_outcome.clone(),
+                    withheld_unknown_summary(value),
                 )
             })
         });
-        let (snapshot_identity, components, analysis_outcome) = match snapshot_state {
-            Some((identity, components, analysis_outcome)) => {
-                (identity, components, analysis_outcome)
-            }
-            None => (None, Vec::new(), None),
-        };
+        let (snapshot_identity, components, analysis_outcome, withheld_summary) =
+            match snapshot_state {
+                Some((identity, components, analysis_outcome, withheld)) => {
+                    (identity, components, analysis_outcome, withheld)
+                }
+                None => (None, Vec::new(), None, None),
+            };
         let snapshot_input = snapshot_identity.map(|identity| identity.status_payload());
         let current_input = match (
             health.current_input_identity.as_deref(),
@@ -1548,6 +2098,12 @@ impl Backend {
             "last_success_age_ms": last_success_age_ms,
             "run_status": health.run_status(),
             "analysis_outcome": analysis_outcome,
+            // Profile-withholding disclosure (#5276): when the actionable
+            // profile withholds live `*_unknown` findings from every
+            // diagnostic/listing surface, this names the count, the classes,
+            // and the `diagnostic_profile = "full"` recovery route, so
+            // `finding_count` and the served listings reconcile on the wire.
+            "withheld_findings": withheld_findings_status_payload(withheld_summary),
             // Typed bounded per-component outcomes for the committed snapshot
             // (#1997, RIPR-SPEC-0141): the single typed authority for
             // optional-component degradation. Empty until a snapshot commits.
@@ -1680,6 +2236,10 @@ impl Backend {
         let (schedule_deferred_pull, lens_view_cleared) = self
             .apply_workspace_root_authority_locked(authority, expected_folder_set_epoch)
             .await;
+        // After the transition guard is released, like the requests below:
+        // the client round trip must not hold the guard. It reads the
+        // effective root afresh, so a newer transition is never undone.
+        self.sync_diagnostics_input_watch().await;
         if lens_view_cleared {
             // Sent after the transition guard is released, same discipline as
             // the deferred configuration pull: a cleared analysis state means
@@ -1936,6 +2496,18 @@ impl Backend {
             .and_then(|guard| guard.as_ref().cloned())
     }
 
+    /// Whether the most recent bounded disclosure window after an
+    /// initialize-time failure commit expired without completing client
+    /// delivery (#3802). Unreadable state fails closed: an unknown delivery
+    /// outcome is reported as omitted rather than silently clean. Read
+    /// locally by tests; production surfaces observe the committed failure
+    /// itself, which the next status publication re-discloses.
+    #[cfg(test)]
+    pub(super) fn initialize_failure_disclosure_omitted(&self) -> bool {
+        self.initialize_failure_disclosure_omitted
+            .load(Ordering::Acquire)
+    }
+
     async fn reload_repository_config(&self) {
         let Some(root) = self.effective_root() else {
             return;
@@ -1967,9 +2539,36 @@ impl Backend {
                     RefreshReason::ConfigReload.as_str(),
                 )
                 .await;
+                // #4532: a reload that breaks ripr.toml pauses analysis; say
+                // so where the user looks, once per distinct error, not on
+                // every save that leaves the same error in place.
+                let repeated = self
+                    .configuration_failure()
+                    .is_some_and(|failure| failure.message == bounded_failure_message(&error));
+                let warning = format!("ripr config load failed; analysis is paused: {error}");
+                let shown = config_failure_notice(&error);
                 self.set_configuration_failure(error);
                 self.publish_analysis_status().await;
+                if !repeated {
+                    self.disclose_configuration_reload_failure(warning, shown)
+                        .await;
+                }
             }
+        }
+    }
+
+    /// Log a config reload failure and, for clients without the `riprEditor`
+    /// integration, show it (#4532). The VS Code extension renders the
+    /// failure from `ripr/analysisStatus`.
+    async fn disclose_configuration_reload_failure(&self, warning: String, shown: String) {
+        self.client.log_message(MessageType::WARNING, warning).await;
+        let generic_client = self
+            .client_features
+            .lock()
+            .map(|features| features.ripr_editor.is_none())
+            .unwrap_or(true);
+        if generic_client {
+            self.client.show_message(MessageType::WARNING, shown).await;
         }
     }
 
@@ -1986,7 +2585,16 @@ impl Backend {
         if next == current {
             return;
         }
+        let previous_warnings = current.ignored_initialization_option_warnings();
+        let new_warnings: Vec<String> = next
+            .ignored_initialization_option_warnings()
+            .into_iter()
+            .filter(|warning| !previous_warnings.contains(warning))
+            .collect();
         self.set_analysis_config(next);
+        for warning in new_warnings {
+            self.client.log_message(MessageType::WARNING, warning).await;
+        }
         if self.configuration_failure().is_some() {
             // Keep the config_invalid signal visible while repository
             // configuration remains broken. The stored session override is
@@ -2020,6 +2628,22 @@ impl Backend {
             .lock()
             .map(|features| features.status_projection())
             .unwrap_or(serde_json::Value::Null)
+    }
+
+    /// Position encoding negotiated once at initialize. If the immutable
+    /// profile store is unavailable, return no encoding: after negotiation,
+    /// guessing UTF-16 could reinterpret UTF-8/UTF-32 incremental ranges and
+    /// corrupt retained buffer identity.
+    fn selected_position_encoding(&self) -> Option<PositionEncodingKind> {
+        self.client_features
+            .lock()
+            .ok()
+            .map(|features| features.selected_position_encoding.clone())
+    }
+
+    #[cfg(test)]
+    pub(super) fn selected_position_encoding_for_test(&self) -> Option<PositionEncodingKind> {
+        self.selected_position_encoding()
     }
 
     /// Poison the profile store so tests can exercise the fail-closed
@@ -2112,11 +2736,10 @@ impl Backend {
             }
         };
         let result = self
-            .client
-            .configuration(vec![ConfigurationItem {
+            .bounded_client_request(self.client.configuration(vec![ConfigurationItem {
                 scope_uri: Some(scope_uri),
                 section: Some("ripr".to_string()),
-            }])
+            }]))
             .await;
         // Epoch guard: a response for an older epoch is dropped; the queued
         // re-pull for the current epoch owns the disclosed state.
@@ -2219,19 +2842,22 @@ impl Backend {
         workspace_input_kind(&root, &path)
     }
 
-    pub(super) fn watched_file_change_kinds(&self, changes: &[FileEvent]) -> (bool, bool) {
-        let mut config_changed = changes
-            .iter()
-            .any(|event| self.file_event_is_repository_config(event));
-        let mut workspace_graph_changed = false;
+    pub(super) fn watched_file_change_kinds(&self, changes: &[FileEvent]) -> WatchedFileChanges {
+        let mut kinds = WatchedFileChanges {
+            config_changed: changes
+                .iter()
+                .any(|event| self.file_event_is_repository_config(event)),
+            ..WatchedFileChanges::default()
+        };
         for event in changes {
             let Some(kind) = self.file_event_workspace_input_kind(event) else {
                 continue;
             };
-            config_changed |= kind.reloads_repository_config();
-            workspace_graph_changed |= kind.invalidates_workspace_graph();
+            kinds.config_changed |= kind.reloads_repository_config();
+            kinds.workspace_graph_changed |= kind.invalidates_workspace_graph();
+            kinds.diagnostics_input_changed |= kind == WorkspaceInputKind::DiagnosticsInput;
         }
-        (config_changed, workspace_graph_changed)
+        kinds
     }
 
     fn set_analysis_config(&self, config: LspAnalysisConfig) {
@@ -2257,10 +2883,14 @@ impl Backend {
         params: DidChangeTextDocumentParams,
     ) -> Option<(Uri, QuarantineTransition)> {
         let uri = params.text_document.uri.clone();
-        self.documents
-            .lock()
-            .ok()
-            .map(|mut documents| (uri, documents.change(params)))
+        let version = params.text_document.version;
+        let position_encoding = self.selected_position_encoding();
+        let mut documents = self.documents.lock().ok()?;
+        let transition = match position_encoding {
+            Some(position_encoding) => documents.change(params, &position_encoding),
+            None => documents.invalidate_change(&uri, version),
+        };
+        Some((uri, transition))
     }
 
     fn save_document(
@@ -2291,10 +2921,66 @@ impl Backend {
             .map(|state| state.text.clone())
     }
 
+    /// Whether the document's retained buffer lost synchronization authority
+    /// (#1746): after a rejected incremental change the retained text is not
+    /// the client's document and must never supply a save identity.
+    fn document_buffer_authority_unknown(&self, uri: &tower_lsp_server::ls_types::Uri) -> bool {
+        self.documents
+            .lock()
+            .ok()
+            .and_then(|documents| {
+                documents
+                    .state_for_uri(uri)
+                    .map(|state| state.buffer_authority_unknown)
+            })
+            .unwrap_or(false)
+    }
+
+    /// The hover for a position with no evidence to show. A generic editor
+    /// has no other place that says why ripr is quiet, so name a blocked
+    /// root or an unsaved buffer before falling back to the CLI pointer.
+    fn hover_without_evidence(&self, uri: &Uri) -> Hover {
+        if let Some(message) = blocked_root_message(&self.workspace_root_authority()) {
+            return markdown_hover(format!("**ripr** {message}"));
+        }
+        if let Some(root) = self.effective_root()
+            && let Some(path) = path_from_file_uri(uri)
+            && !path_is_within_root(&root, &path)
+        {
+            return markdown_hover(format!(
+                "**ripr** this file is outside the analyzed workspace root {}. ripr analyzes one workspace root per server; open this file's repository in its own editor session to analyze it.",
+                root.display()
+            ));
+        }
+        if let Some((_, reason)) = self.document_quarantine(uri) {
+            // Only a divergent buffer is fixed by saving; a file with no
+            // analyzed saved content needs an analysis run.
+            let route = match reason {
+                DocumentStalenessReason::BufferDivergesFromAnalyzedSavedContent => {
+                    "ripr analyzes saved files; save the file to refresh its evidence."
+                }
+                DocumentStalenessReason::InvalidIncrementalChange => {
+                    "ripr could not apply one incremental edit and stopped trusting the retained text; saving cannot fix this. Undo the edit or revert the file so ripr receives the full document again."
+                }
+                DocumentStalenessReason::NoAnalyzedSavedContent => {
+                    "ripr has not analyzed this file's saved content yet; its evidence appears after the next refresh (`ripr.refresh`) completes. A new file must be saved first."
+                }
+            };
+            return markdown_hover(format!(
+                "**ripr** evidence for this file is paused: {}. {route}",
+                reason.description()
+            ));
+        }
+        hover_response()
+    }
+
     /// The quarantine state of an open document, as `(path, reason)`.
     /// `None` means the document is unknown or clean: its buffer matches the
     /// saved content the committed snapshot analyzed.
-    fn document_quarantine(&self, uri: &Uri) -> Option<(PathBuf, DocumentStalenessReason)> {
+    pub(super) fn document_quarantine(
+        &self,
+        uri: &Uri,
+    ) -> Option<(PathBuf, DocumentStalenessReason)> {
         let documents = self.documents.lock().ok()?;
         let state = documents.state_for_uri(uri)?;
         let quarantine = state.quarantine.as_ref()?;
@@ -2365,7 +3051,15 @@ impl Backend {
             .lock()
             .ok()
             .and_then(|value| value.clone())
-            .map(|snapshot| snapshot.served_diagnostics_for_uri(uri))
+            .map(|snapshot| {
+                let mut diagnostics = snapshot.served_diagnostics_for_uri(uri);
+                if let Some(selection) = &snapshot.delivery_selection
+                    && let Some(omission) = selection.document_omissions().get(uri.as_str())
+                {
+                    diagnostics.push(delivery_omission_diagnostic(omission));
+                }
+                diagnostics
+            })
             .unwrap_or_default()
     }
 
@@ -2510,8 +3204,17 @@ impl Backend {
         if self.document_quarantine(uri).is_some() {
             return None;
         }
-        if let Ok(snapshot) = self.latest_analysis.lock()
-            && let Some(snapshot) = snapshot.as_ref()
+        // Clone the snapshot Arc and release the lock before rendering: the
+        // seam hover assembles the repair card (#4668), which resolves the
+        // live repository head and the attempt inventory — blocking I/O
+        // that must not hold the snapshot mutex against refresh commits
+        // and concurrent hovers.
+        let snapshot = self
+            .latest_analysis
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(Arc::clone));
+        if let Some(snapshot) = snapshot
             && let Some(diagnostics) = snapshot.diagnostics_for_uri(uri)
         {
             // Walk every diagnostic that covers the cursor, not just
@@ -2529,8 +3232,8 @@ impl Backend {
             for diagnostic in &overlapping {
                 if let Some(seam) = snapshot.classified_seam_for_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
-                        classified_seam_hover_response(seam, diagnostic, Some(snapshot)),
-                        snapshot,
+                        classified_seam_hover_response(seam, diagnostic, Some(&snapshot)),
+                        &snapshot,
                     ));
                 }
             }
@@ -2543,7 +3246,7 @@ impl Backend {
                 if is_gap_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
                         diagnostic_hover_response(diagnostic),
-                        snapshot,
+                        &snapshot,
                     ));
                 }
             }
@@ -2551,13 +3254,43 @@ impl Backend {
                 if let Some(finding) = snapshot.finding_for_diagnostic(diagnostic) {
                     return Some(hover_with_snapshot_status(
                         finding_hover_response(finding, diagnostic),
-                        snapshot,
+                        &snapshot,
                     ));
                 }
             }
             if let Some(diagnostic) = overlapping.first() {
                 return Some(hover_with_snapshot_status(
                     diagnostic_hover_response(diagnostic),
+                    &snapshot,
+                ));
+            }
+        }
+        // No published diagnostic covers the cursor, but the code lens on
+        // this line may still show snapshot findings (route-less or exposed
+        // findings the actionable profile does not publish). Describe those
+        // instead of falling back to the generic CLI pointer.
+        if let Ok(snapshot) = self.latest_analysis.lock()
+            && let Some(snapshot) = snapshot.as_ref()
+        {
+            // A finding that already has a published diagnostic is described
+            // by that diagnostic's hover; list only the unpublished ones.
+            let published = snapshot
+                .diagnostics_for_uri(uri)
+                .into_iter()
+                .flatten()
+                .filter_map(|diagnostic| snapshot.finding_for_diagnostic(diagnostic))
+                .map(|finding| finding.id.as_str())
+                .collect::<BTreeSet<_>>();
+            let findings = super::lens::lens_findings_at_line(uri, snapshot, position.line)
+                .into_iter()
+                .filter(|finding| !published.contains(finding.id.as_str()))
+                .collect::<Vec<_>>();
+            if !findings.is_empty() {
+                return Some(hover_with_snapshot_status(
+                    super::hover::line_findings_hover_response(
+                        &findings,
+                        snapshot.diagnostic_profile,
+                    ),
                     snapshot,
                 ));
             }
@@ -2571,6 +3304,27 @@ impl Backend {
     }
 }
 
+/// Which invalidation paths one `workspace/didChangeWatchedFiles` batch
+/// drives.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct WatchedFileChanges {
+    pub(super) config_changed: bool,
+    pub(super) workspace_graph_changed: bool,
+    /// A non-buffer diagnostics input changed without changing configuration
+    /// or the Cargo graph: only a diagnostics refresh is needed (#4896).
+    pub(super) diagnostics_input_changed: bool,
+}
+
+/// Root `.git/HEAD`: a branch checkout moves it without touching any open
+/// buffer, and the current checkout is a diagnostics input.
+const GIT_HEAD_WATCH_PATH: &str = ".git/HEAD";
+
+/// Root-relative non-buffer inputs that change published diagnostics
+/// without reloading configuration or invalidating the workspace graph
+/// (#4896). Only these exact root paths qualify: a nested ledger or
+/// `.git/HEAD` belongs to another checkout, not this workspace's inputs.
+const DIAGNOSTICS_INPUT_PATHS: [&str; 2] = [DEFAULT_GAP_DECISION_LEDGER_OUT, GIT_HEAD_WATCH_PATH];
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum WorkspaceInputKind {
     CargoGraph,
@@ -2582,6 +3336,10 @@ enum WorkspaceInputKind {
     /// detectable-file events because watched-file globs cannot express
     /// directory presence.
     PythonSourcePresence,
+    /// Root gap decision ledger or root `.git/HEAD` (#4896): diagnostics
+    /// read both on every refresh, but neither is a configuration or
+    /// workspace-graph input.
+    DiagnosticsInput,
 }
 
 impl WorkspaceInputKind {
@@ -2594,8 +3352,16 @@ impl WorkspaceInputKind {
     }
 }
 
-fn path_matches_root_file(root: &Path, path: &Path, file_name: &str) -> bool {
-    let Ok(expected) = file_uri_for_path(&root.join(file_name)) else {
+/// Whether `path` is the root file at `relative`, a `/`-separated
+/// root-relative path. Components are joined one at a time so multi-segment
+/// paths use the platform separator.
+fn path_matches_root_file(root: &Path, path: &Path, relative: &str) -> bool {
+    let expected = relative
+        .split('/')
+        .fold(root.to_path_buf(), |expected, component| {
+            expected.join(component)
+        });
+    let Ok(expected) = file_uri_for_path(&expected) else {
         return false;
     };
     let Ok(actual) = file_uri_for_path(path) else {
@@ -2607,6 +3373,12 @@ fn path_matches_root_file(root: &Path, path: &Path, file_name: &str) -> bool {
 fn workspace_input_kind(root: &Path, path: &Path) -> Option<WorkspaceInputKind> {
     if !path_is_within_root(root, path) {
         return None;
+    }
+    if DIAGNOSTICS_INPUT_PATHS
+        .iter()
+        .any(|relative| path_matches_root_file(root, path, relative))
+    {
+        return Some(WorkspaceInputKind::DiagnosticsInput);
     }
     let name = path.file_name().and_then(|name| name.to_str())?;
     if matches!(name, "Cargo.toml" | "Cargo.lock") {
@@ -2648,10 +3420,13 @@ fn path_is_detectable_source_dir_python(root: &Path, path: &Path) -> bool {
 
 /// Root-relative components of `path` when `path` sits below `root`. Root
 /// components compare with the platform path rule (case-insensitive on
-/// Windows), mirroring the LSP URI authority's containment rule; `.` and
-/// `..` segments resolve before classification; non-UTF-8 components fail
-/// closed.
+/// Windows), mirroring the LSP URI authority's containment rule. `.` and
+/// `..` resolve on both sides first, including a root this process built
+/// with a relative join (`crates/ripr/../..`). A collapsed file URI and
+/// that uncollapsed root are the same directory.
 fn root_relative_components(root: &Path, path: &Path) -> Option<Vec<String>> {
+    let root = super::uri::normalize_path(root);
+    let path = super::uri::normalize_path(path);
     fn component_names(path: &Path) -> Vec<Option<String>> {
         path.components()
             .filter(|component| {
@@ -2664,8 +3439,8 @@ fn root_relative_components(root: &Path, path: &Path) -> Option<Vec<String>> {
             .collect()
     }
 
-    let root_names = component_names(root);
-    let path_names = component_names(path);
+    let root_names = component_names(&root);
+    let path_names = component_names(&path);
     if path_names.len() < root_names.len() {
         return None;
     }
@@ -2700,7 +3475,8 @@ fn root_relative_components(root: &Path, path: &Path) -> Option<Vec<String>> {
 }
 
 /// Return whether a watched path can change the effective analysis input.
-/// Cargo inputs remain recursive for workspace members. The Python inputs
+/// Cargo inputs remain recursive for workspace members. The diagnostics
+/// inputs (root gap ledger, root `.git/HEAD`) and the Python inputs
 /// are root-scoped — root marker presence and detectable `.py` source below
 /// root `src`/`tests` are what this reload path tracks; Python outside those
 /// roots is not a detection input and stays unwatched.
@@ -2708,6 +3484,9 @@ pub(super) fn workspace_input_path_is_relevant(root: &Path, path: &Path) -> bool
     workspace_input_kind(root, path).is_some()
 }
 
+/// Dynamic watcher registrations for the configuration and graph inputs.
+/// The root-anchored diagnostics inputs register separately
+/// (`diagnostics_input_watchers`) because they follow root transitions.
 fn workspace_input_watchers() -> Vec<LSPAny> {
     std::iter::once(CONFIG_FILE_NAME)
         .chain(["Cargo.toml", "Cargo.lock"])
@@ -2723,6 +3502,43 @@ fn workspace_input_watchers() -> Vec<LSPAny> {
             serde_json::json!({"globPattern": format!("{dir}/**/*.py")})
         }))
         .collect()
+}
+
+/// Watchers for the diagnostics inputs of `root` (#4896): exactly the root
+/// ledger and root `.git/HEAD`, never nested copies. Clients such as VS Code
+/// match a string glob against the absolute path, so a bare relative string
+/// never fires; the patterns are a `RelativePattern` anchored at the root
+/// when the client supports it, otherwise absolute string globs. Returns
+/// `Err` when no reliable pattern exists; `workspace_input_kind` stays the
+/// semantic authority over which events count.
+fn diagnostics_input_watchers(
+    root: &Path,
+    relative_pattern_support: bool,
+) -> Result<Vec<LSPAny>, String> {
+    if relative_pattern_support {
+        let base = file_uri_for_path(root)?;
+        return Ok(DIAGNOSTICS_INPUT_PATHS
+            .iter()
+            .map(|relative| {
+                serde_json::json!({
+                    "globPattern": {"baseUri": base.as_str(), "pattern": *relative}
+                })
+            })
+            .collect());
+    }
+    let absolute = root.to_string_lossy().replace('\\', "/");
+    // Glob syntax has no portable escape, so a root containing
+    // metacharacters would match other paths or none at all.
+    if absolute.contains(['*', '?', '[', ']', '{', '}']) {
+        return Err(format!(
+            "workspace root {absolute} contains glob metacharacters"
+        ));
+    }
+    let absolute = absolute.trim_end_matches('/');
+    Ok(DIAGNOSTICS_INPUT_PATHS
+        .iter()
+        .map(|relative| serde_json::json!({"globPattern": format!("{absolute}/{relative}")}))
+        .collect())
 }
 
 #[cfg(test)]
@@ -2758,6 +3574,43 @@ mod workspace_input_tests {
 
         assert!(WorkspaceInputKind::PythonProjectMarker.reloads_repository_config());
         assert!(!WorkspaceInputKind::PythonProjectMarker.invalidates_workspace_graph());
+        Ok(())
+    }
+
+    #[test]
+    fn parent_segments_in_the_workspace_root_still_classify_root_python_sources()
+    -> Result<(), String> {
+        let repo =
+            std::env::temp_dir().join(format!("ripr-root-parent-segments-{}", std::process::id()));
+        let nested = repo.join("crates").join("pkg");
+        std::fs::create_dir_all(&nested).map_err(|err| err.to_string())?;
+        let root = nested.join("..").join("..");
+        let source = repo.join("src").join("app.py");
+        let dotted_source = repo.join("src").join("nested").join("..").join("app.py");
+        let outside = repo.join("scripts").join("app.py");
+        let generated = repo.join("src").join("client_pb2.py");
+        let escaped = repo.join("src").join("..").join("..").join("outside.py");
+        let source_kind = workspace_input_kind(&root, &source);
+        let dotted_kind = workspace_input_kind(&root, &dotted_source);
+        let outside_kind = workspace_input_kind(&root, &outside);
+        let generated_kind = workspace_input_kind(&root, &generated);
+        let escaped_kind = workspace_input_kind(&root, &escaped);
+        let _ = std::fs::remove_dir_all(&repo);
+        if source_kind != Some(WorkspaceInputKind::PythonSourcePresence) {
+            return Err(format!(
+                "src/app.py under a root with parent segments was {source_kind:?}"
+            ));
+        }
+        if dotted_kind != Some(WorkspaceInputKind::PythonSourcePresence) {
+            return Err(format!(
+                "src/nested/../app.py was not collapsed before classification: {dotted_kind:?}"
+            ));
+        }
+        if outside_kind.is_some() || generated_kind.is_some() || escaped_kind.is_some() {
+            return Err(format!(
+                "non-inputs were classified: outside={outside_kind:?} generated={generated_kind:?} escaped={escaped_kind:?}"
+            ));
+        }
         Ok(())
     }
 
@@ -2890,7 +3743,125 @@ mod workspace_input_tests {
             )
             .collect::<BTreeSet<_>>();
 
+        // The diagnostics inputs follow root transitions, so they are never
+        // part of this once-per-session registration.
         assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn dynamic_watchers_anchor_diagnostics_inputs_at_the_root() -> Result<(), String> {
+        let expected = ["target/ripr/reports/gap-decision-ledger.json", ".git/HEAD"];
+        let root = std::env::temp_dir().join("ripr-workspace-input-root");
+        let globs = |relative_pattern_support| {
+            diagnostics_input_watchers(&root, relative_pattern_support).map(|watchers| {
+                watchers
+                    .into_iter()
+                    .filter_map(|watcher| watcher.get("globPattern").cloned())
+                    .collect::<Vec<_>>()
+            })
+        };
+
+        // With RelativePattern support: anchored at the root URI.
+        let base = file_uri_for_path(&root).map_err(|err| format!("root URI failed: {err}"))?;
+        let expected_anchored = expected
+            .iter()
+            .map(|relative| serde_json::json!({"baseUri": base.as_str(), "pattern": relative}))
+            .collect::<Vec<_>>();
+        assert_eq!(globs(true)?, expected_anchored);
+
+        // Without it: absolute string globs, because VS Code matches a
+        // string glob against the absolute path and a bare relative string
+        // never fires.
+        let absolute = root.to_string_lossy().replace('\\', "/");
+        let expected_absolute = expected
+            .iter()
+            .map(|relative| serde_json::json!(format!("{absolute}/{relative}")))
+            .collect::<Vec<_>>();
+        let plain = globs(false)?;
+        assert_eq!(plain, expected_absolute);
+        for glob in plain.iter().filter_map(|glob| glob.as_str()) {
+            assert!(!glob.contains('*'), "{glob} must not be workspace-wide");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn dynamic_watchers_skip_absolute_diagnostics_globs_for_metacharacter_roots()
+    -> Result<(), String> {
+        for name in ["a*b", "a?b", "a[b]", "a{b,c}"] {
+            let root = std::env::temp_dir().join(name);
+            if diagnostics_input_watchers(&root, false).is_ok() {
+                return Err(format!(
+                    "{} has no reliable string glob and must not register",
+                    root.display()
+                ));
+            }
+            // A RelativePattern base is a URI, not a glob, so it still works.
+            if diagnostics_input_watchers(&root, true)?.len() != DIAGNOSTICS_INPUT_PATHS.len() {
+                return Err(format!(
+                    "{} must still anchor a RelativePattern",
+                    root.display()
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn root_gap_ledger_and_git_head_are_diagnostics_inputs_only() {
+        let root = std::env::temp_dir().join("ripr-workspace-input-root");
+        let ledger = root
+            .join("target")
+            .join("ripr")
+            .join("reports")
+            .join("gap-decision-ledger.json");
+        let head = root.join(".git").join("HEAD");
+        for path in [&ledger, &head] {
+            assert_eq!(
+                workspace_input_kind(&root, path),
+                Some(WorkspaceInputKind::DiagnosticsInput),
+                "{} must refresh diagnostics",
+                path.display()
+            );
+            assert!(workspace_input_path_is_relevant(&root, path));
+        }
+        assert!(!WorkspaceInputKind::DiagnosticsInput.reloads_repository_config());
+        assert!(!WorkspaceInputKind::DiagnosticsInput.invalidates_workspace_graph());
+    }
+
+    #[test]
+    fn nested_or_sibling_ledger_and_head_paths_are_not_diagnostics_inputs() {
+        let root = std::env::temp_dir().join("ripr-workspace-input-root");
+        let outside = std::env::temp_dir().join("ripr-workspace-input-outside");
+        let reports = root.join("target").join("ripr").join("reports");
+        for path in [
+            root.join("sub")
+                .join("target")
+                .join("ripr")
+                .join("reports")
+                .join("gap-decision-ledger.json"),
+            root.join("sub").join(".git").join("HEAD"),
+            reports.join("repo-exposure.json"),
+            reports.join("swarm-attempt-ledger.json"),
+            reports.join("actionable-gaps.json"),
+            root.join(".git").join("ORIG_HEAD"),
+            root.join(".git").join("refs").join("heads").join("main"),
+            root.join("HEAD"),
+            root.join("gap-decision-ledger.json"),
+            outside
+                .join("target")
+                .join("ripr")
+                .join("reports")
+                .join("gap-decision-ledger.json"),
+            outside.join(".git").join("HEAD"),
+        ] {
+            assert_eq!(
+                workspace_input_kind(&root, &path),
+                None,
+                "{} must not refresh diagnostics",
+                path.display()
+            );
+        }
     }
 }
 
@@ -2974,6 +3945,7 @@ pub(super) struct RefreshLogSummary {
     gap_static_limits: usize,
     gap_artifact_rejections: usize,
     gap_artifact_rejection_kinds: Vec<&'static str>,
+    withheld_unknown: usize,
     enabled_languages: usize,
     enabled_language_names: Vec<&'static str>,
 }
@@ -3035,6 +4007,7 @@ impl RefreshLogSummary {
                 .collect::<BTreeSet<_>>()
                 .into_iter()
                 .collect(),
+            withheld_unknown: withheld_unknown_summary(snapshot).map_or(0, |(count, _)| count),
             enabled_languages: 1,
             enabled_language_names: vec!["rust"],
         }
@@ -3192,7 +4165,7 @@ fn refresh_completed_log_message_with_telemetry(
 ) -> String {
     let duration = format_duration(summary.duration);
     format!(
-        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, gap_artifacts={}, actionable_gap_artifacts={}, preview_gap_artifacts={}, no_action_gap_artifacts={}, gap_static_limits={}, gap_artifact_rejections={}, gap_artifact_rejection_kinds={}, enabled_languages={}, enabled_language_names={}, computed_files={}, published_files={}, unchanged_files={}, cleared_files={}, published_payload_bytes={}, suppressed_payload_bytes={}",
+        "ripr analysis refresh completed in {duration}: generation={}, diagnostics={}, files={}, findings={}, preview_findings={}, static_limits={}, seam_diagnostics={}, gap_artifacts={}, actionable_gap_artifacts={}, preview_gap_artifacts={}, no_action_gap_artifacts={}, gap_static_limits={}, gap_artifact_rejections={}, gap_artifact_rejection_kinds={}, withheld_unknown={}, enabled_languages={}, enabled_language_names={}, computed_files={}, published_files={}, unchanged_files={}, cleared_files={}, published_payload_bytes={}, suppressed_payload_bytes={}",
         summary.generation,
         summary.diagnostics,
         summary.files,
@@ -3207,6 +4180,7 @@ fn refresh_completed_log_message_with_telemetry(
         summary.gap_static_limits,
         summary.gap_artifact_rejections,
         summary.gap_artifact_rejection_kinds.join("|"),
+        summary.withheld_unknown,
         summary.enabled_languages,
         summary.enabled_language_names.join("|"),
         summary.files,
@@ -3225,11 +4199,43 @@ pub(super) fn refresh_failed_log_message(message: &str, duration: Duration) -> S
     )
 }
 
+pub(super) fn deadline_exceeded_log_message(deadline_ms: u64) -> String {
+    format!(
+        "ripr: background analysis exceeded the {deadline_ms}ms deadline and was stopped; adjust the 'refreshDeadlineMs' initialization option or editor setting if the workspace requires more time."
+    )
+}
+
+fn refresh_deadline_ms(deadline: Duration) -> u64 {
+    u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// The on-screen config failure notice (#4532): the source-free summary, not
+/// the parser's source excerpt, which stays in the local log
+/// (RIPR-SPEC-0007).
+fn config_failure_notice(error: &str) -> String {
+    format!(
+        "ripr config load failed; analysis is paused: {}",
+        crate::config::config_error_summary(error)
+    )
+}
+
 fn bounded_failure_message(message: &str) -> String {
     // Single-source bounding/redaction for LSP client-visible error text
     // (#1997): the implementation lives in the component-outcome module so
     // health failures and component outcomes are governed identically.
     super::component_outcome::bounded_message(message)
+}
+
+/// #4860: whether a refresh analysis error is the attempt's cancellation.
+/// The attempt's token, not the error text, says whether the work stopped
+/// because a checkpoint handed it an abort. A wrapped cancellation is still a
+/// cancellation; an ordinary failure that reads like one is still a failure.
+/// The observed abort is sticky: a later unrelated failure in the same attempt
+/// is named by the abort that already stopped the work.
+fn analysis_error_was_cancellation(
+    cancellation: &crate::analysis::cancellation::AnalysisCancellationToken,
+) -> bool {
+    cancellation.observed_abort().is_some()
 }
 
 fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
@@ -3245,7 +4251,9 @@ fn cancellation_outcome(request: &RefreshRequest) -> RefreshAttemptOutcome {
     }
 }
 
-fn diagnostics_by_uri_from_batches(batches: &[DiagnosticBatch]) -> BTreeMap<Uri, Vec<Diagnostic>> {
+pub(super) fn diagnostics_by_uri_from_batches(
+    batches: &[DiagnosticBatch],
+) -> BTreeMap<Uri, Vec<Diagnostic>> {
     batches
         .iter()
         .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
@@ -3310,6 +4318,48 @@ fn workspace_diagnostics_are_root_contained(
                         })
                 })
         })
+}
+
+/// The user-facing warning body (callers prefix `ripr`) for a root that
+/// blocks analysis, or `None` when analysis may run. Names the folders for an
+/// ambiguous set so the user can see which roots the editor sent.
+fn blocked_root_message(root: &WorkspaceRootAuthority) -> Option<String> {
+    if root.allows_analysis() {
+        return None;
+    }
+    let detail = root.detail.as_deref().unwrap_or("no usable workspace root");
+    let folders = if root.candidate_roots.is_empty() {
+        String::new()
+    } else {
+        let listed = root
+            .candidate_roots
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        // Removed and changed roots carry the previous root, not the
+        // folders the client sent.
+        let label = match root.state {
+            WorkspaceRootState::RootRemoved | WorkspaceRootState::RootChanged => "Previous root",
+            _ => "Folders",
+        };
+        format!(" {label}: {listed}.")
+    };
+    // The stored details already name the recovery for ambiguous, removed
+    // and changed roots; an unavailable root only says what the client sent.
+    let guidance = match root.state {
+        WorkspaceRootState::WorkspaceAmbiguous => " ripr analyzes one workspace root per server.",
+        WorkspaceRootState::RootUnavailable => {
+            " Open the repository folder as the editor's workspace root, then restart the language server."
+        }
+        WorkspaceRootState::SelectedSingleRoot
+        | WorkspaceRootState::RootRemoved
+        | WorkspaceRootState::RootChanged => "",
+    };
+    Some(format!(
+        "analysis is stopped ({}): {detail}.{folders}{guidance}",
+        root.state.as_str()
+    ))
 }
 
 fn root_recovery_route(state: &WorkspaceRootState) -> &'static str {
@@ -3425,8 +4475,12 @@ impl Backend {
     /// needs — this is a pure transform, no new analysis.
     pub(super) async fn ripr_list_actionable_items(
         &self,
-        _params: LSPAny,
+        params: LSPAny,
     ) -> LspResult<Option<LSPAny>> {
+        // Ingress payload bound (#2034) before any snapshot access or
+        // early-return fast path; the handler reads no client-supplied
+        // fields, so only the params blob size is enforced.
+        check_list_actionable_items_params(&params)?;
         // A poisoned lock and an empty slot both fail closed to `no_snapshot`;
         // `and_then` flattens the stored `Option<Arc<AnalysisSnapshot>>`.
         let snapshot = self
@@ -3466,6 +4520,136 @@ impl Backend {
                 })));
             }
         };
+        // The item lists make this route an answer rather than a loop: it
+        // names itself as the continuation route, so counts alone left a
+        // client with nothing new to inspect. `selected` is already bounded
+        // by the workspace item budget; `omitted` is capped here.
+        let selected = result
+            .selected
+            .iter()
+            .map(|item| {
+                serde_json::json!({
+                    "canonical_id": item.canonical_id,
+                    "document": item.document,
+                })
+            })
+            .collect::<Vec<_>>();
+        let omitted = result
+            .omitted
+            .iter()
+            .take(LIST_ACTIONABLE_OMITTED_MAX)
+            .map(|item| {
+                serde_json::json!({
+                    "canonical_id": item.canonical_id,
+                    "reason": omitted_diagnostic_reason_name(item.reason),
+                })
+            })
+            .collect::<Vec<_>>();
+        // Gaps the actionable profile hides because they have no bounded repair
+        // route (a new function no test calls is the common case). They are not
+        // diagnostics by design (RIPR-SPEC-0069), so this list is the only
+        // LSP surface that names them for an agent; each id is a valid
+        // `ripr.collectContext` `finding_id`.
+        // Filter canonical-group primaries, as publishing does, so a group
+        // counts once and a published group's other members are not listed.
+        // Only the three gap classes qualify: the `*_unknown` classes are
+        // missing static evidence, not gaps, and must not be named as such.
+        let hidden = if snapshot.diagnostic_profile == LspDiagnosticProfile::Actionable {
+            super::diagnostics::canonical_finding_groups(&snapshot.findings)
+                .into_iter()
+                .map(|(primary, _)| primary)
+                .filter(|finding| {
+                    finding.is_candidate_actionable()
+                        && matches!(
+                            finding.class,
+                            crate::domain::ExposureClass::WeaklyExposed
+                                | crate::domain::ExposureClass::ReachableUnrevealed
+                                | crate::domain::ExposureClass::NoStaticPath
+                        )
+                        && !super::diagnostics::finding_is_visible_in_profile(
+                            LspDiagnosticProfile::Actionable,
+                            finding,
+                        )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let hidden_gaps = hidden
+            .iter()
+            .take(LIST_ACTIONABLE_HIDDEN_MAX)
+            .map(|finding| {
+                serde_json::json!({
+                    "finding_id": finding.id,
+                    "file": display_path(
+                        finding
+                            .probe
+                            .location
+                            .file
+                            .strip_prefix(&snapshot.root)
+                            .unwrap_or(&finding.probe.location.file),
+                    ),
+                    "line": finding.probe.location.line,
+                    "class": finding.class.as_str(),
+                })
+            })
+            .collect::<Vec<_>>();
+        // The `*_unknown` findings the actionable profile withholds from
+        // diagnostics AND from `hidden_gaps` (#4418) are disclosed as their
+        // own additive list (#5276): `status: "ok"` with all-zero counts
+        // must never be the only word about a live finding.
+        // The `*_unknown` findings the actionable profile withholds from
+        // diagnostics AND from `hidden_gaps` (#4418) are disclosed as their
+        // own additive list (#5276): `status: "ok"` with all-zero counts
+        // must never be the only word about a live finding. A member of a
+        // mixed canonical group counts only when the group itself is not
+        // published; a published group already represents its members.
+        let withheld_unknown = if snapshot.diagnostic_profile == LspDiagnosticProfile::Actionable {
+            super::diagnostics::canonical_group_members(&snapshot.findings)
+                .into_iter()
+                .filter(|(primary, _)| {
+                    !super::diagnostics::finding_is_visible_in_profile(
+                        LspDiagnosticProfile::Actionable,
+                        primary,
+                    )
+                })
+                .flat_map(|(_, members)| {
+                    members
+                        .into_iter()
+                        .filter(|finding| finding_is_withheld_unknown(finding))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let withheld_unknown_items = withheld_unknown
+            .iter()
+            .take(LIST_ACTIONABLE_HIDDEN_MAX)
+            .map(|finding| {
+                serde_json::json!({
+                    "finding_id": finding.id,
+                    "file": display_path(
+                        finding
+                            .probe
+                            .location
+                            .file
+                            .strip_prefix(&snapshot.root)
+                            .unwrap_or(&finding.probe.location.file),
+                    ),
+                    "line": finding.probe.location.line,
+                    "class": finding.class.as_str(),
+                })
+            })
+            .collect::<Vec<_>>();
+        let suppression_disclosure = (!withheld_unknown.is_empty()).then(|| {
+            format!(
+                "{} finding(s) withheld by the actionable diagnostic profile (RIPR-SPEC-0069: missing static evidence is not published as a diagnostic or a gap); {}",
+                withheld_unknown.len(),
+                diagnostic_profile_full_recovery_route()
+            )
+        });
         Ok(Some(serde_json::json!({
             "kind": "actionable_items",
             "status": "ok",
@@ -3479,6 +4663,15 @@ impl Backend {
             "selected_count": result.selected.len(),
             "omitted_count": result.omitted.len(),
             "total_count": result.total_canonical_items,
+            "selected": selected,
+            "omitted": omitted,
+            "omitted_truncated": result.omitted.len() > LIST_ACTIONABLE_OMITTED_MAX,
+            "hidden_gaps": hidden_gaps,
+            "hidden_gap_count": hidden.len(),
+            "withheld_unknown_count": withheld_unknown.len(),
+            "withheld_unknown_findings": withheld_unknown_items,
+            "withheld_unknown_truncated": withheld_unknown.len() > LIST_ACTIONABLE_HIDDEN_MAX,
+            "suppression_disclosure": suppression_disclosure,
             "budget_identity": result.snapshot_profile_budget_identity,
             "complete_evidence_identity": result.complete_evidence_identity,
             "continuation_or_inspect_route": result.continuation_or_inspect_route,
@@ -3559,7 +4752,10 @@ impl LanguageServer for Backend {
                     "watchers": workspace_input_watchers()
                 })),
             };
-            if let Err(error) = self.client.register_capability(vec![registration]).await {
+            if let Err(error) = self
+                .bounded_client_request(self.client.register_capability(vec![registration]))
+                .await
+            {
                 self.client
                     .log_message(
                         MessageType::WARNING,
@@ -3568,12 +4764,30 @@ impl LanguageServer for Backend {
                     .await;
             }
         }
+        self.diagnostics_input_watch.lock().await.armed = true;
+        self.sync_diagnostics_input_watch().await;
+        // Emit ignored-initialization warnings before the first
+        // `workspace/configuration` pull (#5092). A pull-mode client that
+        // never answers must not suppress the bounded disclosure that a
+        // default is in effect; the pull itself is bounded by the #5278
+        // client-request liveness bound, so a non-answering client fails
+        // the pull through the ordinary error arm instead of pinning this
+        // handler task forever.
+        self.disclose_ignored_initialization_options().await;
         // First configuration pull (#2031). This runs in `initialized`, not
         // `initialize`: tower-lsp-server rejects client requests with -32002
         // before the session is initialized.
         if self.configuration_mode() == ConfigurationMode::Pull {
             self.schedule_configuration_pull().await;
         }
+        // tower-lsp-server suppresses custom notifications until `initialize`
+        // has returned, so the status published by the initialize-time root
+        // and config transitions never reached the client. Publish the
+        // startup state once the session is live, and name a root that
+        // blocks analysis over a standard channel: without this, a generic
+        // editor opened on two folders or on no folder sees nothing at all.
+        self.publish_analysis_status().await;
+        self.disclose_blocked_startup_root().await;
     }
 
     async fn initialize(&self, params: InitializeParams) -> LspResult<InitializeResult> {
@@ -3628,6 +4842,10 @@ impl LanguageServer for Backend {
         if let Ok(mut supported) = self.dynamic_file_watch_registration.lock() {
             *supported = supports_dynamic_registration;
         }
+        self.watched_files_relative_pattern_support.store(
+            profile.watched_files_relative_pattern_support,
+            Ordering::SeqCst,
+        );
         let resolution = root_from_initialize_params(&params);
         // Retain the canonical workspace-folder set (#2036, RIPR-SPEC-0139)
         // so `didChangeWorkspaceFolders` deltas apply to stored state
@@ -3656,14 +4874,18 @@ impl LanguageServer for Backend {
         ));
         self.apply_workspace_root_resolution(resolution).await;
         if let Some(error) = config_error {
-            self.client
-                .log_message(
-                    MessageType::WARNING,
-                    format!("ripr config load failed; analysis is paused: {error}"),
-                )
-                .await;
+            // Commit the owning config failure before the optional client
+            // disclosures (#3802): the state transition must not depend on a
+            // client await, so a wedged or undriven peer can delay only the
+            // bounded disclosure window, never the failure itself.
+            let warning = format!("ripr config load failed; analysis is paused: {error}");
+            let shown = config_failure_notice(&error);
             self.set_configuration_failure(error);
-            self.publish_analysis_status().await;
+            self.deliver_initialize_failure_disclosures(
+                warning,
+                profile.ripr_editor.is_none().then_some(shown),
+            )
+            .await;
         }
         // The profile store lands after the root application and config
         // failure handling because applying a workspace-root authority
@@ -3679,17 +4901,23 @@ impl LanguageServer for Backend {
             // through the same blocking-failure channel as a config load
             // failure so the status payload discloses the state and analysis
             // stays paused instead of running on a torn negotiation.
-            self.client
-                .log_message(
-                    MessageType::WARNING,
-                    "ripr client feature profile could not be stored; analysis is paused",
-                )
-                .await;
+            // Commit the owning failure BEFORE any client delivery (#3802):
+            // the state transition must not depend on an optional client
+            // await, so a wedged or undriven peer can delay only the bounded
+            // disclosure window and never leave the session hanging
+            // half-initialized without its failure committed.
             self.record_blocking_failure(
                 AnalysisFailureKind::SessionStateInconsistent,
                 "client feature profile could not be stored after initialize negotiation; analysis is paused",
             );
-            self.publish_analysis_status().await;
+            self.deliver_initialize_failure_disclosures(
+                "ripr client feature profile could not be stored; analysis is paused".to_string(),
+                profile.ripr_editor.is_none().then(|| {
+                    "ripr client feature profile could not be stored; analysis is paused"
+                        .to_string()
+                }),
+            )
+            .await;
         }
         Ok(initialize_result_for_client(
             supports_pull_diagnostics,
@@ -3723,18 +4951,23 @@ impl LanguageServer for Backend {
             self.verbose_params_bytes(&params),
         )
         .await;
-        let (config_changed, workspace_graph_changed) =
-            self.watched_file_change_kinds(&params.changes);
-        if config_changed {
+        let changes = self.watched_file_change_kinds(&params.changes);
+        if changes.config_changed {
             self.reload_repository_config().await;
         }
-        if workspace_graph_changed {
+        if changes.workspace_graph_changed {
             self.invalidate_analysis_input_and_end_queued_progress(
                 "workspace_manifest_or_lockfile_changed",
             )
             .await;
             self.publish_analysis_status().await;
             self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::ConfigReload)
+                .await;
+        } else if changes.diagnostics_input_changed {
+            // A rewritten gap ledger or a branch checkout changes published
+            // diagnostics without touching an open buffer. The graph refresh
+            // above already re-reads both; otherwise schedule one refresh.
+            self.refresh_diagnostics(RefreshScope::Interactive, RefreshReason::WatchedInput)
                 .await;
         }
     }
@@ -3763,14 +4996,20 @@ impl LanguageServer for Backend {
         let (outcome, root_epoch) = match delta {
             Ok(pair) => pair,
             Err(rejection) => {
+                let previous = self.workspace_root_authority();
                 self.reject_workspace_folder_update(rejection).await;
+                self.disclose_blocked_root_transition(&previous).await;
                 return;
             }
         };
         // 2. Optional full-list reconciliation: a separately versioned
         //    confirmation step, never a substitute for the delta. A client
-        //    that cannot answer keeps the delta-derived state.
-        let queried = self.client.workspace_folders().await.unwrap_or(None);
+        //    that cannot answer keeps the delta-derived state; the round
+        //    trip is bounded by the #5278 client-request liveness bound.
+        let queried = self
+            .bounded_client_request(self.client.workspace_folders())
+            .await
+            .unwrap_or(None);
         // 3. Drop the round-trip when a newer event or transition won the
         //    race, then apply at most one transition derived from the stored
         //    set.
@@ -3819,7 +5058,9 @@ impl LanguageServer for Backend {
         let folder_set_epoch = match action {
             None => return,
             Some(Err(rejection)) => {
+                let previous = self.workspace_root_authority();
                 self.reject_workspace_folder_update(rejection).await;
+                self.disclose_blocked_root_transition(&previous).await;
                 return;
             }
             Some(Ok(folder_set_epoch)) => folder_set_epoch,
@@ -3840,15 +5081,37 @@ impl LanguageServer for Backend {
                     .first()
                     .map(|entry| WorkspaceRootResolution::Selected(entry.path.clone())),
                 WorkspaceFolderSelection::AmbiguousFolders => {
-                    Some(WorkspaceRootResolution::Ambiguous(
-                        set.entries()
-                            .iter()
-                            .map(|entry| entry.path.clone())
-                            .collect(),
-                    ))
+                    match self.kept_root_for_added_folders(set.entries()) {
+                        Some(root) => Some(WorkspaceRootResolution::Selected(root)),
+                        None => Some(WorkspaceRootResolution::Ambiguous(
+                            set.entries()
+                                .iter()
+                                .map(|entry| entry.path.clone())
+                                .collect(),
+                        )),
+                    }
                 }
             };
             (resolution, set.folder_set_epoch())
+        };
+        // Reaching here means the stored set changed (an accepted delta or a
+        // drift-correction replacement), so a kept root is announced once
+        // per change.
+        let kept_root = match &derived.0 {
+            Some(WorkspaceRootResolution::Selected(root)) => {
+                let others = {
+                    let Ok(set) = self.workspace_folders.lock() else {
+                        return;
+                    };
+                    set.entries()
+                        .iter()
+                        .filter(|entry| &entry.path != root)
+                        .map(|entry| entry.path.clone())
+                        .collect::<Vec<_>>()
+                };
+                (!others.is_empty()).then(|| (root.clone(), others))
+            }
+            _ => None,
         };
         if derived.1 != folder_set_epoch {
             return;
@@ -3857,16 +5120,45 @@ impl LanguageServer for Backend {
             None => WorkspaceRootAuthority::removed(self.effective_root()),
             Some(resolution) => Self::workspace_root_authority_for_resolution(resolution),
         };
+        let previous = self.workspace_root_authority();
         self.apply_workspace_folder_set_authority(authority, folder_set_epoch)
             .await;
+        self.disclose_blocked_root_transition(&previous).await;
+        // Announce only a root that actually stayed selected: a kept root
+        // that is no longer a directory, or an application dropped for a
+        // newer event, must not claim it is still analyzed.
+        if let Some((root, others)) = kept_root {
+            let current = self.workspace_root_authority();
+            if current.allows_analysis()
+                && current.effective_root.as_deref() == Some(root.as_path())
+            {
+                self.disclose_kept_root(&root, &others).await;
+            }
+        }
         self.reload_repository_config().await;
     }
 
     async fn shutdown(&self) -> LspResult<()> {
         self.trace_inbound("request", "shutdown", None).await;
+        // Serialize the terminal clear with an in-flight refresh publication
+        // (#5202): without the shared transition guard a refresh cancelled by
+        // `stop()` can publish one more batch — or roll back the previous
+        // diagnostics — after these empties, recreating the stale client
+        // state this clear removes. The refresh publication/commit block
+        // holds the same guard, so the clear either precedes the refresh's
+        // terminal check or follows its last publish, never interleaves it.
+        let transition = self.workspace_root_transition.lock().await;
         self.refresh_scheduler.stop();
         self.progress.end_all(AnalysisProgressEnd::Cancelled).await;
-        self.clear_all_diagnostic_uris();
+        // Mirror the root-change path: dropping the tracked URIs without
+        // publishing leaves stale diagnostics in the client (#5202).
+        let uris = self.clear_all_diagnostic_uris();
+        if !self.pull_diagnostics_enabled() {
+            for uri in uris {
+                self.client.publish_diagnostics(uri, Vec::new(), None).await;
+            }
+        }
+        drop(transition);
         self.reset_health_for_input_change();
         self.publish_analysis_status().await;
         self.refresh_idle.notify_waiters();
@@ -3963,7 +5255,17 @@ impl LanguageServer for Backend {
         // analysis input, so it neither advances the workspace revision nor
         // schedules a refresh. The save event is still disclosed.
         let uri = params.text_document.uri;
-        let text = params.text.or_else(|| self.document_text(&uri));
+        // With includeText: false the save identity would come from the
+        // retained buffer — but only while that buffer is still a
+        // synchronization authority. After a rejected incremental change
+        // (#1746) the client's persisted document may diverge from the frozen
+        // buffer, so the save carries no observable identity: adopt none
+        // rather than invent one from text the server cannot trust.
+        let text = if self.document_buffer_authority_unknown(&uri) {
+            params.text.clone()
+        } else {
+            params.text.clone().or_else(|| self.document_text(&uri))
+        };
         let digest = text.as_deref().map(|text| content_digest(text.as_bytes()));
         // Update the per-document saved-content identity and quarantine
         // state first (#1970): the dedup decision below gates the refresh,
@@ -4044,10 +5346,9 @@ impl LanguageServer for Backend {
             self.verbose_params_bytes(&params),
         )
         .await;
-        let result = Ok(Some(
-            self.hover_for_position(&params)
-                .unwrap_or_else(hover_response),
-        ));
+        let result = Ok(Some(self.hover_for_position(&params).unwrap_or_else(
+            || self.hover_without_evidence(&params.text_document_position_params.text_document.uri),
+        )));
         self.trace_response("textDocument/hover", &result).await;
         result
     }
@@ -4148,9 +5449,113 @@ impl LanguageServer for Backend {
     }
 }
 
+/// Parse-layer lookup for a context command's first argument object.
+///
+/// `None` means the arguments are unreadably shaped (missing first element,
+/// or first element is not an object). That miss is a **bad request**, not
+/// "no evidence found". Callers must convert it through
+/// [`context_command_target`], which returns JSON-RPC `InvalidParams`
+/// (`-32602`). Do not `?` this `None` into `Ok(None)` / `result: null`.
 fn context_arguments(arguments: &[LSPAny]) -> Option<&serde_json::Map<String, serde_json::Value>> {
     let first = arguments.first()?;
     first.as_object()
+}
+
+/// Accepted argument shapes for `ripr.collectContext`, quoted in its errors.
+pub(crate) const COLLECT_CONTEXT_ARGUMENT_SHAPES: &str = "one object: \
+{\"finding_id\": \"probe:...\"}, {\"seam_id\": \"...\", \"evidence_identity\": {...}}, \
+or {\"gap_id\": \"...\", \"gap_ledger\": \"target/ripr/reports/gap-decision-ledger.json\"} \
+(gap_ledger optional); copy the ids and evidence_identity from a ripr diagnostic's data";
+
+/// Accepted argument shape for `ripr.collectEvidenceContext`.
+pub(crate) const COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES: &str = "one object: \
+{\"seam_id\": \"...\", \"evidence_identity\": {...}}; copy both from a ripr seam \
+diagnostic's data";
+
+/// Accepted argument shapes for `ripr.collectRepairPacket`, quoted in its errors.
+pub(crate) const COLLECT_REPAIR_PACKET_ARGUMENT_SHAPES: &str = "no arguments for the top \
+packet, or one object {\"gap_id\": \"...\"} for a specific gap";
+
+/// Longest client-supplied id echoed back in an error message.
+const ECHOED_ID_MAX_CHARS: usize = 120;
+
+/// Resolves which target key a context command will look up, in the
+/// handler's own precedence order, or rejects the arguments with the
+/// accepted shapes.
+fn context_command_target(
+    command: &str,
+    arguments: &[LSPAny],
+    keys: &[&'static str],
+    shapes: &str,
+) -> LspResult<(&'static str, String)> {
+    let Some(args) = context_arguments(arguments) else {
+        return Err(LspError::invalid_params(format!(
+            "`{command}` expects {shapes}"
+        )));
+    };
+    // Every present target key is validated before one is chosen, so a
+    // mistyped higher-precedence id (`{"gap_id": 42, "seam_id": "..."}`) is
+    // reported under its own name instead of being skipped for a later key.
+    // A blank id counts as not given, so the next key is used.
+    let mut target = None;
+    for key in keys {
+        if let Some(id) = optional_id_argument(command, args, key, shapes)?
+            && target.is_none()
+        {
+            target = Some((*key, id.to_string()));
+        }
+    }
+    target.ok_or_else(|| {
+        let one_of = if keys.len() > 1 { "one of " } else { "" };
+        LspError::invalid_params(format!(
+            "`{command}` needs a non-empty string {one_of}`{}`; it expects {shapes}",
+            keys.join("`, `")
+        ))
+    })
+}
+
+/// Reads one optional id argument of an agent command. An absent key, a
+/// JSON `null`, or a string that is empty after trimming is `Ok(None)`: the
+/// id was not given (RIPR-SPEC-0077: an absent or empty `gap_id` selects the
+/// top gap). Any other non-string value is rejected with InvalidParams naming
+/// the field. A mistyped id must never fall through to a different target
+/// (such as the top repair packet): answering a request for one gap with
+/// another gap's packet is a wrong actionable signal.
+fn optional_id_argument<'a>(
+    command: &str,
+    args: &'a serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    shapes: &str,
+) -> LspResult<Option<&'a str>> {
+    let found = match args.get(key) {
+        None | Some(serde_json::Value::Null) => return Ok(None),
+        Some(serde_json::Value::String(id)) if id.trim().is_empty() => return Ok(None),
+        Some(serde_json::Value::String(id)) => return Ok(Some(id)),
+        Some(serde_json::Value::Bool(_)) => "a boolean",
+        Some(serde_json::Value::Number(_)) => "a number",
+        Some(serde_json::Value::Array(_)) => "an array",
+        Some(serde_json::Value::Object(_)) => "an object",
+    };
+    Err(LspError::invalid_params(format!(
+        "`{command}`: `{key}` must be a string when present, got {found}; \
+it expects {shapes}"
+    )))
+}
+
+fn context_target_not_found(command: &str, key: &str, id: &str) -> LspError {
+    let mut echoed: String = id.chars().take(ECHOED_ID_MAX_CHARS).collect();
+    if echoed.len() < id.len() {
+        echoed.push_str("...");
+    }
+    let source = if key == "gap_id" {
+        "the gap ledger (`gap_ledger`, default target/ripr/reports/gap-decision-ledger.json)"
+    } else {
+        "the current analysis snapshot"
+    };
+    LspError::invalid_params(format!(
+        "`{command}`: `{key}` `{echoed}` is not in {source}, or no analysis snapshot is \
+available yet; run `ripr.refresh` and retry with an id from a current ripr diagnostic's data"
+    ))
 }
 
 impl Backend {
@@ -4221,6 +5626,11 @@ impl Backend {
                 .log_message(MessageType::WARNING, disclosure)
                 .await;
         }
+        if let Some(disclosure) = profile_withholding_pull_disclosure(&snapshot) {
+            self.client
+                .log_message(MessageType::WARNING, disclosure)
+                .await;
+        }
         let diagnostics = snapshot.served_diagnostics_for_uri(&uri);
         Ok(
             DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
@@ -4260,6 +5670,16 @@ impl Backend {
                 .iter()
                 .map(|entry| entry.uri.clone()),
         );
+        // #5276 (PR #5452 review): a workspace whose served set is empty
+        // because the profile withheld every finding has no documents to
+        // report and may have no previous result ids, so the withholding
+        // disclosure cannot ride on the per-document loop. Name it once per
+        // workspace report instead.
+        if let Some(disclosure) = profile_withholding_pull_disclosure(&snapshot) {
+            self.client
+                .log_message(MessageType::WARNING, disclosure)
+                .await;
+        }
         let mut items = Vec::with_capacity(uris.len());
         // Serve the stored delivery selection (#1973). Disclose a partial
         // delivery state once per workspace report rather than once per
@@ -4349,17 +5769,58 @@ impl Backend {
                 .await;
             return Ok(None);
         }
+        // A context command that cannot answer returns a typed InvalidParams
+        // error naming the accepted argument shapes, never a bare null: a
+        // null gave editor and agent clients nothing to correct.
         if params.command == COLLECT_CONTEXT_COMMAND {
-            return Ok(self.collect_context_packet(&params.arguments).await);
+            let (key, id) = context_command_target(
+                COLLECT_CONTEXT_COMMAND,
+                &params.arguments,
+                &["gap_id", "seam_id", "finding_id"],
+                COLLECT_CONTEXT_ARGUMENT_SHAPES,
+            )?;
+            return match self.collect_context_packet(&params.arguments).await {
+                Some(packet) => Ok(Some(packet)),
+                None => Err(context_target_not_found(COLLECT_CONTEXT_COMMAND, key, &id)),
+            };
         }
         if params.command == COLLECT_EVIDENCE_CONTEXT_COMMAND {
-            return Ok(self.collect_evidence_context_packet(&params.arguments));
+            let (key, id) = context_command_target(
+                COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                &params.arguments,
+                &["seam_id"],
+                COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES,
+            )?;
+            return match self.collect_evidence_context_packet(&params.arguments) {
+                Some(packet) => Ok(Some(packet)),
+                None => Err(context_target_not_found(
+                    COLLECT_EVIDENCE_CONTEXT_COMMAND,
+                    key,
+                    &id,
+                )),
+            };
         }
         if params.command == COLLECT_WORKSPACE_STATUS_COMMAND {
             return Ok(self.collect_workspace_status());
         }
         if params.command == COLLECT_REPAIR_PACKET_COMMAND {
-            return Ok(self.collect_repair_packet(&params.arguments));
+            let gap_id = match params.arguments.first() {
+                None | Some(serde_json::Value::Null) => None,
+                Some(serde_json::Value::Object(args)) => optional_id_argument(
+                    COLLECT_REPAIR_PACKET_COMMAND,
+                    args,
+                    "gap_id",
+                    COLLECT_REPAIR_PACKET_ARGUMENT_SHAPES,
+                )?
+                .map(str::trim),
+                Some(_) => {
+                    return Err(LspError::invalid_params(format!(
+                        "`{COLLECT_REPAIR_PACKET_COMMAND}` expects \
+{COLLECT_REPAIR_PACKET_ARGUMENT_SHAPES}"
+                    )));
+                }
+            };
+            return Ok(self.collect_repair_packet(gap_id));
         }
         if params.command == COLLECT_TOP_LIMITATION_COMMAND {
             return Ok(self.collect_top_limitation());
@@ -4555,8 +6016,8 @@ impl Backend {
                 .and_then(|value| value.input_identity_id())
                 .or(health.current_input_identity),
             "invalidation_reason": reason,
-            "recovery_route": "ripr.refreshDiagnostics",
-            "recovery_command": "ripr.refreshDiagnostics",
+            "recovery_route": REFRESH_COMMAND,
+            "recovery_command": REFRESH_COMMAND,
             "limits_note": "Static editor evidence only; refresh before using seam context or repair guidance.",
         })
     }
@@ -4841,6 +6302,97 @@ fn diagnostic_budget_result_json(
     })
 }
 
+/// Most omitted items `ripr/listActionableItems` lists; `omitted_count`
+/// still reports the full number.
+const LIST_ACTIONABLE_OMITTED_MAX: usize = 200;
+
+/// Most profile-hidden gaps `ripr/listActionableItems` lists;
+/// `hidden_gap_count` still reports the full number.
+const LIST_ACTIONABLE_HIDDEN_MAX: usize = 50;
+
+/// The `*_unknown`-class findings the actionable profile withholds from
+/// every diagnostic and gap-listing surface (RIPR-SPEC-0069; the exclusion
+/// is locked by #4418 — missing static evidence is neither a diagnostic nor
+/// a gap). #5276: they are disclosed, never published, so an agent can tell
+/// "analysis complete, nothing to do" apart from "a finding exists but the
+/// profile withholds it".
+fn finding_is_withheld_unknown(finding: &crate::domain::Finding) -> bool {
+    matches!(
+        finding.class,
+        crate::domain::ExposureClass::StaticUnknown
+            | crate::domain::ExposureClass::InfectionUnknown
+            | crate::domain::ExposureClass::PropagationUnknown
+    ) && finding.is_candidate_actionable()
+}
+
+/// The `diagnostic_profile = "full"` recovery route named wherever profile
+/// withholding is disclosed (#5276). One owner so every agent-facing surface
+/// words the escape hatch identically.
+fn diagnostic_profile_full_recovery_route() -> &'static str {
+    "set the session initialization option {\"ripr\": {\"diagnosticProfile\": \"full\"}} to serve withheld findings on every channel"
+}
+
+/// Clone-free count/class summary of the `*_unknown` findings the
+/// actionable profile withholds. A finding counts as withheld only when its
+/// canonical group is not visible under the profile: an unknown member of a
+/// published mixed-class group is represented by that published diagnostic,
+/// not withheld (PR #5452 review). `None` when there is no snapshot; a
+/// non-actionable profile withholds nothing, so it summarizes as a zero
+/// count with no classes.
+fn withheld_unknown_summary(snapshot: &AnalysisSnapshot) -> Option<(usize, Vec<&'static str>)> {
+    if snapshot.diagnostic_profile != LspDiagnosticProfile::Actionable {
+        return Some((0, Vec::new()));
+    }
+    let mut count = 0usize;
+    let mut classes = std::collections::BTreeSet::new();
+    for (primary, members) in super::diagnostics::canonical_group_members(&snapshot.findings) {
+        if super::diagnostics::finding_is_visible_in_profile(
+            LspDiagnosticProfile::Actionable,
+            primary,
+        ) {
+            continue;
+        }
+        for finding in members {
+            if finding_is_withheld_unknown(finding) {
+                count += 1;
+                classes.insert(finding.class.as_str());
+            }
+        }
+    }
+    Some((count, classes.into_iter().collect()))
+}
+
+/// The status-surface payload for profile withholding (#5276): present with
+/// a zero count when nothing is withheld, and `null` only when no snapshot
+/// exists.
+fn withheld_findings_status_payload(summary: Option<(usize, Vec<&'static str>)>) -> LSPAny {
+    match summary {
+        None => serde_json::Value::Null,
+        Some((0, _)) => {
+            serde_json::json!({ "count": 0, "classes": [], "recovery_route": serde_json::Value::Null })
+        }
+        Some((count, classes)) => serde_json::json!({
+            "count": count,
+            "classes": classes,
+            "recovery_route": diagnostic_profile_full_recovery_route(),
+        }),
+    }
+}
+
+/// Pull-side disclosure naming the profile-withheld `*_unknown` findings
+/// (#5276). A pull that serves zero items must not read as "no findings":
+/// the same one-line disclosure the status and listing surfaces carry names
+/// the withholding and the `full` escape hatch here too.
+fn profile_withholding_pull_disclosure(snapshot: &AnalysisSnapshot) -> Option<String> {
+    let (count, _) = withheld_unknown_summary(snapshot)?;
+    (count > 0).then(|| {
+        format!(
+            "ripr withheld {count} finding(s) of the *_unknown classes from diagnostics (actionable profile, RIPR-SPEC-0069); {}",
+            diagnostic_profile_full_recovery_route()
+        )
+    })
+}
+
 fn omitted_diagnostic_reason_name(
     reason: crate::lsp::diagnostic_budget::OmittedDiagnosticReason,
 ) -> &'static str {
@@ -5007,6 +6559,60 @@ fn push_budget_omission_disclosure(
     Some(format!(
         "ripr push diagnostic delivery budget overflowed; publication is partial: {payload}"
     ))
+}
+
+/// One visible summary of the same budget omission the selection and log
+/// retain. This is a delivery limitation, never a source finding or action.
+fn delivery_omission_diagnostic(
+    omission: &crate::lsp::diagnostic_budget::DocumentDeliveryOmission,
+) -> Diagnostic {
+    Diagnostic {
+        severity: Some(tower_lsp_server::ls_types::DiagnosticSeverity::INFORMATION),
+        code: Some(tower_lsp_server::ls_types::NumberOrString::String(
+            super::diagnostic_catalog::DIAGNOSTIC_BUDGET_OMITTED_CODE.to_string(),
+        )),
+        source: Some("ripr".to_string()),
+        message: format!(
+            "Displayed diagnostics are a bounded subset: {} of {} current diagnostics were omitted. Narrow the diff or profile, or retrieve current details through {}. This document result is incomplete.",
+            omission.omitted_count, omission.total_count, omission.retrieval_route
+        ),
+        data: Some(serde_json::json!({
+            "kind": "delivery_limitation",
+            "scope": omission.scope,
+            "selected_count": omission.selected_count,
+            "omitted_count": omission.omitted_count,
+            "total_count": omission.total_count,
+            "count_budget": omission.count_budget,
+            "byte_budget": omission.byte_budget,
+            "snapshot_profile_budget_identity": omission.snapshot_profile_budget_identity,
+            "complete_evidence_identity": omission.complete_evidence_identity,
+            "retrieval_route": omission.retrieval_route,
+        })),
+        ..Default::default()
+    }
+}
+
+/// Restore the prior *served* publication during transaction rollback. The
+/// stored baseline contains raw diagnostics; publishing it directly would
+/// bypass the prior budget when a newer refresh is cancelled.
+fn rollback_push_diagnostics(
+    uri: &Uri,
+    raw: &[Diagnostic],
+    selection: Option<&crate::lsp::diagnostic_budget::DiagnosticDeliverySelection>,
+    omission: Option<&crate::lsp::diagnostic_budget::DocumentDeliveryOmission>,
+    quarantined: bool,
+) -> Vec<Diagnostic> {
+    if quarantined || raw.is_empty() {
+        return Vec::new();
+    }
+    let mut served = selection.map_or_else(
+        || raw.to_vec(),
+        |selection| selection.diagnostics_for_document(uri.as_str(), raw),
+    );
+    if let Some(omission) = omission {
+        served.push(delivery_omission_diagnostic(omission));
+    }
+    served
 }
 
 /// Disclosure for the budget-error fallback: every diagnostic is published
@@ -5193,7 +6799,7 @@ fn workspace_status_receipt_summary(
     // receipt_status: movement from ledger.
     let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
     let receipt_movement = top_gap
-        .map(|artifact| receipt_status_from_ledger(&ledger_path, artifact).0)
+        .map(|artifact| receipt_status_from_ledger(root, &ledger_path, artifact).0)
         .unwrap_or_else(|| serde_json::Value::String("not_available".to_string()));
 
     // latest_attempt_outcome from swarm-attempt-ledger.json.
@@ -5553,17 +7159,27 @@ fn top_limitation_dto(
             "limited_partial_scope",
             "limited_partial_scope",
             "limited",
-            format!(
-                "analysis inspected {} changed file(s) ({} changed line(s)) of the diff; \
-                 at least {} changed file(s) and {} changed line(s) were not inspected \
-                 (stop reason: {}); raise RIPR_PARTIAL_DIFF_FILE_BUDGET and/or \
-                 RIPR_PARTIAL_DIFF_LINE_BUDGET to widen the analyzed partition",
-                scope.selected_files.len(),
-                scope.selected_changed_lines,
-                scope.uninspected_files_lower_bound,
-                scope.uninspected_changed_lines_lower_bound,
-                scope.stop_reason.as_str(),
-            ),
+            {
+                let uninspected = if scope.has_known_uninspected_scope() {
+                    format!(
+                        "at least {} changed file(s) and {} changed line(s) were not inspected",
+                        scope.uninspected_files_lower_bound,
+                        scope.uninspected_changed_lines_lower_bound,
+                    )
+                } else {
+                    "every changed file ripr's language adapters read was selected, but the budget was exceeded, so the \
+                     result stays partial"
+                        .to_string()
+                };
+                format!(
+                    "analysis inspected {} changed file(s) ({} changed line(s)) of the diff; \
+                     {uninspected} (stop reason: {}); to widen the analyzed partition, {}",
+                    scope.selected_files.len(),
+                    scope.selected_changed_lines,
+                    scope.stop_reason.as_str(),
+                    scope.widen_instruction(),
+                )
+            },
             "analysis/diff-scope-budget",
             scope.selected_files.iter().take(3).cloned().collect(),
             scope.selected_files.len(),
@@ -5767,6 +7383,7 @@ mod top_limitation_selection_tests {
     ) -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("C:").join("repo"),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: Some("main".to_string()),
             mode: crate::app::Mode::Draft,
@@ -5779,6 +7396,7 @@ mod top_limitation_selection_tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: crate::lsp::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri: BTreeMap::new(),
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope,
@@ -5799,6 +7417,7 @@ mod top_limitation_selection_tests {
             uninspected_files_lower_bound: 2,
             uninspected_changed_lines_lower_bound: 6,
             stop_reason: PartialDiffStopReason::FileBudget,
+            next_file_changed_lines: Some(3),
             partition_identity: "sha256:partition".to_string(),
         }
     }
@@ -5833,6 +7452,7 @@ mod top_limitation_selection_tests {
         let snapshot = snapshot_for_outcome(incomplete_outcome(0)?, None);
         let snapshot = AnalysisSnapshot {
             root: repo_root.clone(),
+            rust_consumed_sources: Default::default(),
             ..snapshot
         };
         let health = AnalysisHealth {
@@ -5876,6 +7496,85 @@ mod top_limitation_selection_tests {
         Ok(())
     }
 
+    /// #5276: under the actionable profile a live `static_unknown` finding
+    /// is withheld from every diagnostic/listing surface while
+    /// `analysis_outcome.finding_count` reports it. The status payload must
+    /// name the withholding — count, classes, and the
+    /// `diagnostic_profile = "full"` recovery route — so an agent can tell
+    /// "no findings" from "withheld by profile" on the wire.
+    #[test]
+    fn analysis_status_discloses_withheld_unknown_findings_with_full_route() -> Result<(), String> {
+        let repo_root = PathBuf::from("C:").join("repo");
+        let mut unknown = crate::lsp::tests::sample_finding();
+        unknown.class = crate::domain::ExposureClass::StaticUnknown;
+        // A member of an unpublished canonical group counts too: the group's
+        // unknown-class primary is not visible, so neither member is served
+        // anywhere (PR #5452 review).
+        let mut grouped_unknown = unknown.clone();
+        grouped_unknown.id = "probe:pricing:99:predicate".to_string();
+        grouped_unknown.canonical_gap = Some(crate::lsp::tests::sample_canonical_gap());
+        let mut snapshot = snapshot_for_outcome(incomplete_outcome(2)?, None);
+        snapshot.findings = vec![unknown, grouped_unknown];
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        let health = AnalysisHealth {
+            state: AnalysisAttemptState::Succeeded,
+            snapshot_id: Some("snapshot:lsp-fixture".to_string()),
+            ..AnalysisHealth::default()
+        };
+        let (service, _socket) = LspService::new(|client| Backend::new(client, repo_root.clone()));
+        let backend = service.inner();
+        *backend
+            .latest_analysis
+            .lock()
+            .map_err(|error| format!("latest analysis lock poisoned: {error}"))? =
+            Some(std::sync::Arc::new(snapshot));
+        let payload = backend.analysis_status_payload_for_health(&health);
+        let withheld = &payload["withheld_findings"];
+        assert_eq!(withheld["count"], 2, "{payload:#}");
+        assert_eq!(withheld["classes"], serde_json::json!(["static_unknown"]));
+        assert!(
+            withheld["recovery_route"]
+                .as_str()
+                .is_some_and(|route| route.contains("diagnosticProfile")),
+            "the disclosure must name the full-profile escape hatch: {withheld}"
+        );
+
+        // The same findings under the full profile withhold nothing: a
+        // present zero-count entry, no route.
+        let (full_service, _full_socket) =
+            LspService::new(|client| Backend::new(client, repo_root.clone()));
+        let full_backend = full_service.inner();
+        let mut full_snapshot = snapshot_for_outcome(incomplete_outcome(1)?, None);
+        full_snapshot.diagnostic_profile = LspDiagnosticProfile::Full;
+        *full_backend
+            .latest_analysis
+            .lock()
+            .map_err(|error| format!("latest analysis lock poisoned: {error}"))? =
+            Some(std::sync::Arc::new(full_snapshot));
+        let full_payload = full_backend.analysis_status_payload_for_health(&health);
+        assert_eq!(
+            full_payload["withheld_findings"]["count"], 0,
+            "{full_payload:#}"
+        );
+        assert_eq!(
+            full_payload["withheld_findings"]["recovery_route"],
+            serde_json::Value::Null
+        );
+
+        // No snapshot at all: the disclosure is absent, not zero.
+        let (empty_service, _empty_socket) =
+            LspService::new(|client| Backend::new(client, repo_root));
+        let empty_payload = empty_service
+            .inner()
+            .analysis_status_payload_for_health(&health);
+        assert_eq!(
+            empty_payload["withheld_findings"],
+            serde_json::Value::Null,
+            "{empty_payload:#}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn partial_scope_precedes_incomplete_outcome_and_retains_it() -> Result<(), String> {
         let snapshot = snapshot_for_outcome(incomplete_outcome(0)?, Some(partial_scope_fixture()));
@@ -5895,6 +7594,45 @@ mod top_limitation_selection_tests {
             value["why_not_actionable"]
                 .as_str()
                 .is_some_and(|text| text.contains("at least 2 changed file(s)"))
+        );
+        let why = value["why_not_actionable"].as_str().unwrap_or_default();
+        assert!(
+            why.contains("raise RIPR_PARTIAL_DIFF_FILE_BUDGET to at least 2, then re-run"),
+            "the LSP limitation must name the stopping budget and its size: {why}"
+        );
+        assert!(!why.contains("and/or"), "no generic budget wording: {why}");
+        Ok(())
+    }
+
+    #[test]
+    fn partial_scope_with_no_known_uninspected_files_never_says_at_least_zero() -> Result<(), String>
+    {
+        let mut scope = partial_scope_fixture();
+        scope.uninspected_files_lower_bound = 0;
+        scope.uninspected_changed_lines_lower_bound = 0;
+        scope.stop_reason = PartialDiffStopReason::LineBudgetExceededOnFirstFile;
+        scope.selected_changed_lines = 14;
+        scope.next_file_changed_lines = None;
+        let snapshot = snapshot_for_outcome(incomplete_outcome(0)?, Some(scope));
+        let health = AnalysisHealth {
+            snapshot_id: Some("snapshot:lsp-fixture".to_string()),
+            snapshot_run_status: Some(PartialDiffScope::RUN_STATUS.to_string()),
+            state: AnalysisAttemptState::Succeeded,
+            ..AnalysisHealth::default()
+        };
+        let authority = WorkspaceRootAuthority::selected(PathBuf::from("C:").join("repo"));
+        let value = top_limitation_dto(&health, Some(&snapshot), &authority).into_json();
+
+        assert_eq!(value["status"], "limited_partial_scope");
+        let why = value["why_not_actionable"].as_str().unwrap_or_default();
+        assert!(!why.contains("at least 0"), "{why}");
+        assert!(
+            why.contains("every changed file ripr's language adapters read was selected, but the budget was exceeded"),
+            "{why}"
+        );
+        assert!(
+            why.contains("raise RIPR_PARTIAL_DIFF_LINE_BUDGET to at least 14, then re-run"),
+            "a first-file line stop names the line budget first: {why}"
         );
         Ok(())
     }
@@ -5964,6 +7702,14 @@ fn workspace_status_rejection_repair(
             "regenerate_gap_artifacts",
             "gap artifacts are stale; rerun ripr check to refresh",
         ),
+        GapArtifactRejection::StaleSubject(_) => (
+            "regenerate_gap_artifacts",
+            "gap artifacts describe other source file contents; regenerate them with ripr reports gap-ledger or cargo xtask lane1-evidence-audit",
+        ),
+        GapArtifactRejection::UnverifiableSubject(_) => (
+            "regenerate_gap_artifacts",
+            "gap artifacts carry no usable source_subject stamp; regenerate them with ripr reports gap-ledger or cargo xtask lane1-evidence-audit",
+        ),
         GapArtifactRejection::WrongRoot(_) => (
             "verify_workspace_root",
             "gap artifact root does not match workspace root",
@@ -6023,7 +7769,9 @@ fn limitation_sample_sources(
         | GapArtifactRejection::UnsupportedKind(s)
         | GapArtifactRejection::UnsupportedSchema(s)
         | GapArtifactRejection::UnsupportedStaticLimitKind(s)
-        | GapArtifactRejection::WrongRoot(s) => vec![s.clone()],
+        | GapArtifactRejection::WrongRoot(s)
+        | GapArtifactRejection::StaleSubject(s) => vec![s.clone()],
+        GapArtifactRejection::UnverifiableSubject(reason) => vec![(*reason).to_string()],
         GapArtifactRejection::MalformedArtifact(_)
         | GapArtifactRejection::MissingIdentity
         | GapArtifactRejection::StaleArtifact => vec![],
@@ -6044,6 +7792,8 @@ fn limitation_non_claims(category: &str) -> Vec<&'static str> {
             "path resolution required before exposure can be assessed",
         ],
         "stale_artifact"
+        | "stale_subject"
+        | "unverifiable_subject"
         | "missing_identity"
         | "malformed_artifact"
         | "malformed_command_payload" => vec![
@@ -6074,19 +7824,82 @@ fn collect_gap_record_context_packet(
         .filter(|value| !value.is_empty())
         .unwrap_or(DEFAULT_GAP_DECISION_LEDGER_OUT);
     let ledger_path = absolute_join(root, Path::new(ledger_arg));
-    let contents = fs::read_to_string(&ledger_path).ok()?;
-    let records = parse_gap_records_json(&contents).ok()?;
+    // Client-supplied path: confine reads to the workspace root so a client
+    // message cannot make the long-running server read arbitrary files.
+    // `absolute_join` passes absolute paths through unchanged, so an
+    // out-of-root absolute path or a symlink escape is rejected here
+    // (canonicalizing both sides, like `validate_agent_brief_diff_path`).
+    if !path_is_within_root(root, &ledger_path) {
+        return None;
+    }
+    let contents = match read_artifact_capped(&ledger_path) {
+        CappedArtifactRead::Contents(contents) => contents,
+        // Absent ledger: no packet is available, which is a normal state.
+        CappedArtifactRead::Missing => return None,
+        // Present but oversize/unreadable: typed sentinel, not a silent None.
+        CappedArtifactRead::Unusable => {
+            return Some(repair_packet_sentinel(MALFORMED_GAP_LEDGER_REASON));
+        }
+    };
+    let records = match parse_gap_records_json_for_root(&contents, Some(root)) {
+        Ok(records) => records,
+        Err(_) => return Some(repair_packet_sentinel(MALFORMED_GAP_LEDGER_REASON)),
+    };
     let record = records
         .iter()
         .find(|record| gap_record_matches(record, gap_id))?;
+    if let Some(sentinel) = ledger_source_subject_sentinel(root, &contents) {
+        return Some(sentinel);
+    }
     let rendered = render_agent_gap_record_packet_json(&display_path(&ledger_path), record).ok()?;
     serde_json::from_str(&rendered).ok()
+}
+
+/// #4544: a command-time packet read re-checks the ledger's `source_subject`
+/// stamp through the shared validator, so a packet computed for other file
+/// contents is a typed stale disclosure instead of a current repair route.
+fn ledger_source_subject_sentinel(root: &Path, contents: &str) -> Option<LSPAny> {
+    let Ok(artifact) = serde_json::from_str::<serde_json::Value>(contents) else {
+        return Some(repair_packet_sentinel(MALFORMED_GAP_LEDGER_REASON));
+    };
+    source_subject_sentinel(
+        root,
+        &artifact,
+        super::gap_artifacts::GapArtifactKind::GapDecisionLedger,
+        "gap-decision-ledger.json",
+        "ripr reports gap-ledger",
+    )
+}
+
+fn source_subject_sentinel(
+    root: &Path,
+    artifact: &serde_json::Value,
+    kind: super::gap_artifacts::GapArtifactKind,
+    artifact_name: &str,
+    regenerate: &str,
+) -> Option<LSPAny> {
+    use super::gap_artifacts::GapArtifactRejection;
+    match super::gap_artifacts::validate_source_subject(artifact, kind, root) {
+        Ok(()) => None,
+        Err(GapArtifactRejection::StaleSubject(path)) => Some(repair_packet_sentinel(&format!(
+            "stale_subject: {path} changed since {artifact_name} was written; regenerate it for the current source with {regenerate}"
+        ))),
+        Err(GapArtifactRejection::UnverifiableSubject(reason)) => {
+            Some(repair_packet_sentinel(&format!(
+                "unverifiable_subject: {reason}: {artifact_name} cannot be matched to the current source files; regenerate it with {regenerate}"
+            )))
+        }
+        Err(other) => Some(repair_packet_sentinel(other.as_str())),
+    }
 }
 
 const DEFAULT_ACTIONABLE_GAPS_OUT: &str = "target/ripr/reports/actionable-gaps.json";
 
 impl Backend {
-    fn collect_repair_packet(&self, arguments: &[LSPAny]) -> Option<LSPAny> {
+    /// `gap_id` is already validated by `optional_id_argument`: `None` means
+    /// the caller asked for the top packet, never that a malformed id was
+    /// dropped.
+    fn collect_repair_packet(&self, gap_id: Option<&str>) -> Option<LSPAny> {
         let health = self.analysis_health_snapshot();
         if !health.allows_current_repairs() {
             return Some(repair_packet_sentinel("analysis_snapshot_stale"));
@@ -6098,26 +7911,21 @@ impl Backend {
             )));
         }
         let root = self.root.lock().ok()?.clone();
-        let gap_id_arg = arguments
-            .first()
-            .and_then(|v| v.as_object())
-            .and_then(|obj| obj.get("gap_id"))
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(ToOwned::to_owned);
 
         // Try actionable-gaps.json first (preferred: projection-validated).
         let actionable_path = absolute_join(&root, Path::new(DEFAULT_ACTIONABLE_GAPS_OUT));
         if let Some(result) =
-            collect_repair_packet_from_actionable_gaps(&actionable_path, gap_id_arg.as_deref())
+            collect_repair_packet_from_actionable_gaps(&root, &actionable_path, gap_id)
         {
             return Some(result);
         }
 
         // Fallback: gap-decision-ledger.json using the existing GapRecord machinery.
         let ledger_path = absolute_join(&root, Path::new(DEFAULT_GAP_DECISION_LEDGER_OUT));
-        collect_repair_packet_from_ledger(&ledger_path, gap_id_arg.as_deref())
+        collect_repair_packet_from_ledger(&root, &ledger_path, gap_id)
+            // Neither source holds a packet: say so and name the route,
+            // instead of a null the client can only render as "no response".
+            .or_else(|| Some(repair_packet_sentinel(&no_repair_packet_reason(gap_id))))
     }
 
     fn collect_top_limitation(&self) -> Option<LSPAny> {
@@ -6243,7 +8051,7 @@ fn collect_receipt_status_fields(
     let ledger_path =
         root.join(crate::output::gap_decision_ledger::DEFAULT_GAP_DECISION_LEDGER_OUT);
     let (receipt_status_val, missing_receipt_reason_val) =
-        receipt_status_from_ledger(&ledger_path, artifact);
+        receipt_status_from_ledger(root, &ledger_path, artifact);
 
     // copy_receipt_command: only for complete packets (verify + receipt
     // commands both present). Incomplete packets → not_available.
@@ -6282,6 +8090,7 @@ fn collect_receipt_status_fields(
 /// Read the gap-decision-ledger to get the real receipt movement + missing_reason
 /// for the given gap artifact. Falls back to not_available on any read/parse error.
 fn receipt_status_from_ledger(
+    root: &std::path::Path,
     ledger_path: &std::path::Path,
     artifact: &super::gap_artifacts::ValidatedGapArtifact,
 ) -> (serde_json::Value, serde_json::Value) {
@@ -6296,7 +8105,10 @@ fn receipt_status_from_ledger(
             );
         }
     };
-    let records = match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
+    let records = match crate::output::gap_decision_ledger::parse_gap_records_json_for_root(
+        &contents,
+        Some(root),
+    ) {
         Ok(r) => r,
         Err(_) => {
             return (
@@ -6390,15 +8202,13 @@ fn read_latest_attempt_outcome(
     let entry = if canonical_gap_id.is_empty() {
         attempts.first()
     } else {
-        attempts
-            .iter()
-            .find(|entry| {
-                entry
-                    .get("canonical_gap_id")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|cid| cid == canonical_gap_id)
-            })
-            .or_else(|| attempts.first())
+        // Another gap's attempt is not this gap's outcome.
+        attempts.iter().find(|entry| {
+            entry
+                .get("canonical_gap_id")
+                .and_then(|v| v.as_str())
+                .is_some_and(|cid| cid == canonical_gap_id)
+        })
     };
 
     entry
@@ -6483,19 +8293,35 @@ fn workspace_receipt_status_report_paths() -> serde_json::Value {
     })
 }
 
-fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>) -> Option<LSPAny> {
-    let contents = fs::read_to_string(path).ok()?;
-    let report: serde_json::Value = serde_json::from_str(&contents).ok()?;
+fn collect_repair_packet_from_actionable_gaps(
+    root: &Path,
+    path: &Path,
+    gap_id: Option<&str>,
+) -> Option<LSPAny> {
+    let contents = match read_artifact_capped(path) {
+        CappedArtifactRead::Contents(contents) => contents,
+        // Absent artifact: falling back to the next packet source is honest.
+        CappedArtifactRead::Missing => return None,
+        // Present but oversize/unreadable: typed sentinel so the client can
+        // distinguish a corrupt source from "no packet"; no fallback.
+        CappedArtifactRead::Unusable => {
+            return Some(repair_packet_sentinel(MALFORMED_ACTIONABLE_GAPS_REASON));
+        }
+    };
+    let report: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(report) => report,
+        Err(_) => return Some(repair_packet_sentinel(MALFORMED_ACTIONABLE_GAPS_REASON)),
+    };
     let packets = report.get("packets").and_then(|v| v.as_array())?;
+    // A requested gap must match exactly. Answering an unknown id with the
+    // first packet handed out another gap's repair instructions; `None` lets
+    // the caller try the ledger, then say which gap has no packet.
     let packet = if let Some(id) = gap_id {
-        packets
-            .iter()
-            .find(|p| {
-                p.get("canonical_gap_id")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|cid| cid == id)
-            })
-            .or_else(|| packets.first())?
+        packets.iter().find(|p| {
+            p.get("canonical_gap_id")
+                .and_then(|v| v.as_str())
+                .is_some_and(|cid| cid == id)
+        })?
     } else {
         packets
             .iter()
@@ -6517,6 +8343,15 @@ fn collect_repair_packet_from_actionable_gaps(path: &Path, gap_id: Option<&str>)
         return Some(repair_packet_sentinel(
             "gap is not actionable in actionable-gaps.json",
         ));
+    }
+    if let Some(sentinel) = source_subject_sentinel(
+        root,
+        &report,
+        super::gap_artifacts::GapArtifactKind::ActionableGaps,
+        "actionable-gaps.json",
+        "cargo xtask lane1-evidence-audit",
+    ) {
+        return Some(sentinel);
     }
 
     validate_and_render_actionable_gap_packet(packet)
@@ -6646,9 +8481,24 @@ fn validate_and_render_actionable_gap_packet(packet: &serde_json::Value) -> Opti
     serde_json::from_value(result).ok()
 }
 
-fn collect_repair_packet_from_ledger(path: &Path, gap_id: Option<&str>) -> Option<LSPAny> {
-    let contents = fs::read_to_string(path).ok()?;
-    let records = parse_gap_records_json(&contents).ok()?;
+fn collect_repair_packet_from_ledger(
+    root: &Path,
+    path: &Path,
+    gap_id: Option<&str>,
+) -> Option<LSPAny> {
+    let contents = match read_artifact_capped(path) {
+        CappedArtifactRead::Contents(contents) => contents,
+        // Absent artifact: no packet is available, which is a normal state.
+        CappedArtifactRead::Missing => return None,
+        // Present but oversize/unreadable: typed sentinel, not a silent None.
+        CappedArtifactRead::Unusable => {
+            return Some(repair_packet_sentinel(MALFORMED_GAP_LEDGER_REASON));
+        }
+    };
+    let records = match parse_gap_records_json_for_root(&contents, Some(root)) {
+        Ok(records) => records,
+        Err(_) => return Some(repair_packet_sentinel(MALFORMED_GAP_LEDGER_REASON)),
+    };
     let record = if let Some(id) = gap_id {
         records
             .iter()
@@ -6656,6 +8506,9 @@ fn collect_repair_packet_from_ledger(path: &Path, gap_id: Option<&str>) -> Optio
     } else {
         records.iter().find(|r| r.gap_state == "actionable")?
     };
+    if let Some(sentinel) = ledger_source_subject_sentinel(root, &contents) {
+        return Some(sentinel);
+    }
 
     // Use the existing validator for completeness gate.
     if let Err(reason) = validate_agent_gap_record_packet(record) {
@@ -6716,6 +8569,25 @@ fn collect_repair_packet_from_ledger(path: &Path, gap_id: Option<&str>) -> Optio
     serde_json::from_value(result).ok()
 }
 
+fn no_repair_packet_reason(gap_id: Option<&str>) -> String {
+    let subject = match gap_id {
+        Some(id) => {
+            let mut echoed: String = id.chars().take(ECHOED_ID_MAX_CHARS).collect();
+            if echoed.len() < id.len() {
+                echoed.push_str("...");
+            }
+            format!("no repair packet for gap `{echoed}`")
+        }
+        None => "no repair packet".to_string(),
+    };
+    format!(
+        "{subject}: neither {DEFAULT_ACTIONABLE_GAPS_OUT} nor {DEFAULT_GAP_DECISION_LEDGER_OUT} \
+holds one; run `ripr pilot --root .` for seams with their repair commands, or write the gap \
+ledger with `ripr reports gap-ledger --check-output PATH` from saved `ripr check --format json` \
+output"
+    )
+}
+
 fn repair_packet_sentinel(reason: &str) -> LSPAny {
     serde_json::json!({
         "schema_version": "0.1",
@@ -6726,11 +8598,22 @@ fn repair_packet_sentinel(reason: &str) -> LSPAny {
     })
 }
 
+/// Typed-degradation reasons for a present-but-unparseable packet source.
+/// Vocabulary mirrors `limitation_non_claims("malformed_artifact")`: the
+/// client must be able to tell "no packet" apart from "packet source corrupt;
+/// artifact regeneration required before exposure can be assessed".
+const MALFORMED_ACTIONABLE_GAPS_REASON: &str = "actionable-gaps.json is malformed; artifact regeneration required before exposure can be assessed";
+const MALFORMED_GAP_LEDGER_REASON: &str = "gap-decision-ledger.json is malformed; artifact regeneration required before exposure can be assessed";
+
 fn gap_record_matches(record: &GapRecord, gap_id: &str) -> bool {
     record.gap_id == gap_id || record.canonical_gap_id == gap_id
 }
 
 fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) -> LSPAny {
+    // #4001/#3999: loop commands bind the snapshot's selected workspace root,
+    // not the language-server process working directory; the packet's
+    // `root` field stays the portable role.
+    let root = loop_commands::bound_root(&snapshot.root.to_string_lossy());
     let seam = &entry.seam;
     let evidence = &entry.evidence;
     let seam_id = seam.id().as_str();
@@ -6798,30 +8681,34 @@ fn evidence_context_packet(snapshot: &AnalysisSnapshot, entry: &ClassifiedSeam) 
             "candidate_value": outline.candidate_value,
             "assertion_shape": outline.assertion_shape,
         },
+        // The repair start only for a seam `agent repair` would accept (the
+        // fail-closed repair-packet flip, RIPR-SPEC-0087 §8, plus a
+        // test-surface target); `null` otherwise (#3906).
+        "repair_command": repair_start_command_for(entry, &root),
         "agent_packet_command": loop_commands::agent_packet_command(
-            ".",
+            &root,
             seam_id,
             loop_commands::EDITOR_AGENT_PACKET_ARTIFACT,
         ),
         "agent_brief_command": loop_commands::agent_brief_command(
-            ".",
+            &root,
             seam_id,
             loop_commands::EDITOR_AGENT_BRIEF_ARTIFACT,
         ),
         "after_snapshot_command": loop_commands::check_repo_exposure_command_with_base(
-            ".",
+            &root,
             snapshot.base.as_deref(),
             snapshot.mode.as_str(),
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
         ),
         "verify_command": loop_commands::agent_verify_command(
-            ".",
+            &root,
             loop_commands::PILOT_BEFORE_SNAPSHOT_ARTIFACT,
             loop_commands::PILOT_AFTER_SNAPSHOT_ARTIFACT,
             Some(loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT),
         ),
         "receipt_command": loop_commands::agent_receipt_command(
-            ".",
+            &root,
             loop_commands::EDITOR_AGENT_VERIFY_ARTIFACT,
             seam_id,
             Some(loop_commands::EDITOR_AGENT_RECEIPT_ARTIFACT),
@@ -6848,6 +8735,65 @@ mod gap_record_context_tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     static TEMP_ROOT_SEQUENCE: AtomicUsize = AtomicUsize::new(0);
+
+    fn top_gap_named(canonical_gap_id: &str) -> super::super::gap_artifacts::ValidatedGapArtifact {
+        use super::super::gap_artifacts::{
+            GapArtifactIdentity, GapArtifactKind, ValidatedGapArtifact,
+        };
+        ValidatedGapArtifact {
+            kind: GapArtifactKind::ActionableGaps,
+            root: None,
+            identities: vec![GapArtifactIdentity {
+                canonical_gap_id: Some(canonical_gap_id.to_string()),
+                seam_id: None,
+                finding_id: None,
+            }],
+            language: None,
+            language_status: None,
+            gap_state: None,
+            related_paths: Vec::new(),
+            verify_commands: Vec::new(),
+            receipt_commands: Vec::new(),
+            verify_command_specs: Vec::new(),
+            receipt_command_specs: Vec::new(),
+            static_limit_kinds: Vec::new(),
+            has_text_static_limit: false,
+        }
+    }
+
+    #[test]
+    fn latest_attempt_outcome_never_borrows_another_gaps_attempt() -> Result<(), String> {
+        let root = temp_root()?;
+        let ledger = root.join("target/ripr/reports/swarm-attempt-ledger.json");
+        fs::write(
+            &ledger,
+            serde_json::json!({
+                "latest_attempts": [
+                    { "canonical_gap_id": "gap:rust:other", "outcome": "evidence_improved" },
+                    { "canonical_gap_id": "gap:rust:top", "outcome": "no_movement" }
+                ]
+            })
+            .to_string(),
+        )
+        .map_err(|err| format!("write attempt ledger failed: {err}"))?;
+
+        // The top gap's own attempt is found even when it is not first.
+        let top = top_gap_named("gap:rust:top");
+        assert_eq!(
+            read_latest_attempt_outcome(&ledger, Some(&top)),
+            serde_json::json!("no_movement")
+        );
+        // A gap with no attempt of its own has no outcome; the first entry
+        // belongs to another gap.
+        let unattempted = top_gap_named("gap:rust:never-attempted");
+        assert_eq!(
+            read_latest_attempt_outcome(&ledger, Some(&unattempted)),
+            serde_json::json!("not_available")
+        );
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
 
     #[test]
     fn collect_context_packet_for_gap_id_reads_explicit_ledger() -> Result<(), String> {
@@ -6950,10 +8896,77 @@ mod gap_record_context_tests {
         Ok(root)
     }
 
+    /// Writes the fixture ledger stamped against `root` as the producer does
+    /// (#4544); the fixture's source files are absent, so the stamp is current.
     fn write_gap_ledger(root: &Path) -> Result<(), String> {
         let path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
-        fs::write(path, gap_ledger_json())
+        let ledger = serde_json::from_str::<serde_json::Value>(gap_ledger_json())
+            .map_err(|err| format!("parse fixture ledger failed: {err}"))?;
+        let stamped = crate::output::gap_source_subject::with_source_subject_for_test(root, ledger);
+        fs::write(path, stamped.to_string())
             .map_err(|err| format!("write gap ledger in {} failed: {err}", root.display()))
+    }
+
+    /// #4544: the command-time context and repair packet readers re-check
+    /// the ledger stamp; an edited anchor file or a missing stamp returns a
+    /// typed sentinel instead of a current-looking packet.
+    #[test]
+    fn gap_packets_disclose_stale_or_unverifiable_ledger_subject() -> Result<(), String> {
+        let root = temp_root()?;
+        let result = (|| {
+            write_gap_ledger(&root)?;
+            let args_value = serde_json::json!({
+                "gap_id": "gap:pr:pricing:threshold-boundary",
+                "gap_ledger": DEFAULT_GAP_DECISION_LEDGER_OUT,
+            });
+            let args = args_value
+                .as_object()
+                .ok_or_else(|| "expected object args".to_string())?;
+            let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+            let gap_id = "gap:pr:pricing:threshold-boundary";
+
+            let current = collect_gap_record_context_packet(&root, args, gap_id)
+                .ok_or_else(|| "expected a current packet".to_string())?;
+            if current["status"] == "not_actionable_or_incomplete" {
+                return Err(format!(
+                    "a current ledger must render its packet: {current}"
+                ));
+            }
+
+            // The anchor file appears after the ledger stamped it as absent.
+            fs::create_dir_all(root.join("src")).map_err(|err| err.to_string())?;
+            fs::write(root.join("src/pricing.rs"), "pub fn price() {}\n")
+                .map_err(|err| err.to_string())?;
+            for packet in [
+                collect_gap_record_context_packet(&root, args, gap_id),
+                collect_repair_packet_from_ledger(&root, &ledger_path, Some(gap_id)),
+            ] {
+                let packet = packet.ok_or_else(|| "expected a stale sentinel".to_string())?;
+                let reason = packet["reason"].as_str().unwrap_or_default();
+                if packet["status"] != "not_actionable_or_incomplete"
+                    || !reason.starts_with("stale_subject: src/pricing.rs changed")
+                    || !reason.contains("ripr reports gap-ledger")
+                {
+                    return Err(format!("unexpected stale packet: {packet}"));
+                }
+            }
+
+            // A ledger without a stamp cannot be matched to the workspace.
+            fs::write(&ledger_path, gap_ledger_json()).map_err(|err| err.to_string())?;
+            let packet = collect_gap_record_context_packet(&root, args, gap_id)
+                .ok_or_else(|| "expected an unverifiable sentinel".to_string())?;
+            if !packet["reason"]
+                .as_str()
+                .unwrap_or_default()
+                .starts_with("unverifiable_subject: source_subject_missing")
+            {
+                return Err(format!("unexpected unstamped packet: {packet}"));
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
     }
 
     fn gap_ledger_json() -> &'static str {
@@ -7050,8 +9063,8 @@ mod gap_record_context_tests {
     }
 
     #[test]
-    fn collect_gap_record_context_packet_with_malformed_ledger_returns_none() -> Result<(), String>
-    {
+    fn collect_gap_record_context_packet_with_malformed_ledger_returns_sentinel()
+    -> Result<(), String> {
         let root = temp_root()?;
         let path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
         fs::write(path, "{ not valid json")
@@ -7065,11 +9078,128 @@ mod gap_record_context_tests {
             .as_object()
             .ok_or_else(|| "expected object args".to_string())?;
 
+        let packet =
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .ok_or_else(|| "expected malformed-artifact sentinel, not null".to_string())?;
+        assert_eq!(packet["kind"], "repair_packet");
+        assert_eq!(packet["status"], "not_actionable_or_incomplete");
+        assert_eq!(packet["reason"], MALFORMED_GAP_LEDGER_REASON);
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_rejects_out_of_root_ledger() -> Result<(), String> {
+        let root = temp_root()?;
+        // A client-supplied absolute path outside the workspace root must not
+        // be read, even when the file exists and is a valid ledger.
+        let outside = std::env::temp_dir().join(format!(
+            "ripr-lsp-gap-record-outside-{}-{}",
+            std::process::id(),
+            TEMP_ROOT_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&outside)
+            .map_err(|err| format!("create outside dir {} failed: {err}", outside.display()))?;
+        let outside_ledger = outside.join("gap-decision-ledger.json");
+        fs::write(&outside_ledger, gap_ledger_json()).map_err(|err| {
+            format!(
+                "write outside ledger {} failed: {err}",
+                outside_ledger.display()
+            )
+        })?;
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "source_currentness": "candidate_current",
+            "gap_ledger": outside_ledger,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
         assert!(
             collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
                 .is_none()
         );
 
+        fs::remove_dir_all(&outside)
+            .map_err(|err| format!("remove outside dir {} failed: {err}", outside.display()))?;
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_accepts_in_root_absolute_ledger() -> Result<(), String> {
+        let root = temp_root()?;
+        write_gap_ledger(&root)?;
+        // An absolute path that stays at-or-below the root remains readable.
+        let absolute_ledger = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "source_currentness": "candidate_current",
+            "gap_ledger": absolute_ledger,
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        let packet =
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .ok_or_else(|| "expected gap packet".to_string())?;
+        assert_eq!(packet["source"], "gap_decision_ledger");
+
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn collect_gap_record_context_packet_rejects_symlink_escape_ledger() -> Result<(), String> {
+        let root = temp_root()?;
+        let outside = std::env::temp_dir().join(format!(
+            "ripr-lsp-gap-record-symlink-outside-{}-{}",
+            std::process::id(),
+            TEMP_ROOT_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::create_dir_all(&outside)
+            .map_err(|err| format!("create outside dir {} failed: {err}", outside.display()))?;
+        let outside_ledger = outside.join("gap-decision-ledger.json");
+        fs::write(&outside_ledger, gap_ledger_json()).map_err(|err| {
+            format!(
+                "write outside ledger {} failed: {err}",
+                outside_ledger.display()
+            )
+        })?;
+        let link = root.join("linked-ledger");
+        #[cfg(unix)]
+        let link_result = std::os::unix::fs::symlink(&outside_ledger, &link);
+        #[cfg(windows)]
+        let link_result = std::os::windows::fs::symlink_file(&outside_ledger, &link);
+        if let Err(err) = link_result {
+            eprintln!("skipping symlink escape test: {err}");
+            let _ = fs::remove_dir_all(&outside);
+            let _ = fs::remove_dir_all(&root);
+            return Ok(());
+        }
+        let args_value = serde_json::json!({
+            "gap_id": "gap:pr:pricing:threshold-boundary",
+            "source_currentness": "candidate_current",
+            "gap_ledger": "linked-ledger",
+        });
+        let args = args_value
+            .as_object()
+            .ok_or_else(|| "expected object args".to_string())?;
+
+        assert!(
+            collect_gap_record_context_packet(&root, args, "gap:pr:pricing:threshold-boundary")
+                .is_none(),
+            "symlink escape out of the workspace root must be rejected"
+        );
+
+        fs::remove_dir_all(&outside)
+            .map_err(|err| format!("remove outside dir {} failed: {err}", outside.display()))?;
         fs::remove_dir_all(&root)
             .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
         Ok(())
@@ -7122,20 +9252,88 @@ mod gap_record_context_tests {
         Ok(())
     }
 
-    #[test]
-    fn context_arguments_returns_none_for_empty_argument_list() {
-        assert!(context_arguments(&[]).is_none());
+    /// Parse miss for unreadably shaped arguments: `None` here is a bad
+    /// request, not "no evidence". Dispatch converts it to InvalidParams
+    /// (#4358) instead of JSON-RPC `result: null`.
+    fn assert_context_arguments_parse_miss_is_typed_invalid_params(
+        arguments: &[LSPAny],
+        command: &str,
+        keys: &[&'static str],
+        shapes: &str,
+    ) -> Result<(), String> {
+        if context_arguments(arguments).is_some() {
+            return Err(
+                "unreadably shaped args are a parse miss at `context_arguments`, not a packet"
+                    .to_string(),
+            );
+        }
+        let error = match context_command_target(command, arguments, keys, shapes) {
+            Ok(target) => {
+                return Err(format!(
+                    "dispatch must convert a parse miss into InvalidParams, got target {target:?}"
+                ));
+            }
+            Err(error) => error,
+        };
+        if error.code != tower_lsp_server::jsonrpc::ErrorCode::InvalidParams {
+            return Err(format!(
+                "expected InvalidParams, got code {:?}: {}",
+                error.code, error.message
+            ));
+        }
+        if !(error.message.contains(command) && error.message.contains("expects one object")) {
+            return Err(format!(
+                "error must name the command and accepted object shape: {}",
+                error.message
+            ));
+        }
+        Ok(())
     }
 
     #[test]
-    fn context_arguments_returns_none_when_first_argument_is_not_an_object() {
+    fn context_arguments_returns_none_for_empty_argument_list() -> Result<(), String> {
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            &[],
+            COLLECT_CONTEXT_COMMAND,
+            &["gap_id", "seam_id", "finding_id"],
+            COLLECT_CONTEXT_ARGUMENT_SHAPES,
+        )?;
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            &[],
+            COLLECT_EVIDENCE_CONTEXT_COMMAND,
+            &["seam_id"],
+            COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES,
+        )
+    }
+
+    #[test]
+    fn context_arguments_returns_none_when_first_argument_is_not_an_object() -> Result<(), String> {
         let arg = serde_json::Value::String("not-an-object".to_string());
-        assert!(context_arguments(std::slice::from_ref(&arg)).is_none());
+        let arguments = std::slice::from_ref(&arg);
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            arguments,
+            COLLECT_CONTEXT_COMMAND,
+            &["gap_id", "seam_id", "finding_id"],
+            COLLECT_CONTEXT_ARGUMENT_SHAPES,
+        )?;
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            arguments,
+            COLLECT_EVIDENCE_CONTEXT_COMMAND,
+            &["seam_id"],
+            COLLECT_EVIDENCE_CONTEXT_ARGUMENT_SHAPES,
+        )?;
+        let null_arg = serde_json::Value::Null;
+        assert_context_arguments_parse_miss_is_typed_invalid_params(
+            std::slice::from_ref(&null_arg),
+            COLLECT_CONTEXT_COMMAND,
+            &["gap_id", "seam_id", "finding_id"],
+            COLLECT_CONTEXT_ARGUMENT_SHAPES,
+        )
     }
 
     #[test]
     fn gap_record_matches_compares_pr_local_and_canonical_ids() -> Result<(), String> {
-        let records = parse_gap_records_json(gap_ledger_json())
+        let records = crate::output::gap_decision_ledger::parse_gap_records_json(gap_ledger_json())
             .map_err(|err| format!("parse fixture ledger failed: {err}"))?;
         let record = records
             .first()
@@ -7222,6 +9420,190 @@ mod gap_record_context_tests {
 #[cfg(test)]
 mod push_budget_disclosure_tests {
     use super::*;
+
+    #[test]
+    fn omitted_diagnostics_are_visible_without_becoming_actionable() -> Result<(), String> {
+        let uri = push_test_uri()?;
+        let diagnostics = (0..51)
+            .map(|index| headline_diagnostic(&format!("diag:{index:02}"), true))
+            .collect::<Vec<_>>();
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(diagnostics.clone())?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "snapshot:one",
+            "evidence:one",
+        );
+        let omissions = selection.document_omissions();
+        let omission = omissions.get(uri.as_str()).ok_or("missing omission")?;
+        assert_eq!(
+            (
+                omission.selected_count,
+                omission.omitted_count,
+                omission.total_count
+            ),
+            (50, 1, 51)
+        );
+        let mut published = selection.diagnostics_for_document(uri.as_str(), &diagnostics);
+        published.push(delivery_omission_diagnostic(omission));
+        assert_eq!(published.len(), 51);
+        assert_eq!(
+            rollback_push_diagnostics(&uri, &diagnostics, Some(&selection), Some(omission), false),
+            published,
+            "rollback must restore the bounded publication, not 51 raw findings plus a summary"
+        );
+        assert!(
+            rollback_push_diagnostics(&uri, &diagnostics, Some(&selection), Some(omission), true)
+                .is_empty(),
+            "quarantined buffers remain withdrawn on rollback"
+        );
+        let limitation = published.last().ok_or("missing limitation")?;
+        assert_eq!(
+            limitation.code,
+            Some(tower_lsp_server::ls_types::NumberOrString::String(
+                "ripr-diagnostic-budget-omitted".to_string()
+            ))
+        );
+        assert_eq!(
+            limitation
+                .data
+                .as_ref()
+                .and_then(|data| data.get("omitted_count")),
+            Some(&serde_json::json!(1))
+        );
+        assert_eq!(
+            limitation
+                .data
+                .as_ref()
+                .and_then(|data| data.get("retrieval_route")),
+            Some(&serde_json::json!("ripr/listActionableItems"))
+        );
+        assert!(
+            limitation
+                .data
+                .as_ref()
+                .and_then(|data| data.get("headline_eligible"))
+                .is_none()
+        );
+
+        let complete = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(diagnostics[..50].to_vec())?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "snapshot:two",
+            "evidence:two",
+        );
+        assert!(
+            complete.document_omissions().is_empty(),
+            "a complete refresh retracts the limitation"
+        );
+        assert_eq!(
+            complete
+                .diagnostics_for_document(uri.as_str(), &diagnostics[..50])
+                .len(),
+            50
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn byte_omission_excludes_profile_filtered() -> Result<(), String> {
+        let uri = push_test_uri()?;
+        let diagnostics = vec![
+            headline_diagnostic("diag:eligible-a", true),
+            headline_diagnostic("diag:eligible-b", true),
+            headline_diagnostic("diag:filtered", false),
+        ];
+        let first_bytes = serde_json::to_vec(&diagnostics[0])
+            .map_err(|error| error.to_string())?
+            .len();
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(diagnostics)?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget {
+                max_serialized_bytes: first_bytes,
+                ..Default::default()
+            },
+            "snapshot:bytes",
+            "evidence:bytes",
+        );
+        let omissions = selection.document_omissions();
+        let omission = omissions.get(uri.as_str()).ok_or("missing byte omission")?;
+        assert_eq!(omission.scope, "workspace");
+        assert_eq!(
+            (
+                omission.selected_count,
+                omission.omitted_count,
+                omission.total_count,
+            ),
+            (1, 1, 2),
+            "profile-filtered evidence is not a delivery omission"
+        );
+        assert_eq!(omission.byte_budget, first_bytes);
+
+        let filtered_only = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &single_document_batches(vec![headline_diagnostic("diag:filtered", false)])?,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget::default(),
+            "snapshot:filtered",
+            "evidence:filtered",
+        );
+        assert!(filtered_only.document_omissions().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn workspace_budget_reports_document_with_zero_selected() -> Result<(), String> {
+        let first: Uri = "file:///workspace/src/a.rs"
+            .parse()
+            .map_err(|error| format!("parse first URI: {error}"))?;
+        let second: Uri = "file:///workspace/src/b.rs"
+            .parse()
+            .map_err(|error| format!("parse second URI: {error}"))?;
+        let by_uri = BTreeMap::from([
+            (first.clone(), vec![headline_diagnostic("diag:a", true)]),
+            (second.clone(), vec![headline_diagnostic("diag:b", true)]),
+        ]);
+        let selection = crate::lsp::diagnostic_budget::DiagnosticDeliverySelection::evaluate(
+            &by_uri,
+            &crate::lsp::diagnostic_budget::DiagnosticBudget {
+                max_items_per_document: 1,
+                max_items_per_workspace_response: 1,
+                ..Default::default()
+            },
+            "snapshot:workspace",
+            "evidence:workspace",
+        );
+        let omissions = selection.document_omissions();
+        let omission = omissions
+            .get(second.as_str())
+            .ok_or("missing zero-selected omission")?;
+        assert_eq!(
+            (
+                omission.selected_count,
+                omission.omitted_count,
+                omission.total_count
+            ),
+            (0, 1, 1)
+        );
+        assert_eq!(omission.scope, "workspace");
+        let mut published = selection.diagnostics_for_document(second.as_str(), &by_uri[&second]);
+        assert!(published.is_empty());
+        published.push(delivery_omission_diagnostic(omission));
+        assert_eq!(
+            published.len(),
+            1,
+            "omission is visible without a selected finding"
+        );
+        assert_eq!(
+            rollback_push_diagnostics(
+                &second,
+                &by_uri[&second],
+                Some(&selection),
+                Some(omission),
+                false
+            ),
+            published,
+            "rollback keeps the one visible limitation for a zero-selected document"
+        );
+        Ok(())
+    }
 
     fn push_test_uri() -> Result<tower_lsp_server::ls_types::Uri, String> {
         "file:///workspace/src/lib.rs"
@@ -7612,6 +9994,7 @@ mod delivery_selection_parity_tests {
             .collect();
         let snapshot = AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            rust_consumed_sources: Default::default(),
             input_identity: Some(
                 crate::lsp::input_identity::LspAnalysisInputIdentity::from_refresh_inputs(
                     PathBuf::from("/workspace"),
@@ -7630,6 +10013,7 @@ mod delivery_selection_parity_tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: crate::lsp::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
@@ -8547,6 +10931,7 @@ mod list_actionable_items_tests {
     fn snapshot_with_selection(selection: Option<DiagnosticDeliverySelection>) -> AnalysisSnapshot {
         AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: Some("main".to_string()),
             mode: crate::app::Mode::Draft,
@@ -8562,6 +10947,7 @@ mod list_actionable_items_tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: crate::lsp::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri: BTreeMap::new(),
+            diagnostic_uri_index: None,
             delivery_selection: selection.map(Arc::new),
             seams_deferred: false,
             partial_scope: None,
@@ -8696,6 +11082,15 @@ mod list_actionable_items_tests {
         assert_eq!(response["selected_count"], 1);
         assert_eq!(response["omitted_count"], 0);
         assert_eq!(response["total_count"], 1);
+        assert_eq!(
+            response["selected"],
+            serde_json::json!([{
+                "canonical_id": "gap:1",
+                "document": "file:///workspace/src/lib.rs",
+            }])
+        );
+        assert_eq!(response["omitted"], serde_json::json!([]));
+        assert_eq!(response["omitted_truncated"], false);
         assert!(
             response["budget_identity"]
                 .as_str()
@@ -8714,5 +11109,372 @@ mod list_actionable_items_tests {
         );
         assert!(response.get("error").is_none());
         Ok(())
+    }
+
+    /// Omitted items are listed with their reason and capped; the count
+    /// still reports every omitted item.
+    #[test]
+    fn list_actionable_items_lists_omitted_items_up_to_the_cap() -> Result<(), String> {
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|error| format!("parse test URI: {error}"))?;
+        let total = LIST_ACTIONABLE_OMITTED_MAX + 2;
+        let diagnostics = (0..total)
+            .map(|index| actionable_diagnostic(&format!("gap:{index:04}")))
+            .collect::<Vec<_>>();
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri, diagnostics);
+        let budget = DiagnosticBudget {
+            max_items_per_document: 1,
+            max_items_per_workspace_response: 1,
+            ..DiagnosticBudget::default()
+        };
+        let selection = DiagnosticDeliverySelection::evaluate(
+            &diagnostics_by_uri,
+            &budget,
+            "snapshot:test-profile",
+            "evidence:test",
+        );
+        let harness = handler_harness()?;
+        install_snapshot(&harness, snapshot_with_selection(Some(selection)))?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["selected_count"], 1);
+        assert_eq!(response["omitted_count"], total - 1);
+        let omitted = response["omitted"]
+            .as_array()
+            .ok_or("omitted must be an array")?;
+        assert_eq!(omitted.len(), LIST_ACTIONABLE_OMITTED_MAX);
+        assert_eq!(response["omitted_truncated"], true);
+        assert!(
+            omitted
+                .iter()
+                .all(|item| item["reason"] == "document_item_limit"
+                    && item["canonical_id"]
+                        .as_str()
+                        .is_some_and(|id| id.starts_with("gap:"))),
+            "every omitted item names its id and reason: {omitted:?}"
+        );
+        Ok(())
+    }
+
+    /// The actionable profile hides a candidate gap with no repair route (an
+    /// new function no test calls is the common case); the list names it with an
+    /// id `ripr.collectContext` takes. Exposed and base-side findings, and
+    /// every finding under the full profile, are not listed.
+    #[test]
+    fn list_actionable_items_names_gaps_the_actionable_profile_hides() -> Result<(), String> {
+        let hidden = crate::lsp::tests::sample_finding();
+        let mut exposed = hidden.clone();
+        exposed.id = "probe:pricing:90:predicate".to_string();
+        exposed.class = crate::domain::ExposureClass::Exposed;
+        let mut base_side = hidden.clone();
+        base_side.id = "probe:pricing:92:predicate".to_string();
+        base_side.source_currentness = crate::domain::SourceCurrentness::BaseDeleted;
+        let mut unknown = hidden.clone();
+        unknown.id = "probe:pricing:94:predicate".to_string();
+        unknown.class = crate::domain::ExposureClass::StaticUnknown;
+        // Two members of one canonical gap count once, as one diagnostic would.
+        let mut grouped_first = hidden.clone();
+        grouped_first.id = "probe:pricing:96:predicate".to_string();
+        grouped_first.probe.location.line = 96;
+        grouped_first.canonical_gap = Some(crate::lsp::tests::sample_canonical_gap());
+        let mut grouped_second = grouped_first.clone();
+        grouped_second.id = "probe:pricing:97:predicate".to_string();
+        grouped_second.probe.location.line = 97;
+        // An unknown-class member inside the same unpublished canonical
+        // group: it is represented by no published diagnostic (the group is
+        // not visible), so it must be disclosed as withheld too (PR #5452
+        // review).
+        let mut mixed_unknown = grouped_first.clone();
+        mixed_unknown.id = "probe:pricing:98:predicate".to_string();
+        mixed_unknown.probe.location.line = 98;
+        mixed_unknown.class = crate::domain::ExposureClass::StaticUnknown;
+        let mut snapshot = snapshot_with_selection(Some(applied_selection()?));
+        snapshot.findings = vec![
+            hidden,
+            exposed,
+            base_side,
+            unknown,
+            grouped_first,
+            grouped_second,
+            mixed_unknown,
+        ];
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        let harness = handler_harness()?;
+        install_snapshot(&harness, snapshot.clone())?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(response["hidden_gap_count"], 2, "{response:#}");
+        let listed = response["hidden_gaps"]
+            .as_array()
+            .ok_or("hidden_gaps is not an array")?
+            .iter()
+            .map(|gap| gap["finding_id"].as_str().unwrap_or_default().to_string())
+            .collect::<Vec<_>>();
+        assert!(
+            listed.contains(&"probe:pricing:88:predicate".to_string()),
+            "{response:#}"
+        );
+        assert!(
+            !listed.iter().any(|id| id.ends_with(":94:predicate")),
+            "a static_unknown finding is not a gap: {response:#}"
+        );
+        assert_eq!(
+            listed
+                .iter()
+                .filter(|id| id.ends_with(":96:predicate") || id.ends_with(":97:predicate"))
+                .count(),
+            1,
+            "one canonical gap is listed once: {response:#}"
+        );
+        let first = response["hidden_gaps"]
+            .as_array()
+            .and_then(|gaps| {
+                gaps.iter()
+                    .find(|gap| gap["finding_id"] == "probe:pricing:88:predicate")
+            })
+            .ok_or("probe 88 missing")?;
+        assert_eq!(
+            first,
+            &serde_json::json!({
+                "finding_id": "probe:pricing:88:predicate",
+                "file": "src/pricing.rs",
+                "line": 88,
+                "class": "weakly_exposed",
+            })
+        );
+        // #5276: the withheld static_unknown findings are disclosed in their
+        // own additive list with the full-profile escape hatch — still never
+        // as a gap, and never as a diagnostic. The withheld set counts group
+        // members too: the raw `:94` finding plus the `:98` member of the
+        // unpublished canonical group (PR #5452 review).
+        assert_eq!(response["withheld_unknown_count"], 2, "{response:#}");
+        assert_eq!(
+            response["withheld_unknown_truncated"], false,
+            "{response:#}"
+        );
+        // Group order follows the canonical-group key order: the mixed
+        // canonical group sorts before the raw finding's own group.
+        let withheld_ids: Vec<&str> = response["withheld_unknown_findings"]
+            .as_array()
+            .ok_or("withheld_unknown_findings is not an array")?
+            .iter()
+            .map(|item| item["finding_id"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(
+            withheld_ids,
+            vec!["probe:pricing:98:predicate", "probe:pricing:94:predicate"],
+            "{response:#}"
+        );
+        assert!(
+            response["suppression_disclosure"]
+                .as_str()
+                .is_some_and(|text| {
+                    text.contains("withheld") && text.contains("diagnosticProfile")
+                }),
+            "the listing must name the full-profile escape hatch: {response:#}"
+        );
+
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Full;
+        let full_harness = handler_harness()?;
+        install_snapshot(&full_harness, snapshot)?;
+        let full = call_handler(&full_harness)?;
+        assert_eq!(full["hidden_gap_count"], 0);
+        assert_eq!(full["hidden_gaps"], serde_json::json!([]));
+        // The full profile withholds nothing: the disclosure stays silent.
+        assert_eq!(full["withheld_unknown_count"], 0);
+        assert_eq!(full["withheld_unknown_findings"], serde_json::json!([]));
+        assert_eq!(full["suppression_disclosure"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    /// #5276: the pull channel names profile-withheld `*_unknown` findings
+    /// with the same escape hatch the status and listing surfaces carry, so
+    /// a zero-item pull never reads as "no findings" while one is withheld.
+    #[test]
+    fn profile_withholding_pull_disclosure_names_the_escape_hatch_only_when_withheld()
+    -> Result<(), String> {
+        let mut unknown = crate::lsp::tests::sample_finding();
+        unknown.class = crate::domain::ExposureClass::StaticUnknown;
+        let mut snapshot = snapshot_with_selection(Some(applied_selection()?));
+        snapshot.findings = vec![unknown];
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        let disclosure = super::profile_withholding_pull_disclosure(&snapshot)
+            .ok_or("a withheld finding must disclose on the pull channel")?;
+        assert!(
+            disclosure.contains("1 finding(s)") && !disclosure.contains("static_unknown"),
+            "the pull disclosure names the count and the profile: {disclosure}"
+        );
+        assert!(
+            disclosure.contains("diagnosticProfile"),
+            "the pull disclosure names the escape hatch: {disclosure}"
+        );
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Full;
+        assert_eq!(
+            super::profile_withholding_pull_disclosure(&snapshot),
+            None,
+            "the full profile withholds nothing"
+        );
+        snapshot.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        snapshot.findings.clear();
+        assert_eq!(
+            super::profile_withholding_pull_disclosure(&snapshot),
+            None,
+            "no findings means nothing to disclose"
+        );
+        Ok(())
+    }
+
+    /// Sort a JSON object's keys for a closed-shape comparison.
+    fn sorted_keys(value: &serde_json::Value) -> Vec<String> {
+        let mut keys: Vec<String> = value
+            .as_object()
+            .map(|object| object.keys().cloned().collect())
+            .unwrap_or_default();
+        keys.sort();
+        keys
+    }
+
+    /// Pin the CURRENT interim response shape of `ripr/listActionableItems`
+    /// as a closed key set — the same shape recorded in
+    /// `docs/OUTPUT_SCHEMA.md`. This is the #1603 interim transform, NOT the
+    /// full `ripr-agent-success.schema.json` envelope reserved for #3009;
+    /// any field addition or removal is a deliberate wire change that must
+    /// update the doc and this test together.
+    #[test]
+    fn list_actionable_items_interim_response_shape_is_closed() -> Result<(), String> {
+        let harness = handler_harness()?;
+        install_snapshot(
+            &harness,
+            snapshot_with_selection(Some(applied_selection()?)),
+        )?;
+        let response = call_handler(&harness)?;
+
+        assert_eq!(
+            sorted_keys(&response),
+            vec![
+                "allowed_edit_surface",
+                "budget_identity",
+                "complete_evidence_identity",
+                "continuation_or_inspect_route",
+                "hidden_gap_count",
+                "hidden_gaps",
+                "kind",
+                "must_not_change",
+                "omitted",
+                "omitted_count",
+                "omitted_truncated",
+                "selected",
+                "selected_count",
+                "snapshot_id",
+                "status",
+                "suppression_disclosure",
+                "total_count",
+                "withheld_unknown_count",
+                "withheld_unknown_findings",
+                "withheld_unknown_truncated",
+            ]
+        );
+
+        // Error fast paths carry only the closed `error` object; every
+        // variant shares the same three-field error shape.
+        let expected_error_keys = vec![
+            "kind".to_string(),
+            "message".to_string(),
+            "recovery_route".to_string(),
+        ];
+        let cases = [(false, "no_snapshot"), (true, "analysis_in_flight")];
+        for (install_empty_selection, expected_kind) in cases {
+            let empty_harness = handler_harness()?;
+            if install_empty_selection {
+                install_snapshot(&empty_harness, snapshot_with_selection(None))?;
+            }
+            let response = call_handler(&empty_harness)?;
+            assert_eq!(
+                sorted_keys(&response),
+                vec!["error".to_string()],
+                "top-level shape for {expected_kind}"
+            );
+            assert_eq!(response["error"]["kind"], expected_kind);
+            assert_eq!(
+                sorted_keys(&response["error"]),
+                expected_error_keys,
+                "error shape for {expected_kind}"
+            );
+        }
+        Ok(())
+    }
+
+    /// The #2034 ingress bound runs before any snapshot access or
+    /// early-return fast path: an over-budget params blob is rejected with a
+    /// bounded `-32602` even when a fully usable snapshot is installed.
+    #[test]
+    fn list_actionable_items_oversized_params_are_rejected_before_handler_work()
+    -> Result<(), String> {
+        let harness = handler_harness()?;
+        install_snapshot(
+            &harness,
+            snapshot_with_selection(Some(applied_selection()?)),
+        )?;
+        let limit = super::super::payload_bounds::MAX_LIST_ACTIONABLE_ITEMS_PARAMS_BYTES;
+        let oversized = serde_json::Value::String("x".repeat(limit + 1));
+        let result = harness.runtime.block_on(
+            harness
+                .service
+                .inner()
+                .ripr_list_actionable_items(oversized),
+        );
+        let error = result
+            .err()
+            .ok_or("over-budget params must be rejected with an LSP error")?;
+        assert_eq!(
+            error.code,
+            tower_lsp_server::jsonrpc::ErrorCode::InvalidParams
+        );
+        assert!(
+            error
+                .message
+                .contains("ripr/listActionableItems params exceed 16384 bytes"),
+            "rejection must name the bound, got: {}",
+            error.message
+        );
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod analysis_error_cancellation_tests {
+    use super::analysis_error_was_cancellation;
+    use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken};
+
+    #[test]
+    fn refresh_error_is_a_cancellation_only_when_the_token_handed_the_abort_to_the_work() {
+        // #4860: the backend's decision reads the attempt's token, never the
+        // error text. A live token is a failure whatever the error says.
+        let live = AnalysisCancellationToken::new();
+        assert!(!analysis_error_was_cancellation(&live));
+
+        // A recorded deadline that no checkpoint handed to the work is not the
+        // attempt's outcome: the work failed on its own first.
+        let unobserved = AnalysisCancellationToken::new();
+        assert!(unobserved.cancel(AnalysisAbortKind::DeadlineExceeded));
+        assert!(!analysis_error_was_cancellation(&unobserved));
+
+        // Once a checkpoint hands the deadline to the work, the (possibly
+        // wrapped) error is that abort for every kind.
+        for kind in [
+            AnalysisAbortKind::DeadlineExceeded,
+            AnalysisAbortKind::Superseded,
+            AnalysisAbortKind::Cancelled,
+        ] {
+            let token = AnalysisCancellationToken::new();
+            assert!(token.cancel(kind));
+            assert!(token.checkpoint().is_err());
+            assert!(
+                analysis_error_was_cancellation(&token),
+                "{kind:?} observed at a checkpoint must classify as cancellation"
+            );
+        }
     }
 }

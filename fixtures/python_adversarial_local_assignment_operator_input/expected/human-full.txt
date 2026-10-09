@@ -2,14 +2,15 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/python_adversarial_local_assignment_operator_input/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Changed file(s) by language: python: 1, rust: 0.
+Changed file(s) by language: python: 1.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 WARNING src/calc.py:2
+  id: probe:src_calc.py:python_preview:3ddbe784
 
 Changed
   after:      total = base - bonus
@@ -44,7 +45,10 @@ Repair placement
   suggested file: tests/test_calc.py
   suggested test: test_base_unchanged
   pytest node: tests/test_calc.py::test_base_unchanged
-  verify: pytest tests/test_calc.py::test_base_unchanged (high)
+  verify: python -m pytest tests/test_calc.py::test_base_unchanged (high)
+Drill in:
+  ripr explain --root fixtures/python_adversarial_local_assignment_operator_input/input --diff fixtures/python_adversarial_local_assignment_operator_input/diff.patch --mode fast probe:src_calc.py:python_preview:3ddbe784
+  ripr context --root fixtures/python_adversarial_local_assignment_operator_input/input --diff fixtures/python_adversarial_local_assignment_operator_input/diff.patch --mode fast --at probe:src_calc.py:python_preview:3ddbe784
 
 
-Note: 1 Python(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

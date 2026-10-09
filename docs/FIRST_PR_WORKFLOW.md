@@ -18,6 +18,31 @@ run ripr
 This workflow is advisory. `ripr` does not edit source, generate tests, run
 mutation testing, call providers, or make merge decisions by default.
 
+If `ripr doctor --root PATH` finds an existing or stale start-here packet, its
+refresh command keeps that selected repository even when pasted from another
+directory, including roots that traverse a symlink before `..`. If the selected
+directory can no longer be resolved, doctor withholds the refresh command and
+asks you to restore access and retry. Use the labeled PowerShell form when one
+is printed. This generic
+refresh uses the repository's default base and `HEAD`; add explicit `--base REF`
+and `--head REF` to keep a custom comparison. If no default base resolves,
+first-pr reports the missing selection and leaves the existing packet unchanged.
+The rooted recommended first check also keeps the physical selected directory;
+missing-root recovery remains diagnostic and does not create a repository.
+An unavailable root keeps its absolute input spelling, including `..`, rather
+than redirecting recovery to a different directory through lexical cleanup.
+A UTF-8 alias is retained when the physical directory name is not UTF-8. If
+doctor cannot render a lossless rooted command, it asks for an alias instead of
+printing a lossy replacement-character path.
+That recovery is also the first action when no packet has been generated.
+
+When Git preflight needs recovery, `start-here.md` keeps the reason and shows
+the executable recovery steps separately. Use the labeled PowerShell form
+when it follows a step; otherwise the step runs unchanged in Bash and
+PowerShell, unless its PowerShell form is explicitly unavailable. The
+missing-base fetch step names the selected repository with `git -C`, so it
+also works from another directory. Run that step before the rerun step.
+
 ## 1. Pick One PR
 
 Start with a normal PR where a reviewer can understand the intended behavior
@@ -50,8 +75,12 @@ target/ripr/pilot/pilot-summary.md
 ```
 
 The pilot summary is the first screen. It should name the top actionable gap,
-why it matters, the related test to inspect when available, and the command to
-capture after evidence.
+why it matters, and the related test to inspect when available. When the gap is
+eligible for a repair transaction, it ends with the `ripr agent repair ...
+--phase before` command for that seam (step 5). A run with no Rust seam and a
+Python repair card instead ends with the card's route: `ripr first-pr`, the test
+edit, the card's verify command, then the receipt command `first-pr` names.
+Otherwise it ends with the snapshot commands in step 7.
 
 If the pilot reports `partial`, use the retry command it prints. Do not guess
 at cache or timeout settings.
@@ -98,12 +127,13 @@ ripr reports gap-ledger \
 
 For scoped Python or TypeScript repair-routing cards, the public first-PR front
 door can take the same saved check JSON directly and materialize the derived
-ledger before it selects the top repair:
+ledger before it selects the top repair. Set `<base-ref>` to the repository's
+actual PR base; `origin/main` is common but not universal:
 
 ```bash
 ripr first-pr \
   --root . \
-  --base origin/main \
+  --base <base-ref> \
   --head HEAD \
   --check-output target/ripr/reports/check.json
 ```
@@ -128,6 +158,64 @@ Skip report-only static limitations for the first PR unless the task is to
 inspect an opaque helper, fixture, macro, or dynamic boundary.
 
 ## 5. Copy The Work Packet
+
+For a Rust seam, `ripr agent repair` runs steps 5 through 8 as one
+transaction:
+
+```bash
+ripr agent repair --root . --seam-id <seam_id> --phase before
+# add one focused test outside RIPR
+ripr agent repair --root . --attempt <repair-attempt-id> --phase after
+```
+
+The before phase prints the exact `--attempt` command; see
+[Repair attempt identity](REPAIR_ATTEMPT.md). The lower-level packet, verify,
+and receipt commands below remain available for gap-ledger records and explicit
+control.
+
+When the gap ledger selects no top gap, `ripr first-pr` reads the review cards
+(`--review-comments`, default `target/ripr/review/comments.json`) and selects
+the first card that carries `llm_guidance.repair_command`. `start-here.md`
+then shows a `Start repair` line followed by the after-phase step (run the
+`--attempt ... --phase after` command the before phase prints; it verifies
+movement and writes the receipt). The lower-level verify and receipt commands
+follow as `Manual verify without a repair attempt (needs before and after snapshots taken around the test edit)` and `Manual receipt without a repair attempt (after the manual verify)`, not as peer steps: the manual verify
+compares a before snapshot taken before the test edit with an after snapshot
+taken after it, so it fails as printed on a checkout without them. Without a repair start, they read
+`Verify after the test edit` and `Receipt after verify`, because neither can
+run before the test edit. A `ripr receipt write` command printed there records
+`--status not_run`, which is true when it runs as printed; a `Receipt status`
+line follows it and says to pass `--status passed` when the verify command
+exited 0 and `--status failed` when it did not, since only the reader knows
+that outcome. That receipt records the verify status it is given and
+re-checks nothing. On the Python and TypeScript preview route, when the check
+report the gap came from is on disk, a `Static re-check after verify` line
+follows: `ripr check ... --worktree --json > .../check.after.json && ripr
+outcome --before .../check.json --after .../check.after.json`. It reads the
+test edit even before it is committed and shows the gap under `Moved` or
+`Removed` when its static evidence changed, under `Unchanged` when it did not;
+a `Receipt boundary` line says so. That movement is static evidence, not a
+runtime or mutation result. Rerunning `ripr first-pr` after the edit reports
+the evidence as stale and prints a refresh that also passes `--worktree`, so
+the next run selects the next open gap rather than the one just closed.
+`ripr pr-summary` carries the same start command as
+its first local reproduction command, and its Markdown, like
+`gate-decision.md`, follows the start with the after-phase step and the same
+manual labels. The generated CI job summary leads its `First-run status` block
+with it, and its `Agent review packet` block says no receipt is expected before
+a repair and leads with the same start. Only cards past the fail-closed repair-packet flip carry the command;
+first-pr copies it and never builds one from a seam id.
+
+On a Rust root, first-pr does not report "no actionable gap" from cards it
+could not use. When the cards are missing it stops with `missing_artifact`;
+when they are unreadable, incomplete, or were built for another root, base, or
+head it stops with the matching blocked state. Either way the next command is
+the seam-level
+`ripr review-comments --root . --base <base-ref> --head HEAD --out target/ripr/review/comments.json`.
+On a fresh checkout that makes three regeneration steps before the start:
+repo exposure, gap ledger, then review cards. Each run names the next one.
+Only current cards that carry no repair start, or cards rendered from the gap
+ledger, end in no-action; the reason says which.
 
 For a gap-ledger-backed task, create the focused agent packet:
 
@@ -170,11 +258,15 @@ movement is not a replacement for the test suite.
 
 ## 7. Verify Movement
 
-Capture the after snapshot with the command from the pilot, first-action report,
-or agent packet. The common shape is:
+If you started a repair attempt in step 5, run the `--attempt ... --phase after`
+command its before phase printed. It captures the after snapshot, compares it,
+and writes the verify and receipt artifacts; steps 7 and 8 need nothing else.
+
+Without a repair attempt, capture the after snapshot with the command from the
+pilot, first-action report, or agent packet. The common shape is:
 
 ```bash
-ripr check --root . --mode ready --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
+ripr check --root . --mode draft --format repo-exposure-json > target/ripr/pilot/after.repo-exposure.json
 ```
 
 Then compare before and after:

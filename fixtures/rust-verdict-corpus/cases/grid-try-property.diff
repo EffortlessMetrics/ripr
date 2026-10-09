@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8e555ab..fc25490 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn parse_percent(text: &str) -> Result<u8, ParseIntError> {
+ }
+ 
+ pub fn parse_count(text: &str) -> Result<u32, ParseIntError> {
+-    let count = text.parse::<u32>()?;
++    let count: u32 = text.parse()?;
+     Ok(count)
+ }
+ 

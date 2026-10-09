@@ -51,11 +51,113 @@ production files, changed test files, configured severity, and suppression
 policy. The default diff path reviews changed production files plus bounded
 immediate caller files and reports that narrowed basis as
 `analysis_scope.run_status = "limited_diff_scope"` rather than full-repo truth.
+Within that scope, seams on changed lines and in changed owner functions are
+evaluated first. Only those seams can take the two highest selection
+priorities, so when they already fill every review slot the rest of the scope
+is not evaluated: `analysis_scope.unevaluated_seams` and a warning give the
+skipped count, `classified_seams_considered` counts only the seams evaluated,
+and the brief-cap warning reads "at least N". When they do not
+fill the slots, the whole scope is evaluated. Past the first ten hidden matching
+seams, omission warnings are counted per reason instead of named.
 It writes review-ready JSON and Markdown without posting to GitHub.
 
 Generated CI should publish that report through the least intrusive useful
 surfaces first: job summary and check annotations by default, optional inline PR
 review comments only when explicitly enabled.
+
+### Guidance input admission
+
+Before changed-line owner attribution builds an index or canonical inventory
+loads source files, the diff route measures the union of the analyzable Rust
+workspace corpus and present changed owner-attribution inputs. Generated or
+excluded changed inputs are still counted when attribution reads them; each
+path is counted once. Missing changed paths remain available to the existing
+absent-file disclosure. A file already observed by corpus discovery that then
+disappears fails closed, even if the diff also names it. Census reuses
+`GeneratedRustSources`, including handwritten-file declarations and stronger
+header/vendor/pattern exclusions. This classification may read bounded headers
+and vendor markers; byte totals use metadata without materializing the corpus
+or computing its cache fingerprint. The owned cancellation token is checked
+before classification and metadata operations. A deadline records
+`limited_timeout` in `language_facts`, before owner indexing. It never truncates
+the inputs or the guidance silently.
+
+`RIPR_REVIEW_GUIDANCE_MAX_INDEX_FILES` defaults to 1200, aligned with the
+current diff/repo family after #4972's measured self-repo growth beyond 800.
+`RIPR_REVIEW_GUIDANCE_MAX_PAYLOAD_BYTES` defaults to 268435456 (256 MiB) and
+covers that source-byte total plus changed diff text. Exact equality is
+admitted. Both overrides must be positive integers for a real dispatch;
+`--help` and `-h` bypass runtime override validation.
+
+Either exceeded limit returns `review_guidance_oversized` before owner
+indexing. The existing run-receipt vocabulary is preserved: `status = failed`,
+`active_phase = language_facts`, `last_completed_phase = diff_discovery`, and a
+`limitations` entry with category `review_guidance_oversized` plus the repair
+route. No guidance JSON or Markdown is published by the refused dispatch.
+The xtask wrapper preserves the named category and incomplete/non-all-clear
+semantics, rather than turning refusal into clean guidance or a real gap. It
+matches the exact colon-terminated error tag line-wise (after removing an
+optional reporter prefix consisting of `ripr:` followed by one space), retaining
+classification when warnings precede the guard while rejecting bare or lookalike
+category prefixes.
+
+The repair route may raise the owning limit on a measured, sufficiently
+resourced runner or reduce the actual workspace inputs. Narrowing only the
+diff cannot shrink a whole-workspace file census. These limits are admission
+budgets, not an RSS bound or a guarantee that admitted analysis completes.
+They do not prove hosted replay acceptance (#4693), remove the second index
+(#4692), or bound the earlier Git diff capture (#5000). Bounded evidence
+windows retain their independent contract; a refusal alone does not deliver
+completed guidance for a large downstream workspace.
+
+### Cooperative analysis budget
+
+`--timeout-ms` defaults to 120000ms. The default diff route consumes one
+monotonic budget: Git diff discovery uses the remaining duration, and canonical
+inventory observes the existing analysis cancellation token at safe boundaries.
+Evidence context construction checks between helper-map stages and in its test
+loops. Cancellation after evidence construction must be rejected before the
+vector is classified; a partial vector is not a complete inventory.
+
+A propagated `DeadlineExceeded` finalizes the run receipt as `limited_timeout`
+with the active phase. An ordinary source error remains `failed`, even if a
+later clock observation would expire. Default LSP tokens remain deadline-free,
+and scoped command contexts restore the caller's token.
+
+Index parse workers install the owning request's captured cancellation context
+for each job and restore the prior pool-thread context afterward, including
+unwind. They check before/after each file; the caller checks before cache stores,
+index insertion, and post-parse role phases. At a parallel batch join, the first
+collected error in input order (source failure or worker cancellation) is
+preserved before observing a later deadline; successful siblings are not stored
+or inserted after that failed batch. Source-role normalization checks
+per file and function, including whole-index identity-map construction. A
+cancelled partial index is returned as an error, never as complete guidance.
+Already completed per-file cache entries remain reusable parser facts, not
+run-level completion receipts.
+
+The opt-in `RIPR_REPO_EXPOSURE_LATENCY_TRACE` stream names cached/plain parsing,
+parameterized-test promotion, test-style normalization, role composition and
+harness-registration phases. This separates stage attribution from inference
+based only on process RSS.
+
+This is cooperative cancellation, not preemption. One parser call, filesystem
+operation, syscall, or classification operation can still overrun the budget;
+there is no hard allocator ceiling. An outer wrapper is required for a hard
+process bound. The wider phase/shutdown contract remains under
+#1778/#1699/#1604; this index-boundary repair does not complete those issues.
+
+### Qualified-helper candidate work
+
+After lexical cleaning, a call without `::` has no qualified-module candidate:
+all existing direct-path and module-alias spellings require that separator.
+Context preparation skips the corpus-wide qualified-helper module walk for
+those calls. This is only candidate generation; existing path boundaries,
+alias scopes and owner membership still decide every retained relation.
+Direct/unqualified helper routes, analyzed tests, ranking and coverage are
+unchanged. The work control requires zero module candidates for an unqualified
+call even when thousands of modules exist, with old-traversal parity for
+qualified and aliased positives and comment/string/boundary negatives.
 
 ## Surfaces
 
@@ -137,11 +239,23 @@ Placement order:
 
 1. exact changed seam line;
 2. nearest changed line in the same owner function;
-3. nearest changed line in the same file;
+3. nearest changed line inside the seam owner's span that owner attribution
+   bound to a nested function (`same_file_changed_line`);
 4. summary-only recommendation when no safe changed-line placement exists.
 
 Do not force a line-level comment onto an unrelated changed line. Bad placement
-is noisier than a summary-only recommendation.
+is noisier than a summary-only recommendation. Sharing a file with the diff is
+not a placement: a seam whose own line and owner span sit outside every hunk
+(for example, an unchanged function above a newly added one) is summary-only
+with `summary_reason = no_safe_changed_line_placement`. When owner spans for
+the changed lines are unknown, rule 3 does not apply and the seam is
+summary-only as well.
+
+Consumers inherit this decision. Check annotations read only `comments[]`.
+`ripr gate evaluate` keeps a `no_safe_changed_line_placement` summary item
+advisory at the seam's own location, gives the reason that the seam is outside
+the pull request's changed lines, and names its owner and behavior without the
+"Changed" label. Seams placed by rules 1-3 stay block-eligible as before.
 
 ## JSON Shape
 
@@ -265,7 +379,9 @@ The JSON report uses schema version `0.1`:
 - `comments[].dedupe_key` - stable key based on seam ID, path, and seam line.
 - `comments[].placement` - GitHub-compatible changed-line placement.
 - `comments[].placement.mode` - `"exact_seam_line"`,
-  `"owner_function_changed_line"`, or `"same_file_changed_line"`.
+  `"owner_function_changed_line"`, or `"same_file_changed_line"` (a changed
+  line inside the seam owner's span, attributed to a nested function; never
+  merely a changed line elsewhere in the same file).
 - `comments[].source_location` - canonical source coordinate rendered next to
   the seam ID in Markdown. If source resolution is unavailable, the row must
   render `unknown:unknown` with `source_location_unresolved` and
@@ -298,6 +414,13 @@ Generated CI should publish this report in two default levels:
 
 Check annotations are the default line-level surface because they provide file
 and line guidance without adding persistent review-thread noise.
+
+The generated workflow encodes each `comments[]` row as one workflow command
+inside jq. Property values escape `%`, CR, LF, `:`, and `,`. The message
+escapes `%`, CR, and LF. The encoder must not round-trip those bytes through
+TSV: `@tsv` rewrites backslash, tab, CR, and LF before the workflow-command
+escapes run, so the annotation would name a different path and display
+transport text instead of the comment (#4089).
 
 The `ripr annotations` comments loader determines file presence with one
 direct read (#1958): a `NotFound` outcome is the intended optional-comments
@@ -409,7 +532,9 @@ PR test guidance must not:
 
 Initial implementation should add tests for:
 
-- changed-line placement and summary-only fallback;
+- changed-line placement and summary-only fallback, including an unchanged
+  seam in a changed file that stays summary-only and non-blocking while a
+  changed seam in the same file still anchors and blocks;
 - selection rules for production changes, nearby test changes, configured-off
   seams, and suppressed seams;
 - ranking and cap behavior;
@@ -423,7 +548,7 @@ Initial implementation should add tests for:
 
 The first implementation should map this spec to:
 
-- `crates/ripr/src/cli/commands.rs` or a focused CLI adapter for the
+- `crates/ripr/src/cli/commands/review_comments.rs` for the
   `review-comments` command;
 - an app/use-case module that joins existing repo exposure, agent packet, diff,
   config, and suppression evidence;

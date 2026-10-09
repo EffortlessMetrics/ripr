@@ -1,0 +1,1 @@
+Dogfood now executes the generated CI summary renderer and checks its Markdown separately from workflow wiring. Rust-only and configured TypeScript controls share explicit preview artifacts, retaining checks for repair commands, gate authority disclosure, advisory defaults, and language grouping.

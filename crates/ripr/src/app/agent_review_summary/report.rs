@@ -68,8 +68,8 @@ pub(crate) fn build_agent_review_summary_report(
         workflow.value.as_ref(),
     );
     let static_movement = static_movement(receipt_snapshot.as_ref());
-    let next_command = agent_status.missing_commands.first().cloned();
-    let mut surfaces = vec![agent_status_surface(&agent_status, &root_display)];
+    let next_command = agent_status.next_command.clone();
+    let mut surfaces = vec![agent_status_surface(&agent_status, root_argument)];
     surfaces.extend([
         workflow.surface,
         receipt.surface,

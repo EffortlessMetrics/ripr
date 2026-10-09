@@ -2,14 +2,15 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/ts_repair_packet_complete/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Changed file(s) by language: rust: 0, typescript: 1.
+Changed file(s) by language: typescript: 1.
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 WARNING src/discount.ts:2
+  id: probe:src_discount.ts:typescript_preview:2396aec1
 
 Changed
   after:      if (amount >= threshold) {
@@ -30,7 +31,7 @@ Preview actionability
   category: complete_repair_packet
   repair packet ready: true
   why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
-  repair action: add or strengthen the focused assertion `expect(result).toBe(50)` in the related test
+  repair action: add a focused assertion for the missing discriminator `amount == threshold` in the related test, shaped like `expect(result).toBe(expected)`
   raw evidence: src/discount.ts:2 (typescript_preview_probe) source=probe:src_discount.ts:typescript_preview:2396aec1 owner=applyDiscount
 
 Static exposure
@@ -58,10 +59,10 @@ TypeScript preview card (advisory)
   oracle: relational_check (weak)
   missing discriminator: amount == threshold
   suggested assertion shape: Add an exact boundary assertion for `amount == threshold`.
-  verify: jest tests/discount.test.ts
+  verify: npx --no-install jest tests/discount.test.ts
   repair packet ready: true
   why actionable: complete repair packet — package root, runner, owner, oracle target, verify, receipt, and edit cage all resolved; delegatable (advisory)
-  repair action: add or strengthen the focused assertion `expect(result).toBe(50)` in the related test
+  repair action: add a focused assertion for the missing discriminator `amount == threshold` in the related test, shaped like `expect(result).toBe(expected)`
   limits:
     - Syntax-first TypeScript/JavaScript preview evidence only.
     - No tsc, tsserver, package graph, Jest/Vitest runtime, mutation execution, generated tests, provider calls, source edits, gate authority, or badge authority.
@@ -71,10 +72,10 @@ TypeScript repair packet (advisory)
   canonical gap: gap:typescript:typescript_preview:2396aec1
   source: applyDiscount at src/discount.ts:2
   related test: tests/discount.test.ts::applyDiscount applies discount when amount meets threshold
-  oracle: expect(result).toBe(50)
+  oracle: expect(result).toBe(expected)
   edit surface: tests/discount.test.ts
-  verify: jest tests/discount.test.ts
-  receipt: ripr outcome --before <baseline> --after <repair> --verify-cmd 'jest tests/discount.test.ts' --out target/ripr/receipts/gap_typescript_typescript_preview_2396aec1.targeted-test-outcome.json
+  verify: npx --no-install jest tests/discount.test.ts
+  receipt: ripr receipt write --gap gap:typescript:typescript_preview:2396aec1 --verify-command 'npx --no-install jest tests/discount.test.ts' --status not_run --out target/ripr/receipts/gap-typescript-typescript_preview-2396aec1.json
   must not change:
     - Do not edit production code unless the focused proof exposes a real product defect.
     - Do not broaden the change beyond this GapRecord and its repair route.
@@ -86,6 +87,9 @@ TypeScript repair packet (advisory)
 
 Next step
   TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; the repair packet is complete and delegatable (advisory).
+Drill in:
+  ripr explain --root fixtures/ts_repair_packet_complete/input --diff fixtures/ts_repair_packet_complete/diff.patch --mode fast probe:src_discount.ts:typescript_preview:2396aec1
+  ripr context --root fixtures/ts_repair_packet_complete/input --diff fixtures/ts_repair_packet_complete/diff.patch --mode fast --at probe:src_discount.ts:typescript_preview:2396aec1
 
 
-Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.
+Note: 1 TypeScript file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

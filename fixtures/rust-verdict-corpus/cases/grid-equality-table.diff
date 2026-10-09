@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index d20a409..901bfb6 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,7 +5,7 @@ pub fn is_admin(role: &str) -> bool {
+ }
+ 
+ pub fn is_weekend(day: u8) -> bool {
+-    day % 7 == 0 || day % 7 == 6
++    day % 7 == 6 || day % 7 == 0
+ }
+ 
+ pub fn same_currency(a: &str, b: &str) -> bool {

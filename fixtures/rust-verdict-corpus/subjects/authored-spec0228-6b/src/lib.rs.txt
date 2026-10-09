@@ -1,0 +1,33 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskState {
+    Idle,
+    Running,
+    Done,
+}
+
+pub struct Task {
+    pub state: TaskState,
+    pub mode: TaskState,
+}
+
+impl Task {
+    pub fn new() -> Self {
+        Task { state: TaskState::Running, mode: TaskState::Idle }
+    }
+
+    pub fn complete(&mut self) {
+        self.state = TaskState::Done;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn complete_leaves_the_mode_idle() {
+        let mut c = Task::new();
+        c.complete();
+        assert_eq!(c.mode, TaskState::Idle);
+    }
+}

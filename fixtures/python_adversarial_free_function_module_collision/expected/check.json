@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_adversarial_free_function_module_collision/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:40a22e7cd0054c612a3c3950764b29619d4c4772ea7b39b15c20818d11de462c","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:40a22e7cd0054c612a3c3950764b29619d4c4772ea7b39b15c20818d11de462c","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -43,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `validate`", "infection yes: Changed Python return expression can alter the owner return value: `return payload.strip() == \"ok\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return payload.strip() == \"ok\" (line 2)", "related test tests/test_checker.py:4 test_checker_validate uses strong exact value oracle: assert validate(\"ok\") == \"ok\"", "missing discriminator return value == payload.strip() == \"ok\": changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `validate`", "infection yes: Changed Python return expression can alter the owner return value: `return payload.strip() == \"ok\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return payload.strip() == \"ok\" (line 2)", "related test tests/test_checker.py:4 test_checker_validate uses strong exact value oracle: assert validate(\"ok\") == \"ok\"", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return payload.strip() == \"ok\"","line":2}
       ],
-      "evidence": ["owner: validate", "owner_kind: function", "missing_discriminator: return value == payload.strip() == \"ok\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checker.py", "suggested_test_name: test_checker_validate", "suggested_test_node_id: tests/test_checker.py::test_checker_validate", "suggested_verify_command: pytest tests/test_checker.py::test_checker_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_checker_validate)", "test_verify_command: pytest tests/test_checker.py::test_checker_validate (test_checker_validate)", "related_test_relation: syntactic_call (test_checker_validate)", "test_oracle: exact_value strong (test_checker_validate)"],
+      "evidence": ["owner: validate", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_checker.py", "suggested_test_name: test_checker_validate", "suggested_test_node_id: tests/test_checker.py::test_checker_validate", "suggested_verify_command: python -m pytest tests/test_checker.py::test_checker_validate", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_checker_validate)", "test_verify_command: python -m pytest tests/test_checker.py::test_checker_validate (test_checker_validate)", "related_test_relation: syntactic_call (test_checker_validate)", "test_oracle: exact_value strong (test_checker_validate)"],
       "missing": ["A strong Python oracle reaches `validate`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -56,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == payload.strip() == \"ok\"",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return payload.strip() == \"ok\"","line":2}
           }
@@ -66,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == payload.strip() == \"ok\"",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return payload.strip() == \"ok\"","line":2}
         }
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_checker.py",
         "suggested_test_name": "test_checker_validate",
         "suggested_test_node_id": "tests/test_checker.py::test_checker_validate",
-        "verify_command": "pytest tests/test_checker.py::test_checker_validate",
+        "verify_command": "python -m pytest tests/test_checker.py::test_checker_validate",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -100,8 +99,8 @@
         "changed_owner": "validate",
         "changed_behavior": "return_value changed at src/handler.py:2: `return payload.strip() == \"ok\"`",
         "current_test_evidence": "tests/test_checker.py:4 test_checker_validate currently has oracle_strength=strong, oracle_kind=exact_value: assert validate(\"ok\") == \"ok\"",
-        "missing_discriminator": "return value == payload.strip() == \"ok\"",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == payload.strip() == \"ok\"`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_checker.py",
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_checker.py::test_checker_validate"
          },
         "verify": {
-          "command": "pytest tests/test_checker.py::test_checker_validate",
+          "command": "python -m pytest tests/test_checker.py::test_checker_validate",
           "confidence": "high"
          },
         "receipt": {
@@ -123,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == payload.strip() == \"ok\"`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == payload.strip() == \"ok\"`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
@@ -145,5 +144,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/handler.py","digest":"sha256:26317032f0d6a7b3245fdc2abdf15b3c61c53d813eeffbc9ec6b778200c314ed"},{"path":"tests/test_checker.py","digest":"sha256:5e1549cd8dcf70717b3dc090161920b70d1f3516bf2f778806efeaef925ae66a"}]}
 }

@@ -1,0 +1,16 @@
+//! A small tokenizer kit: a scanner, recursive labels, helper chains,
+//! macro-routed calls, local value flows and an unsafe accessor.
+
+pub mod flow;
+pub mod raw;
+pub mod reach;
+pub mod scan;
+
+fn add_fee(total: i64) -> i64 {
+    total + 15
+}
+
+/// Public entry point that integration tests call; the fee is private.
+pub fn public_total(items: i64) -> i64 {
+    add_fee(items * 10)
+}

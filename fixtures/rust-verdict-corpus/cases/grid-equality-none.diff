@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index d20a409..e7ace50 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub fn is_origin(x: i32, y: i32) -> bool {
+ }
+ 
+ pub fn is_default_port(port: u16) -> bool {
+-    port == 443
++    443 == port
+ }
+ 
+ #[cfg(test)]

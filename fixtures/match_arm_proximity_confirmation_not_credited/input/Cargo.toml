@@ -1,0 +1,4 @@
+[package]
+name = "match_arm_proximity_confirmation_not_credited_fixture"
+version = "0.0.0"
+edition = "2024"

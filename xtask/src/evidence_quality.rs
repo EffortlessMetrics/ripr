@@ -222,7 +222,12 @@ fn write_limited_evidence_quality_scorecard_for_audit_regeneration_failure(
     )?;
     write_report(
         "actionable-gaps.json",
-        &lane1_actionable_gap_packets_json(&audit_report)?,
+        &stamp_actionable_gaps_source_subject(
+            &lane1_actionable_gap_packets_json(&audit_report)?,
+            None,
+            Path::new("."),
+            Path::new("."),
+        )?,
     )?;
     write_report(
         "actionable-gaps.md",

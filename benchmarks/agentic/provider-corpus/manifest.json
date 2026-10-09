@@ -1,0 +1,35 @@
+{
+  "schema_version": "ripr-agentic-bench-manifest-v1",
+  "bench": "provider-corpus",
+  "bench_index": "B5",
+  "title": "Provider-contract corpus",
+  "stimulus": "Run every corpus case through the public provider_contract validators: each valid baseline must validate, and each invalid case (exactly one mutation away) must return its exact expected error code.",
+  "oracle_states": ["Ok", "MissingField", "UnsupportedSchema", "DuplicateCapability", "AuthorityViolation", "UnsafeOutputRoot", "IdentityMismatch", "CompletenessConflict", "MalformedIdentity"],
+  "oracle_command": "cargo test -p ripr --test agentic_bench_provider",
+  "selected_target": { "path": "corpus.json", "scope": "exact" },
+  "allowed_surface": [
+    { "path": "corpus.json", "scope": "exact" },
+    { "path": "valid-request.json", "scope": "exact" },
+    { "path": "valid-receipt.json", "scope": "exact" },
+    { "path": "valid-capabilities.json", "scope": "exact" }
+  ],
+  "fixtures": [
+    {
+      "path": "corpus.json",
+      "sha256": "sha256:01bcda6b4b5af843462f870a7d62a1e5a615de834fa9d358149471734e0c2575"
+    },
+    {
+      "path": "valid-request.json",
+      "sha256": "sha256:19dc0ae8c1e8024a8b71a4c207f963f50b71b74ec40c8e2622a1c729d73fca16"
+    },
+    {
+      "path": "valid-receipt.json",
+      "sha256": "sha256:c79f5d268732eb139aa492a63cd5fdb465d479000e678d475cfeb6bd16112c24"
+    },
+    {
+      "path": "valid-capabilities.json",
+      "sha256": "sha256:d7ba4c757030cf27987adb811f6aa9d6280235c480d13f19e26364b6d69f8aad"
+    }
+  ],
+  "bounds": { "max_paths": 64, "max_file_bytes": 65536, "max_total_bytes": 1048576 }
+}

@@ -2,7 +2,10 @@ name: Routed Rust Small
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    # The protected PR qualification is requested exactly once by the native
+    # Draft -> Ready transition. Draft opened/synchronize/reopened activity and
+    # ordinary labels must not create Ripr Rust Small Result.
+    types: [ready_for_review]
   push:
     branches: [main, master]
   workflow_dispatch:
@@ -11,31 +14,23 @@ permissions:
   actions: read
   contents: read
 
-# Concurrency contract (ripr#1446).
-#
-# A shared group with `cancel-in-progress: false` keeps at most one running and
-# one pending run: a newer arrival supersedes the older *pending* run without
-# touching the one already executing. That is the behaviour we want:
-#
-#   - the useful in-progress proof completes rather than being discarded;
-#   - at most one newer head waits;
-#   - a newer queued head supersedes the older pending head;
-#   - no in-progress hosted compute is thrown away;
-#   - every completed run remains evidence for the exact head it names.
-#
-# Cancelling on `synchronize` would destroy a nearly finished proof every time a
-# branch is pushed, which is the opposite of the repository's CI economics rule.
+# Ready admission concurrency (#4986); source route authority remains ripr#1446.
+# Pull-request pushes and labels do not trigger this workflow, so they cannot
+# cancel an executing proof. A second Draft -> Ready transition revokes the
+# prior admission attempt and may cancel it. Event-qualified groups isolate
+# protected-branch pushes and explicit manual work from each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci')) && '-label-ignore' || '' }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  # A second Ready transition means the prior admission transaction was
+  # revoked. Preserve independent main/manual work.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
   route:
-    # Unrelated label events cannot launch proof or replace pending proof.
-    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')
+    # Ready is the only pull-request event admitted by the workflow trigger.
     name: Route Ripr Rust Small
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -121,7 +116,6 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   detect-docs-only:
-    if: github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')
     name: Detect Docs-Only Surface
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -181,7 +175,11 @@ jobs:
     needs: [route, detect-docs-only]
     # The source repository's only Rust proof route. It is first-class, not a
     # fallback: nothing upstream can select a self-hosted lane instead.
-    if: always() && needs.route.result == 'success' &&
+    # A second Ready transition must cancel the obsolete implementation gate
+    # (#6729); terminal result and step cleanup keep their own conditions.
+    if: >-
+      !cancelled() &&
+      needs.route.result == 'success' &&
       needs.route.outputs.route == 'github_hosted_rust' &&
       needs.detect-docs-only.result == 'success' &&
       needs.detect-docs-only.outputs.docs_only != 'true'
@@ -546,8 +544,22 @@ jobs:
             --job-outcome "$JOB_OUTCOME" \
             --subject-sha "$SUBJECT_SHA" \
             --subject-tree "$SUBJECT_TREE" >> "$GITHUB_OUTPUT"
+      # The mutually exclusive selected producer uses the same exact artifact
+      # identity and canonical paths consumed by the required result job.
+      - name: Upload child execution evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/ripr/reports/routed-rust-plan.json
+            target/ripr/reports/routed-rust-plan.md
+            target/ripr/reports/routed-rust-execution.json
+            target/ripr/reports/routed-rust-command-*.log
+          if-no-files-found: warn
       - name: Upload docs-gate reports
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: ripr-docs-gate
@@ -556,10 +568,9 @@ jobs:
           retention-days: 5
 
   result:
-    # Even a skipped job must never use the required context on ignored events.
-    name: ${{ github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci')) && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}
+    name: Ripr Rust Small Result
     needs: [route, detect-docs-only, rust-github, docs-gate]
-    if: always() && (github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci'))
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

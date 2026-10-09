@@ -157,13 +157,23 @@ A `verify_command` is emitted only when repo evidence supports it
 
 ```bash
 bun test <file>
-vitest run <file>
-jest <file>
+<launch> vitest run <file>
+<launch> jest <file>
+<launch> ava <file>
 node --test <file>
 npm test -- <file>
 pnpm test -- <file>
 yarn test <file>
 ```
+
+A framework binary installed as a devDependency lives in
+`node_modules/.bin`, which is not on `PATH`, so `<launch>` is the resolved
+package runner's local-binary launcher: `npx --no-install` (npm, or no
+resolved runner), `pnpm exec` (pnpm), `yarn` (Yarn), or `bun run` (Bun). A bare
+`vitest run <file>` fails with "command not found" when pasted into a shell at
+the package root. Each launcher runs only the installed binary: `npx` without
+`--no-install` and `bunx` fetch a missing package from the registry (npx skips
+its prompt in a non-interactive shell), which would run an unlocked version.
 
 An unresolved or ambiguous runner becomes the named limitation
 `typescript_test_runner_unresolved`. No command is ever synthesized from

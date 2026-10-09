@@ -1,11 +1,12 @@
+use crate::agent::loop_commands::shell_arg;
 use crate::config::{CONFIG_FILE_NAME, detect_python_project};
 use serde_json::{Value, json};
 use std::path::Path;
 
 use super::options::FirstPrOptions;
 use super::{
-    command_problem, detect_typescript_project, git_args, missing_base_command, resolve_path,
-    run_git,
+    base_fetch_refspec, command_problem, detect_typescript_project, git_args, missing_base_command,
+    resolve_path, run_git,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -17,6 +18,8 @@ pub(super) struct FirstPrPreflight {
     base: String,
     head: String,
     next_command: Option<String>,
+    recovery_commands: Vec<String>,
+    recovery_guidance: Option<String>,
     checks: Vec<PreflightCheck>,
 }
 
@@ -31,7 +34,7 @@ impl FirstPrPreflight {
     }
 
     pub(super) fn to_json(&self) -> Value {
-        json!({
+        let mut value = json!({
             "status": self.status,
             "mode": self.mode,
             "root": self.root,
@@ -40,7 +43,14 @@ impl FirstPrPreflight {
             "head": self.head,
             "next_command": self.next_command,
             "checks": self.checks.iter().map(PreflightCheck::to_json).collect::<Vec<_>>()
-        })
+        });
+        if !self.recovery_commands.is_empty() {
+            value["recovery_commands"] = json!(self.recovery_commands);
+        }
+        if let Some(guidance) = &self.recovery_guidance {
+            value["recovery_guidance"] = json!(guidance);
+        }
+        value
     }
 }
 
@@ -52,6 +62,8 @@ struct PreflightCheck {
     message: String,
     path: Option<String>,
     next_command: Option<String>,
+    recovery_commands: Vec<String>,
+    recovery_guidance: Option<String>,
 }
 
 impl PreflightCheck {
@@ -63,6 +75,8 @@ impl PreflightCheck {
             message: message.into(),
             path: None,
             next_command: None,
+            recovery_commands: Vec::new(),
+            recovery_guidance: None,
         }
     }
 
@@ -74,6 +88,8 @@ impl PreflightCheck {
             message: message.into(),
             path: None,
             next_command: None,
+            recovery_commands: Vec::new(),
+            recovery_guidance: None,
         }
     }
 
@@ -90,6 +106,8 @@ impl PreflightCheck {
             message: message.into(),
             path: None,
             next_command,
+            recovery_commands: Vec::new(),
+            recovery_guidance: None,
         }
     }
 
@@ -106,6 +124,8 @@ impl PreflightCheck {
             message: message.into(),
             path: None,
             next_command,
+            recovery_commands: Vec::new(),
+            recovery_guidance: None,
         }
     }
 
@@ -114,15 +134,32 @@ impl PreflightCheck {
         self
     }
 
+    fn with_recovery_commands(mut self, commands: Vec<String>) -> Self {
+        self.recovery_commands = commands;
+        self
+    }
+
+    fn with_recovery_guidance(mut self, guidance: impl Into<String>) -> Self {
+        self.recovery_guidance = Some(guidance.into());
+        self
+    }
+
     fn to_json(&self) -> Value {
-        json!({
+        let mut value = json!({
             "id": self.id,
             "label": self.label,
             "status": self.status,
             "message": self.message,
             "path": self.path,
             "next_command": self.next_command
-        })
+        });
+        if !self.recovery_commands.is_empty() {
+            value["recovery_commands"] = json!(self.recovery_commands);
+        }
+        if let Some(guidance) = &self.recovery_guidance {
+            value["recovery_guidance"] = json!(guidance);
+        }
+        value
     }
 }
 
@@ -142,6 +179,7 @@ pub(super) fn first_pr_preflight(root: &Path, options: &FirstPrOptions) -> First
             "Git base",
             &options.base,
             Some(missing_base_command(options)),
+            missing_base_recovery_commands(options),
         );
         head_ok = preflight_git_ref_check(
             root,
@@ -151,8 +189,12 @@ pub(super) fn first_pr_preflight(root: &Path, options: &FirstPrOptions) -> First
             &options.head,
             Some(format!(
                 "Check --head `{}` or fetch the branch, then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                options.head, options.root, options.base, options.head
+                options.head,
+                shell_arg(&options.command_root()),
+                shell_arg(&options.base),
+                shell_arg(&options.head)
             )),
+            vec![rerun_command(options)],
         );
     }
     if git_available && base_ok && head_ok {
@@ -171,6 +213,15 @@ pub(super) fn first_pr_preflight(root: &Path, options: &FirstPrOptions) -> First
         },
     ));
     let next_command = checks.iter().find_map(|check| check.next_command.clone());
+    let recovery_commands = checks
+        .iter()
+        .find(|check| check.next_command.is_some())
+        .map(|check| check.recovery_commands.clone())
+        .unwrap_or_default();
+    let recovery_guidance = checks
+        .iter()
+        .find(|check| check.next_command.is_some())
+        .and_then(|check| check.recovery_guidance.clone());
     let status = if checks
         .iter()
         .any(|check| check.status == "needs_attention" || check.status == "no_action")
@@ -187,8 +238,39 @@ pub(super) fn first_pr_preflight(root: &Path, options: &FirstPrOptions) -> First
         base: options.base.clone(),
         head: options.head.clone(),
         next_command,
+        recovery_commands,
+        recovery_guidance,
         checks,
     }
+}
+
+/// Executable display commands are carried separately from recovery prose.
+/// Renderers can pair their shell forms without extracting code from a sentence.
+fn rerun_command(options: &FirstPrOptions) -> String {
+    format!(
+        "ripr first-pr --root {} --base {} --head {}",
+        shell_arg(&options.command_root()),
+        shell_arg(&options.base),
+        shell_arg(&options.head)
+    )
+}
+
+fn missing_base_recovery_commands(options: &FirstPrOptions) -> Vec<String> {
+    let mut commands = Vec::new();
+    if let Some(branch) = options
+        .base
+        .strip_prefix("origin/")
+        .filter(|branch| !branch.trim().is_empty())
+    {
+        let refspec = base_fetch_refspec(branch);
+        commands.push(format!(
+            "git -C {} fetch origin -- {}",
+            shell_arg(&options.command_root()),
+            shell_arg(&refspec)
+        ));
+    }
+    commands.push(rerun_command(options));
+    commands
 }
 
 fn preflight_root_check(root: &Path, options: &FirstPrOptions) -> PreflightCheck {
@@ -258,6 +340,7 @@ fn preflight_git_ref_check(
     label: &'static str,
     rev: &str,
     next_command: Option<String>,
+    recovery_commands: Vec<String>,
 ) -> bool {
     let commit = format!("{rev}^{{commit}}");
     match run_git(
@@ -278,25 +361,37 @@ fn preflight_git_ref_check(
             true
         }
         Ok(output) => {
-            checks.push(PreflightCheck::needs_attention(
-                id,
-                label,
-                command_problem(
-                    &format!("Could not resolve `{rev}` to a commit."),
-                    &output,
-                    "Fetch the missing ref or pass a resolvable --base/--head.",
+            checks.push(
+                PreflightCheck::needs_attention(
+                    id,
+                    label,
+                    command_problem(
+                        &format!("Could not resolve `{rev}` to a commit."),
+                        &output,
+                        "Fetch the missing ref or pass a resolvable --base/--head.",
+                    ),
+                    next_command,
+                )
+                .with_recovery_commands(recovery_commands)
+                .with_recovery_guidance(
+                    "Fetch the missing ref or pass a resolvable --base/--head before rerunning.",
                 ),
-                next_command,
-            ));
+            );
             false
         }
         Err(message) => {
-            checks.push(PreflightCheck::needs_attention(
-                id,
-                label,
-                format!("Could not run git ref preflight for `{rev}`: {message}."),
-                next_command,
-            ));
+            checks.push(
+                PreflightCheck::needs_attention(
+                    id,
+                    label,
+                    format!("Could not run git ref preflight for `{rev}`: {message}."),
+                    next_command,
+                )
+                .with_recovery_commands(recovery_commands)
+                .with_recovery_guidance(
+                    "Restore Git availability and resolve --base/--head before rerunning.",
+                ),
+            );
             false
         }
     }
@@ -320,9 +415,12 @@ fn preflight_diff_check(root: &Path, options: &FirstPrOptions, checks: &mut Vec<
                 format!("No file diff was found for `{range}`."),
                 Some(format!(
                     "Choose a head with changes or rerun after committing PR work: `ripr first-pr --root {} --base {} --head {}`.",
-                    options.root, options.base, options.head
+                    shell_arg(&options.command_root()),
+                    shell_arg(&options.base),
+                    shell_arg(&options.head)
                 )),
-            ));
+            ).with_recovery_commands(vec![rerun_command(options)])
+             .with_recovery_guidance("Choose a head with changes or commit PR work before rerunning."));
         }
         Ok(output) if matches!(output.code, Some(1)) => {
             checks.push(PreflightCheck::ok(
@@ -342,9 +440,12 @@ fn preflight_diff_check(root: &Path, options: &FirstPrOptions, checks: &mut Vec<
                 ),
                 Some(format!(
                     "Check --base and --head, then rerun `ripr first-pr --root {} --base {} --head {}`.",
-                    options.root, options.base, options.head
+                    shell_arg(&options.command_root()),
+                    shell_arg(&options.base),
+                    shell_arg(&options.head)
                 )),
-            ));
+            ).with_recovery_commands(vec![rerun_command(options)])
+             .with_recovery_guidance("Check --base and --head and restore the Git objects needed for the diff before rerunning."));
         }
         Err(message) => {
             checks.push(PreflightCheck::needs_attention(
@@ -447,6 +548,8 @@ fn preflight_output_check(root: &Path, options: &FirstPrOptions) -> PreflightChe
             ),
             path: Some(out_dir.display().to_string()),
             next_command: None,
+            recovery_commands: Vec::new(),
+            recovery_guidance: None,
         }
     }
 }

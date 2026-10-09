@@ -330,6 +330,14 @@ pub(crate) fn masked_brace_delta(line: &str) -> isize {
 /// A nested (or the owner's own) item line: separate binding scope,
 /// never a use site.
 fn is_item_line(line: &str) -> bool {
+    // An unsafe block executes in the current owner's binding scope. Unlike
+    // an unsafe fn item, its writes must end initializer liveness.
+    if line
+        .strip_prefix("unsafe")
+        .is_some_and(|rest| rest.trim_start().starts_with('{'))
+    {
+        return false;
+    }
     [
         "fn ",
         "pub ",
@@ -903,6 +911,40 @@ mod tests {
             blocked_scope(&resolution)?,
             BindingUseScope::ReassignedBeforeUse
         );
+        Ok(())
+    }
+
+    #[test]
+    fn unsafe_block_writes_end_liveness_but_unsafe_items_keep_their_scope() -> Result<(), String> {
+        for opening in ["unsafe {", "unsafe{", "unsafe /* context */ {"] {
+            let body = format!(
+                "fn f() -> bool {{\n    let mut end = 1;\n    {opening}\n        end = compute();\n    }}\n    end == 3\n}}\n"
+            );
+            assert_eq!(
+                blocked_scope(&resolve_end(&body, 2))?,
+                BindingUseScope::ReassignedBeforeUse,
+                "same-owner unsafe block: {opening}"
+            );
+            let unchanged = body.replace("end = compute();", "consume(end);");
+            assert_eq!(direct_uses(&resolve_end(&unchanged, 2))?.len(), 1);
+        }
+        for block in [
+            "unsafe { end = compute(); }",
+            "unsafe{ end = compute(); }",
+            "unsafe\n    {\n        end = compute();\n    }",
+        ] {
+            let body =
+                format!("fn f() -> bool {{\n    let mut end = 1;\n    {block}\n    end == 3\n}}\n");
+            assert_eq!(
+                blocked_scope(&resolve_end(&body, 2))?,
+                BindingUseScope::ReassignedBeforeUse,
+                "compact/token-separated block: {block}"
+            );
+            let unchanged = body.replace("end = compute();", "consume(end);");
+            assert_eq!(direct_uses(&resolve_end(&unchanged, 2))?.len(), 1);
+        }
+        let nested = "fn f() -> bool {\n    let end = 1;\n    unsafe fn inner() {\n        let mut end = 0;\n        end = compute();\n    }\n    end == 3\n}\n";
+        assert_eq!(direct_uses(&resolve_end(nested, 2))?.len(), 1);
         Ok(())
     }
 

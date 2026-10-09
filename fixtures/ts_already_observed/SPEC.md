@@ -5,9 +5,11 @@ Spec: RIPR-SPEC-0087
 ## Given
 
 A TypeScript owner `validateScore` changes a boundary predicate (`>` → `>=`).
-The related test calls `expect(validateScore(75)).toBe(true)` — a concrete
+The related test calls `expect(validateScore(60)).toBe(true)` — a concrete
 exact-value oracle with `oracle_strength: Strong` and a real literal expected
-value (`true`). No `package.json` is present.
+value (`true`), observed at the changed boundary (`score == 60`), which is what
+lets static evidence treat the changed comparison as observed (RIPR-SPEC-0027
+boundary witness). No `package.json` is present.
 
 This fixture models F12 (already-observed strong oracle): the `toBe(true)` matcher
 produces `OracleStrength::Strong` → `ExposureClass::Exposed` → the

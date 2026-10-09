@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_ranking_noise_control/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":4,"findings":4,"exposed":1,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":4},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:01058c4c44a9d7fda8a6efc78ef26af8ca66c55517c3dda4d4865e121819e5fb","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":4,"changed_line_count":4,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:1d682c35b912a7172699e796f4cb9e1fee4ae65c24d9f582149e68661defaf55","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":4,"changed_line_count":4,"candidate_line_count":4,"probe_count":4,"finding_count":4},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -47,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= threshold:","line":2}
       ],
-      "evidence": ["owner: calculate_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discount.py", "suggested_test_name: test_calculate_discount_smoke", "suggested_test_node_id: tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command: pytest tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_calculate_discount_smoke)", "test_verify_command: pytest tests/test_discount.py::test_calculate_discount_smoke (test_calculate_discount_smoke)", "related_test_relation: syntactic_call (test_calculate_discount_smoke)", "test_oracle: smoke_only smoke (test_calculate_discount_smoke)", "test_oracle_shape: broad_smoke_assertion (test_calculate_discount_smoke)"],
+      "evidence": ["owner: calculate_discount", "owner_kind: function", "missing_discriminator: amount == threshold", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_discount.py", "suggested_test_name: test_calculate_discount_smoke", "suggested_test_node_id: tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command: python -m pytest tests/test_discount.py::test_calculate_discount_smoke", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_calculate_discount_smoke)", "test_verify_command: python -m pytest tests/test_discount.py::test_calculate_discount_smoke (test_calculate_discount_smoke)", "related_test_relation: syntactic_call (test_calculate_discount_smoke)", "test_oracle: smoke_only smoke (test_calculate_discount_smoke)", "test_oracle_shape: broad_smoke_assertion (test_calculate_discount_smoke)"],
       "missing": ["Related Python test reaches `calculate_discount` but the strongest extracted oracle is `smoke_only`; add or strengthen a focused assertion for the changed boundary."],
       "assertion_texts": {
       },
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_discount.py",
         "suggested_test_name": "test_calculate_discount_smoke",
         "suggested_test_node_id": "tests/test_discount.py::test_calculate_discount_smoke",
-        "verify_command": "pytest tests/test_discount.py::test_calculate_discount_smoke",
+        "verify_command": "python -m pytest tests/test_discount.py::test_calculate_discount_smoke",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_discount.py::test_calculate_discount_smoke"
          },
         "verify": {
-          "command": "pytest tests/test_discount.py::test_calculate_discount_smoke",
+          "command": "python -m pytest tests/test_discount.py::test_calculate_discount_smoke",
           "confidence": "high"
          },
         "receipt": {
@@ -148,7 +147,7 @@
 
       },
       "classification": "exposed",
-      "severity": "warning",
+      "severity": "info",
       "confidence": 0.60,
       "probe": {
         "id": "probe:src_b_observed.py:python_preview:3c7333c2",
@@ -170,7 +169,7 @@
       "flow_sinks": [
         {"kind":"return_value","text":"return amount + 5","line":2}
       ],
-      "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_calculate_fee_exact)", "test_verify_command: pytest tests/test_observed.py::test_calculate_fee_exact (test_calculate_fee_exact)", "related_test_relation: syntactic_call (test_calculate_fee_exact)", "test_oracle: exact_value strong (test_calculate_fee_exact)"],
+      "evidence": ["owner: calculate_fee", "owner_kind: function", "test_framework: pytest (test_calculate_fee_exact)", "test_verify_command: python -m pytest tests/test_observed.py::test_calculate_fee_exact (test_calculate_fee_exact)", "related_test_relation: syntactic_call (test_calculate_fee_exact)", "test_oracle: exact_value strong (test_calculate_fee_exact)"],
       "missing": ["Related Python test reaches `calculate_fee` with a `exact_value` oracle. Static evidence suggests the changed behavior is observed under an exact-value discriminator."],
       "assertion_texts": {
       },
@@ -300,7 +299,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `call_named`", "infection unknown: Static limit `dynamic_dispatch` prevents a safe Python infection claim.", "propagation unknown: Static limit `dynamic_dispatch` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `dynamic_dispatch` prevents a safe Python discriminator claim.", "related test tests/test_dynamic.py:9 test_call_named_exact uses strong exact value oracle: assert call_named(Client(), \"total\") == 5"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_exact)", "test_verify_command: pytest tests/test_dynamic.py::test_call_named_exact (test_call_named_exact)", "related_test_relation: syntactic_call (test_call_named_exact)", "test_oracle: exact_value strong (test_call_named_exact)"],
+      "evidence": ["owner: call_named", "owner_kind: function", "static_limit dynamic_dispatch: changed line uses dynamic call dispatch", "test_framework: pytest (test_call_named_exact)", "test_verify_command: python -m pytest tests/test_dynamic.py::test_call_named_exact (test_call_named_exact)", "related_test_relation: syntactic_call (test_call_named_exact)", "test_oracle: exact_value strong (test_call_named_exact)"],
       "missing": ["Static limit `dynamic_dispatch`: the Python preview adapter saw a dynamic call shape such as `getattr(...)` or `registry[key](...)`; syntax alone cannot resolve the called behavior."],
       "assertion_texts": {
       },
@@ -350,5 +349,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/a_dynamic.py","digest":"sha256:41f04e5237059de94d5c978c2e2d4dec120da2dccb1fe533673d9bde82f1efe4"},{"path":"src/b_observed.py","digest":"sha256:49d6bf43676457ad5d3a9d38b6ec18034d57635c51e816113e8854a40d9e1688"},{"path":"src/c_discount.py","digest":"sha256:b319b24f9d0b7a0174abd2009b1523dc0cc194fe660c4e9a84a8404079411a01"},{"path":"src/d_isolated.py","digest":"sha256:e1553390d35009ccc5727ce2c821c2e043cea6a87bbcd273a9342b53fb649be4"},{"path":"tests/test_discount.py","digest":"sha256:b99035590314c7ba6f189e25d3fd5196d0c22077fc5e782cc312554a9e1ab03c"}]}
 }

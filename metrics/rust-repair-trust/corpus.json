@@ -258,9 +258,9 @@
       "source_ref": "PR #1580",
       "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1580",
       "reason": "static_limitation_no_repair_packet",
-      "evidence_ref": "target/ripr/fresh-pilot-1580.json",
-      "command": "ripr review-comments --root . --base 91a720f390cb96c2e6c52d08e4215f2cb30942a3 --head 2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f --out target/ripr/fresh-pilot-1580.json",
-      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
+      "evidence_ref": "metrics/rust-repair-trust/3074-post-2933-observations.json#ripr-swarm-1580",
+      "command": "ripr review-comments --root . --base 91a720f390cb96c2e6c52d08e4215f2cb30942a3 --head 2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f --out target/ripr/3074-post-2933-ripr-swarm-1580.json",
+      "claim_boundary": "Post-#2933 FieldConstruction producer names field_value on changed LSP diagnostic construction seams; canonical gap_state remains static_limitation with null related_test and no repair packet. Observation is not an attempt."
     },
     {
       "exclusion_id": "perl-4022-analysis-timeout",
@@ -290,10 +290,10 @@
       "analyzed_head_sha": "217633ca232120a021c7dc975973abdcb5056d39",
       "source_ref": "PR #772",
       "canonical_candidate_id": "EffortlessMetrics/ub-review#772",
-      "reason": "static_limitation_no_repair_packet",
-      "evidence_ref": "target/ripr/fresh-pilot-772.json",
-      "command": "ripr review-comments --root . --base 9838259a704a5cf3748eb81af29536b99bf7cf3b --head 217633ca232120a021c7dc975973abdcb5056d39 --out target/ripr/fresh-pilot-772.json",
-      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
+      "reason": "no_current_behavior_change",
+      "evidence_ref": "metrics/rust-repair-trust/3074-post-2933-observations.json#ub-review-772",
+      "command": "ripr review-comments --root . --base 9838259a704a5cf3748eb81af29536b99bf7cf3b --head 217633ca232120a021c7dc975973abdcb5056d39 --out target/ripr/3074-post-2933-ub-review-772.json",
+      "claim_boundary": "Post-#2933 rerun found a test-only Rust diff in src/main.rs. Ten summary-only FieldConstruction cards name field_value on unchanged same-file production literals and do not establish a changed-production repair opportunity. Observation is not an attempt."
     },
     {
       "exclusion_id": "ub-744-static-limitation",
@@ -302,9 +302,9 @@
       "source_ref": "PR #744",
       "canonical_candidate_id": "EffortlessMetrics/ub-review#744",
       "reason": "static_limitation_no_repair_packet",
-      "evidence_ref": "target/ripr/fresh-pilot-744.json",
-      "command": "ripr review-comments --root . --base 01204a3c9a82a40b072b31495ffd612c36dd5a40 --head 84a365e4f509c866e01b51cbd5e5ae0c22b7302b --out target/ripr/fresh-pilot-744.json",
-      "claim_boundary": "Analysis-only pilot produced producer-owned static limitations, zero repair-route records, and no eligible attempt."
+      "evidence_ref": "metrics/rust-repair-trust/3074-post-2933-observations.json#ub-review-744",
+      "command": "ripr review-comments --root . --base 01204a3c9a82a40b072b31495ffd612c36dd5a40 --head 84a365e4f509c866e01b51cbd5e5ae0c22b7302b --out target/ripr/3074-post-2933-ub-review-744.json",
+      "claim_boundary": "Post-#2933 FieldConstruction producer names field_value on seven summary-only cards; canonical gap_state remains static_limitation with no repair packet. Inline cards are operand-family and error-variant limitations, not a complete route. Observation is not an attempt."
     }
   ],
   "observations": [
@@ -440,6 +440,42 @@
       "evidence_ref": "target/ripr/fresh-pilot-744.json",
       "classification": "new_exclusion",
       "claim_boundary": "Fresh analysis-only pilot observation maps to one unique exclusion and zero eligible attempts."
+    },
+    {
+      "observation_id": "post-2933-ripr-1580",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "analyzed_head_sha": "2f71673f9c2da4532a1c1fb8e011dc6fd586ad2f",
+      "source_ref": "PR #1580",
+      "canonical_candidate_id": "EffortlessMetrics/ripr-swarm#1580",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "metrics/rust-repair-trust/3074-post-2933-observations.json#ripr-swarm-1580",
+      "classification": "duplicate_observation",
+      "duplicate_of": "ripr-1580-static-limitation",
+      "claim_boundary": "Identity-matched post-#2933 rerun; FieldConstruction names field_value and still yields no complete route or eligible attempt."
+    },
+    {
+      "observation_id": "post-2933-ub-772",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "217633ca232120a021c7dc975973abdcb5056d39",
+      "source_ref": "PR #772",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#772",
+      "reason": "no_current_behavior_change",
+      "evidence_ref": "metrics/rust-repair-trust/3074-post-2933-observations.json#ub-review-772",
+      "classification": "duplicate_observation",
+      "duplicate_of": "ub-772-static-limitation",
+      "claim_boundary": "Identity-matched post-#2933 rerun; test-only diff plus unchanged same-file FieldConstruction cards add no exclusion or eligible attempt."
+    },
+    {
+      "observation_id": "post-2933-ub-744",
+      "repository": "EffortlessMetrics/ub-review",
+      "analyzed_head_sha": "84a365e4f509c866e01b51cbd5e5ae0c22b7302b",
+      "source_ref": "PR #744",
+      "canonical_candidate_id": "EffortlessMetrics/ub-review#744",
+      "reason": "static_limitation_no_repair_packet",
+      "evidence_ref": "metrics/rust-repair-trust/3074-post-2933-observations.json#ub-review-744",
+      "classification": "duplicate_observation",
+      "duplicate_of": "ub-744-static-limitation",
+      "claim_boundary": "Identity-matched post-#2933 rerun; FieldConstruction names field_value and still yields no complete route or eligible attempt."
     }
   ]
 }

@@ -22,6 +22,7 @@ import {
   RELEASE_ASSET_HOSTS
 } from './manifestTrust';
 import {
+  distributionGeneration,
   installManagedServer,
   ManagedServerInstallation,
   ManagedServerInstallRequest,
@@ -39,6 +40,62 @@ export interface ManifestAsset {
 export interface ServerManifest {
   readonly version: string;
   readonly assets: Record<string, ManifestAsset>;
+}
+
+/**
+ * How one manifest placement fetch ended (#3798 failure law): only a direct,
+ * non-redirected HTTP 404 is authoritative absence; every other outcome is a
+ * contradiction or transport failure and never authorizes a fallback.
+ */
+export type ManifestFetchOutcome =
+  | { readonly kind: 'ok'; readonly bytes: Buffer }
+  | { readonly kind: 'authoritative_absence'; readonly url: string }
+  | {
+      readonly kind: 'http_failure';
+      readonly url: string;
+      readonly statusCode: number;
+      readonly redirected: boolean;
+    }
+  | { readonly kind: 'transport_failure'; readonly url: string; readonly message: string };
+
+/** A manifest placement fetch that did not return a payload. */
+export type ManifestFetchNonSuccess = Exclude<ManifestFetchOutcome, { readonly kind: 'ok' }>;
+
+export type ManifestBytesFetcher = (url: string) => Promise<ManifestFetchOutcome>;
+
+/**
+ * Placement observation, kept separate from manifest and archive content
+ * identity (#3798): which exact manifest URL was selected, and whether the RC
+ * placement was selected only after authoritative stable absence.
+ */
+export type ManifestPlacementObservation =
+  | { readonly placement: 'stable'; readonly manifestUrl: string }
+  | {
+      readonly placement: 'rc_after_stable_absent';
+      readonly stableManifestUrl: string;
+      readonly rcManifestUrl: string;
+    };
+
+export interface SelectedServerManifest {
+  readonly manifest: ServerManifest;
+  readonly manifestUrl: string;
+  readonly observation: ManifestPlacementObservation;
+}
+
+export interface ManifestPlacementRequest {
+  readonly requestedVersion: string;
+  readonly generation: string;
+  readonly platformTarget: string;
+  readonly stableManifestUrl: string;
+  readonly rcManifestUrl?: string;
+  readonly admittedManifestSha256?: string;
+}
+
+export interface ManifestPlacementPlan {
+  readonly generation: string;
+  readonly stableManifestUrl: string;
+  /** The one predeclared exact RC placement; never present for mirror routes. */
+  readonly rcManifestUrl?: string;
 }
 
 export async function downloadServer(
@@ -82,10 +139,16 @@ async function downloadServerWithProgress(
       }
 
       progress.report({ message: 'Fetching release manifest…' });
+      let selectedManifestUrl = '';
       const manifest = await fetchManifestForDistribution(
         config.downloadBaseUrl,
         distribution,
-        version
+        version,
+        async (url) => {
+          const fetched = await fetchManifest(url);
+          selectedManifestUrl = url;
+          return fetched;
+        }
       );
       if (manifest.version !== version) {
         throw new Error(`Server manifest version ${manifest.version} does not match requested version ${version}.`);
@@ -99,7 +162,14 @@ async function downloadServerWithProgress(
       progress.report({ message: `Downloading ${platform.executableName}…` });
       const { body: bytes } = await fetchBuffer(asset.url, MAX_LEGACY_ARCHIVE_BYTES, fetchPolicyFor(asset.url));
       progress.report({ message: 'Verifying checksum…' });
-      return { manifestVersion: manifest.version, expectedSha256: asset.sha256, bytes };
+      output.appendLine(`Selected exact server manifest ${version} at ${selectedManifestUrl}.`);
+      return {
+        manifestVersion: manifest.version,
+        expectedSha256: asset.sha256,
+        bytes,
+        selectedManifestUrl,
+        manifestUrl: selectedManifestUrl
+      };
     },
     extractArchive: async (archivePath, destination) => {
       progress.report({ message: 'Extracting…' });
@@ -186,6 +256,12 @@ async function downloadAdmittedAsset(
     bytes,
     admittedManifestSha256: expectedDigest,
     selectedManifestUrl: admitted.manifestUrl,
+    manifestUrl: admitted.manifestUrl,
+    ...(admitted.manifestSelection === 'fallback_exact_after_preferred_absent'
+      ? { manifestPlacement: 'rc_after_stable_absent' as const }
+      : distribution.preferredPlacement.channel === 'stable'
+        ? { manifestPlacement: 'stable' as const }
+        : {}),
     manifestSelection: admitted.manifestSelection,
     preferredManifestObservation: admitted.preferredManifestObservation,
     fallbackManifestObservation: admitted.fallbackManifestObservation
@@ -354,6 +430,9 @@ async function fetchManifest(url: string): Promise<ServerManifest> {
     throw new Error('Server manifest is not an object.');
   }
   const manifest = parsed as Record<string, unknown>;
+  if (manifest.schema_version === '2') {
+    return serverManifestView(admitManifestBytes(body), url);
+  }
   if (typeof manifest.version !== 'string' || !manifest.assets || typeof manifest.assets !== 'object') {
     throw new Error('Server manifest is missing a string version or asset map.');
   }
@@ -420,9 +499,22 @@ function fetchBuffer(
         }
         chunks.push(chunk);
       });
+      let ended = false;
+      response.on('error', reject);
+      response.on('aborted', () => {
+        reject(new ManifestFetchError(`Response for ${url} was aborted before completion.`, { statusCode, redirected }));
+      });
+      response.on('close', () => {
+        if (!ended && !capped) {
+          reject(new ManifestFetchError(`Response for ${url} closed before completion.`, { statusCode, redirected }));
+        }
+      });
       response.on('end', () => {
-        if (!capped) {
+        ended = true;
+        if (!capped && response.complete) {
           resolve({ body: Buffer.concat(chunks), redirected });
+        } else if (!capped) {
+          reject(new ManifestFetchError(`Response for ${url} ended before completion.`, { statusCode, redirected }));
         }
       });
     });
@@ -431,6 +523,127 @@ function fetchBuffer(
       request.destroy(new Error(`Timed out while fetching ${url}.`));
     });
   });
+}
+
+/** Compatibility placement APIs share the public schema and raw-byte admission. */
+function serverManifestView(manifest: AdmittedServerManifest, manifestUrl: string): ServerManifest {
+  const base = manifestUrl.slice(0, manifestUrl.lastIndexOf('/'));
+  const assets: Record<string, ManifestAsset> = {};
+  for (const [target, asset] of Object.entries(manifest.assets)) {
+    assets[target] = { url: assetUrlForSubject(base, asset.subject), sha256: asset.sha256 };
+  }
+  return { version: manifest.productVersion, assets };
+}
+
+function placementManifest(bytes: Buffer, url: string, request: ManifestPlacementRequest): ServerManifest {
+  const admitted = admitManifestBytes(bytes, request.admittedManifestSha256);
+  if (admitted.productVersion !== request.generation) {
+    throw new Error(`Server manifest version ${admitted.productVersion} does not match distribution generation ${request.generation}.`);
+  }
+  if (!admitted.assets[request.platformTarget]) {
+    throw new Error(`No ripr server asset is listed for ${request.platformTarget} in manifest ${admitted.productVersion}.`);
+  }
+  return serverManifestView(admitted, url);
+}
+
+function placementFailure(outcome: ManifestFetchNonSuccess): Error {
+  switch (outcome.kind) {
+    case 'authoritative_absence':
+      return new ManifestFetchError(`GET ${outcome.url} failed with HTTP 404.`, { statusCode: 404, redirected: false });
+    case 'http_failure':
+      return new ManifestFetchError(`GET ${outcome.url} failed with HTTP ${outcome.statusCode}${outcome.redirected ? ' after redirect' : ''}.`, {
+        statusCode: outcome.statusCode, redirected: outcome.redirected
+      });
+    case 'transport_failure':
+      return new Error(outcome.message);
+  }
+}
+
+async function fetchManifestBytesOverHttps(url: string): Promise<ManifestFetchOutcome> {
+  try {
+    const { body } = await fetchBuffer(url, MAX_MANIFEST_BYTES, fetchPolicyFor(url));
+    return { kind: 'ok', bytes: body };
+  } catch (error) {
+    if (isDirectManifestNotFound(error)) {
+      return { kind: 'authoritative_absence', url };
+    }
+    if (error instanceof ManifestFetchError && error.statusCode !== undefined && error.statusCode >= 300) {
+      return { kind: 'http_failure', url, statusCode: error.statusCode, redirected: error.redirected };
+    }
+    return { kind: 'transport_failure', url, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/** A contradictory stable response never authorizes a second placement. */
+export async function resolveServerManifestPlacement(
+  request: ManifestPlacementRequest,
+  fetchImpl: ManifestBytesFetcher = fetchManifestBytesOverHttps
+): Promise<SelectedServerManifest> {
+  if (request.generation !== distributionGeneration(request.requestedVersion)) {
+    throw new Error(`Requested version ${request.requestedVersion} does not belong to generation ${request.generation}.`);
+  }
+  const stableUrl = admitInitialRequestTarget(request.stableManifestUrl, fetchPolicyFor(request.stableManifestUrl));
+  const stable = await fetchImpl(stableUrl);
+  if (stable.kind === 'ok') {
+    return {
+      manifest: placementManifest(stable.bytes, stableUrl, request),
+      manifestUrl: stableUrl,
+      observation: { placement: 'stable', manifestUrl: stableUrl }
+    };
+  }
+  if (stable.kind !== 'authoritative_absence' || request.rcManifestUrl === undefined
+      || request.admittedManifestSha256 === undefined) {
+    throw placementFailure(stable);
+  }
+  // An immutable digest is required before the fallback is fetched. Parsing
+  // either placement uses the same schema2 raw-byte admission, without a
+  // permissive legacy parser or an independent transport policy.
+  if (!/^[0-9a-f]{64}$/i.test(request.admittedManifestSha256)) {
+    throw new Error('Admitted manifest digest is not a SHA-256 value.');
+  }
+  const rcUrl = admitInitialRequestTarget(request.rcManifestUrl, fetchPolicyFor(request.rcManifestUrl));
+  const rc = await fetchImpl(rcUrl);
+  if (rc.kind !== 'ok') {
+    throw placementFailure(rc);
+  }
+  return {
+    manifest: placementManifest(rc.bytes, rcUrl, request),
+    manifestUrl: rcUrl,
+    observation: { placement: 'rc_after_stable_absent', stableManifestUrl: stableUrl, rcManifestUrl: rcUrl }
+  };
+}
+
+/** Pure URL plan; this does not create a digest or authorize runtime fallback. */
+export function manifestPlacementPlan(baseUrl: string, requestedVersion: string): ManifestPlacementPlan {
+  const requested = validateManagedServerVersion(requestedVersion);
+  const generation = distributionGeneration(requested);
+  const file = `ripr-server-manifest-v${generation}.json`;
+  const base = baseUrl.trim();
+  if (base.length > 0) {
+    return { generation, stableManifestUrl: `${base.replace(/\/+$/, '')}/${file}` };
+  }
+  const releaseBase = 'https://github.com/EffortlessMetrics/ripr/releases/download';
+  return {
+    generation,
+    stableManifestUrl: `${releaseBase}/v${generation}/${file}`,
+    ...(requested !== generation ? { rcManifestUrl: `${releaseBase}/v${requested}/${file}` } : {})
+  };
+}
+
+/** Legacy API shape; only a validated bare archive subject crosses placement. */
+export function placementArchiveUrl(manifestUrl: string, assetUrl: string): string {
+  const parsed = new URL(assetUrl);
+  admitInitialRequestTarget(assetUrl, fetchPolicyFor(assetUrl));
+  if (parsed.search !== '' || parsed.hash !== '') {
+    throw new Error('Archive subject URL must not carry a query or fragment.');
+  }
+  const subject = decodeURIComponent(parsed.pathname.slice(parsed.pathname.lastIndexOf('/') + 1));
+  if (subject.length === 0) {
+    throw new Error(`Server manifest asset URL ${assetUrl} does not name an archive file.`);
+  }
+  const base = manifestUrl.slice(0, manifestUrl.lastIndexOf('/'));
+  const resolved = assetUrlForSubject(base, subject);
+  return admitInitialRequestTarget(resolved, fetchPolicyFor(manifestUrl));
 }
 
 function probeDownloadedExecutable(executablePath: string): Promise<string> {

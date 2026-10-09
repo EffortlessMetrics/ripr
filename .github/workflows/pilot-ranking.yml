@@ -1,0 +1,95 @@
+name: Pilot Ranking
+
+# Scores `ripr pilot`'s top 5 and top 10 picks against the checked-in mutation
+# answer key (benchmarks/pilot_ranking/) and gates the pooled precision,
+# scored share, function diversity, verdict counts and pick count on the
+# `ranking` scoreboard against metrics/dx-scoreboard/pilot-ranking-baseline.json.
+# Advisory and late: it runs nightly, on demand, and when a pull request that
+# touches pilot ranking, seam grading or this answer key is opened ready or
+# leaves draft. Like the required lanes, a push after that reruns it only
+# through a draft-to-ready toggle. It never runs cargo-mutants; the labels are
+# committed. The path filter lists the direct inputs to the ranking; the
+# nightly run covers changes further away. Network use (fetching the five
+# pinned crates) stays inside this workflow.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "29 6 * * *"
+  pull_request:
+    types: [opened, ready_for_review]
+    paths:
+      - "crates/ripr/src/output/pilot/**"
+      - "crates/ripr/src/output/path.rs"
+      - "crates/ripr/src/cli/commands/pilot.rs"
+      - "crates/ripr/src/output/agent_seam_packets.rs"
+      - "crates/ripr/src/analysis/repair_route.rs"
+      - "crates/ripr/src/analysis/new_test_target.rs"
+      - "crates/ripr/src/analysis/new_test_target/**"
+      - "crates/ripr/src/analysis/canonical_gap.rs"
+      - "crates/ripr/src/repair_guidance.rs"
+      - "crates/ripr/src/analysis/seam_classification.rs"
+      - "crates/ripr/src/analysis/seams.rs"
+      - "crates/ripr/src/analysis/seam_inventory.rs"
+      - "crates/ripr/src/analysis/test_grip_evidence.rs"
+      - "crates/ripr/src/analysis/test_grip_evidence/**"
+      - "benchmarks/pilot_ranking/**"
+      - "metrics/dx-scoreboard/pilot-ranking-baseline.json"
+      - "xtask/src/reports/pilot_ranking.rs"
+      - "xtask/src/reports/pilot_ranking/**"
+      - "xtask/src/reports/mutation_spot_check.rs"
+      - "xtask/src/reports/mutation_spot_check/pilot.rs"
+      - "xtask/src/reports/dx_scoreboard.rs"
+      - "benchmarks/dx_scoreboard/scoreboards.toml"
+      - ".github/workflows/pilot-ranking.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pilot-ranking-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ranking:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Build ripr
+        run: cargo build --release -p ripr --bin ripr
+
+      # Checkouts live outside target/: the Rust cache can restore parts of
+      # target/ without their .git, which fetch then refuses to replace.
+      - name: Fetch the pinned crates
+        run: cargo xtask pilot-ranking fetch --allow-network --root "$RUNNER_TEMP/pilot-ranking"
+
+      - name: Score pilot against the answer key
+        run: cargo xtask pilot-ranking score --ripr target/release/ripr --root "$RUNNER_TEMP/pilot-ranking"
+
+      - name: Compare with the baseline
+        run: >-
+          cargo xtask dx-scoreboard --boards ranking
+          --ingest target/ripr/reports/pilot-ranking.json
+          --baseline metrics/dx-scoreboard/pilot-ranking-baseline.json
+          --gate
+
+      - name: Upload ranking reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pilot-ranking
+          path: |
+            target/ripr/reports/pilot-ranking.*
+            target/ripr/reports/dx-scoreboard.*
+          if-no-files-found: warn

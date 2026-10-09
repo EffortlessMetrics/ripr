@@ -1,0 +1,13 @@
+diff --git a/src/rates.rs b/src/rates.rs
+index aad58f4..6753b5c 100644
+--- a/src/rates.rs
++++ b/src/rates.rs
+@@ -6,7 +6,7 @@ pub struct Premium;
+ 
+ impl Standard {
+     pub fn rate(&self) -> u32 {
+-        3
++        1 + 2
+     }
+ }
+ 

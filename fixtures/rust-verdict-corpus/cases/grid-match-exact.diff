@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 37775de..931708e 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -3,7 +3,7 @@
+ pub fn shipping_zone(country: &str) -> u32 {
+     match country {
+         "US" => 1,
+-        "CA" | "MX" => 2,
++        "MX" | "CA" => 2,
+         _ => 3,
+     }
+ }

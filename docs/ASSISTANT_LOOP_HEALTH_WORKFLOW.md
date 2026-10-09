@@ -84,7 +84,7 @@ search the workspace or infer missing proof data.
 
 ## Start In GitHub
 
-In generated CI, start with the `Assistant loop health` section of the RIPR
+In generated CI, start with the `Agent proof status` section of the RIPR
 advisory summary when it exists. The first screen shows:
 
 - total proof packets;
@@ -232,7 +232,7 @@ Before using a health report to route follow-up work, verify:
 - [PR evidence ledger workflow](PR_EVIDENCE_LEDGER_WORKFLOW.md) explains PR
   movement, waivers, baseline burn-down, repair receipts, and coverage/grip
   frontier context.
-- [CI strategy](CI.md#generated-github-workflow) describes generated workflow
+- [CI strategy](CI.md#copyable-ripr-advisory-workflow) describes generated workflow
   projection into GitHub summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#assistant-loop-health-report) defines the
   JSON and Markdown contract.

@@ -17,7 +17,7 @@ Linked specs:
 
 Linked ADR: n/a
 
-Active goal: `.ripr/goals/active.toml`
+Active goal: (historical; `.ripr/goals/active.toml` retired in #1701)
 
 Support-tier impact:
 

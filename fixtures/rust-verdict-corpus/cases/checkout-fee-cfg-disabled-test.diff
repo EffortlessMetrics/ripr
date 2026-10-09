@@ -1,0 +1,13 @@
+diff --git a/src/fees.rs b/src/fees.rs
+index db34888..654fe1d 100644
+--- a/src/fees.rs
++++ b/src/fees.rs
+@@ -13,7 +13,7 @@ pub fn cash_fee(amount: i64) -> i64 {
+ }
+ 
+ pub fn crypto_fee(amount: i64) -> i64 {
+-    amount / 20
++    amount / (2 * 10)
+ }
+ 
+ pub fn check_fee(amount: i64) -> i64 {

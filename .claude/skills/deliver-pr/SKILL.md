@@ -3,59 +3,75 @@ name: deliver-pr
 description: Carry one coherent issue or claim from current repository truth through proof, implementation, substantive current-head review, merge, and reconciliation. Use for a selected PR-sized lane or an existing PR.
 ---
 
-# Result
+# Useful result
 
-One coherent claim has one current candidate, current evidence and review for affected seams, an accurate GitHub PR state, and an issue disposition that distinguishes delivered from residual work.
+One coherent claim has one current candidate, current proof and review for the affected seams, a durable GitHub PR state, and an accurate issue disposition after merge or deliberate closure.
 
 # Route markers
 
 - `review_route:deliver_pr_to_review_pr`
 
-# Workflow
+# PR operating contract markers
 
-1. Hydrate the claim from the issue, accepted artifacts, current source, and any existing PR.
-2. Search for an equivalent PR before creating a branch. Continue the existing candidate when one owns the same claim.
-3. Find the earliest absent or stale judgment:
-   - premise and issue quality;
+- `pr_contract:current_claim_search`
+- `pr_contract:duplicate_check_before_conflict`
+- `pr_contract:behind_only_no_restack`
+- `pr_contract:routine_repo_writes`
+- `pr_contract:ordinary_squash_merge`
+- `pr_contract:local_commit_not_delivery`
+
+# Procedure
+
+1. Hydrate the selected claim from the current user instruction, root `CLAUDE.md`, the issue, governing artifacts, current source, live GitHub state, and any existing PR. Prior summaries and subagent reports are leads until verified.
+2. Search current source, all-state PRs, recently merged PRs, and the controlling issue for an equivalent implementation before creating a branch. Reuse the current candidate when one exists.
+3. Identify the earliest missing or stale judgment:
+   - premise or issue quality;
    - proof design;
    - implementation;
    - test hardening;
    - simplification;
    - candidate challenge;
    - substantive current-head review;
-   - review repair;
+   - review-comment repair;
    - integration proof;
    - reconciliation.
-4. Enter there. Do not recreate completed stages because this Claude session arrived later.
-5. Use `prepare-issue` when the premise or acceptance is missing or wrong.
-6. Use `prepare-proof` when the oracle is absent, weak, or disconnected from production.
-7. Use `build-candidate` to implement or repair the current candidate and materialize an exact committed head.
-8. Run `review-pr` on that exact head. Before publication, retain unavailable remote checks, artifacts, and external review as `REVIEW_INCOMPLETE` rather than pass.
-9. Use `finish-pr` to publish or resume the exact candidate when no equivalent PR exists.
-10. Re-enter `review-pr` on the exact published PR head after remote evidence is available. Green CI, zero unresolved threads, and unavailable reviewers do not establish substantive review.
-11. Route `REPAIR_REQUIRED` through the same candidate and refresh only affected proof/review dimensions.
-12. Only a current `REVIEW_READY` PR head may enter `finish-pr` merge convergence. Incomplete or blocking review remains draft or durably in flight.
-13. After merge or deliberate closure, verify current `main`, update delivered and remaining acceptance, update parents, and remove the completed worktree.
+4. Enter at that point. Do not recreate completed ceremony merely because this session arrived later.
+5. If the issue is missing or materially wrong, use `prepare-issue` and continue.
+6. If proof is absent or self-confirming, use `prepare-proof` and continue.
+7. Build or repair the one current candidate with `build-candidate` and materialize an exact committed head.
+8. Run `review-pr` on that exact head. Before publication, retain unavailable remote checks, artifacts, and external review as `REVIEW_INCOMPLETE`; do not convert them to pass.
+9. Use `finish-pr` to publish or resume the exact candidate when no equivalent PR already exists. Committing, pushing an ordinary branch, opening or updating the PR, and repairing it are routine delivery inside the selected claim; do not pause for owner permission.
+10. Immediately before publication, before resolving a conflict, and before replacing a supposedly stale candidate, repeat the claim-identity search against current `main`, open PRs, and recently merged PRs. If equivalent work landed, stop conflict repair, preserve any unique residual, and close or disposition the duplicate instead of manufacturing a rival PR.
+11. Re-enter `review-pr` on the exact published PR head after remote evidence is available. A green check set, empty thread list, or unavailable reviewer does not establish substantive review.
+12. Route `REPAIR_REQUIRED` back through the same candidate, then refresh only the affected proof and review dimensions.
+13. Only a current `REVIEW_READY` PR head may enter `finish-pr` merge convergence. Explicit incomplete or blocking review states remain draft or durably in flight.
+14. After merge or deliberate closure, verify current `main`, update delivered versus remaining acceptance, update parents, and release the candidate worktree.
 
-# Candidate boundary
+# Candidate law
 
 - One coherent claim normally has one branch, worktree, candidate, and PR.
-- Do not ask several agents to build rival versions of the same implementation merely to create parallel work.
-- Separate workers may contribute genuinely disjoint pieces only through one integrating candidate owner.
-- Do not inspect sibling implementations or reserve overlapping files, crates, or semantic surfaces.
-- A behind-only branch stays untouched.
-- Reconcile only an actual conflict, changed prerequisite, failed combined-tree proof, or applicable repository rule.
+- A local edit or local commit is an unpublished candidate and counts as zero repository delivery. Delivery begins when the branch and PR are reachable; the claim becomes landed only after protected merge and becomes terminal only after acceptance reconciliation.
+- Do not create rival implementations merely to manufacture parallelism.
+- Multiple writers may contribute genuinely disjoint pieces only through one integrating candidate owner.
+- Do not inspect sibling worktrees or reserve files, crates, APIs, or semantic surfaces.
+- A behind-only branch needs no action. Unrelated movement on `main` does not require a rebase, restack, force-push, or broad re-proof.
+- Rebase or update only for an actual content conflict, changed explicit prerequisite, material combined-tree failure, or repository policy that explicitly applies to this candidate.
+- Before repairing a conflict, first determine whether the conflicting upstream change already satisfies or supersedes the claim.
+
+# Merge law
+
+Ordinary `ripr-swarm` development PRs use protected squash merge. The squash result is the integration object; the branch's age or distance behind `main` is not a defect by itself. Exact history-preserving source-integration transactions are a separate controlled path and must follow their governing issue rather than this ordinary squash rule.
 
 # Release-scope law
 
 - Pin release membership to the exact immutable head SHA, ancestry, and release manifests.
 - Treat the reviewed immutable pin receipt as the sole membership authority: qualification, source preflight, and finalization consume it unchanged. Ordinary `main` or swarm movement never repins or changes membership; repin only after a release-invalidating exact-candidate qualification or source-preflight failure, with an explicit superseding receipt.
-- Never close, draft, lock, relabel, retarget, or otherwise mutate an unrelated PR to freeze release scope; unrelated PRs remain open and may evolve.
+- Never close, draft, lock, relabel, retarget, or otherwise mutate an unrelated PR to freeze release scope; unrelated PRs stay open and may evolve.
 - A post-pin merge does not retarget the release. Close only this selected PR for its own evidence-backed terminal disposition; never close-now/reopen-after-release.
 
-# Currentness
+# Proof and review currentness
 
-Review and proof currentness are dimensional:
+Track currentness by dimension rather than treating every SHA change as total invalidation:
 
 - production implementation;
 - test stimulus;
@@ -66,13 +82,13 @@ Review and proof currentness are dimensional:
 - integration basis;
 - candidate head identity.
 
-Refresh only what the latest edit changed. Unrelated movement on `main` does not invalidate candidate review. Reading comments and check status is remote triage; it does not replace `review-pr`'s semantic owner, oracle, contract-parity, platform, and exact-head evidence inspection.
+Refresh only the dimensions changed by the latest edit. Unrelated movement on `main` invalidates nothing by itself. A current-head review that covered only comments or CI is not a substitute for `review-pr`'s semantic-owner, oracle, contract-parity, platform, and exact-head evidence pass.
 
-# Subagents
+# Useful fan-out
 
-Use focused subagents for repository mapping, correctness, test-oracle, security/privacy, compatibility, product, or platform review when they change the detection surface. Keep mutation serialized through one candidate owner. Verify every subagent conclusion against the cited artifacts.
+Focused read-only agents may inspect authority, tests, correctness, security, compatibility, product behavior, or platform semantics. One writer integrates accepted repairs. A delegated writer receives the candidate-owned worktree and is the only mutator until handback. Conflicting reports must be resolved against canonical source and actual behavior before publication.
 
-# Valid outcomes
+# Valid exits
 
 - `PR_MERGED`
 - `PR_IN_FLIGHT`
@@ -87,4 +103,4 @@ Use focused subagents for repository mapping, correctness, test-oracle, security
 - `NEEDS_OWNER_DECISION`
 - `NOT_ESTABLISHED`
 
-Do not poll unchanged GitHub state. Yield the PR to the outer goal loop while remote systems own the next transition.
+A remote-owned wait yields to the goal loop; it does not keep the root polling unchanged state.

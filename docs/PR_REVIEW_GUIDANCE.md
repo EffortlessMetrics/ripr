@@ -14,12 +14,13 @@ default.
 
 ## Command
 
-Run the pure report producer with an explicit base and head:
+Run the pure report producer with an explicit base and head. Set `<base-ref>` to
+the repository's actual PR base; `origin/main` is common but not universal:
 
 ```bash
 ripr review-comments \
   --root . \
-  --base origin/main \
+  --base <base-ref> \
   --head HEAD \
   --out target/ripr/review/comments.json
 ```
@@ -44,7 +45,7 @@ explicit repair-card layer instead of rerunning analysis:
 ```bash
 ripr review-comments \
   --root . \
-  --base origin/main \
+  --base <base-ref> \
   --head HEAD \
   --gap-ledger target/ripr/reports/gap-decision-ledger.json \
   --out target/ripr/review/comments.json
@@ -155,7 +156,7 @@ pins the current behavior for:
 
 - exact changed seam line;
 - changed owner-function line;
-- same-file changed line;
+- changed line inside the seam owner's span (nested function);
 - summary-only fallback;
 - cap suppression;
 - configured-off suppression;

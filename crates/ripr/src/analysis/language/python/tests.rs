@@ -127,6 +127,11 @@ fn detect_python_test_framework_is_fail_closed_for_empty_root() -> Result<(), St
     std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
     Ok(())
 }
+use super::super::super::diff::ChangedLine;
+use super::bounded_read::{
+    DEFAULT_PYTHON_MAX_FILE_READ_BYTES, DEFAULT_PYTHON_MAX_WORKSPACE_FILES,
+    DEFAULT_PYTHON_MAX_WORKSPACE_READ_BYTES,
+};
 use super::owners_tests::{extract_owners, extract_tests};
 use super::*;
 use std::path::{Path, PathBuf};
@@ -252,6 +257,182 @@ class Policy:
     assert_eq!(owners[2].owner_kind, Some(OwnerKind::Method));
     assert_eq!(owners[3].owner_kind, Some(OwnerKind::ClassMethod));
     assert_eq!(owners[4].owner_kind, Some(OwnerKind::ClassMethod));
+}
+
+/// #4562, the dateutil `test_tz.py` shape: a `TestCase` subclass reached
+/// through a same-file base, and a mixin whose test methods run through a
+/// `TestCase` subclass, are collected; an uninherited mixin is not. Mixin
+/// members are recorded under each subclass that runs them, the node id the
+/// runner accepts, not under the uncollected mixin.
+#[test]
+fn extract_tests_follows_same_file_unittest_bases_and_mixins() {
+    let tests = extract_tests(
+        Path::new("tests/test_tz.py"),
+        r#"
+import unittest
+
+class TzFoldMixin(object):
+    def testFoldPositiveUTCOffset(self):
+        self.assertEqual(self.gettz("A"), 1)
+
+class GettzTest(unittest.TestCase, TzFoldMixin):
+    def testGettz(self):
+        self.assertEqual(gettz("A"), 1)
+
+class ZoneInfoGettzTest(GettzTest):
+    def testZoneInfoNewInstance(self):
+        self.assertIsNot(get_zonefile_instance(), get_zonefile_instance(new_instance=True))
+
+class UnusedMixin(object):
+    def test_never_runs(self):
+        helper()
+
+class Helper:
+    def test_not_a_test_class(self):
+        helper()
+
+class CheckMixin:
+    def test_shared(self):
+        helper()
+    def test_overridden(self):
+        helper()
+
+class TestFirst(CheckMixin):
+    def test_overridden(self):
+        pass
+
+class TestWithInit(CheckMixin):
+    def __init__(self):
+        pass
+    def test_never_collected(self):
+        helper()
+
+class TestInheritsInit(TestWithInit):
+    def test_not_collected_either(self):
+        helper()
+
+@dataclass
+class TestData:
+    def test_dataclass_not_collected(self):
+        helper()
+
+class UnitMixin:
+    def test_unit_overridden(self):
+        helper()
+    def test_unit_assigned_away(self):
+        helper()
+
+class UnitCase(unittest.TestCase, UnitMixin):
+    def test_unit_overridden(self):
+        pass
+    test_unit_assigned_away = None
+
+class FirstMixin:
+    def test_shadow(self):
+        helper()
+
+class SecondMixin:
+    def test_shadow(self):
+        helper()
+    def test_second_only(self):
+        helper()
+
+class TestShadowed(FirstMixin, SecondMixin):
+    pass
+
+class SharedMixin:
+    def test_kept_by_one(self):
+        helper()
+
+class TestOverrides(SharedMixin):
+    def test_kept_by_one(self):
+        pass
+
+class TestInherits(SharedMixin):
+    pass
+"#,
+    );
+    let collected: Vec<(&str, &str)> = tests
+        .iter()
+        .map(|test| (test.qualified_name.as_str(), test.framework))
+        .collect();
+    assert_eq!(
+        collected,
+        vec![
+            ("GettzTest.testGettz", "unittest"),
+            ("GettzTest.testFoldPositiveUTCOffset", "unittest"),
+            ("ZoneInfoGettzTest.testZoneInfoNewInstance", "unittest"),
+            ("ZoneInfoGettzTest.testFoldPositiveUTCOffset", "unittest"),
+            ("TestFirst.test_overridden", "pytest"),
+            ("TestFirst.test_shared", "pytest"),
+            ("UnitCase.test_unit_overridden", "unittest"),
+            ("TestShadowed.test_shadow", "pytest"),
+            ("TestShadowed.test_second_only", "pytest"),
+            ("TestOverrides.test_kept_by_one", "pytest"),
+            ("TestInherits.test_kept_by_one", "pytest"),
+        ]
+    );
+}
+
+/// Mixin members resolve along Python's C3 order, and only the last
+/// definition of a class name counts; a base defined later or twice is
+/// unknown, so its members are not collected.
+#[test]
+fn extract_tests_resolves_mixins_by_c3_order_and_last_definition() {
+    let tests = extract_tests(
+        Path::new("tests/test_mro.py"),
+        r#"
+class Base:
+    def test_limit(self):
+        helper()
+
+class Left(Base):
+    pass
+
+class Right(Base):
+    def test_limit(self):
+        pass
+
+class TestDiamond(Left, Right):
+    pass
+
+class Mixin:
+    def test_first(self):
+        pass
+
+class TestUsesFirstMixin(Mixin):
+    pass
+
+class Mixin:
+    def test_redefined(self):
+        helper()
+
+class TestForward(LaterBase):
+    pass
+
+class LaterBase:
+    def test_later(self):
+        helper()
+
+class TestTwice:
+    def __init__(self):
+        pass
+    def test_hidden_by_init(self):
+        helper()
+
+class TestTwice:
+    def test_last(self):
+        helper()
+"#,
+    );
+    let collected: Vec<&str> = tests
+        .iter()
+        .map(|test| test.qualified_name.as_str())
+        .collect();
+    assert_eq!(
+        collected,
+        vec!["TestDiamond.test_limit", "TestTwice.test_last"]
+    );
 }
 
 #[test]
@@ -463,6 +644,56 @@ fn classify_probe_shape_recognizes_python_predicate_shapes() {
         classify_probe_shape("    label = \"high\" if amount >= threshold else \"normal\"");
     assert_eq!(family, ProbeFamily::Predicate);
     assert_eq!(delta, DeltaKind::Control);
+}
+
+#[test]
+fn classify_probe_shape_reads_a_returned_comparison_as_its_boundary() -> Result<(), String> {
+    // `is_large(500) == True` holds before and after `>=` -> `>`; only the
+    // boundary input separates them, so the line is a predicate.
+    for line in [
+        "    return total > 100",
+        "    return attempt_number >= self.max_attempt_number",
+    ] {
+        assert_eq!(
+            classify_probe_shape(line),
+            (ProbeFamily::Predicate, DeltaKind::Control),
+            "{line}"
+        );
+    }
+    // Equality, computed operands and chained comparisons stay return values.
+    for line in [
+        "    return total == 100",
+        "    return len(items) > 0",
+        "    return total + 1 > limit",
+        "    return low < total < high",
+        "    return total > 100 and ready",
+    ] {
+        assert_eq!(
+            classify_probe_shape(line),
+            (ProbeFamily::ReturnValue, DeltaKind::Value),
+            "{line}"
+        );
+    }
+    // The one-side exact oracle does not credit it: the finding names the
+    // boundary input.
+    let finding = classify_change(
+        Path::new("src/pricing.py"),
+        2,
+        "    return total > 100",
+        &extract_owners(
+            Path::new("src/pricing.py"),
+            "def is_large(total):\n    return total > 100\n",
+        ),
+        &extract_tests(
+            Path::new("tests/test_pricing.py"),
+            "from src.pricing import is_large\n\n\
+                 def test_large():\n    assert is_large(500) == True\n",
+        ),
+    )
+    .ok_or_else(|| "returned comparison should classify".to_string())?;
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert_eq!(missing_discriminator_values(&finding), vec!["total == 100"]);
+    Ok(())
 }
 
 #[test]
@@ -1553,6 +1784,192 @@ fn free_function_changed_value_token_from_other_module_does_not_credit_exposed()
     Ok(())
 }
 
+const SRC_LAYOUT_DISCOUNTS_SOURCE: &str =
+    "def bulk_discount(quantity):\n    if quantity > 100:\n        return 0.15\n    return 0.0\n";
+const SRC_LAYOUT_DISCOUNTS_CHANGED_LINE: &str = "    if quantity > 100:";
+
+/// Classifies the `bulk_discount` boundary change for an owner at `owner_file`
+/// against one strong exact-value test that imports it via `import_line` and
+/// calls `bulk_discount(call_value)`, asserting that call's real outcome under
+/// the unchanged `quantity > 100` source as `expected`. RIPR-SPEC-0028: the
+/// caller decides whether that input sits on the changed `quantity == 100`
+/// boundary — the only input where the old and new predicates disagree.
+fn classify_src_layout_bulk_discount(
+    owner_file: &str,
+    import_line: &str,
+    call_value: u64,
+    expected: &str,
+) -> Result<crate::domain::Finding, String> {
+    let owners = extract_owners(Path::new(owner_file), SRC_LAYOUT_DISCOUNTS_SOURCE);
+    let tests = extract_tests(
+        Path::new("tests/test_discounts.py"),
+        &format!(
+            "{import_line}\n\n\ndef test_bulk_discount_threshold():\n    assert bulk_discount({call_value}) == {expected}\n"
+        ),
+    );
+    assert_eq!(
+        tests.len(),
+        1,
+        "fixture must parse exactly one pytest test for {import_line}"
+    );
+    classify_change(
+        Path::new(owner_file),
+        2,
+        SRC_LAYOUT_DISCOUNTS_CHANGED_LINE,
+        &owners,
+        &tests,
+    )
+    .ok_or_else(|| format!("changed predicate in {owner_file} should classify"))
+}
+
+#[test]
+fn src_layout_owner_imported_by_package_name_credits_exposed() -> Result<(), String> {
+    // PyPA src layout: the owner lives at `src/pricing/discounts.py`, but the
+    // import root is `src/`, so tests write `from pricing.discounts import ...`.
+    // That is a real import of the owner's module and must carry free-function
+    // module identity (before the fix it was `weakly_exposed` /
+    // `strong_oracle_observes_different_sink`).
+    //
+    // The oracle call sits on the changed `quantity == 100` boundary (100 is
+    // the input where `>` and `>=` disagree, RIPR-SPEC-0028), so the strong
+    // exact-value oracle pins the changed predicate instead of only reaching it.
+    let finding = classify_src_layout_bulk_discount(
+        "src/pricing/discounts.py",
+        "from pricing.discounts import bulk_discount",
+        100,
+        "0.0",
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a src-layout package import of the owner module is identity-bearing"
+    );
+    assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+    Ok(())
+}
+
+#[test]
+fn src_layout_owner_imported_with_src_prefix_still_credits_exposed() -> Result<(), String> {
+    // Keep the repository-relative form: projects that put the repository root
+    // on `sys.path` really do write `from src.pricing.discounts import ...`.
+    // Boundary-pinned oracle call as above (RIPR-SPEC-0028).
+    let finding = classify_src_layout_bulk_discount(
+        "src/pricing/discounts.py",
+        "from src.pricing.discounts import bulk_discount",
+        100,
+        "0.0",
+    )?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+    Ok(())
+}
+
+#[test]
+fn nested_src_layout_owner_imported_by_package_name_credits_exposed() -> Result<(), String> {
+    // Monorepo src layout: `packages/billing/src/pricing/discounts.py` is
+    // imported as `pricing.discounts` when `packages/billing/src` is the root.
+    // Boundary-pinned oracle call as above (RIPR-SPEC-0028).
+    let finding = classify_src_layout_bulk_discount(
+        "packages/billing/src/pricing/discounts.py",
+        "from pricing.discounts import bulk_discount",
+        100,
+        "0.0",
+    )?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    assert_eq!(finding.oracle_alignment.as_deref(), Some("direct"));
+    Ok(())
+}
+
+#[test]
+fn src_layout_owner_called_off_boundary_does_not_credit_exposed() -> Result<(), String> {
+    // RIPR-SPEC-0028 boundary rule, and the control for the tests above: reach
+    // plus a strong oracle is not `exposed` unless the oracle observes the
+    // changed sink. `quantity > 100` only changes behavior at
+    // `quantity == 100`, and a call at 101 takes the same branch before and
+    // after the change, so the direct src-layout import still carries module
+    // identity but the finding fails closed to `weakly_exposed` and names the
+    // missing boundary instead of crediting an oracle that cannot see it.
+    let finding = classify_src_layout_bulk_discount(
+        "src/pricing/discounts.py",
+        "from pricing.discounts import bulk_discount",
+        101,
+        "0.15",
+    )?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::WeaklyExposed,
+        "a strong oracle that never calls the changed predicate boundary does not discriminate it"
+    );
+    assert_eq!(
+        finding.oracle_alignment.as_deref(),
+        Some("direct"),
+        "the off-boundary downgrade must not be misread as a lost import identity"
+    );
+    assert!(
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .any(|missing| missing.value == "quantity == 100"),
+        "{:?}",
+        finding.activation.missing_discriminators
+    );
+    Ok(())
+}
+
+#[test]
+fn src_layout_same_named_function_from_other_module_does_not_credit_exposed() -> Result<(), String>
+{
+    // Discriminating negatives: stripping the `src` import root must not turn
+    // a same-named function from a DIFFERENT module, or a bare stem/suffix of
+    // the owner module path, into module identity. Only an exact module-path
+    // match counts.
+    for import_line in [
+        "from pricing.other import bulk_discount",
+        "from src.pricing.other import bulk_discount",
+        "from discounts import bulk_discount",
+        "from other.pricing.discounts import bulk_discount",
+    ] {
+        let finding = classify_src_layout_bulk_discount(
+            "src/pricing/discounts.py",
+            import_line,
+            101,
+            "0.15",
+        )?;
+        assert_ne!(
+            finding.class,
+            ExposureClass::Exposed,
+            "`{import_line}` is not the owner module and must not credit exposed"
+        );
+        assert_eq!(
+            finding.alignment_reason.as_deref(),
+            Some("strong_oracle_observes_different_sink"),
+            "`{import_line}` must stay on the fail-closed orthogonal branch"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn src_directory_below_repo_root_is_not_stripped_for_non_src_owner() -> Result<(), String> {
+    // Only a directory literally named `src` is an import root. An owner at
+    // `app/pricing/discounts.py` imported as `pricing.discounts` stays
+    // unmatched (its module is `app.pricing.discounts`), so the fix does not
+    // widen identity to arbitrary path suffixes.
+    let finding = classify_src_layout_bulk_discount(
+        "app/pricing/discounts.py",
+        "from pricing.discounts import bulk_discount",
+        101,
+        "0.15",
+    )?;
+    assert_ne!(finding.class, ExposureClass::Exposed);
+    assert_eq!(
+        finding.alignment_reason.as_deref(),
+        Some("strong_oracle_observes_different_sink")
+    );
+    Ok(())
+}
+
 #[test]
 fn changed_sink_token_requires_delta_not_unchanged_operand() -> Result<(), String> {
     // #1276: the delta is `max` (the wrap); the oracle observes the UNCHANGED
@@ -1709,6 +2126,17 @@ fn empty_delta_predicate_change_still_credits_outcome_oracle() -> Result<(), Str
         finding.class,
         ExposureClass::Exposed,
         "a control-flow operator change observed by an outcome oracle stays exposed"
+    );
+    // RIPR-SPEC-0028 boundary rule: the construct-call passes a dict, not a
+    // literal owner argument, so the boundary gate cannot see the activating
+    // input and keeps the oracle verdict with a named limitation.
+    assert!(
+        finding
+            .evidence
+            .iter()
+            .any(|line| line.starts_with("boundary_activation_unresolved: ")),
+        "{:?}",
+        finding.evidence
     );
     Ok(())
 }
@@ -2899,7 +3327,7 @@ fn classify_click_output_change_as_repairable_cli_gap() -> Result<(), String> {
     );
     assert_eq!(
         evidence_value(&finding, "suggested_verify_command: "),
-        Some("pytest tests/test_commands.py::test_ship_smoke")
+        Some("python -m pytest tests/test_commands.py::test_ship_smoke")
     );
     Ok(())
 }
@@ -2909,10 +3337,12 @@ fn classify_change_emits_first_python_repair_class_discriminators() -> Result<()
     let return_finding = classify_change(
         Path::new("src/priority.py"),
         2,
-        "    return amount >= 100",
+        // A returned comparison is a predicate boundary; a computed return
+        // keeps this case on the return-value repair class.
+        "    return amount + 100",
         &extract_owners(
             Path::new("src/priority.py"),
-            "def is_priority(amount):\n    return amount >= 100\n",
+            "def is_priority(amount):\n    return amount + 100\n",
         ),
         &extract_tests(
             Path::new("tests/test_priority.py"),
@@ -2924,7 +3354,7 @@ fn classify_change_emits_first_python_repair_class_discriminators() -> Result<()
     assert_eq!(return_finding.class, ExposureClass::WeaklyExposed);
     assert_eq!(
         missing_discriminator_values(&return_finding),
-        vec!["return value == amount >= 100"]
+        vec!["return value == <expected value>"]
     );
     assert!(
         return_finding
@@ -3017,6 +3447,146 @@ fn classify_change_emits_first_python_repair_class_discriminators() -> Result<()
     Ok(())
 }
 
+/// #4216 row 6 (Py#7): the missing discriminator must never restate the changed
+/// production expression as its own oracle. `assert result == sum(...) + 1`
+/// passes for every mutant of that expression, so a computed return or
+/// assignment names a `<expected value>` placeholder; only an independent
+/// literal stays concrete. Gating (class, presence of the fact) is unchanged.
+#[test]
+fn classify_change_never_restates_changed_expression_as_discriminator() -> Result<(), String> {
+    let cart_source = "class Cart:\n    def __init__(self, items):\n        self.items = items\n\n    def total_quantity(self):\n        return sum(i.quantity for i in self.items) + 1\n";
+    let cart_tests = "from app.cart import Cart\n\n\
+        def test_total_quantity():\n    cart = Cart([])\n    assert cart.total_quantity() > 0\n";
+    let computed_return = classify_change(
+        Path::new("app/cart.py"),
+        6,
+        "        return sum(i.quantity for i in self.items) + 1",
+        &extract_owners(Path::new("app/cart.py"), cart_source),
+        &extract_tests(Path::new("tests/test_cart.py"), cart_tests),
+    )
+    .ok_or_else(|| "computed return change should classify".to_string())?;
+    assert_eq!(computed_return.class, ExposureClass::WeaklyExposed);
+    assert_eq!(
+        missing_discriminator_values(&computed_return),
+        vec!["return value == <expected value>"]
+    );
+    let next_step = computed_return
+        .recommended_next_step
+        .as_deref()
+        .ok_or_else(|| "computed return should keep a next step".to_string())?;
+    assert!(
+        !next_step.contains("sum(i.quantity"),
+        "next step must not restate the changed expression: {next_step}"
+    );
+
+    let literal_return = classify_change(
+        Path::new("app/cart.py"),
+        6,
+        "        return 42",
+        &extract_owners(
+            Path::new("app/cart.py"),
+            "class Cart:\n    def __init__(self, items):\n        self.items = items\n\n    def total_quantity(self):\n        return 42\n",
+        ),
+        &extract_tests(Path::new("tests/test_cart.py"), cart_tests),
+    )
+    .ok_or_else(|| "literal return change should classify".to_string())?;
+    assert_eq!(
+        missing_discriminator_values(&literal_return),
+        vec!["return value == 42"]
+    );
+
+    let computed_field = classify_change(
+        Path::new("app/cart.py"),
+        6,
+        "        self.total = sum(i.quantity for i in self.items) + 1",
+        &extract_owners(
+            Path::new("app/cart.py"),
+            "class Cart:\n    def __init__(self, items):\n        self.items = items\n\n    def total_quantity(self):\n        self.total = sum(i.quantity for i in self.items) + 1\n",
+        ),
+        &extract_tests(
+            Path::new("tests/test_cart.py"),
+            "from app.cart import Cart\n\n\
+                def test_total_quantity():\n    cart = Cart([])\n    cart.total_quantity()\n    assert cart\n",
+        ),
+    )
+    .ok_or_else(|| "computed field change should classify".to_string())?;
+    assert_eq!(computed_field.class, ExposureClass::WeaklyExposed);
+    assert_eq!(
+        missing_discriminator_values(&computed_field),
+        vec!["self.total == <expected value>"]
+    );
+
+    // A string-delimited compound expression starts and ends with a quote but
+    // is not a literal; a `+` inside the quotes still is one.
+    for (changed, expected) in [
+        (
+            "        return \"Hello, \" + name + \"!\"",
+            vec!["return value == <expected value>"],
+        ),
+        (
+            "        self.label = \"a\" + suffix + \"b\"",
+            vec!["self.label == <expected value>"],
+        ),
+        ("        return \"a+b\"", vec!["return value == \"a+b\""]),
+        // One triple-quoted literal is a literal; a compound of two is not,
+        // and adjacent-string concatenation stays non-literal.
+        (
+            r#"        return """abc""""#,
+            vec![r#"return value == """abc""""#],
+        ),
+        (
+            "        return '''abc'''",
+            vec!["return value == '''abc'''"],
+        ),
+        (
+            r#"        return """a""" + name + """b""""#,
+            vec!["return value == <expected value>"],
+        ),
+        (
+            "        return \"a\" \"b\"",
+            vec!["return value == <expected value>"],
+        ),
+        // A constructor keyword bound to a bare name echoes that name.
+        (
+            "        return Order(total=name)",
+            vec!["result.total == <expected value>"],
+        ),
+        ("        return Order(total=5)", vec!["result.total == 5"]),
+    ] {
+        let finding = classify_one_cart_line(changed)?;
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed, "{changed}");
+        assert_eq!(
+            missing_discriminator_values(&finding),
+            expected,
+            "{changed}"
+        );
+    }
+    // A conditional expression classifies as a predicate with no comparison
+    // to read, so it names no discriminator rather than restating a branch.
+    let conditional = classify_one_cart_line("        return \"yes\" if flag else \"no\"")?;
+    assert_eq!(conditional.probe.family, ProbeFamily::Predicate);
+    assert!(missing_discriminator_values(&conditional).is_empty());
+    Ok(())
+}
+
+fn classify_one_cart_line(changed: &str) -> Result<Finding, String> {
+    let source = format!(
+        "class Cart:\n    def __init__(self, items):\n        self.items = items\n\n    def total_quantity(self, name, suffix, flag):\n{changed}\n"
+    );
+    classify_change(
+        Path::new("app/cart.py"),
+        6,
+        changed,
+        &extract_owners(Path::new("app/cart.py"), &source),
+        &extract_tests(
+            Path::new("tests/test_cart.py"),
+            "from app.cart import Cart\n\n\
+                def test_total_quantity():\n    cart = Cart([])\n    assert cart.total_quantity(\"x\", \"y\", True)\n",
+        ),
+    )
+    .ok_or_else(|| format!("`{changed}` should classify"))
+}
+
 #[test]
 fn classify_change_emits_python_repair_placement_and_verify_command() -> Result<(), String> {
     let pytest_finding = classify_change(
@@ -3053,7 +3623,7 @@ fn classify_change_emits_python_repair_placement_and_verify_command() -> Result<
     );
     assert_eq!(
         evidence_value(&pytest_finding, "suggested_verify_command: "),
-        Some("pytest tests/test_pricing.py::test_calculate_discount_smoke")
+        Some("python -m pytest tests/test_pricing.py::test_calculate_discount_smoke")
     );
     assert_eq!(
         evidence_value(&pytest_finding, "suggested_verify_command_confidence: "),
@@ -3392,7 +3962,7 @@ fn classify_change_uses_same_stem_test_as_weak_proximity() -> Result<(), String>
     );
     let tests = extract_tests(
         Path::new("tests/test_pricing.py"),
-        "def test_boundary_documented_elsewhere():\n    assert 90 == 90\n",
+        "def test_boundary_documented_elsewhere():\n    handler = apply_discount\n    assert 90 == 90\n",
     );
 
     let Some(finding) = classify_change(
@@ -3423,7 +3993,7 @@ fn same_stem_relation_accepts_suffix_and_orders_after_direct_calls() {
     );
     let mut tests = extract_tests(
         Path::new("tests/pricing_test.py"),
-        "def test_same_stem_only():\n    assert 90 == 90\n",
+        "def test_same_stem_only():\n    handler = apply_discount\n    assert 90 == 90\n",
     );
     tests.extend(extract_tests(
         Path::new("tests/test_checkout.py"),
@@ -3906,9 +4476,17 @@ fn classify_change_ignores_unrelated_text_mentions() -> Result<(), String> {
 
 #[test]
 fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), String> {
+    let root = unique_test_root("accepted-changed-files");
+    for path in ["scripts/run.py", "src/util.py"] {
+        let file = root.join(path);
+        let parent = file.parent().ok_or("fixture file must have a parent")?;
+        std::fs::create_dir_all(parent).map_err(|err| format!("create parent: {err}"))?;
+        std::fs::write(&file, "# Readable non-behavioral source\n")
+            .map_err(|err| format!("write source: {err}"))?;
+    }
     let adapter = PythonAdapter;
     let options = AnalysisOptions {
-        root: PathBuf::from("."),
+        root: root.clone(),
         base: None,
         diff_file: None,
         mode: crate::analysis::AnalysisMode::Draft,
@@ -3920,6 +4498,7 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     };
     let policy = OraclePolicy::default();
     let changed_files = vec![
@@ -3932,6 +4511,284 @@ fn analyze_diff_returns_zero_findings_and_counts_accepted_files() -> Result<(), 
     let result = adapter.analyze_diff(&options, &policy, &changed_files)?;
     assert!(result.findings.is_empty());
     assert_eq!(result.changed_files, 2);
+    assert!(result.limitations.is_empty());
+    std::fs::remove_dir_all(root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+/// Generous injected bounds: every ordinary fixture workspace fits without
+/// tripping a cap, so these tests exercise disclosure only when a bound is
+/// deliberately tightened.
+fn generous_walk_limits() -> PythonDiffWalkLimits {
+    PythonDiffWalkLimits {
+        max_workspace_files: DEFAULT_PYTHON_MAX_WORKSPACE_FILES,
+        max_file_read_bytes: DEFAULT_PYTHON_MAX_FILE_READ_BYTES,
+        max_workspace_read_bytes: DEFAULT_PYTHON_MAX_WORKSPACE_READ_BYTES,
+    }
+}
+
+#[test]
+fn analyze_diff_discloses_workspace_file_count_cap() -> Result<(), String> {
+    let root = unique_test_root("diff-walk-count-cap");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("a.py"), "def a():\n    return 1\n")?;
+    write_repo_file(&root.join("b.py"), "def b():\n    return 2\n")?;
+    let options = repo_options(&root);
+    let limits = PythonDiffWalkLimits {
+        max_workspace_files: 1,
+        ..generous_walk_limits()
+    };
+    let result = PythonAdapter::analyze_diff_with_limits(&options, &[], limits)?;
+    assert_eq!(
+        result.limitations.len(),
+        1,
+        "exactly the count-cap disclosure is expected, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    let limitation = &result.limitations[0];
+    assert_eq!(limitation.kind, AnalysisLimitationKind::DiffScopeOversized);
+    assert_eq!(limitation.affected_items, Some(1));
+    let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("1 discovered .py file(s) were not analyzed"),
+        "refused count missing from detail: {detail}"
+    );
+    assert!(
+        detail.contains("RIPR_PYTHON_MAX_WORKSPACE_FILES"),
+        "control knob missing from detail: {detail}"
+    );
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_discloses_per_file_read_cap() -> Result<(), String> {
+    let root = unique_test_root("diff-file-read-cap");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("small.py"), "def small():\n    return 1\n")?;
+    write_repo_file(&root.join("big.py"), &format!("X = {}\n", "1".repeat(200)))?;
+    let options = repo_options(&root);
+    let limits = PythonDiffWalkLimits {
+        max_file_read_bytes: 100,
+        ..generous_walk_limits()
+    };
+    let result = PythonAdapter::analyze_diff_with_limits(&options, &[], limits)?;
+    assert_eq!(
+        result.limitations.len(),
+        1,
+        "exactly the per-file cap disclosure is expected, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    let limitation = &result.limitations[0];
+    assert_eq!(
+        limitation.kind,
+        AnalysisLimitationKind::LanguageScopeUnsupported
+    );
+    assert_eq!(limitation.path.as_deref(), Some("big.py"));
+    let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("file_read_capped"),
+        "distinguishable reason missing from detail: {detail}"
+    );
+    assert!(
+        detail.contains("RIPR_PYTHON_MAX_FILE_READ_BYTES"),
+        "control knob missing from detail: {detail}"
+    );
+    // The under-limit file is analyzed normally: no skipped files.
+    assert_eq!(result.skipped_files, 0);
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+/// #5022: when the read caps refuse more files than the disclosure sample
+/// cap, the limitation count stays bounded (a stable-sorted sample plus one
+/// summary entry) while the summary preserves the true refused count —
+/// not one limitation per refused file.
+#[test]
+fn analyze_diff_bounds_read_limit_disclosure_and_preserves_refused_total() -> Result<(), String> {
+    let root = unique_test_root("diff-bounded-read-sample");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    let sample_cap = crate::analysis::language::read_limit_disclosure::MAX_READ_LIMIT_SAMPLE_PATHS;
+    let total = sample_cap + 4;
+    for index in 0..total {
+        write_repo_file(
+            &root.join(format!("pkg_{index:02}.py")),
+            &format!("VALUE = {}\n", "1".repeat(200)),
+        )?;
+    }
+    let options = repo_options(&root);
+    let limits = PythonDiffWalkLimits {
+        max_file_read_bytes: 100,
+        ..generous_walk_limits()
+    };
+    let result = PythonAdapter::analyze_diff_with_limits(&options, &[], limits)?;
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+
+    let sample = result
+        .limitations
+        .iter()
+        .filter(|limitation| {
+            limitation.path.is_some()
+                && matches!(
+                    &limitation.recovery.kind,
+                    AnalysisRecoveryKind::IncreaseConfiguredLimit
+                )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sample.len(),
+        sample_cap,
+        "per-file disclosure is bounded to the sample, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        sample.windows(2).all(|pair| pair[0].path <= pair[1].path),
+        "sample paths must be sorted so repeated runs are byte-stable"
+    );
+    assert!(
+        sample.iter().all(|limitation| {
+            limitation
+                .bounded_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("file_read_capped"))
+        }),
+        "sample entries keep the distinguishable refusal reason"
+    );
+    let summary = result
+        .limitations
+        .iter()
+        .find(|limitation| {
+            limitation.path.is_none()
+                && limitation
+                    .bounded_detail
+                    .as_deref()
+                    .is_some_and(|detail| detail.starts_with("python_read_limit_sampled:"))
+        })
+        .ok_or_else(|| {
+            format!(
+                "expected one folded summary limitation, got {:?}",
+                result
+                    .limitations
+                    .iter()
+                    .map(|limitation| limitation.bounded_detail.clone())
+                    .collect::<Vec<_>>()
+            )
+        })?;
+    let refused_total =
+        u64::try_from(total).map_err(|err| format!("refused count overflows u64: {err}"))?;
+    assert_eq!(
+        summary.affected_items,
+        Some(refused_total),
+        "summary must carry the true refused count"
+    );
+    let detail = summary.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("not materialized in output"),
+        "summary must state why the full per-file list is absent: {detail}"
+    );
+    assert!(
+        summary
+            .recovery
+            .detail
+            .contains("RIPR_PYTHON_MAX_FILE_READ_BYTES"),
+        "the recovery must name the env knob, got {}",
+        summary.recovery.detail
+    );
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_discloses_unreadable_changed_file() -> Result<(), String> {
+    let root = unique_test_root("diff-unreadable-changed");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("good.py"), "def good():\n    return 1\n")?;
+    std::fs::write(root.join("bad.py"), [0xff, 0xfe, 0xfd, 0xfc])
+        .map_err(|err| format!("write invalid UTF-8 file: {err}"))?;
+    let options = repo_options(&root);
+    let changed_files = vec![changed("bad.py")];
+    let result =
+        PythonAdapter::analyze_diff_with_limits(&options, &changed_files, generous_walk_limits())?;
+    assert_eq!(
+        result.limitations.len(),
+        1,
+        "exactly the read-failure disclosure is expected, got {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    let limitation = &result.limitations[0];
+    assert_eq!(
+        limitation.kind,
+        AnalysisLimitationKind::LanguageScopeUnsupported
+    );
+    assert_eq!(limitation.path.as_deref(), Some("bad.py"));
+    let detail = limitation.bounded_detail.as_deref().unwrap_or_default();
+    assert!(
+        detail.contains("read failed:"),
+        "read-failure reason missing from detail: {detail}"
+    );
+    // The unreadable file also counts as a skipped file (the #4099 model).
+    assert_eq!(result.skipped_files, 1);
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+#[test]
+fn analyze_diff_small_workspace_is_unaffected_by_default_bounds() -> Result<(), String> {
+    let root = unique_test_root("diff-small-workspace");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(&root.join("app.py"), "def run():\n    return 1\n")?;
+    write_repo_file(
+        &root.join("test_app.py"),
+        "from app import run\n\n\ndef test_run():\n    assert run() == 1\n",
+    )?;
+    let options = repo_options(&root);
+    let changed_files = vec![ChangedFile {
+        path: PathBuf::from("app.py"),
+        added_lines: vec![ChangedLine {
+            line: 2,
+            text: "    return 2".to_string(),
+            new_side_line: 2,
+        }],
+        removed_lines: vec![ChangedLine {
+            line: 2,
+            text: "    return 1".to_string(),
+            new_side_line: 2,
+        }],
+    }];
+    let result =
+        PythonAdapter::analyze_diff_with_limits(&options, &changed_files, generous_walk_limits())?;
+    assert!(
+        result.limitations.is_empty(),
+        "small workspace must produce no walk limitations: {:?}",
+        result
+            .limitations
+            .iter()
+            .map(|limitation| limitation.bounded_detail.clone())
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(result.skipped_files, 0);
+    assert_eq!(result.changed_files, 1);
+    assert_eq!(
+        result.findings.len(),
+        1,
+        "the changed return line must still classify against the bounded walk"
+    );
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
     Ok(())
 }
 
@@ -3968,6 +4825,7 @@ fn repo_options(root: &Path) -> AnalysisOptions {
         production_like_targets: Default::default(),
         test_harnesses: Vec::new(),
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
     }
 }
 
@@ -4208,5 +5066,967 @@ fn analyze_repo_returns_an_honest_zero_for_a_tests_only_workspace() -> Result<()
     assert_eq!(result.production_files, 0);
     assert_eq!(result.partial_reason, None);
     std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    Ok(())
+}
+
+// ── A test is related to an owner only when it references the owner ────────
+//
+// Flat layout: `pricing.py` at the repository root with
+// `tests/test_pricing.py`. The same stem used to relate every test in the file
+// to the new `loyalty_price`, which no test references (RIPR-SPEC-0028).
+
+const FLAT_PRICING_SOURCE: &str = "DISCOUNT_THRESHOLD = 10000
+
+
+def discounted_total(amount):
+    if amount >= DISCOUNT_THRESHOLD:
+        return amount * 9 // 10
+    return amount
+
+
+def loyalty_price(amount, years):
+    if years >= 5:
+        return amount * 95 // 100
+    return amount
+";
+
+const FLAT_SIBLING_ONLY_TESTS: &str = "from pricing import discounted_total
+
+
+def test_no_discount_below_threshold():
+    assert discounted_total(5000) == 5000
+
+
+def test_discounts_far_above_threshold():
+    assert discounted_total(20000) == 18000
+";
+
+fn flat_pricing_owners() -> Vec<PythonOwner> {
+    extract_owners(Path::new("pricing.py"), FLAT_PRICING_SOURCE)
+}
+
+fn flat_owner<'a>(owners: &'a [PythonOwner], name: &str) -> Result<&'a PythonOwner, String> {
+    owners
+        .iter()
+        .find(|owner| owner.qualified_name == name)
+        .ok_or_else(|| format!("fixture must parse owner `{name}`"))
+}
+
+fn classify_flat_loyalty_line(tests: &[PythonTest]) -> Result<Finding, String> {
+    let owners = flat_pricing_owners();
+    classify_change(
+        Path::new("pricing.py"),
+        11,
+        "    if years >= 5:",
+        &owners,
+        tests,
+    )
+    .ok_or_else(|| "expected a loyalty_price finding".to_string())
+}
+
+fn candidate_relations(owner: &PythonOwner, tests: &[PythonTest]) -> Vec<(String, &'static str)> {
+    related_test_candidates(owner, tests)
+        .iter()
+        .map(|candidate| (candidate.test.name.clone(), candidate.relation.as_str()))
+        .collect()
+}
+
+#[test]
+fn flat_layout_same_stem_tests_that_only_call_a_sibling_owner_are_not_related() -> Result<(), String>
+{
+    let owners = flat_pricing_owners();
+    let loyalty = flat_owner(&owners, "loyalty_price")?;
+    assert_eq!(loyalty.start_line, 10, "fixture must place loyalty_price");
+    let tests = extract_tests(Path::new("tests/test_pricing.py"), FLAT_SIBLING_ONLY_TESTS);
+    assert_eq!(tests.len(), 2, "fixture must parse both sibling tests");
+    assert!(
+        tests
+            .iter()
+            .all(|test| test.body_text.contains("discounted_total(")
+                && same_stem_related(test, loyalty)),
+        "both parsed tests must call the sibling owner from a same-stem file"
+    );
+
+    let finding = classify_flat_loyalty_line(&tests)?;
+
+    assert_eq!(finding.class, ExposureClass::NoStaticPath);
+    assert_eq!(finding.ripr.reach.state, StageState::No);
+    assert!(finding.related_tests.is_empty());
+    assert_eq!(
+        finding.ripr.reach.summary,
+        "0 related Python test(s) found for owner `loyalty_price`"
+    );
+    assert!(
+        finding.missing.iter().any(|line| line
+            == "No Python test references `loyalty_price(`; add a pytest or unittest test that calls the changed owner."),
+        "no_static_path must name the missing owner reference: {:?}",
+        finding.missing
+    );
+    assert!(
+        !finding
+            .evidence
+            .iter()
+            .any(|line| line.starts_with("related_test_relation:")),
+        "no heuristic relation may be disclosed: {:?}",
+        finding.evidence
+    );
+    Ok(())
+}
+
+#[test]
+fn flat_layout_same_stem_tests_still_relate_the_sibling_owner_they_call() -> Result<(), String> {
+    let owners = flat_pricing_owners();
+    let tests = extract_tests(Path::new("tests/test_pricing.py"), FLAT_SIBLING_ONLY_TESTS);
+    assert_eq!(
+        candidate_relations(flat_owner(&owners, "discounted_total")?, &tests),
+        vec![
+            (
+                "test_discounts_far_above_threshold".to_string(),
+                "syntactic_call"
+            ),
+            (
+                "test_no_discount_below_threshold".to_string(),
+                "syntactic_call"
+            ),
+        ]
+    );
+    let finding = classify_change(
+        Path::new("pricing.py"),
+        5,
+        "    if amount >= DISCOUNT_THRESHOLD:",
+        &owners,
+        &tests,
+    )
+    .ok_or_else(|| "expected a discounted_total finding".to_string())?;
+    assert_eq!(finding.ripr.reach.state, StageState::Yes);
+    assert_eq!(finding.related_tests.len(), 2);
+    Ok(())
+}
+
+#[test]
+fn flat_layout_test_that_calls_the_owner_is_related_and_sibling_only_tests_are_not()
+-> Result<(), String> {
+    let source = format!(
+        "{}\n\ndef test_loyal_customers_get_five_percent_off():\n    assert loyalty_price(1000, 5) == 950\n",
+        FLAT_SIBLING_ONLY_TESTS.replace(
+            "from pricing import discounted_total",
+            "from pricing import discounted_total, loyalty_price"
+        )
+    );
+    let tests = extract_tests(Path::new("tests/test_pricing.py"), &source);
+    assert_eq!(tests.len(), 3);
+
+    let finding = classify_flat_loyalty_line(&tests)?;
+
+    assert_eq!(finding.ripr.reach.state, StageState::Yes);
+    let names: Vec<&str> = finding
+        .related_tests
+        .iter()
+        .map(|test| test.name.as_str())
+        .collect();
+    assert_eq!(names, vec!["test_loyal_customers_get_five_percent_off"]);
+    Ok(())
+}
+
+#[test]
+fn non_call_owner_references_keep_a_weak_same_stem_link() -> Result<(), String> {
+    let owners = flat_pricing_owners();
+    let loyalty = flat_owner(&owners, "loyalty_price")?;
+    let cases = [
+        (
+            "bare name",
+            "from pricing import loyalty_price\n\n\ndef test_prices_every_tier():\n    handler = loyalty_price\n    assert handler is not None\n",
+        ),
+        (
+            "renamed import local",
+            "from pricing import loyalty_price as lp\n\n\ndef test_prices_every_tier():\n    assert callable(lp)\n",
+        ),
+        (
+            "module member",
+            "import pricing\n\n\ndef test_prices_every_tier():\n    assert callable(pricing.loyalty_price)\n",
+        ),
+        (
+            "aliased module member",
+            "import pricing as p\n\n\ndef test_prices_every_tier():\n    handler = p.loyalty_price\n    assert handler is not None\n",
+        ),
+    ];
+    for (label, source) in cases {
+        let tests = extract_tests(Path::new("tests/test_pricing.py"), source);
+        assert_eq!(tests.len(), 1, "{label}: fixture must parse one test");
+        assert_eq!(
+            candidate_relations(loyalty, &tests),
+            vec![("test_prices_every_tier".to_string(), "same_stem")],
+            "{label}: a non-call reference keeps the heuristic link"
+        );
+        let finding = classify_flat_loyalty_line(&tests)?;
+        assert_eq!(finding.class, ExposureClass::WeaklyExposed, "{label}");
+        assert_eq!(finding.ripr.reach.state, StageState::Weak, "{label}");
+        assert!(
+            finding
+                .evidence
+                .iter()
+                .any(|line| line == "related_test_relation: same_stem (test_prices_every_tier)"),
+            "{label}: {:?}",
+            finding.evidence
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn owner_names_in_titles_fixtures_comments_strings_and_foreign_members_are_not_references()
+-> Result<(), String> {
+    let owners = flat_pricing_owners();
+    let loyalty = flat_owner(&owners, "loyalty_price")?;
+    let source = r#"import billing as b
+import pricing
+from billing import loyalty_price as other_lp
+from pricing import discounted_total
+
+
+def test_loyalty_price_is_documented(loyalty_price_config):
+    # loyalty_price(1000, 5) is covered elsewhere
+    label = "loyalty_price"
+    note = """
+    loyalty_price
+    """
+    order = make_order(loyalty_price=5)
+    total = order.loyalty_price
+    foreign = b.loyalty_price
+    renamed = other_lp
+    assert discounted_total(5000) == 5000  # loyalty_price
+
+
+def test_loyalty_price_shadowed_by_local():
+    loyalty_price = 3
+    assert loyalty_price == 3
+
+
+def test_loyalty_price_shadowed_by_fixture(loyalty_price):
+    assert loyalty_price == 3
+"#;
+    let tests = extract_tests(Path::new("tests/test_pricing.py"), source);
+    assert_eq!(tests.len(), 3, "fixture must parse all three tests");
+    assert!(
+        tests.iter().all(|test| same_stem_related(test, loyalty)
+            && normalize_similarity_key(&test.name).contains("loyalty_price")),
+        "every parsed test must satisfy the stem and title heuristics"
+    );
+    assert!(
+        tests[0]
+            .fixtures
+            .iter()
+            .any(|fixture| fixture == "loyalty_price_config"),
+        "the first test must carry the owner-named fixture"
+    );
+
+    assert_eq!(
+        candidate_relations(loyalty, &tests),
+        Vec::<(String, &'static str)>::new(),
+        "titles, fixture names, comments, strings, docstrings, keyword arguments, \
+         foreign members, foreign renamed imports and shadowing locals are not references"
+    );
+    Ok(())
+}
+
+#[test]
+fn walrus_loop_and_as_targets_shadow_the_owner_name() -> Result<(), String> {
+    // A local bound by `:=`, `for ... in` or `as` shadows the owner, so a bare
+    // use of that name is not an owner reference (RIPR-SPEC-0028).
+    let owners = flat_pricing_owners();
+    let loyalty = flat_owner(&owners, "loyalty_price")?;
+    let source = r#"from pricing import discounted_total
+
+
+def test_loyalty_price_walrus():
+    if (loyalty_price := discounted_total(5000)) > 0:
+        assert loyalty_price == 5000
+
+
+def test_loyalty_price_loop():
+    for loyalty_price in [5000, 20000]:
+        assert discounted_total(loyalty_price) > 0
+
+
+def test_loyalty_price_context(tmp_path):
+    with open(tmp_path / "x", "w") as loyalty_price:
+        assert loyalty_price is not None
+"#;
+    let tests = extract_tests(Path::new("tests/test_pricing.py"), source);
+    assert_eq!(tests.len(), 3, "fixture must parse all three tests");
+    assert!(
+        tests.iter().all(|test| same_stem_related(test, loyalty)),
+        "every parsed test must satisfy the stem heuristic"
+    );
+    assert_eq!(
+        candidate_relations(loyalty, &tests),
+        Vec::<(String, &'static str)>::new(),
+        "walrus, loop and `as` targets shadow the owner name"
+    );
+
+    // Control: the same bare use without a shadowing binding is a reference.
+    let control = extract_tests(
+        Path::new("tests/test_pricing.py"),
+        "from pricing import loyalty_price\n\n\ndef test_handler():\n    handler = loyalty_price\n    assert callable(handler)\n",
+    );
+    assert_eq!(control.len(), 1);
+    assert_eq!(
+        candidate_relations(loyalty, &control),
+        vec![("test_handler".to_string(), "same_stem")]
+    );
+    Ok(())
+}
+
+#[test]
+fn method_owners_need_an_attribute_reference_and_dunders_a_class_reference() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/account.py"),
+        "class Account:\n    def __init__(self, balance):\n        self._balance = balance\n\n    @property\n    def balance(self):\n        return max(0, self._balance)\n\n    def close(self):\n        return 0\n",
+    );
+    let init = flat_owner(&owners, "Account.__init__")?;
+    let balance = flat_owner(&owners, "Account.balance")?;
+    let close = flat_owner(&owners, "Account.close")?;
+    let tests = extract_tests(
+        Path::new("tests/test_account.py"),
+        "from src.account import Account\n\n\ndef test_account_init():\n    account = Account(100)\n    assert account._balance == 100\n\n\ndef test_balance_property():\n    value = Account(1).balance\n    assert value >= 0\n",
+    );
+    assert_eq!(tests.len(), 2);
+
+    assert_eq!(
+        candidate_relations(balance, &tests),
+        vec![("test_balance_property".to_string(), "same_stem")],
+        "`._balance` is not `.balance`; only the property read references the owner"
+    );
+    assert_eq!(
+        candidate_relations(close, &tests),
+        Vec::<(String, &'static str)>::new(),
+        "no test references `.close`"
+    );
+    assert_eq!(
+        candidate_relations(init, &tests).len(),
+        2,
+        "constructing `Account` invokes `__init__` implicitly"
+    );
+    Ok(())
+}
+
+#[test]
+fn dunder_owner_relates_by_owner_class_not_by_shared_dunder_name() -> Result<(), String> {
+    // packaging 55cbf1b: `LowerBound.__init__` was related to tests that define
+    // their own helper class with `def __init__` (and `super().__init__`),
+    // while the tests that construct `LowerBound(None, True)` were missed.
+    let owners = extract_owners(
+        Path::new("src/packaging/_ranges.py"),
+        "class LowerBound:\n    def __init__(self, version, inclusive):\n        if version is None:\n            inclusive = False\n        self.inclusive = inclusive\n\n    def __eq__(self, other):\n        return self.inclusive == other.inclusive\n",
+    );
+    let init = flat_owner(&owners, "LowerBound.__init__")?;
+    let eq = flat_owner(&owners, "LowerBound.__eq__")?;
+    let tests = extract_tests(
+        Path::new("tests/test_ranges.py"),
+        "from packaging._ranges import LowerBound\n\n\ndef test_lower_spellings_are_one_bound():\n    bound = LowerBound(None, True)\n    assert bound.inclusive is False\n\n\ndef test_helper_class_defines_its_own_init():\n    class LibcVersion:\n        def __init__(self, value):\n            self.value = value\n\n    class Child(LibcVersion):\n        def __init__(self):\n            super().__init__(1)\n\n    assert Child().value == 1\n",
+    );
+    assert_eq!(tests.len(), 2, "fixture must parse both tests");
+    assert_eq!(
+        candidate_relations(init, &tests),
+        vec![(
+            "test_lower_spellings_are_one_bound".to_string(),
+            "constructor_call"
+        )],
+        "constructing the owner class calls `__init__`; a test-local `__init__` does not"
+    );
+    assert_eq!(
+        candidate_relations(eq, &tests),
+        vec![(
+            "test_lower_spellings_are_one_bound".to_string(),
+            "dunder_protocol"
+        )],
+        "other dunders run through syntax on an instance the test built: related, but uncertain"
+    );
+
+    // A class reached through a module alias and a renamed import both count.
+    let aliased = extract_tests(
+        Path::new("tests/test_bounds.py"),
+        "import packaging._ranges as r\nfrom packaging._ranges import LowerBound as LB\n\n\ndef test_module_member():\n    assert r.LowerBound(None, True).inclusive is False\n\n\ndef test_renamed():\n    assert LB(None, True).inclusive is False\n",
+    );
+    assert_eq!(aliased.len(), 2);
+    assert_eq!(
+        candidate_relations(init, &aliased),
+        vec![
+            ("test_module_member".to_string(), "constructor_call"),
+            ("test_renamed".to_string(), "constructor_call"),
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn dunder_owner_needs_its_class_imported_from_the_owner_package() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/pkg/cache.py"),
+        "class Cache:\n    def __init__(self, n):\n        self.n = n\n",
+    );
+    let init = flat_owner(&owners, "Cache.__init__")?;
+    // A same-named class from another module, or a bare name with no import,
+    // is not the owner's class.
+    let foreign = extract_tests(
+        Path::new("tests/test_other.py"),
+        "from other.cache import Cache\n\n\ndef test_other_cache():\n    assert Cache(3).n == 3\n",
+    );
+    let unimported = extract_tests(
+        Path::new("tests/test_bare.py"),
+        "def test_bare_cache():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!((foreign.len(), unimported.len()), (1, 1));
+    assert!(candidate_relations(init, &foreign).is_empty());
+    assert!(candidate_relations(init, &unimported).is_empty());
+    // The owner's package re-exports its submodules' classes.
+    let package = extract_tests(
+        Path::new("tests/test_pkg.py"),
+        "import pkg\nfrom pkg import Cache\n\n\ndef test_package_import():\n    assert Cache(3).n == 3\n\n\ndef test_package_member():\n    assert pkg.Cache(3).n == 3\n",
+    );
+    assert_eq!(package.len(), 2);
+    assert_eq!(
+        candidate_relations(init, &package),
+        vec![
+            ("test_package_import".to_string(), "constructor_call"),
+            ("test_package_member".to_string(), "constructor_call"),
+        ]
+    );
+    // `pk` is not a package above `pkg.cache`.
+    let prefix = extract_tests(
+        Path::new("tests/test_prefix.py"),
+        "from pk import Cache\n\n\ndef test_prefix():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!(prefix.len(), 1);
+    assert!(candidate_relations(init, &prefix).is_empty());
+    // A `cache` module from another package, and the bare `src` layout root.
+    let other_module = extract_tests(
+        Path::new("tests/test_other_module.py"),
+        "import other.cache\nimport other.cache as oc\nfrom other import cache\nfrom src import Cache\n\n\ndef test_from_other():\n    assert cache.Cache(3).n == 3\n\n\ndef test_dotted_other():\n    assert other.cache.Cache(3).n == 3\n\n\ndef test_aliased_other():\n    assert oc.Cache(3).n == 3\n\n\ndef test_src_root():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!(other_module.len(), 4);
+    assert!(candidate_relations(init, &other_module).is_empty());
+    // A star import from the owner module binds the class by name.
+    let star = extract_tests(
+        Path::new("tests/test_star.py"),
+        "from pkg.cache import *\n\n\ndef test_star():\n    assert Cache(3).n == 3\n",
+    );
+    assert_eq!(star.len(), 1);
+    assert_eq!(
+        candidate_relations(init, &star),
+        vec![("test_star".to_string(), "constructor_call")]
+    );
+    // A trailing part of the owner's module path names another module: the
+    // standard library's `collections`, or `util` below `src/pkg`.
+    let shadow_owners = extract_owners(
+        Path::new("src/mylib/collections.py"),
+        "class OrderedDict:\n    def __init__(self, n):\n        self.n = n + 1\n",
+    );
+    let shadow_init = flat_owner(&shadow_owners, "OrderedDict.__init__")?;
+    let stdlib_tests = extract_tests(
+        Path::new("tests/test_stdlib.py"),
+        "import collections\nfrom collections import OrderedDict\n\n\ndef test_from_stdlib():\n    assert OrderedDict(a=1)[\"a\"] == 1\n\n\ndef test_stdlib_member():\n    assert collections.OrderedDict(a=1)[\"a\"] == 1\n",
+    );
+    assert_eq!(stdlib_tests.len(), 2);
+    assert!(candidate_relations(shadow_init, &stdlib_tests).is_empty());
+    let nested_owners = extract_owners(
+        Path::new("src/pkg/util/cache.py"),
+        "class Cache:\n    def __init__(self, n):\n        self.n = n\n",
+    );
+    let nested_init = flat_owner(&nested_owners, "Cache.__init__")?;
+    let middle_tests = extract_tests(
+        Path::new("tests/test_middle.py"),
+        "import util\nfrom util import Cache\n\n\ndef test_from_util():\n    assert Cache(3).n == 3\n\n\ndef test_util_member():\n    assert util.Cache(3).n == 3\n",
+    );
+    assert_eq!(middle_tests.len(), 2);
+    assert!(candidate_relations(nested_init, &middle_tests).is_empty());
+    Ok(())
+}
+
+#[test]
+fn unbound_dunder_owner_is_a_dynamic_dispatch_limit_not_no_static_path() -> Result<(), String> {
+    // cachetools 39b31bc: `Cache.__setitem__` is exercised by `cache[key] = v`
+    // on `self.Cache(...)` from a unittest mixin; the suite kills the mutants
+    // while ripr said `no_static_path`.
+    let owner_file = Path::new("src/cachetools/__init__.py");
+    let owner_source =
+        "class Cache:\n    def __setitem__(self, key, value):\n        self.data[key] = value\n";
+    let owners = extract_owners(owner_file, owner_source);
+    let setitem = flat_owner(&owners, "Cache.__setitem__")?;
+    let mixin_tests = extract_tests(
+        Path::new("tests/test_cache.py"),
+        "import cachetools\n\n\nclass TestCache:\n    Cache = cachetools.Cache\n\n    def test_insert(self):\n        cache = self.Cache(maxsize=2)\n        cache[1] = 1\n        assert cache[1] == 1\n",
+    );
+    assert_eq!(mixin_tests.len(), 1, "fixture must parse the mixin test");
+    assert!(candidate_relations(setitem, &mixin_tests).is_empty());
+    let finding = classify_change(
+        owner_file,
+        3,
+        "        self.data[key] = value",
+        &owners,
+        &mixin_tests,
+    )
+    .ok_or("the changed line must produce a finding")?;
+    assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    assert!(
+        finding
+            .missing
+            .iter()
+            .any(|line| line.contains("dynamic_dispatch") && line.contains("Cache.__setitem__")),
+        "the limit must name the dunder owner: {:?}",
+        finding.missing
+    );
+
+    // Control: no test imports the class or its module, so the owner is
+    // genuinely unreached and keeps `no_static_path`.
+    let unrelated_tests = extract_tests(
+        Path::new("tests/test_other.py"),
+        "import json\n\n\ndef test_dumps():\n    assert json.dumps(1) == \"1\"\n",
+    );
+    assert_eq!(unrelated_tests.len(), 1);
+    let finding = classify_change(
+        owner_file,
+        3,
+        "        self.data[key] = value",
+        &owners,
+        &unrelated_tests,
+    )
+    .ok_or("the changed line must produce a finding")?;
+    assert_eq!(finding.class, ExposureClass::NoStaticPath);
+
+    // An import this adapter does not read (inside `try:`) still names the
+    // class: an unknown, not an actionable `no_static_path`.
+    let guarded_tests = extract_tests(
+        Path::new("tests/test_guarded.py"),
+        "try:\n    from cachetools import Cache\nexcept ImportError:\n    Cache = None\n\n\ndef test_insert():\n    cache = Cache(maxsize=2)\n    cache[1] = 1\n    assert cache[1] == 1\n",
+    );
+    assert_eq!(
+        guarded_tests.len(),
+        1,
+        "fixture must parse the guarded test"
+    );
+    let finding = classify_change(
+        owner_file,
+        3,
+        "        self.data[key] = value",
+        &owners,
+        &guarded_tests,
+    )
+    .ok_or("the changed line must produce a finding")?;
+    assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    Ok(())
+}
+
+#[test]
+fn structural_lines_of_a_multi_line_def_header_carry_no_behavior() {
+    use super::no_behavior::{is_structural_def_header_line, is_structural_def_header_text};
+    // cachetools c0fdf6a reflowed `TLRUCache.__setitem__`'s signature.
+    let source = "class TLRUCache:\n    def __setitem__(\n        self,\n        key,\n        value: int | None,\n        cache_setitem=Cache.__setitem__,\n        *,\n        **kwargs,\n    ) -> None:\n        self.data[key] = value\n";
+    let structural = |line| is_structural_def_header_line(source, 2, line);
+    for line in [2, 3, 4, 5, 7, 8, 9] {
+        assert!(structural(line), "line {line} only shapes the header");
+    }
+    assert!(!structural(6), "a parameter default is behavior");
+    assert!(!structural(10), "the body is behavior");
+
+    // Outside a multi-line header the same text is not structural: a
+    // one-line header, or a `)` closing a call in a body.
+    let body_paren =
+        "def f(value):\n    total = compute(\n        value,\n    )\n    return total\n";
+    assert!(!is_structural_def_header_line(body_paren, 1, 3));
+    assert!(!is_structural_def_header_line(body_paren, 1, 4));
+
+    // Annotations that call code, and trailing comments, fail closed.
+    assert!(!is_structural_def_header_text("    value: make_type(),"));
+    assert!(!is_structural_def_header_text("    value,  # was key"));
+    assert!(!is_structural_def_header_text("    ) -> build():"));
+
+    // A header closed by `):  # note` still ends there: the call's argument
+    // lines in the body are not header lines.
+    let commented = "def pick(\n    a,\n    b,\n):  # note\n    return combine(\n        b,\n        a,\n    )\n";
+    assert!(is_structural_def_header_line(commented, 1, 2));
+    assert!(is_structural_def_header_line(commented, 1, 3));
+    for line in [6, 7, 8] {
+        assert!(
+            !is_structural_def_header_line(commented, 1, line),
+            "line {line} is in the body"
+        );
+    }
+    // A one-line header with a trailing comment is not a multi-line header.
+    let one_line = "def pick(a, b):  # note\n    return combine(\n        b,\n    )\n";
+    assert!(!is_structural_def_header_line(one_line, 1, 3));
+    assert!(!is_structural_def_header_line(one_line, 1, 4));
+}
+
+#[test]
+fn diff_mode_emits_no_probe_for_structural_def_header_lines() -> Result<(), String> {
+    let file = Path::new("src/cache.py");
+    let source = "class Cache:\n    def __setitem__(\n        self,\n        key,\n        value,\n    ):\n        self.data[key] = value\n";
+    let owners = extract_owners(file, source);
+    let context = |line| PythonNoBehaviorContext {
+        structural_def_header_line: super::no_behavior::is_structural_def_header_line(
+            source, 2, line,
+        ),
+        ..PythonNoBehaviorContext::default()
+    };
+    let classify = |line: usize, text: &str, old: Option<&str>| {
+        classify_change_with_context(file, line, text, old, &owners, &[], context(line))
+    };
+    assert!(classify(3, "        self,", None).is_none());
+    assert!(classify(6, "    ):", None).is_none());
+    // `key=None,` -> `key,` removes a default: behavior, keeps its probe.
+    assert!(classify(4, "        key,", Some("        key=None,")).is_some());
+    // The body line keeps its probe.
+    assert!(classify(7, "        self.data[key] = value", None).is_some());
+    Ok(())
+}
+
+#[test]
+fn a_def_or_class_header_is_not_a_call_of_that_name() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/pricing.py"),
+        "def loyalty_price(total):\n    return total - 10\n",
+    );
+    let loyalty = flat_owner(&owners, "loyalty_price")?;
+    let tests = extract_tests(
+        Path::new("tests/test_pricing.py"),
+        "def test_local_stub():\n    def loyalty_price(total):\n        return total\n\n    assert loyalty_price is not None\n\n\ndef test_async_local_stub():\n    async def loyalty_price(total):\n        return total\n\n    assert loyalty_price is not None\n\n\ndef test_local_class():\n    class loyalty_price(dict):\n        pass\n\n    assert loyalty_price is not None\n",
+    );
+    assert_eq!(tests.len(), 3, "fixture must parse all three tests");
+    assert!(
+        tests
+            .iter()
+            .all(|test| !body_calls_owner(&test.body_text, loyalty)),
+        "`def loyalty_price(` / `class loyalty_price(` define a local; they do not call the owner"
+    );
+    let control = extract_tests(
+        Path::new("tests/test_pricing.py"),
+        "from pricing import loyalty_price\n\n\ndef test_call():\n    assert loyalty_price(20) == 10\n",
+    );
+    assert_eq!(control.len(), 1);
+    assert!(body_calls_owner(&control[0].body_text, loyalty));
+    Ok(())
+}
+
+#[test]
+fn module_owner_needs_a_local_imported_from_the_owner_module() -> Result<(), String> {
+    let owners = extract_owners(Path::new("src/constants.py"), "BASE_DISCOUNT = 12\n");
+    let module = flat_owner(&owners, "<module>")?;
+    let tests = extract_tests(
+        Path::new("tests/test_constants.py"),
+        "from src.constants import BASE_DISCOUNT\n\n\ndef test_base_discount():\n    assert BASE_DISCOUNT == 12\n\n\ndef test_unrelated_arithmetic():\n    assert 1 + 1 == 2\n",
+    );
+    assert_eq!(tests.len(), 2);
+    assert_eq!(
+        candidate_relations(module, &tests),
+        vec![("test_base_discount".to_string(), "same_stem")]
+    );
+    Ok(())
+}
+
+#[test]
+fn header_param_line_defaults_reads_defaults_on_one_header_line() {
+    let names = super::no_behavior::header_param_line_defaults;
+    assert_eq!(
+        names("        alias_is_default=None,"),
+        Some(vec!["alias_is_default".to_string()])
+    );
+    assert_eq!(
+        names("    key: str = \"k\", *, strict=False,"),
+        Some(vec!["key".to_string(), "strict".to_string()])
+    );
+    assert_eq!(
+        names("    limit=10) -> int:"),
+        Some(vec!["limit".to_string()])
+    );
+    assert_eq!(names("def f(a, b=1,"), Some(vec!["b".to_string()]));
+    assert_eq!(
+        names("    options=dict(a=1),"),
+        Some(vec!["options".to_string()])
+    );
+    // No default, a comment, or text that is not a parameter list.
+    assert_eq!(names("        self,"), None);
+    assert_eq!(names("    x=1,  # was 2"), None);
+    assert_eq!(names("    return f(x=1)"), None);
+    assert_eq!(names("    ):"), None);
+}
+
+/// Classifies `line` of a multi-line header with the diff producer's flag.
+fn classify_multi_line_header_line(
+    file: &Path,
+    source: &str,
+    def_line: usize,
+    line: usize,
+    tests: &[PythonTest],
+) -> Result<Finding, String> {
+    let owners = extract_owners(file, source);
+    let text = source
+        .lines()
+        .nth(line - 1)
+        .ok_or_else(|| format!("fixture has no line {line}"))?;
+    let span = super::no_behavior::multi_line_def_header_span(source, def_line);
+    if !span.is_some_and(|(start, end)| (start..=end).contains(&line)) {
+        return Err(format!(
+            "line {line} must sit inside the header span {span:?}"
+        ));
+    }
+    let context = PythonNoBehaviorContext {
+        multi_line_def_header_line: true,
+        ..PythonNoBehaviorContext::default()
+    };
+    classify_change_with_context(file, line, text, None, &owners, tests, context)
+        .ok_or_else(|| format!("line {line} should classify"))
+}
+
+#[test]
+fn multi_line_header_default_bound_by_every_call_is_not_exposed() -> Result<(), String> {
+    // attrs 862696a shape: a new `name=default,` line inside a multi-line
+    // header. The one-line guard never read it, so a strong test that always
+    // passes the parameter credited `exposed` for a default it never reaches.
+    let file = Path::new("src/render.py");
+    let source = "def render(\n    name,\n    verbose=True,\n):\n    return f\"[debug] {name}\" if verbose else name\n";
+    let tests = extract_tests(
+        Path::new("tests/test_render.py"),
+        "from src.render import render\n\n\ndef test_render_quiet():\n    assert render(\"Sam\", verbose=False) == \"Sam\"\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 1, 3, &tests)?;
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert!(
+        finding
+            .activation
+            .missing_discriminators
+            .iter()
+            .any(|fact| fact.value == "call `render` without `verbose`"),
+        "the downgrade names the parameter to omit: {:?}",
+        finding.activation.missing_discriminators
+    );
+
+    // A positional argument at the declared position binds it too.
+    let positional = extract_tests(
+        Path::new("tests/test_render.py"),
+        "from src.render import render\n\n\ndef test_render_quiet():\n    assert render(\"Sam\", False) == \"Sam\"\n",
+    );
+    let finding = classify_multi_line_header_line(file, source, 1, 3, &positional)?;
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+
+    let omitting = extract_tests(
+        Path::new("tests/test_render.py"),
+        "from src.render import render\n\n\ndef test_render_default():\n    assert render(\"Sam\") == \"[debug] Sam\"\n",
+    );
+    let finding = classify_multi_line_header_line(file, source, 1, 3, &omitting)?;
+    assert_eq!(
+        finding.class,
+        ExposureClass::Exposed,
+        "a call that omits `verbose` reaches the default"
+    );
+    Ok(())
+}
+
+#[test]
+fn constructor_default_fails_open_because_constructions_hide_behind_subclasses()
+-> Result<(), String> {
+    // Every visible `Widget(...)` passes `label`, but `Small(size=3)` builds
+    // a subclass through the same `__init__` and reaches the default. The
+    // scanner cannot see such constructions (subclasses, `cls(...)`
+    // factories), so a constructor never downgrades on binding evidence.
+    let file = Path::new("src/widget.py");
+    let source = "class Widget:\n    def __init__(\n        self,\n        size,\n        label=None,\n    ):\n        self.label = label or str(size)\n";
+    let tests = extract_tests(
+        Path::new("tests/test_widget.py"),
+        "from src.widget import Widget\n\n\nclass Small(Widget):\n    pass\n\n\ndef test_label():\n    assert Widget(size=1, label=\"x\").label == \"x\"\n    assert Small(size=3).label == \"3\"\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 2, 5, &tests)?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn multi_line_header_default_reads_only_declared_parameters() -> Result<(), String> {
+    // `total=3,` sits inside the default call of `retry`; it is not a
+    // parameter of `request`, so a call binding `total=` (into `**kwargs`)
+    // says nothing about `retry`'s default.
+    let file = Path::new("src/client.py");
+    let source = "def request(\n    url,\n    retry=dict(\n        total=3,\n    ),\n    **kwargs,\n):\n    return (url, retry, kwargs)\n";
+    let tests = extract_tests(
+        Path::new("tests/test_client.py"),
+        "from src.client import request\n\n\ndef test_request():\n    assert request(\"u\", total=1) == (\"u\", {\"total\": 3}, {\"total\": 1})\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 1, 4, &tests)?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn positional_only_default_is_not_bound_by_a_keyword() -> Result<(), String> {
+    // `f(a=5)` against `def f(a=1, /, **kw)` puts `a` in `kw`; the default
+    // of the positional-only `a` still runs.
+    let file = Path::new("src/pos.py");
+    let source = "def f(\n    a=1, /,\n    **kw,\n):\n    return (a, kw)\n";
+    let tests = extract_tests(
+        Path::new("tests/test_pos.py"),
+        "from src.pos import f\n\n\ndef test_f():\n    assert f(a=5) == (1, {\"a\": 5})\n",
+    );
+    assert_eq!(tests.len(), 1);
+    let finding = classify_multi_line_header_line(file, source, 1, 2, &tests)?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+
+    // The one-line guard follows the same rule.
+    let owners = extract_owners(file, "def f(a=2, /, **kw):\n    return (a, kw)\n");
+    let finding = classify_change_with_old(
+        file,
+        1,
+        "def f(a=2, /, **kw):",
+        Some("def f(a=1, /, **kw):"),
+        &owners,
+        &tests,
+    )
+    .ok_or("a default-value change should classify")?;
+    assert_eq!(finding.class, ExposureClass::Exposed);
+    Ok(())
+}
+
+#[test]
+fn diff_mode_reads_a_default_added_inside_a_multi_line_header() -> Result<(), String> {
+    let root = unique_test_root("diff-multi-line-default");
+    std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+    write_repo_file(
+        &root.join("render.py"),
+        "def render(\n    name,\n    verbose=True,\n):\n    return f\"[debug] {name}\" if verbose else name\n",
+    )?;
+    write_repo_file(
+        &root.join("test_render.py"),
+        "from render import render\n\n\ndef test_render_quiet():\n    assert render(\"Sam\", verbose=False) == \"Sam\"\n",
+    )?;
+    let changed_files = vec![ChangedFile {
+        path: PathBuf::from("render.py"),
+        added_lines: vec![ChangedLine {
+            line: 3,
+            text: "    verbose=True,".to_string(),
+            new_side_line: 3,
+        }],
+        removed_lines: Vec::new(),
+    }];
+    let result = PythonAdapter::analyze_diff_with_limits(
+        &repo_options(&root),
+        &changed_files,
+        generous_walk_limits(),
+    )?;
+    std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+    let [finding] = result.findings.as_slice() else {
+        return Err(format!(
+            "expected one finding, got {}",
+            result.findings.len()
+        ));
+    };
+    assert_eq!(finding.probe.location.line, 3);
+    assert_eq!(finding.class, ExposureClass::WeaklyExposed);
+    assert!(
+        missing_discriminator_values(finding).contains(&"call `render` without `verbose`"),
+        "{:?}",
+        missing_discriminator_values(finding)
+    );
+    Ok(())
+}
+
+#[test]
+fn nested_class_dunder_relates_through_its_outer_class() -> Result<(), String> {
+    let owners = extract_owners(
+        Path::new("src/pkg/shapes.py"),
+        "class Outer:\n    class Inner:\n        def __init__(self, size):\n            self.size = size\n\n\nclass Inner:\n    def __init__(self, size):\n        self.size = -size\n",
+    );
+    let nested = owners
+        .iter()
+        .find(|owner| owner.name == "__init__" && owner.start_line == 3)
+        .ok_or("nested __init__ owner")?;
+    assert_eq!(
+        nested.qualified_name, "Inner.__init__",
+        "qualified name is unchanged"
+    );
+    assert_eq!(nested.class_path, "Outer.Inner");
+    let tests = extract_tests(
+        Path::new("tests/test_shapes.py"),
+        "from pkg.shapes import Outer\nfrom pkg import shapes\n\n\ndef test_outer_member():\n    assert Outer.Inner(3).size == 3\n\n\ndef test_module_member():\n    assert shapes.Outer.Inner(4).size == 4\n\n\ndef test_top_level_inner():\n    from pkg.shapes import Inner\n    assert Inner(5).size == -5\n",
+    );
+    assert_eq!(tests.len(), 3);
+    assert_eq!(
+        candidate_relations(nested, &tests),
+        vec![
+            ("test_module_member".to_string(), "constructor_call"),
+            ("test_outer_member".to_string(), "constructor_call"),
+        ],
+        "only constructions through `Outer` reach the nested class"
+    );
+    Ok(())
+}
+
+#[test]
+fn private_descriptor_dunder_reached_through_its_package_is_a_limit() -> Result<(), String> {
+    // cachetools 57d2e48: `_DescriptorBase.__get__` runs whenever a test
+    // reads a `@cachedmethod` attribute. No test names the private base, but
+    // the suite imports `cachedmethod` from the package, and it detected the
+    // mutant of the changed line while ripr said `no_static_path`.
+    let owner_file = Path::new("src/cachetools/_cachedmethod.py");
+    let owner_source = "class _DescriptorBase:\n    def __get__(self, obj, objtype=None):\n        if obj is None:\n            return self\n        return self.bind(obj)\n";
+    let owners = extract_owners(owner_file, owner_source);
+    let get = flat_owner(&owners, "_DescriptorBase.__get__")?;
+    let classify = |tests: &[PythonTest]| {
+        classify_change(owner_file, 3, "        if obj is None:", &owners, tests)
+            .ok_or("the changed line must produce a finding")
+    };
+    let package_tests = extract_tests(
+        Path::new("tests/test_cachedmethod.py"),
+        "from cachetools import cachedmethod\n\n\nclass Cached:\n    @cachedmethod(lambda self: {})\n    def get(self, value):\n        return value\n\n\ndef test_get():\n    assert Cached().get(1) == 1\n",
+    );
+    assert_eq!(package_tests.len(), 1);
+    assert!(candidate_relations(get, &package_tests).is_empty());
+    let finding = classify(&package_tests)?;
+    assert_eq!(finding.class, ExposureClass::StaticUnknown);
+    assert!(
+        finding
+            .missing
+            .iter()
+            .any(|line| line.contains("dynamic_dispatch") && line.contains("its package")),
+        "{:?}",
+        finding.missing
+    );
+
+    // A sibling package that only shares a trailing name is not the owner's.
+    let other_package = extract_tests(
+        Path::new("tests/test_other.py"),
+        "from othertools.cachetools import cachedmethod\n\n\ndef test_get():\n    assert cachedmethod is not None\n",
+    );
+    assert_eq!(other_package.len(), 1);
+    assert_eq!(classify(&other_package)?.class, ExposureClass::NoStaticPath);
+    Ok(())
+}
+
+#[test]
+fn a_root_lib_directory_is_an_import_root() -> Result<(), String> {
+    let paths = |file: &str| super::related_tests::owner_module_paths(Path::new(file));
+    assert_eq!(
+        paths("lib/pkg/cache.py"),
+        vec!["lib.pkg.cache", "pkg.cache"]
+    );
+    // A nested `lib` is a package of its own, not a layout root.
+    assert_eq!(paths("pkg/lib/util.py"), vec!["pkg.lib.util"]);
+    // `lib.py` at the root is a module named `lib`.
+    assert_eq!(paths("lib.py"), vec!["lib"]);
+
+    let owners = extract_owners(
+        Path::new("lib/pkg/cache.py"),
+        "class Cache:\n    def __init__(self, size):\n        self.size = size\n",
+    );
+    let init = flat_owner(&owners, "Cache.__init__")?;
+    let tests = extract_tests(
+        Path::new("tests/test_cache.py"),
+        "from pkg.cache import Cache\n\n\ndef test_size():\n    assert Cache(2).size == 2\n",
+    );
+    assert_eq!(
+        candidate_relations(init, &tests),
+        vec![("test_size".to_string(), "constructor_call")]
+    );
     Ok(())
 }

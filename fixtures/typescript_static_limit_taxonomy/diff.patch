@@ -2,7 +2,7 @@ diff --git a/src/dispatch.ts b/src/dispatch.ts
 index 0000000..1111111 100644
 --- a/src/dispatch.ts
 +++ b/src/dispatch.ts
-@@ -1,5 +1,5 @@
+@@ -1,3 +1,3 @@
  export function dispatch(actions: Record<string, () => void>, key: string): void {
 -    actions.ready();
 +    actions[key]();
@@ -20,7 +20,7 @@ diff --git a/src/decorated.tsx b/src/decorated.tsx
 index 0000000..1111111 100644
 --- a/src/decorated.tsx
 +++ b/src/decorated.tsx
-@@ -4,7 +4,7 @@ function tracked(_target: unknown, _context: unknown) {}
+@@ -4,6 +4,6 @@ function tracked(_target: unknown, _context: unknown) {}
  class Service {
      @tracked
      save(value: string): string {

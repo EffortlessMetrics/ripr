@@ -27,25 +27,23 @@ cargo xtask fixtures typescript_reexport_two_hop_limit
 
 The TypeScript preview adapter:
 
-- follows only ONE hop from the test's import source (`index.ts → errors.ts`);
-- finds that `errors.ts` is NOT the changed owner file (`util.ts`);
-- does NOT credit the test (stays `no_static_path`, 0 related tests);
-- does NOT follow the second hop (`errors.ts → util.ts`);
-- remains fail-closed on chains deeper than one hop.
+- follows the chain hop by hop (`index.ts → errors.ts → util.ts`), which is
+  within the bounded re-export hop limit (`MAX_REEXPORT_HOPS`, 4 hops);
+- lands on the changed owner's own export in `util.ts` under the owner's name;
+- credits the test with `relation_reason: re_export_chain_followed`
+  (`relation_confidence: medium`), so the finding is `exposed`.
 
 ## Purpose
 
-This is the TWO-HOP control for RIPR-SPEC-0095. It proves that ripr is
-bounded to single-hop re-export tracing; deeper transitive chains stay
-honestly uncredited to avoid false credits from long re-export chains.
+This fixture was originally the two-hop fail-closed control of the single-hop
+slice. Bounded chain tracing now credits it: every hop is an explicit,
+in-repo named re-export that ends at the owner's own export. The fail-closed
+bound moved to chains longer than `MAX_REEXPORT_HOPS`, cycles, ambiguous star
+exports, and star hops to modules that do not export the name — covered by the
+`reexport_chain_tests` unit tests in
+`crates/ripr/src/analysis/language/typescript/tests/reexport_chain_tests.rs`.
 
 ## Must Not
 
-- Credit the test even though the two-hop chain DOES eventually reach the owner.
-- Follow transitive chains beyond one explicit in-source hop.
-
-## Accepted Limitation
-
-Two-hop and deeper chains remain uncredited in this release. Single-hop is the
-safe, bounded first slice. Users with deeper chains can work around this by
-importing one hop closer to the owner (from `errors.ts` instead of `index.ts`).
+- Credit the test when any hop resolves to a module other than the owner file.
+- Follow chains beyond `MAX_REEXPORT_HOPS` hops.

@@ -13,15 +13,22 @@
 //! `StronglyGripped`, `Intentional`, and `Suppressed` produce no
 //! packet — there is nothing for the agent to do.
 //!
-//! The packet schema is **0.4**, intentionally distinct from the
+//! The packet schema is **0.5**, intentionally distinct from the
 //! repo-exposure report's 0.1, because the packet is a separate
-//! contract aimed at coding agents rather than reviewers.
+//! contract aimed at coding agents rather than reviewers. `0.5` states the
+//! edit cage on each seam packet (`allowed_edit_surface`, `forbidden_files`,
+//! `must_not_change`, #4330) and drops the POSIX-only `mkdir -p` prefix from
+//! `next.before_snapshot_command`; `0.5` also adds the optional
+//! envelope-level `repair_attempt` continuation block carried by the
+//! `ripr agent repair --phase before` success stdout (#4329), while every
+//! other projection keeps the `0.4` shape.
 
 use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
 use crate::agent::loop_commands::{
     WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
-    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command,
-    agent_verify_command, check_repo_exposure_command, shell_arg,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_receipt_command, agent_verify_command,
+    check_analysis_outcome_command, check_repo_exposure_command, shell_arg,
 };
 use crate::analysis::canonical_gap::{CanonicalGapIdentity, canonical_gap_identities};
 use crate::analysis::repair_route::{
@@ -37,7 +44,8 @@ use crate::app::analysis_outcome_artifact::analysis_outcome_projection;
 use crate::app::causal_projection::CausalDeltaArtifact;
 use crate::domain::CommandRole;
 use crate::output::evidence_record::{
-    CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, evidence_record_for, evidence_record_json_value,
+    CROSS_LANGUAGE_TARGET_UNRESOLVED_REPAIR_ROUTE, evidence_record_json_value,
+    evidence_record_with_verify_command, workflow_snapshot_verify_command,
 };
 use crate::output::first_pr::STATIC_EVIDENCE_BOUNDARY;
 use crate::output::gap_decision_ledger::{GapRecord, GapRepairRoute, projection_eligible};
@@ -66,7 +74,7 @@ const RUNTIME_CONFIRMATION_NOTE: &str =
     "optional cargo-mutants confirmation; ripr reports static evidence only";
 
 /// Packet task for a seam the agent can repair with a targeted test.
-const TASK_WRITE_TARGETED_TEST: &str = "write_targeted_test";
+pub(crate) const TASK_WRITE_TARGETED_TEST: &str = "write_targeted_test";
 
 /// Root the rendered repair-loop commands assume. The packet carries no
 /// workspace path of its own, and the receipt command already projected
@@ -78,10 +86,16 @@ const REPAIR_LOOP_ROOT: &str = ".";
 /// default `ripr agent status` and `first-useful-action` already publish.
 const REPAIR_LOOP_MODE: &str = "draft";
 
-/// Create the two destinations used by the first redirected snapshot and the
-/// later receipt. This stays local to the packet renderer because xtask
-/// includes `loop_commands.rs` independently without this output module.
-const WORKFLOW_PREPARE_COMMAND: &str = "mkdir -p target/ripr/workflow target/ripr/reports";
+/// The production-code statement carried in the packet's `must_not_change`
+/// field (#4330): the repair edits only the focused test surface.
+pub(crate) const EDIT_CAGE_PRODUCTION_STATEMENT: &str =
+    "Do not edit production code; only the files in allowed_edit_surface may change.";
+
+/// The terminality warning carried in the packet's `must_not_change` field
+/// and the before-phase TTY narration (#4330): violating the unstated cage
+/// used to be the only way an agent learned it existed.
+pub(crate) const EDIT_CAGE_TERMINALITY_WARNING: &str =
+    "editing any file outside allowed_edit_surface fails the repair attempt terminally";
 
 /// Honesty label carried next to `suggested_test_command`. The recommended
 /// test does not exist yet, so the `cargo test` filter selects nothing until
@@ -137,6 +151,7 @@ fn push_analysis_outcome_projection(
 ///
 /// When `limit_info` is `Some`, the artifact carries a `limitations[]` block
 /// so consumers know the output is bounded and can opt out via the env var.
+#[cfg(test)]
 pub(crate) fn render_agent_seam_packets_json(
     classified: &[ClassifiedSeam],
     limit_info: Option<&SeamLimitInfo>,
@@ -165,6 +180,37 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
     analysis_outcome: Option<&AnalysisOutcome>,
     analysis_outcome_required: bool,
 ) -> String {
+    render_agent_seam_packets_json_with_root(
+        classified,
+        limit_info,
+        causal_projection,
+        analysis_outcome,
+        analysis_outcome_required,
+        PacketCommandContext::Portable,
+    )
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum PacketCommandContext<'a> {
+    Portable,
+    Standalone {
+        root: &'a str,
+    },
+    Prepared {
+        root: &'a str,
+        attempt_id: &'a str,
+        authorization_suffix: Option<&'a str>,
+    },
+}
+
+fn render_agent_seam_packets_json_with_root(
+    classified: &[ClassifiedSeam],
+    limit_info: Option<&SeamLimitInfo>,
+    causal_projection: Option<&CausalDeltaArtifact>,
+    analysis_outcome: Option<&AnalysisOutcome>,
+    analysis_outcome_required: bool,
+    context: PacketCommandContext<'_>,
+) -> String {
     let canonical_gaps = canonical_gap_identities(classified);
     let mut out = String::new();
     out.push_str("{\n");
@@ -190,10 +236,10 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
     if let Some(info) = limit_info {
         let repair_route = match info.source {
             SeamLimitSource::Default => {
-                "Set RIPR_PILOT_SEAM_BUDGET=0 to render packets for all seams, or use `ripr check --diff` to scope the run."
+                "Set RIPR_PILOT_SEAM_BUDGET=0 to render packets for all seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
             }
             SeamLimitSource::Configured => {
-                "Remove or raise RIPR_PILOT_SEAM_BUDGET to render packets for more seams, or use `ripr check --diff`."
+                "Remove or raise RIPR_PILOT_SEAM_BUDGET to render packets for more seams, or scope the run to a change with `ripr check --base <REV>` (or `ripr check --diff <PATH>`)."
             }
         };
         out.push_str("  \"limitations\": [\n");
@@ -220,6 +266,18 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
         .collect();
 
     out.push_str(&format!("  \"packets_total\": {},\n", actionable.len()));
+    // #4379: portable and standalone documents write the workflow snapshot
+    // family in their `next` block, so their embedded records verify that
+    // family. A prepared packet's `next` block advertises no independent
+    // verify route — the after phase verifies against the attempt's retained
+    // before snapshot, not the repository-global path another attempt can
+    // overwrite — so its embedded records keep every verify projection null.
+    let embedded_verify_command = match context {
+        PacketCommandContext::Prepared { .. } => None,
+        PacketCommandContext::Portable | PacketCommandContext::Standalone { .. } => {
+            Some(workflow_snapshot_verify_command())
+        }
+    };
     out.push_str("  \"packets\": [");
     for (idx, entry) in actionable.iter().enumerate() {
         if idx == 0 {
@@ -230,6 +288,7 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
             entry,
             canonical_gaps.get(entry.seam.id()),
             causal_projection,
+            embedded_verify_command.as_deref(),
         );
         if idx + 1 != actionable.len() {
             out.push_str(",\n");
@@ -241,7 +300,38 @@ pub(crate) fn render_agent_seam_packets_json_with_causal_and_outcome(
         out.push_str("  ");
     }
     out.push(']');
-    match repair_loop_commands(&actionable) {
+    if let PacketCommandContext::Prepared {
+        root,
+        attempt_id,
+        authorization_suffix,
+    } = context
+    {
+        if actionable
+            .iter()
+            .any(|entry| task_for(entry) == TASK_WRITE_TARGETED_TEST)
+        {
+            out.push_str(",\n");
+            let command = format!(
+                "ripr agent repair --root {} --attempt {} --phase after{}",
+                shell_arg(root),
+                shell_arg(attempt_id),
+                authorization_suffix.unwrap_or_default(),
+            );
+            out.push_str(&format!(
+                "  \"next\": {{\n    \"before_snapshot_command\": null,\n    \"after_snapshot_command\": null,\n    \"analysis_outcome_command\": null,\n    \"verify_after_edit\": null,\n    \"receipt_after_verify\": null,\n    \"repair_after_command\": \"{}\"\n  }}\n",
+                json_escape(&command),
+            ));
+        } else {
+            out.push('\n');
+        }
+        out.push_str("}\n");
+        return out;
+    }
+    let selected_root = match context {
+        PacketCommandContext::Standalone { root } => Some(root),
+        _ => None,
+    };
+    match repair_loop_commands(&actionable, selected_root) {
         Some(commands) => {
             out.push_str(",\n");
             push_repair_loop_json(&mut out, &commands);
@@ -262,6 +352,7 @@ struct RepairLoopCommands {
     before_snapshot: String,
     after_snapshot: String,
     verify: String,
+    analysis_outcome: Option<String>,
     /// `ripr agent receipt` names one seam, so this is only knowable when the
     /// envelope resolves to a single actionable packet — the
     /// `ripr agent packet --seam-id` shape. Repo-wide envelopes leave it
@@ -273,40 +364,54 @@ struct RepairLoopCommands {
 /// Render the loop commands only when the envelope actually asks for a
 /// targeted test. An envelope of `inspect_static_limitation` packets has no
 /// repair to verify, so it keeps its current shape.
-fn repair_loop_commands(actionable: &[&ClassifiedSeam]) -> Option<RepairLoopCommands> {
+///
+/// The before snapshot is a single plain command with one redirect (#4330):
+/// the POSIX-only `mkdir -p &&` prefix is gone. The loop's `ripr` commands
+/// create their own artifact directories (`agent start --out`,
+/// `agent repair --phase before`, `agent receipt --out`), and the manual
+/// loop docs teach the directory setup as its own step.
+fn repair_loop_commands(
+    actionable: &[&ClassifiedSeam],
+    selected_root: Option<&str>,
+) -> Option<RepairLoopCommands> {
     let first = actionable
         .iter()
         .find(|entry| task_for(entry) == TASK_WRITE_TARGETED_TEST)?;
+    let root = selected_root.unwrap_or(REPAIR_LOOP_ROOT);
     let receipt = (actionable.len() == 1).then(|| {
         agent_receipt_command(
-            REPAIR_LOOP_ROOT,
+            root,
             WORKFLOW_AGENT_VERIFY_ARTIFACT,
             first.seam.id().as_str(),
             Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
         )
     });
     Some(RepairLoopCommands {
-        before_snapshot: format!(
-            "{WORKFLOW_PREPARE_COMMAND} && {}",
-            check_repo_exposure_command(
-                REPAIR_LOOP_ROOT,
-                REPAIR_LOOP_MODE,
-                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
-            )
+        before_snapshot: check_repo_exposure_command(
+            root,
+            REPAIR_LOOP_MODE,
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
         ),
         after_snapshot: check_repo_exposure_command(
-            REPAIR_LOOP_ROOT,
+            root,
             REPAIR_LOOP_MODE,
             WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
         ),
         // Redirected into the verify artifact the receipt command reads, so
         // the two steps compose instead of naming a file nothing wrote.
         verify: agent_verify_command(
-            REPAIR_LOOP_ROOT,
+            root,
             WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
             WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
             Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
         ),
+        analysis_outcome: selected_root.map(|root| {
+            check_analysis_outcome_command(
+                root,
+                REPAIR_LOOP_MODE,
+                WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+            )
+        }),
         receipt,
     })
 }
@@ -325,6 +430,12 @@ fn push_repair_loop_json(out: &mut String, commands: &RepairLoopCommands) {
         "    \"verify_after_edit\": \"{}\",\n",
         json_escape(&commands.verify)
     ));
+    if let Some(command) = &commands.analysis_outcome {
+        out.push_str(&format!(
+            "    \"analysis_outcome_command\": \"{}\",\n",
+            json_escape(command)
+        ));
+    }
     match commands.receipt.as_deref() {
         Some(receipt) => out.push_str(&format!(
             "    \"receipt_after_verify\": \"{}\"\n",
@@ -337,8 +448,83 @@ fn push_repair_loop_json(out: &mut String, commands: &RepairLoopCommands) {
 
 /// Render the existing agent seam packet JSON envelope for one seam.
 /// Single-seam packets are always unbounded — no limit_info.
+#[cfg(test)]
 pub(crate) fn render_agent_seam_packet_json(entry: &ClassifiedSeam) -> String {
     render_agent_seam_packets_json(std::slice::from_ref(entry), None)
+}
+
+/// Explicit CLI root authority; portable bulk wrappers retain their contract.
+pub(crate) fn render_agent_seam_packet_json_with_context(
+    entry: &ClassifiedSeam,
+    context: PacketCommandContext<'_>,
+) -> String {
+    render_agent_seam_packets_json_with_root(
+        std::slice::from_ref(entry),
+        None,
+        None,
+        None,
+        false,
+        context,
+    )
+}
+
+/// The repair-attempt continuation carried by the `ripr agent repair
+/// --phase before` success stdout (#4329). A driver that captures only
+/// stdout gets the attempt identity, the retained manifest, and the exact
+/// `--phase after` command — the same facts the stderr narration names —
+/// so the before → edit → after loop closes without reading stderr.
+pub(crate) struct BeforePhaseAttemptContinuation {
+    pub(crate) attempt_id: String,
+    pub(crate) manifest_path: String,
+    pub(crate) next_command: String,
+    pub(crate) packet_path: String,
+}
+
+/// Augment one rendered agent-packet envelope with the additive
+/// `repair_attempt` continuation block for the before-phase success stdout.
+/// This is the shared envelope renderer's own augmentation — the input is
+/// the exact bytes the renderer produced (and the packet file retains), and
+/// the output inserts one envelope-level member without re-rendering any
+/// packet content — so the stdout document cannot drift from the retained
+/// packet's shape. Nested object keys render in map order, one of the
+/// deterministic orders `docs/OUTPUT_SCHEMA.md` § "JSON object key ordering"
+/// already allows; the packet contract is keyed, not ordered.
+pub(crate) fn render_before_phase_attempt_stdout(
+    packet_document: &str,
+    continuation: &BeforePhaseAttemptContinuation,
+) -> Result<String, String> {
+    let mut value: serde_json::Value = serde_json::from_str(packet_document)
+        .map_err(|error| format!("decode rendered agent packet envelope failed: {error}"))?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "rendered agent packet envelope is not a JSON object".to_string())?;
+    if object
+        .get("schema_version")
+        .and_then(serde_json::Value::as_str)
+        != Some(AGENT_SEAM_PACKET_SCHEMA_VERSION)
+    {
+        return Err(format!(
+            "rendered agent packet envelope does not carry the current agent-packet schema version {AGENT_SEAM_PACKET_SCHEMA_VERSION}"
+        ));
+    }
+    if object.contains_key("repair_attempt") {
+        return Err(
+            "rendered agent packet envelope already carries a repair_attempt block".to_string(),
+        );
+    }
+    object.insert(
+        "repair_attempt".to_string(),
+        json!({
+            "attempt_id": continuation.attempt_id,
+            "manifest_path": continuation.manifest_path,
+            "next_command": continuation.next_command,
+            "packet_path": continuation.packet_path,
+        }),
+    );
+    let mut rendered = serde_json::to_string_pretty(&value)
+        .map_err(|error| format!("render before-phase attempt stdout failed: {error}"))?;
+    rendered.push('\n');
+    Ok(rendered)
 }
 
 /// Render one explicit GapRecord as an agent packet. This is the same
@@ -1134,7 +1320,7 @@ pub(crate) fn targeted_test_brief_for_classified_seam(entry: &ClassifiedSeam) ->
         seam.display_line()
     ));
     out.push_str(&format!("- {}\n", seam.kind().as_str()));
-    out.push_str(&format!("- {}\n", entry.class.as_str()));
+    out.push_str(&format!("- {}\n", entry.class.human_label()));
     out.push_str(&format!("- owner: {}\n", seam.owner()));
 
     out.push_str("\nWhy it matters:\n");
@@ -1918,11 +2104,21 @@ fn push_markdown_bullets(out: &mut String, items: &[String]) {
     }
 }
 
-fn task_for(entry: &ClassifiedSeam) -> &'static str {
+pub(crate) fn task_for(entry: &ClassifiedSeam) -> &'static str {
     // Only reached through the packet queue pre-filter
     // (`repair_packet_queue_visible`); under that filter the authority's
     // fail-closed flip reduces to producer route readiness.
-    if is_safe_for_repair_packet(entry) {
+    //
+    // The recommended target must also be a test surface (#4330 cage
+    // contract): a producer-owned inline-module proposal names a production
+    // file, and advertising it as `allowed_edit_surface` alongside the
+    // must-not-change production statement would promise an edit surface the
+    // cage's own policy text forbids. Those seams render as inspection
+    // packets, matching the evidence-record and pilot-command gating of the
+    // same check.
+    if is_safe_for_repair_packet(entry)
+        && crate::analysis::is_test_surface_path(&recommended_test_for(entry).file)
+    {
         TASK_WRITE_TARGETED_TEST
     } else {
         "inspect_static_limitation"
@@ -1934,6 +2130,7 @@ fn push_packet_json(
     entry: &ClassifiedSeam,
     canonical_gap: Option<&CanonicalGapIdentity>,
     causal_projection: Option<&CausalDeltaArtifact>,
+    verify_command: Option<&str>,
 ) {
     let seam = &entry.seam;
     let evidence = &entry.evidence;
@@ -1984,6 +2181,63 @@ fn push_packet_json(
         json_escape(recommended.reason.as_str())
     ));
     out.push_str("},\n");
+
+    // The edit cage this packet's repair will enforce, stated where the work
+    // is planned (#4330). `edit_cage_policy_from_packet` consumes the
+    // `allowed_edit_surface` field first and falls back to
+    // `recommended_test.file`, so both fields are derived from the same
+    // `recommended` binding here: the packet cannot promise a different edit
+    // surface than the attempt later enforces terminally.
+    let actionable = task_for(entry) == TASK_WRITE_TARGETED_TEST;
+    let allowed_edit_surface: Vec<&str> = if actionable && recommended.file != "not_applicable" {
+        vec![recommended.file.as_str()]
+    } else {
+        Vec::new()
+    };
+    out.push_str("      \"allowed_edit_surface\": [");
+    for (idx, path) in allowed_edit_surface.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!("\"{}\"", json_escape(path)));
+    }
+    out.push_str("],\n");
+    // The production file whose behavior changed stays untouched: the repair
+    // edits only the focused test surface. Mirrors the gap packets'
+    // `forbidden_files` derivation (the anchor file, dropped when it is the
+    // allowed target itself).
+    let production_file = display_path(seam.file());
+    let forbidden_files: Vec<&str> = if allowed_edit_surface
+        .first()
+        .is_some_and(|allowed| *allowed == production_file)
+    {
+        Vec::new()
+    } else {
+        vec![production_file.as_str()]
+    };
+    out.push_str("      \"forbidden_files\": [");
+    for (idx, path) in forbidden_files.iter().enumerate() {
+        if idx > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&format!("\"{}\"", json_escape(path)));
+    }
+    out.push_str("],\n");
+    out.push_str("      \"must_not_change\": [");
+    out.push_str(&format!(
+        "\"{}\"",
+        json_escape(EDIT_CAGE_PRODUCTION_STATEMENT)
+    ));
+    if !allowed_edit_surface.is_empty() {
+        out.push_str(&format!(
+            ", \"{}\"",
+            json_escape(&format!(
+                "{EDIT_CAGE_TERMINALITY_WARNING} (allowed: {})",
+                allowed_edit_surface.join(", ")
+            ))
+        ));
+    }
+    out.push_str("],\n");
 
     // The `cargo test` filter for the test this packet asks for. Only
     // actionable packets name a test at all, and the named test does not
@@ -2220,7 +2474,20 @@ fn push_packet_json(
             out.push_str(&format!("      \"{}\": {},\n", key, value));
         }
     }
-    let evidence_record = evidence_record_json_value(&evidence_record_for(entry, canonical_gap));
+    // #4379: the embedded record verifies only the snapshot family this
+    // document actually binds to. Portable and standalone documents write the
+    // workflow family in their `next` block, so their records verify that
+    // family — not the editor pilot family, whose snapshots nothing here
+    // produces. Prepared documents name no independent verify route (their
+    // after phase verifies the attempt's retained before snapshot), so their
+    // records keep every verify projection null: an orchestrator following the
+    // typed spec can never verify against a snapshot another attempt can
+    // overwrite.
+    let evidence_record = evidence_record_json_value(&evidence_record_with_verify_command(
+        entry,
+        canonical_gap,
+        verify_command,
+    ));
     out.push_str("      \"evidence_record\": ");
     out.push_str(&evidence_record.to_string());
     out.push_str(",\n");
@@ -2519,20 +2786,30 @@ fn explicit_external_observer_target(test: &RelatedTestGrip) -> bool {
         && matches!(test.oracle_strength, crate::domain::OracleStrength::Strong)
 }
 
+/// Published label for a related test written in an external language.
+///
+/// Consumes the routed TypeScript/JavaScript extension authority from
+/// `analysis::language::router`, the same owner the repair route's fail-closed
+/// cross-language gate reads, so a `.mts`/`.cts` observer is labeled
+/// `typescript` here and blocks the packet in `analysis::repair_route` for the
+/// same reason.
 fn external_language_for_related_test(test: &RelatedTestGrip) -> Option<&'static str> {
-    match test
+    let extension = test
         .file
         .extension()
-        .and_then(|extension| extension.to_str())
-        .map(|extension| extension.to_ascii_lowercase())
-        .as_deref()
-    {
-        Some("ts" | "tsx") => Some("typescript"),
-        Some("js" | "jsx" | "mjs" | "cjs") => Some("javascript"),
-        Some("py") => Some("python"),
-        Some("rb") => Some("ruby"),
-        Some("java") => Some("java"),
-        _ => None,
+        .and_then(|extension| extension.to_str())?;
+    // #4116: the TS/JS family consumes the shared extension authority, so
+    // .mts/.cts label typescript and .mjs/.cjs label javascript instead of
+    // falling through to unlabeled.
+    match crate::analysis::ts_js_source_kind(&extension.to_ascii_lowercase()) {
+        Some(crate::analysis::TsJsSourceKind::TypeScript) => Some("typescript"),
+        Some(crate::analysis::TsJsSourceKind::JavaScript) => Some("javascript"),
+        None => match extension.to_ascii_lowercase().as_str() {
+            "py" => Some("python"),
+            "rb" => Some("ruby"),
+            "java" => Some("java"),
+            _ => None,
+        },
     }
 }
 
@@ -3057,6 +3334,7 @@ fn predicate_boundary_assertion_hint(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::loop_commands::anchored_redirect_target;
     use crate::analysis::seams::{ExpectedSink, RepoSeam, RequiredDiscriminator, SeamKind};
     use crate::analysis::test_grip_evidence::{RelatedTestGrip, RelationReason, TestGripEvidence};
     use crate::analysis_outcome::{
@@ -3253,9 +3531,42 @@ mod tests {
                 discriminate: stage(StageState::No),
                 observed_values: Vec::new(),
                 missing_discriminators: Vec::new(),
+                new_test_target: None,
             },
             class,
         }
+    }
+
+    /// A configured TypeScript-bridge observer with a Strong exact-value
+    /// oracle: the shape that projects a navigation-only external target.
+    fn external_observer_test() -> RelatedTestGrip {
+        RelatedTestGrip {
+            test_name: "blob copies resizable buffers".to_string(),
+            file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
+            line: 41,
+            test_target: None,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            evidence_summary: "configured TypeScript bridge exact value observer".to_string(),
+            relation_reason: RelationReason::DirectOwnerCall,
+            relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence::High,
+        }
+    }
+
+    fn external_entry(test: RelatedTestGrip) -> ClassifiedSeam {
+        let seam = RepoSeam::new(
+            "src/jsc/Blob.rs",
+            "Blob::from_js_without_defer_gc",
+            SeamKind::PredicateBoundary,
+            42,
+            88,
+            "array_buffer.shared || array_buffer.resizable",
+            RequiredDiscriminator::BoundaryValue {
+                description: "array_buffer.shared || array_buffer.resizable".to_string(),
+            },
+            ExpectedSink::ReturnValue,
+        );
+        classified_with(seam, SeamGripClass::Ungripped, vec![test])
     }
 
     fn weakly_gripped_classified() -> ClassifiedSeam {
@@ -3296,6 +3607,7 @@ mod tests {
                 reason: "observed values do not include the equality-boundary case".to_string(),
                 flow_sink: None,
             }],
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -3316,6 +3628,7 @@ mod tests {
             discriminate: stage(StageState::No),
             observed_values: Vec::new(),
             missing_discriminators: Vec::new(),
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -3336,6 +3649,7 @@ mod tests {
             discriminate: stage(StageState::Yes),
             observed_values: Vec::new(),
             missing_discriminators: Vec::new(),
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -3406,6 +3720,69 @@ mod tests {
         Ok(())
     }
 
+    /// The projection side of the routed extension authority: a `.mts`/`.cts`
+    /// observer must reach the agent brief as a navigation-only external target
+    /// labeled `typescript`, exactly like the `.ts` control, and a near-miss
+    /// suffix must project no external target at all.
+    ///
+    /// `external_language_labels_cover_modern_ts_js_extensions` pins the label
+    /// lookup itself; this test pins what the operator actually sees. Before
+    /// #4116 the modern suffixes produced no label, so the projection silently
+    /// degraded to a generic block.
+    ///
+    /// Honesty note on what is decision versus what is a pin: the label and the
+    /// presence-or-absence of a target are **decisions** taken from
+    /// `ts_js_source_kind`, and removing a suffix from that authority makes
+    /// these rows fail. `repair_packet_ready` is a constant in the
+    /// navigation-only projection, not a computed decision, so asserting it here
+    /// is a pin that catches someone flipping that constant — it is not
+    /// independent evidence that the fail-closed behaviour was evaluated.
+    #[test]
+    fn navigation_only_external_target_labels_modern_ts_js_extensions() -> Result<(), String> {
+        for (extension, expected) in [
+            ("ts", "typescript"),
+            ("mts", "typescript"),
+            ("cts", "typescript"),
+            ("mjs", "javascript"),
+            ("cjs", "javascript"),
+        ] {
+            let mut test = external_observer_test();
+            test.file = PathBuf::from(format!("test/js/web/fetch/blob.test.{extension}"));
+            let target = navigation_only_external_target_for(&external_entry(test))
+                .ok_or_else(|| format!(".{extension} observer must project a navigation target"))?;
+            if target.language != expected {
+                return Err(format!(
+                    ".{extension} observer must publish language {expected}; got {}",
+                    target.language
+                ));
+            }
+            if !target.reason.contains(expected) {
+                return Err(format!(
+                    ".{extension} reason must name {expected}: {}",
+                    target.reason
+                ));
+            }
+            if target.repair_packet_ready {
+                return Err(format!(
+                    ".{extension} navigation-only external evidence must not be repair-ready"
+                ));
+            }
+        }
+
+        // Fail closed: an unknown near-miss suffix publishes no label, so no
+        // navigation-only external target is invented.
+        for extension in ["mtsx", "ctsx", "mjsx"] {
+            let mut test = external_observer_test();
+            test.file = PathBuf::from(format!("test/js/web/fetch/blob.test.{extension}"));
+            if navigation_only_external_target_for(&external_entry(test)).is_some() {
+                return Err(format!(
+                    ".{extension} is a near-miss suffix and must not project an external label"
+                ));
+            }
+        }
+        Ok(())
+    }
+
     #[test]
     fn external_language_related_test_excludes_entry_from_packet_queue() -> Result<(), String> {
         // Surface-level parity for the authority's cross-language gate: an
@@ -3421,6 +3798,41 @@ mod tests {
             return Err(format!(
                 "cross-language-unresolved entry must not enter the packet queue: {json}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn external_language_labels_cover_modern_ts_js_extensions() -> Result<(), String> {
+        // #4116: .mts/.cts must label typescript and .mjs/.cjs javascript
+        // through the shared extension authority; near-misses stay
+        // unlabeled. The expected labels are pinned here as a removal
+        // control, not read back from the authority.
+        let base_test = weakly_gripped_classified().evidence.related_tests[0].clone();
+        let cases = [
+            ("ts", Some("typescript")),
+            ("tsx", Some("typescript")),
+            ("mts", Some("typescript")),
+            ("cts", Some("typescript")),
+            ("js", Some("javascript")),
+            ("jsx", Some("javascript")),
+            ("mjs", Some("javascript")),
+            ("cjs", Some("javascript")),
+            ("py", Some("python")),
+            ("mt", None),
+            ("mjsx", None),
+            ("ctsx", None),
+        ];
+
+        for (extension, expected) in cases {
+            let mut test = base_test.clone();
+            test.file = PathBuf::from(format!("tests/pricing.{extension}"));
+            let actual = external_language_for_related_test(&test);
+            if actual != expected {
+                return Err(format!(
+                    ".{extension}: expected language {expected:?}, got {actual:?}"
+                ));
+            }
         }
         Ok(())
     }
@@ -3733,6 +4145,68 @@ mod tests {
                 "\"recommended_test\": {\"name\": \"discounted_total_boundary_discriminator\"",
             ),
             "top-level packet fields should remain present: {json}"
+        );
+        Ok(())
+    }
+
+    /// One document, one snapshot family (#4379). The `next` block writes the
+    /// workflow snapshots, so the embedded evidence record's verify specs —
+    /// display, canonical command, and typed spec — must read that same
+    /// family, and no pilot snapshot path may remain anywhere in the
+    /// document: an orchestrator following the typed spec would otherwise
+    /// verify against snapshots nothing here produces.
+    #[test]
+    fn packet_evidence_record_verify_reads_the_snapshots_the_document_writes() -> Result<(), String>
+    {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
+        let value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|err| format!("agent packet JSON should parse: {err}"))?;
+
+        let next = value
+            .get("next")
+            .ok_or_else(|| format!("missing next block in: {json}"))?;
+        let before = next["before_snapshot_command"]
+            .as_str()
+            .ok_or_else(|| format!("before_snapshot_command must be a string: {next}"))?;
+        assert!(
+            before.contains(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
+            "the document's own repair loop must write the workflow family: {before}"
+        );
+
+        let record = value
+            .get("packets")
+            .and_then(|packets| packets.as_array())
+            .and_then(|packets| packets.first())
+            .and_then(|packet| packet.get("evidence_record"))
+            .ok_or_else(|| format!("missing packet evidence_record in: {json}"))?;
+        let workflow = workflow_snapshot_verify_command();
+        let verify = record["recommendation"]["verify_command"]
+            .as_str()
+            .ok_or_else(|| format!("actionable record must carry a verify command: {record}"))?;
+        assert_eq!(
+            verify, workflow,
+            "embedded record verify must read the family the document writes"
+        );
+        let canonical = record["canonical_item"]["verify_command"]
+            .as_str()
+            .ok_or_else(|| format!("canonical verify command missing: {record}"))?;
+        assert_eq!(canonical, workflow);
+        let args = record["canonical_item"]["command_specs"]["verify"]["args"]
+            .as_array()
+            .ok_or_else(|| format!("verify command spec missing: {record}"))?;
+        for family_path in [
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        ] {
+            assert!(
+                args.iter().any(|arg| arg == family_path),
+                "verify spec args must read {family_path}: {args:?}"
+            );
+        }
+
+        assert!(
+            !json.contains("target/ripr/pilot/"),
+            "document must not name the pilot snapshot family anywhere: {json}"
         );
         Ok(())
     }
@@ -5171,7 +5645,7 @@ mod tests {
             "Target seam:",
             "- src/pricing.rs:88",
             "- predicate_boundary",
-            "- weakly_gripped",
+            "- weak, weakly_gripped",
             "- owner: pricing::discounted_total",
             "Why it matters:",
             "- Related test evidence: below_threshold_has_no_discount uses strong exact_value oracle.",
@@ -5301,6 +5775,36 @@ mod tests {
     }
 
     #[test]
+    fn producer_owned_inline_unit_proposal_projects_as_new_inline_module() {
+        use crate::analysis::repair_route::{
+            NewTestKind, NewTestProposalProvenance, NewTestTargetAdmission, NewTestTargetProposal,
+        };
+        let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
+        entry.evidence.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount >= discount_threshold".to_string(),
+            reason: "no observed activation values for boundary predicate".to_string(),
+            flow_sink: None,
+        }];
+        entry.evidence.new_test_target = Some(NewTestTargetAdmission {
+            proposal: Some(NewTestTargetProposal {
+                kind: NewTestKind::InlineUnit,
+                file: PathBuf::from("src/pricing.rs"),
+                owner: "pricing::discounted_total".to_string(),
+                provenance: NewTestProposalProvenance::ProducerOwned,
+            }),
+            region: None,
+            blocker: None,
+        });
+        let recommended = recommended_test_for(&entry);
+        assert_eq!(
+            recommended.target_kind,
+            RecommendedTestTargetKind::NewInlineTestModule
+        );
+        assert_eq!(recommended.file.replace('\\', "/"), "src/pricing.rs");
+        assert!(recommended.symbol_id.is_none());
+    }
+
+    #[test]
     fn packet_queue_excludes_cross_language_binding_seam_without_rust_test_context()
     -> Result<(), String> {
         let seam = RepoSeam::new(
@@ -5379,29 +5883,7 @@ mod tests {
 
     #[test]
     fn targeted_test_brief_surfaces_external_observer_as_navigation_only() -> Result<(), String> {
-        let seam = RepoSeam::new(
-            "src/jsc/Blob.rs",
-            "Blob::from_js_without_defer_gc",
-            SeamKind::PredicateBoundary,
-            42,
-            88,
-            "array_buffer.shared || array_buffer.resizable",
-            RequiredDiscriminator::BoundaryValue {
-                description: "array_buffer.shared || array_buffer.resizable".to_string(),
-            },
-            ExpectedSink::ReturnValue,
-        );
-        let external_target = RelatedTestGrip {
-            test_name: "blob copies resizable buffers".to_string(),
-            file: PathBuf::from("test/js/web/fetch/blob.test.ts"),
-            line: 41,
-            test_target: None,
-            oracle_kind: OracleKind::ExactValue,
-            oracle_strength: OracleStrength::Strong,
-            evidence_summary: "configured TypeScript bridge exact value observer".to_string(),
-            relation_reason: RelationReason::DirectOwnerCall,
-            relation_confidence: crate::analysis::test_grip_evidence::RelationConfidence::High,
-        };
+        let external_target = external_observer_test();
         assert!(explicit_external_observer_target(&external_target));
         let mut unconfigured_external_target = external_target.clone();
         unconfigured_external_target.evidence_summary =
@@ -5409,7 +5891,7 @@ mod tests {
         assert!(!explicit_external_observer_target(
             &unconfigured_external_target
         ));
-        let entry = classified_with(seam, SeamGripClass::Ungripped, vec![external_target]);
+        let entry = external_entry(external_target);
         let brief = targeted_test_brief_for_classified_seam(&entry);
 
         for needle in [
@@ -5850,11 +6332,13 @@ mod tests {
     }
 
     #[test]
-    fn schema_version_is_pinned_to_zero_four() {
+    fn schema_version_is_pinned_to_the_current_constant() {
         let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
         assert!(
-            json.contains("\"schema_version\": \"0.4\""),
-            "expected schema_version 0.4: {json}"
+            json.contains(&format!(
+                "\"schema_version\": \"{AGENT_SEAM_PACKET_SCHEMA_VERSION}\""
+            )),
+            "expected schema_version {AGENT_SEAM_PACKET_SCHEMA_VERSION}: {json}"
         );
     }
 
@@ -5914,6 +6398,230 @@ mod tests {
         Ok(())
     }
 
+    /// #4330: an actionable seam packet states the edit cage its repair will
+    /// enforce. The `allowed_edit_surface` field is the exact source the cage
+    /// authority consumes (`edit_cage_policy_from_packet` prefers it over
+    /// `recommended_test.file`), so it must equal the recommended test file —
+    /// a hand-maintained copy would let the packet promise a different edit
+    /// surface than the attempt enforces.
+    #[test]
+    fn actionable_packet_states_the_edit_cage_it_will_enforce() -> Result<(), String> {
+        let json = render_agent_seam_packets_json(&[weakly_gripped_classified()], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        let recommended_file = packet["recommended_test"]["file"]
+            .as_str()
+            .ok_or_else(|| format!("packet has no recommended test file: {json}"))?;
+        assert_eq!(
+            packet["allowed_edit_surface"],
+            serde_json::json!([recommended_file]),
+            "allowed_edit_surface must be derived from the recommended test file: {json}"
+        );
+        // The production file whose behavior changed is named as forbidden,
+        // mirroring the gap packets' derivation.
+        assert_eq!(
+            packet["forbidden_files"],
+            serde_json::json!(["src/pricing.rs"]),
+            "forbidden_files must name the production file: {json}"
+        );
+        let must_not_change: Vec<String> = packet["must_not_change"]
+            .as_array()
+            .ok_or_else(|| format!("packet has no must_not_change: {json}"))?
+            .iter()
+            .map(|entry| {
+                entry
+                    .as_str()
+                    .ok_or_else(|| format!("non-string must_not_change entry: {json}"))
+                    .map(str::to_string)
+            })
+            .collect::<Result<_, String>>()?;
+        assert!(
+            must_not_change
+                .iter()
+                .any(|entry| entry == EDIT_CAGE_PRODUCTION_STATEMENT),
+            "must_not_change must carry the production-code statement: {must_not_change:?}"
+        );
+        assert!(
+            must_not_change
+                .iter()
+                .any(|entry| entry.starts_with(EDIT_CAGE_TERMINALITY_WARNING)),
+            "must_not_change must carry the terminality warning: {must_not_change:?}"
+        );
+        Ok(())
+    }
+
+    /// #4330: an inspection packet allows no edits at all — an empty surface
+    /// is honest, and the cage authority fails closed on it before any
+    /// attempt could start.
+    #[test]
+    fn inspection_packet_carries_an_empty_edit_surface() -> Result<(), String> {
+        let mut entry = weakly_gripped_classified();
+        entry.class = SeamGripClass::Opaque;
+        let json = render_agent_seam_packets_json(&[entry], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        if packet["task"] != "inspect_static_limitation" {
+            return Err(format!("expected an inspection packet: {json}"));
+        }
+        assert_eq!(
+            packet["allowed_edit_surface"],
+            serde_json::json!([]),
+            "inspection packet must allow no edits: {json}"
+        );
+        Ok(())
+    }
+
+    /// A producer-owned inline-module proposal names a production file. It
+    /// must never ride an actionable packet: advertising it as
+    /// `allowed_edit_surface` alongside the must-not-change production
+    /// statement would promise an edit surface the cage's own policy forbids,
+    /// so the seam renders as inspection-only with an empty surface.
+    #[test]
+    fn inline_module_proposal_packet_is_inspection_only_without_an_edit_surface()
+    -> Result<(), String> {
+        use crate::analysis::repair_route::{
+            NewTestKind, NewTestProposalProvenance, NewTestTargetAdmission, NewTestTargetProposal,
+        };
+        let mut entry = classified_with(boundary_seam(), SeamGripClass::WeaklyGripped, Vec::new());
+        entry.evidence.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount >= discount_threshold".to_string(),
+            reason: "no observed activation values for boundary predicate".to_string(),
+            flow_sink: None,
+        }];
+        entry.evidence.new_test_target = Some(NewTestTargetAdmission {
+            proposal: Some(NewTestTargetProposal {
+                kind: NewTestKind::InlineUnit,
+                file: PathBuf::from("src/pricing.rs"),
+                owner: "pricing::discounted_total".to_string(),
+                provenance: NewTestProposalProvenance::ProducerOwned,
+            }),
+            region: None,
+            blocker: None,
+        });
+        // Pin both preconditions so the demotion below is attributable to the
+        // non-test recommended target, not to route readiness.
+        assert!(
+            is_safe_for_repair_packet(&entry),
+            "fixture must be route-ready so only the surface check demotes it"
+        );
+        assert_eq!(
+            recommended_test_for(&entry).file.replace('\\', "/"),
+            "src/pricing.rs",
+            "fixture must recommend the production-file inline module"
+        );
+        let json = render_agent_seam_packets_json(&[entry], None);
+        let value = parsed_envelope(&json)?;
+        let packet = &value["packets"][0];
+        if packet["task"] != "inspect_static_limitation" {
+            return Err(format!(
+                "a production-file inline proposal must not advertise an actionable edit surface: {json}"
+            ));
+        }
+        assert_eq!(
+            packet["allowed_edit_surface"],
+            serde_json::json!([]),
+            "the inspection packet must allow no edits: {json}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_packet_continuation_preserves_required_python_authorization() -> Result<(), String>
+    {
+        let entry = weakly_gripped_classified();
+        let suffix = crate::agent::PYTHON_REPAIR_AUTHORIZATION_SUFFIX;
+        for authorization_suffix in [None, Some(suffix)] {
+            let rendered = render_agent_seam_packet_json_with_context(
+                &entry,
+                PacketCommandContext::Prepared {
+                    root: "/selected root",
+                    attempt_id: "repair-attempt-selected",
+                    authorization_suffix,
+                },
+            );
+            let value: serde_json::Value =
+                serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+            let command = value
+                .pointer("/next/repair_after_command")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| "missing prepared continuation".to_string())?;
+            if !command.contains("--root '/selected root'")
+                || !command.contains("--attempt repair-attempt-selected")
+                || command.contains("--seam-id")
+                || !command.contains("--phase after")
+                || command.ends_with(suffix) != authorization_suffix.is_some()
+            {
+                return Err(format!(
+                    "incorrect prepared authorization continuation: {command}"
+                ));
+            }
+            for field in [
+                "before_snapshot_command",
+                "after_snapshot_command",
+                "analysis_outcome_command",
+                "verify_after_edit",
+                "receipt_after_verify",
+            ] {
+                if value.pointer(&format!("/next/{field}")) != Some(&serde_json::Value::Null) {
+                    return Err(format!("prepared packet retained incompatible {field}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// A prepared packet's after phase verifies against the attempt's
+    /// retained before snapshot, so the packet advertises no independent
+    /// verify route: its embedded record keeps every verify projection null
+    /// and names no snapshot-family path, while `repair_after_command` stays
+    /// the only continuation (#4379). Naming the repository-global workflow
+    /// snapshot instead would let an orchestrator verify against a baseline
+    /// another attempt can overwrite.
+    #[test]
+    fn prepared_packet_evidence_record_names_no_independent_verify_route() -> Result<(), String> {
+        let entry = weakly_gripped_classified();
+        let rendered = render_agent_seam_packet_json_with_context(
+            &entry,
+            PacketCommandContext::Prepared {
+                root: "/selected root",
+                attempt_id: "repair-attempt-selected",
+                authorization_suffix: None,
+            },
+        );
+        let value: serde_json::Value =
+            serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+        let record = value
+            .pointer("/packets/0/evidence_record")
+            .ok_or_else(|| format!("missing packet evidence_record in: {rendered}"))?;
+        for pointer in [
+            "/recommendation/verify_command",
+            "/canonical_item/verify_command",
+            "/canonical_item/command_specs/verify",
+        ] {
+            assert_eq!(
+                record.pointer(pointer),
+                Some(&serde_json::Value::Null),
+                "{pointer} must stay null for a prepared packet: {record}"
+            );
+        }
+        for snapshot in [
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            "target/ripr/pilot/repo-exposure.json",
+            "target/ripr/pilot/after.repo-exposure.json",
+        ] {
+            assert!(
+                !record.to_string().contains(snapshot),
+                "prepared record must not name the snapshot {snapshot}: {record}"
+            );
+        }
+        assert!(
+            value.pointer("/next/repair_after_command").is_some(),
+            "prepared packet must still carry its repair continuation: {rendered}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn single_actionable_envelope_carries_the_whole_loop_including_a_seam_receipt()
     -> Result<(), String> {
@@ -5923,13 +6631,22 @@ mod tests {
         let value = parsed_envelope(&json)?;
         let next = &value["next"];
         // Every command is the shared loop-command template, not a
-        // hand-written duplicate of it.
+        // hand-written duplicate of it. #4330: the before snapshot is the
+        // plain template command — no POSIX-only prepare prefix.
         assert_eq!(
             next["before_snapshot_command"],
-            serde_json::Value::String(format!(
-                "{WORKFLOW_PREPARE_COMMAND} && {}",
-                check_repo_exposure_command(".", "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT)
+            serde_json::Value::String(check_repo_exposure_command(
+                ".",
+                "draft",
+                WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT
             ))
+        );
+        assert!(
+            !next["before_snapshot_command"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("mkdir"),
+            "before snapshot command must not embed a POSIX-only prepare prefix"
         );
         assert_eq!(
             next["after_snapshot_command"],
@@ -5958,15 +6675,22 @@ mod tests {
             ))
         );
         // The verify step must write the artifact the receipt step reads, or
-        // the loop does not compose.
+        // the loop does not compose. Issue #3872: the redirect anchors at
+        // the resolved --root, so the composition check names the anchored
+        // absolute write (which still lands on the artifact the receipt
+        // reads, by the anchor rule pinned in loop_commands tests).
         let verify = next["verify_after_edit"]
             .as_str()
             .ok_or_else(|| format!("verify command missing: {json}"))?;
         let receipt = next["receipt_after_verify"]
             .as_str()
             .ok_or_else(|| format!("receipt command missing: {json}"))?;
+        let anchored_verify = shell_arg(&anchored_redirect_target(
+            ".",
+            WORKFLOW_AGENT_VERIFY_ARTIFACT,
+        ));
         assert!(
-            verify.ends_with(&format!("> {WORKFLOW_AGENT_VERIFY_ARTIFACT}")),
+            verify.ends_with(&format!("> {anchored_verify}")),
             "verify command does not write the verify artifact: {verify}"
         );
         assert!(
@@ -6130,7 +6854,7 @@ mod tests {
         let json = render_agent_seam_packets_json(&[], None);
         assert!(json.contains("\"packets_total\": 0"));
         assert!(json.contains("\"packets\": []"));
-        assert!(json.contains("\"schema_version\": \"0.4\""));
+        assert!(json.contains("\"schema_version\": \"0.5\""));
     }
 
     #[test]

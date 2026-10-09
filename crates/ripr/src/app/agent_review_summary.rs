@@ -7,8 +7,11 @@ pub(crate) mod types;
 mod util;
 
 pub(crate) use json::render_agent_review_summary_json;
-pub(crate) use markdown::render_agent_review_summary_markdown;
+pub(crate) use markdown::{NO_RECEIPT_BEFORE_REPAIR, render_agent_review_summary_markdown};
 pub(crate) use report::build_agent_review_summary_report;
+#[cfg(all(test, unix))]
+#[path = "agent_review_summary/root_tests.rs"]
+mod root_tests;
 #[cfg(test)]
 mod tests {
     use super::artifacts::{
@@ -20,8 +23,10 @@ mod tests {
         WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
         WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
         WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
-        WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT,
+        WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, WORKFLOW_MANIFEST_ARTIFACT, check_repo_exposure_command,
     };
+    use crate::output::markdown::powershell_command;
+    use crate::testing::cwd_placeholder::project_renderer_cwd;
     use serde_json::Value;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -135,7 +140,7 @@ mod tests {
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review."
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
     }
   }
 }"#,
@@ -245,8 +250,13 @@ mod tests {
     ) -> Result<(), String> {
         let report = build_agent_review_summary_report(root, root_argument);
         let rendered = render_agent_review_summary_json(&report)?;
-        let actual: Value = serde_json::from_str(&rendered)
+        let mut actual: Value = serde_json::from_str(&rendered)
             .map_err(|err| format!("parse rendered review summary: {err}"))?;
+        // Issue #3872: next-command redirects anchor at the resolved --root,
+        // so the machine prefix projects to `<cwd>/` before comparing
+        // against the checked-in expectation (placeholder rule:
+        // loop_commands).
+        project_renderer_cwd(&mut actual);
         let fixture_path =
             format!("fixtures/boundary_gap/expected/llm-work-loop/{case_name}/review-summary.json");
         assert_eq!(
@@ -273,7 +283,7 @@ mod tests {
         assert_eq!(value["static_movement"]["state"], "improved");
         assert_eq!(
             value["static_movement"]["next_action"]["recommended_action"],
-            "Keep the focused test and include this receipt in review."
+            "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
         );
         assert!(
             value["surfaces"]
@@ -309,7 +319,7 @@ mod tests {
 
         assert_eq!(value["status"], "incomplete");
         assert_eq!(value["static_movement"]["state"], "missing_artifact");
-        assert_eq!(value["next_command"]["step"], "before_snapshot");
+        assert_eq!(value["next_command"]["step"], "select_seam");
         assert_eq!(
             value["static_movement"]["next_action"]["recommended_action"],
             "Run the next command listed by agent status."
@@ -429,7 +439,7 @@ mod tests {
                 grip_class: "strongly_gripped",
                 action_kind: "improved",
                 action_summary: "Static grip improved.",
-                action_recommendation: "Keep the focused test and include this receipt in review.",
+                action_recommendation: "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
             },
             ReviewFixtureCase {
                 name: "unchanged",
@@ -569,10 +579,17 @@ mod tests {
         std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
 
         assert_review_summary_matches_fixture(&root, Path::new("repo root"), "path-with-spaces")?;
+        #[cfg(windows)]
         assert_review_summary_matches_fixture(
             &root,
             Path::new("repo\\root"),
             "windows-separators",
+        )?;
+        #[cfg(unix)]
+        assert_review_summary_matches_fixture(
+            &root,
+            Path::new("repo\\root"),
+            "unix-literal-backslash",
         )?;
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
@@ -589,6 +606,8 @@ mod tests {
         assert!(rendered.contains("# RIPR Agent Review Summary"));
         assert!(rendered.contains("Target seam: seam-a"));
         assert!(rendered.contains("Movement: improved"));
+        // A present receipt is not the pre-repair state (#3906, N5).
+        assert!(!rendered.contains(NO_RECEIPT_BEFORE_REPAIR), "{rendered}");
         assert!(rendered.contains("Static artifact relationship only."));
         assert!(rendered.contains("No runtime mutation execution."));
 
@@ -754,8 +773,122 @@ mod tests {
 
         assert!(rendered.contains("Target seam: unknown"));
         assert!(rendered.contains("Next command:"));
-        assert!(rendered.contains("ripr check --root . --mode draft --format repo-exposure-json"));
+        assert!(
+            rendered.contains(&crate::app::agent_status::pilot_select_command(
+                &crate::agent::loop_commands::bound_root(".")
+            ))
+        );
         assert!(rendered.contains("No generated tests."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// #3906 (F60-2): the review summary places the post-edit note before a
+    /// next command that runs after the focused test edit, and only there.
+    /// The renderer is driven with constructed next commands, so the
+    /// labelling contract holds whichever step status routes to (#3931).
+    #[test]
+    fn agent_review_summary_markdown_labels_constructed_next_commands() -> Result<(), String> {
+        let root = unique_agent_review_summary_test_dir("markdown-constructed-next");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        let mut report = build_agent_review_summary_report(&root, Path::new("."));
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        let command = |step: &str, command: &str| crate::app::agent_status::AgentStatusCommand {
+            step: step.to_string(),
+            artifact: "target/ripr/workflow/x.json".to_string(),
+            reason: format!("{step} is missing"),
+            command: command.to_string(),
+        };
+        let note = crate::app::agent_status::AFTER_TEST_EDIT_NOTE;
+
+        let post_edit = "ripr agent verify --root . --json";
+        report.next_command = Some(command("agent_verify", post_edit));
+        let rendered = render_agent_review_summary_markdown(&report);
+        let heading = rendered
+            .find("Next command:")
+            .ok_or_else(|| format!("next command missing:\n{rendered}"))?;
+        let at = rendered
+            .find(note)
+            .ok_or_else(|| format!("post-edit note missing:\n{rendered}"))?;
+        let fence = rendered
+            .find(format!("```bash\n{post_edit}\n```\n").as_str())
+            .ok_or_else(|| format!("post-edit command missing:\n{rendered}"))?;
+        assert!(heading < at && at < fence, "{rendered}");
+
+        for (step, pre_edit) in [
+            (
+                "before_snapshot",
+                "ripr check --root . --format repo-exposure-json",
+            ),
+            ("select_seam", "ripr pilot --root ."),
+            (
+                "repair_attempt_before",
+                "ripr agent repair --root . --seam-id seam-a --phase before",
+            ),
+        ] {
+            report.next_command = Some(command(step, pre_edit));
+            let rendered = render_agent_review_summary_markdown(&report);
+            assert!(
+                rendered.contains(&format!("```bash\n{pre_edit}\n```\n")),
+                "{rendered}"
+            );
+            assert!(!rendered.contains(note), "{step}: {rendered}");
+        }
+        Ok(())
+    }
+
+    /// #3906 (F60-2, N5): the before side a CI run writes, with its seam in
+    /// the packet and the workflow directory present, leaves the after
+    /// snapshot as the next command whether status reads only the artifact
+    /// loop or also repair attempts and pilot (#3931). The summary names the
+    /// missing receipt as the pre-repair state and labels the command as
+    /// post-edit; an empty root's pre-edit command carries no note.
+    #[test]
+    fn agent_review_summary_markdown_labels_post_edit_next_command() -> Result<(), String> {
+        let empty = unique_agent_review_summary_test_dir("markdown-next-command-before-side");
+        std::fs::create_dir_all(&empty).map_err(|err| format!("create root: {err}"))?;
+        let report = build_agent_review_summary_report(&empty, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+        assert!(rendered.contains("Next command:"), "{rendered}");
+        assert!(
+            !rendered.contains(crate::app::agent_status::AFTER_TEST_EDIT_NOTE),
+            "{rendered}"
+        );
+        std::fs::remove_dir_all(&empty).map_err(|err| format!("remove root: {err}"))?;
+
+        let root = unique_agent_review_summary_test_dir("markdown-next-command-after-side");
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_PACKET_ARTIFACT),
+            r#"{"packets":[{"seam_id":"seam-a"}]}"#,
+        )?;
+        let report = build_agent_review_summary_report(&root, Path::new("."));
+        let rendered = render_agent_review_summary_markdown(&report);
+        let receipt = rendered
+            .find(&format!(
+                "Movement: missing_artifact\nReceipt: {NO_RECEIPT_BEFORE_REPAIR}\n"
+            ))
+            .ok_or_else(|| format!("no-receipt line missing:\n{rendered}"))?;
+        let next = check_repo_exposure_command(
+            &crate::agent::loop_commands::bound_root("."),
+            "draft",
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+        );
+        let heading = rendered
+            .find("Next command:")
+            .ok_or_else(|| format!("next command missing:\n{rendered}"))?;
+        let note = rendered
+            .find(crate::app::agent_status::AFTER_TEST_EDIT_NOTE)
+            .ok_or_else(|| format!("post-edit note missing:\n{rendered}"))?;
+        let fence = rendered
+            .find(format!("```bash\n{next}\n```\n").as_str())
+            .ok_or_else(|| format!("after-snapshot command missing:\n{rendered}"))?;
+        assert!(
+            receipt < heading && heading < note && note < fence,
+            "{rendered}"
+        );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
@@ -769,26 +902,43 @@ mod tests {
     fn agent_review_summary_markdown_next_command_offers_powershell_variant() -> Result<(), String>
     {
         let root = unique_agent_review_summary_test_dir("markdown-next-command-powershell");
-        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+        // A known seam and an existing workflow directory keep the legacy
+        // redirect route selected, which is the translation this pins.
+        write_file(
+            &root.join(WORKFLOW_AGENT_PACKET_ARTIFACT),
+            r#"{"packets":[{"seam_id":"seam-a"}]}"#,
+        )?;
 
         let report = build_agent_review_summary_report(&root, Path::new("."));
         let rendered = render_agent_review_summary_markdown(&report);
 
-        let bash_form = "```bash\nripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json\n```\n";
+        // Issue #3872: the next-command redirect anchors at the resolved
+        // --root, so both presented forms build from the same builder output
+        // (the anchor math itself is pinned in loop_commands tests).
+        let next = check_repo_exposure_command(
+            &crate::agent::loop_commands::bound_root("."),
+            "draft",
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+        );
+        let bash_form = format!("```bash\n{next}\n```\n");
         assert!(
-            rendered.contains(bash_form),
+            rendered.contains(bash_form.as_str()),
             "bash next command drifted:\n{rendered}"
         );
-        let powershell_form = "```powershell\n$ripr = ((ripr check --root . --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/before.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n";
+        let powershell_form = format!(
+            "```powershell\n{}\n```\n",
+            powershell_command(&next)
+                .ok_or_else(|| "redirect commands gain a powershell variant".to_string())?
+        );
         assert!(
-            rendered.contains(powershell_form),
+            rendered.contains(powershell_form.as_str()),
             "powershell next command missing or drifted:\n{rendered}"
         );
         let bash_fence = rendered
-            .find(bash_form)
+            .find(bash_form.as_str())
             .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
         let powershell_fence = rendered
-            .find(powershell_form)
+            .find(powershell_form.as_str())
             .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
         assert!(
             bash_fence < powershell_fence,
@@ -800,6 +950,80 @@ mod tests {
         );
 
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// The agent status surface must count only artifacts the active loop mode
+    /// actually requires as "required" (docs/LEARNINGS.md, 2026-07-25
+    /// false-confidence gates): with no repair attempt every artifact is
+    /// required, and with a repair attempt present the repository-global
+    /// projections the attempt authority supersedes must not be called
+    /// "required".
+    #[test]
+    fn agent_review_summary_status_surface_counts_only_required_artifacts() -> Result<(), String> {
+        use crate::app::agent_status::{
+            AgentStatusArtifact, AgentStatusRepairAttempt, AgentStatusReport,
+        };
+        let artifacts = [
+            ("before_snapshot", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT),
+            ("after_snapshot", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT),
+            ("analysis_outcome", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT),
+            ("agent_brief", WORKFLOW_AGENT_BRIEF_ARTIFACT),
+            ("agent_packet", WORKFLOW_AGENT_PACKET_ARTIFACT),
+            ("agent_verify", WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            ("agent_receipt", WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        ]
+        .iter()
+        .map(|(name, path)| AgentStatusArtifact {
+            name: name.to_string(),
+            label: name.replace('_', " "),
+            path: path.to_string(),
+            present: true,
+            bytes: Some(1),
+            modified: None,
+        })
+        .collect::<Vec<_>>();
+        let attempt = |seam: &str| AgentStatusRepairAttempt {
+            attempt_id: format!("repair-attempt-{seam}"),
+            seam_id: seam.to_string(),
+            state: "awaiting_edit",
+            head_current: Some(true),
+            disposition: "resumable",
+            manifest: String::new(),
+            command: None,
+            evidence_head: String::new(),
+            receipt: crate::app::agent_status::AgentStatusAttemptReceipt::NotApplicable,
+            last_after_refusal: None,
+            diverged_recovery: None,
+        };
+        let report = |attempts: Vec<AgentStatusRepairAttempt>| AgentStatusReport {
+            root: ".".to_string(),
+            seam: None,
+            artifacts: artifacts.clone(),
+            repair_attempts: attempts,
+            missing_commands: Vec::new(),
+            next_command: None,
+            warnings: Vec::new(),
+        };
+
+        let legacy = super::artifacts::agent_status_surface(&report(Vec::new()), Path::new("."));
+        assert!(
+            legacy
+                .summary
+                .starts_with("7 of 7 required artifacts present, 0 missing"),
+            "legacy loop requires every artifact: {}",
+            legacy.summary
+        );
+
+        let repair =
+            super::artifacts::agent_status_surface(&report(vec![attempt("a")]), Path::new("."));
+        assert!(
+            repair
+                .summary
+                .starts_with("0 of 0 required artifacts present, 0 missing"),
+            "a repair attempt supersedes the projections, so none is required: {}",
+            repair.summary
+        );
         Ok(())
     }
 }

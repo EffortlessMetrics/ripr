@@ -1,0 +1,57 @@
+schema_version = "2.0"
+id = "ripr.slice.public-command-catalog.v1"
+generation = 1
+
+source_issue = "issue:4822"
+design_reference = "RIPR-SPEC-0184"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Establishes one typed public command catalog for RIPR command identity,
+aliases, and public/compatibility/advanced/internal classification, with
+parser and typo-suggestion two-way parity. It does not add rich metadata,
+rewrite human help, add help workflow or help --json, or rename/remove/
+execute/support-promote any command.
+"""
+
+non_goals = [
+  "rich command cost/side-effect/input/output metadata",
+  "human-help rewrite or option-body changes",
+  "help workflow",
+  "help --json",
+  "command rename, removal, execution, or support promotion",
+]
+
+return_conditions = [
+  "Return to root if existing bounded ripr --help, help <command>, or help --all behavior would change.",
+  "Return to root if a later discovery slice (#4823/#4824/#4825) is required to make parser parity hold.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:command-catalog",
+  "seam:ripr:cli:top-level-command-identity",
+]
+
+shared_seams = [
+  "seam:ripr:cli:help-hierarchy",
+  "seam:ripr:cli:nested-command-parsers",
+]
+
+forbidden_seams = [
+  "seam:ripr:cli:help-workflow",
+  "seam:ripr:cli:help-json",
+  "seam:ripr:analysis:check-workspace",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0184"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

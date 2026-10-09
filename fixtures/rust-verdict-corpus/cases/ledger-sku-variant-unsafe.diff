@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..4c9fe5f 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -37,7 +37,7 @@ pub fn sku_family(sku: &str) -> &str {
+ pub fn sku_variant(sku: &str) -> &str {
+     let start = sku.find('-').map_or(sku.len(), |i| i + 1);
+     // SAFETY: `start` is the length or one byte past an ASCII `-`.
+-    unsafe { sku.get_unchecked(start..) }
++    unsafe { sku.get_unchecked(start..sku.len()) }
+ }
+ 
+ #[derive(Debug, Default)]

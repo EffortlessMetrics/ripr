@@ -16,6 +16,11 @@ Cases:
   timestamps.
 - `configured-off`: policy-hidden seam rejection text for agent handoff.
 - `path-with-spaces`: missing-artifact recovery commands quote a spaced root.
-- `windows-separators`: root display and recovery commands normalize
-  separators.
+- `windows-separators`: native Windows recovery commands normalize separators.
+- `unix-literal-backslash`: Unix commands retain literal filename backslashes
+  in roots and redirect targets; report-only root display keeps its presentation.
 
+The Unix summary command test also captures actual shell argv and stdout
+redirection from a foreign working directory into a real literal-backslash
+directory, with a separate slash-path decoy and immutable marker. The fixtures
+alone do not establish shell execution or filesystem identity.

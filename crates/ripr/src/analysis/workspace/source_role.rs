@@ -34,7 +34,7 @@
 //! that separation for inline `#[cfg(test)]` modules; this module keeps
 //! it for whole files).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// The producer-owned role of one source file.
@@ -109,6 +109,30 @@ pub(crate) struct SourceRoleContext {
     /// producers. Evidence role; the explicit production-like opt-in
     /// still wins over a harness registration.
     pub(crate) harness_targets: BTreeSet<PathBuf>,
+    /// Relative paths of the build scripts Cargo actually compiles: a
+    /// package's `build.rs` unless `package.build = false`, or the path
+    /// `package.build` names. Only these seed changed-file probes outside
+    /// a `src` layout.
+    pub(crate) build_scripts: BTreeSet<PathBuf>,
+    /// Relative paths of explicit `[lib]` / `[[bin]]` `path = ...` crate
+    /// roots, plus the analyzed files the same package owns below a root
+    /// that sits in its own directory (`lib/` for `[lib] path =
+    /// "lib/foo.rs"`, where Rust resolves that root's modules). Cargo
+    /// compiles them wherever they sit, so a changed one seeds probes even
+    /// outside a `src` layout.
+    pub(crate) declared_production_sources: BTreeSet<PathBuf>,
+    /// Relative paths the owning package's complete module-tree walk does
+    /// not reach (#4435): no `mod`, `#[path]` or `include!` from any Cargo
+    /// target root names them, so rustc never compiles them. They seed no
+    /// diff probes whatever their layout says. Recorded only for the files a
+    /// caller asks about (`apply_module_graph_evidence`).
+    pub(crate) module_graph_orphans: BTreeSet<PathBuf>,
+    /// Relative paths no resolved module edge reaches, but an out-of-line
+    /// `mod` whose `#[path]` target is unresolved (a `cfg_attr` path) spells
+    /// them as a candidate, mapped to that declaration's workspace-relative
+    /// file and line. rustc may compile them, but ripr cannot compose their
+    /// module context, so their evidence is incomplete. They still seed.
+    pub(crate) module_graph_unresolved_routes: BTreeMap<PathBuf, (PathBuf, usize)>,
 }
 
 impl SourceRoleContext {
@@ -143,20 +167,26 @@ pub(crate) fn classify_with(path: &Path, context: &SourceRoleContext) -> SourceR
 /// repair driver's edit-cage gate). It reuses the analyzer's existing
 /// test-file notions rather than forking them: the `tests`/`test` layout
 /// component shared by `rust_index::is_test_file` and the Python adapter's
-/// `is_test_file`, plus the per-language file-name conventions — `test_*.py`
-/// prefixes and `*_test.py`/`*_tests.py`/`*_test.rs`/`*_tests.rs` suffixes.
+/// `is_test_file`, the TypeScript preview adapter's `is_test_file` (Jest,
+/// Vitest, Node, Cypress, Jasmine, and `__tests__` conventions), plus the
+/// Rust and Python file-name conventions — `test_*.py` prefixes and
+/// `*_test.py`/`*_tests.py`/`*_test.rs`/`*_tests.rs` suffixes.
 ///
 /// The recognition is deliberately bounded and case-sensitive so lookalike
-/// names fail closed: `src/testing.py`, `lib/testutil.py`, and unusual
-/// casing are refused. This is role-derived evidence for an authorization
-/// decision; consumers keep the policy (what to refuse and what to name in
-/// the diagnostic) on their side.
+/// names fail closed: `src/testing.py`, `lib/testutil.py`, `src/contest.ts`,
+/// and unusual casing are refused. This is role-derived evidence for an
+/// authorization decision; consumers keep the policy (what to refuse and what
+/// to name in the diagnostic) on their side.
 pub(crate) fn is_test_surface_path(path: &str) -> bool {
     let normalized = path.replace('\\', "/");
     if normalized
         .split('/')
         .any(|component| component == "tests" || component == "test")
     {
+        return true;
+    }
+    #[cfg(feature = "lang-typescript")]
+    if crate::analysis::language::is_test_file(Path::new(&normalized)) {
         return true;
     }
     let file_name = normalized.rsplit('/').next().unwrap_or_default();
@@ -183,6 +213,17 @@ pub(crate) fn is_test_surface_path(path: &str) -> bool {
 /// `xtask/` or a non-source directory. Anything the old repo predicate
 /// excluded stays non-production here, so routing the repo production
 /// set through this model cannot widen it.
+/// Registered non-source directories. Files under them are evidence for
+/// every surface, including diff seeding.
+const NON_SOURCE_DIRECTORIES: [&str; 6] = [
+    "fixtures",
+    "target",
+    ".git",
+    ".ripr",
+    "node_modules",
+    "editors",
+];
+
 pub(crate) fn classify(path: &Path) -> SourceRole {
     let normalized = normalize(path);
     let components = normalized.components().collect::<Vec<_>>();
@@ -207,12 +248,9 @@ pub(crate) fn classify(path: &Path) -> SourceRole {
     if cargo_discoverable_under(&components, "examples") {
         return SourceRole::ExampleEvidence;
     }
-    if has_component("fixtures")
-        || has_component("target")
-        || has_component(".git")
-        || has_component(".ripr")
-        || has_component("node_modules")
-        || has_component("editors")
+    if NON_SOURCE_DIRECTORIES
+        .iter()
+        .any(|name| has_component(name))
         || has_component("xtask")
     {
         return SourceRole::FixtureOrReceiptEvidence;
@@ -233,18 +271,78 @@ pub(crate) fn classify(path: &Path) -> SourceRole {
     SourceRole::ProductionSubject
 }
 
-/// Whether the path lives under the repository's own automation
-/// directory. Automation files are evidence-role for repo-mode indexing,
-/// but a *changed* automation file is reviewed behavior: the pre-#3283
-/// diff loop seeded probes for every non-test changed file, and the
-/// source-owned `source_promotion_verification` fixture pins probe
-/// seeding for `xtask/` changes. The Rust diff-probe loop consults this
-/// alongside [`SourceRole::seeds_production_findings`] so the evidence
-/// taxonomy keeps repo-mode scope without silencing automation diffs.
-pub(crate) fn is_repo_automation_path(path: &Path) -> bool {
-    normalize(path)
-        .components()
-        .any(|component| component_name(&component) == "xtask")
+/// Whether a changed file is repository automation source that the Rust
+/// diff loop still probes. `xtask/` is evidence role for repo-mode
+/// indexing, but a *changed* automation source file is reviewed behavior:
+/// the pre-#3283 diff loop seeded probes for every non-test changed file,
+/// and `diff_analysis_seeds_probes_for_changed_repo_automation_files` pins
+/// the p1745 regression where a 329-line `xtask/` diff yielded no probes.
+///
+/// The exemption is narrow: only the root `xtask/` directory, only files
+/// whose resolved role is the `xtask` catch-all (declared targets and
+/// harness registrations still win), and only paths the layout would
+/// treat as production inside `xtask/`. `xtask/tests/**`, `tests.rs`
+/// stems, autodiscovered benches/examples, and non-`src` files keep
+/// their evidence role; an `xtask` segment nested under `fixtures/` or
+/// any other directory is not repository automation.
+fn is_repo_automation_subject(path: &Path, role: SourceRole) -> bool {
+    if role != SourceRole::FixtureOrReceiptEvidence {
+        return false;
+    }
+    let normalized = normalize(path);
+    normalized
+        .strip_prefix("xtask")
+        .is_ok_and(|inner| classify(inner) == SourceRole::ProductionSubject)
+}
+
+/// Whether a *changed* Rust file at this path seeds diff probes, and so
+/// whether the editor may pin its findings as line-local diagnostics.
+///
+/// This is the one authority for both surfaces: the Rust diff loop and the
+/// LSP out-of-scope partition must agree, or the editor silently drops
+/// findings the CLI reports. Production roles seed. Three evidence-role
+/// shapes also seed when changed, because Cargo compiles them and a change
+/// there is reviewed behavior rather than data:
+///
+/// - repository automation (`xtask/`, see [`is_repo_automation_subject`]);
+/// - Cargo build scripts, which sit outside any `src` layout. Only the
+///   script a package manifest actually builds counts
+///   ([`SourceRoleContext::build_scripts`]): a `build.rs` under
+///   `package.build = false`, or outside any package, is never compiled;
+/// - crate roots a manifest declares outside `src` (`[lib] path =
+///   "lib/foo.rs"`) and the files that package owns below such a root
+///   ([`SourceRoleContext::declared_production_sources`]).
+///
+/// A file the owning package's complete module-tree walk does not reach
+/// ([`SourceRoleContext::module_graph_orphans`]) seeds nothing, whatever its
+/// layout (#4435).
+///
+/// Repo mode keeps all three out of the seam inventory. Registered non-source
+/// directories (`fixtures/`, `target/`, ...) stay evidence even inside
+/// `xtask/`, and other loose non-`src` files (panel subjects under
+/// `metrics/`, for example) are data Cargo never compiles.
+pub(crate) fn seeds_diff_probes(path: &Path, context: &SourceRoleContext) -> bool {
+    match classify_with(path, context) {
+        // The explicit opt-in still wins; every other role needs a module
+        // tree that compiles the file.
+        SourceRole::ProductionLikeTestInfrastructure => true,
+        _ if context.module_graph_orphans.contains(&normalize(path)) => false,
+        role if role.seeds_production_findings() => true,
+        role @ SourceRole::FixtureOrReceiptEvidence => {
+            let normalized = normalize(path);
+            let in_non_source_directory = normalized.components().any(|component| {
+                component
+                    .as_os_str()
+                    .to_str()
+                    .is_some_and(|name| NON_SOURCE_DIRECTORIES.contains(&name))
+            });
+            is_repo_automation_subject(path, role)
+                || (!in_non_source_directory
+                    && (context.build_scripts.contains(&normalized)
+                        || context.declared_production_sources.contains(&normalized)))
+        }
+        _ => false,
+    }
 }
 
 fn component_name(component: &std::path::Component) -> String {
@@ -303,6 +401,23 @@ mod tests {
                 "test surface `{accepted}` was refused"
             );
         }
+        #[cfg(feature = "lang-typescript")]
+        for accepted in [
+            "src/cart.test.ts",
+            "src/cart.spec.tsx",
+            "src/app.test.js",
+            "src/Header.test.jsx",
+            "src/__tests__/Header.tsx",
+            "cypress/e2e/checkout.cy.ts",
+            "src/cart_test.ts",
+            "src/cart.test.mts",
+            "spec/requestContractSpec.js",
+        ] {
+            assert!(
+                is_test_surface_path(accepted),
+                "test surface `{accepted}` was refused"
+            );
+        }
         for rejected in [
             "src/production.rs",
             "src/testing.py",
@@ -310,12 +425,39 @@ mod tests {
             "atest/helper.py",
             "src/mod.rs",
             "tests.rs",
+            "src/cart.ts",
+            "src/contest.ts",
+            "test-utils/helper.ts",
+            "src/latest/feature.ts",
+            "spec/helpers/setup.js",
+            "src/specification.ts",
         ] {
             assert!(
                 !is_test_surface_path(rejected),
                 "non-test path `{rejected}` was accepted"
             );
         }
+    }
+
+    #[test]
+    fn module_graph_orphans_seed_nothing_but_the_opt_in_still_wins() {
+        // #4435: an unreached file never seeds, whatever its layout or
+        // declared-root grant says; an explicit production-like opt-in is
+        // the one authority above the module tree.
+        let orphan = PathBuf::from("src/unused.rs");
+        let declared = PathBuf::from("lib/stray.rs");
+        let opted_in = PathBuf::from("src/opted_in.rs");
+        let mut context = SourceRoleContext::empty();
+        context.declared_production_sources.insert(declared.clone());
+        context.production_like_targets.insert(opted_in.clone());
+        assert!(seeds_diff_probes(&orphan, &context));
+        assert!(seeds_diff_probes(&declared, &context));
+        context.module_graph_orphans =
+            BTreeSet::from([orphan.clone(), declared.clone(), opted_in.clone()]);
+        assert!(!seeds_diff_probes(&orphan, &context));
+        assert!(!seeds_diff_probes(&declared, &context));
+        assert!(seeds_diff_probes(&opted_in, &context));
+        assert!(seeds_diff_probes(Path::new("src/used.rs"), &context));
     }
 
     #[test]
@@ -496,23 +638,135 @@ mod tests {
     }
 
     #[test]
-    fn repo_automation_paths_are_flagged_for_diff_seeding() {
-        // `xtask/` stays evidence-role for repo-mode indexing, but the
-        // path flag lets the diff-probe loop seed changed automation
-        // files (pre-#3283 diff behavior, pinned by the
-        // `source_promotion_verification` fixture).
-        assert!(super::is_repo_automation_path(Path::new(
-            "xtask/src/reports/source_promotion_verify.rs"
-        )));
-        assert!(super::is_repo_automation_path(Path::new(
-            "xtask/src/main.rs"
-        )));
-        assert!(!super::is_repo_automation_path(Path::new(
-            "crates/ripr/src/lib.rs"
-        )));
-        assert!(!super::is_repo_automation_path(Path::new(
-            "fixtures/entropy/input/src/lib.rs"
-        )));
+    fn repo_automation_subjects_are_root_xtask_sources_only() {
+        let subject = |path: &str| super::is_repo_automation_subject(Path::new(path), role(path));
+        assert!(subject("xtask/src/windows_advisory.rs"));
+        assert!(subject("xtask\\src\\main.rs"));
+        // Evidence roles inside xtask keep their role.
+        assert!(!subject("xtask/tests/help_hierarchy.rs"));
+        assert!(!subject("xtask/src/tests.rs"));
+        assert!(!subject("xtask/benches/scan.rs"));
+        assert!(!subject("xtask/build.rs"));
+        // A nested `xtask` segment is not repository automation.
+        assert!(!subject("fixtures/case/input/xtask/src/main.rs"));
+        assert!(!subject("crates/ripr/src/lib.rs"));
+    }
+
+    #[test]
+    fn changed_automation_and_loose_files_seed_diff_probes() {
+        // Build scripts seed only when a manifest declares them; the
+        // `fixtures/` entry proves the non-source guard still wins.
+        let mut context = SourceRoleContext::empty();
+        for script in [
+            "build.rs",
+            "crates/ripr/build.rs",
+            "examples/sample/build.rs",
+            "xtask/build.rs",
+            "tools/codegen.rs",
+            "fixtures/entropy/input/build.rs",
+        ] {
+            context.build_scripts.insert(PathBuf::from(script));
+        }
+        for (path, seeds) in [
+            ("crates/ripr/src/lib.rs", true),
+            ("xtask/src/windows_advisory.rs", true),
+            ("build.rs", true),
+            ("crates/ripr/build.rs", true),
+            ("crates\\ripr\\build.rs", true),
+            ("examples/sample/build.rs", true),
+            ("xtask/build.rs", true),
+            ("tools/codegen.rs", true),
+            // Undeclared: `build = false`, or no owning package.
+            ("crates/other/build.rs", false),
+            ("scripts/build.rs", false),
+            ("tests/cli.rs", false),
+            ("xtask/tests/cli.rs", false),
+            ("xtask/tests/support/helpers.rs", false),
+            ("fixtures/case/input/xtask/src/main.rs", false),
+            ("xtask/fixtures/sample/src/lib.rs", false),
+            ("metrics/panel/subjects/case/source.after.rs", false),
+            ("scripts/tool.rs", false),
+            ("crates/ripr/tests/cli.rs", false),
+            ("benches/throughput.rs", false),
+            ("benches/common/mod.rs", false),
+            ("examples/demo.rs", false),
+            ("examples/support/helpers.rs", false),
+            ("fixtures/entropy/input/src/lib.rs", false),
+            ("fixtures/entropy/input/build.rs", false),
+            ("target/debug/build/out/generated.rs", false),
+            ("editors/vscode/probe.rs", false),
+        ] {
+            assert_eq!(
+                super::seeds_diff_probes(Path::new(path), &context),
+                seeds,
+                "{path}"
+            );
+        }
+        assert!(
+            !super::seeds_diff_probes(Path::new("build.rs"), &SourceRoleContext::empty()),
+            "a build.rs no manifest declares must not seed"
+        );
+        // Repo mode keeps loose files out of the production set; only the
+        // changed-file surfaces widen.
+        assert_eq!(
+            classify(Path::new("build.rs")),
+            SourceRole::FixtureOrReceiptEvidence
+        );
+    }
+
+    #[test]
+    fn declared_crate_roots_outside_src_seed_diff_probes() {
+        // `[lib] path = "lib/odd.rs"` and `[[bin]] path = "tools/cli.rs"`:
+        // Cargo compiles these roots, and Rust resolves the lib root's
+        // out-of-line modules under `lib/`. A crate root beside its
+        // manifest (`lib.rs`) contributes the file only, never the whole
+        // package directory.
+        let mut context = SourceRoleContext::empty();
+        for source in [
+            "lib/odd.rs",
+            "lib/odd/helper.rs",
+            "lib/helper.rs",
+            "tools/cli.rs",
+            "pkg/lib.rs",
+            "lib/tests/odd.rs",
+            "lib/fixtures/sample.rs",
+        ] {
+            context
+                .declared_production_sources
+                .insert(PathBuf::from(source));
+        }
+        for (path, seeds) in [
+            ("lib/odd.rs", true),
+            ("lib\\odd.rs", true),
+            ("lib/odd/helper.rs", true),
+            ("lib/helper.rs", true),
+            ("tools/cli.rs", true),
+            ("pkg/lib.rs", true),
+            // Not declared: membership is exact, never a directory prefix.
+            ("lib/other.rs", false),
+            ("pkg/other.rs", false),
+            ("library/odd.rs", false),
+            ("scripts/tool.rs", false),
+            // Evidence layouts and non-source directories still win, even
+            // if a caller declared them.
+            ("lib/tests/odd.rs", false),
+            ("lib/fixtures/sample.rs", false),
+        ] {
+            assert_eq!(
+                super::seeds_diff_probes(Path::new(path), &context),
+                seeds,
+                "{path}"
+            );
+        }
+        assert!(
+            !super::seeds_diff_probes(Path::new("lib/odd.rs"), &SourceRoleContext::empty()),
+            "without the manifest declaration a loose file stays non-production"
+        );
+        // Repo mode is unchanged: the seam inventory still keys on layout.
+        assert_eq!(
+            classify(Path::new("lib/odd.rs")),
+            SourceRole::FixtureOrReceiptEvidence
+        );
     }
 
     #[test]

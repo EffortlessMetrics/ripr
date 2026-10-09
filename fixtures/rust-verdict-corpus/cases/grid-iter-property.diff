@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9cc2aff..cad6c7d 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn doubled(xs: &[u32]) -> Vec<u32> {
+ }
+ 
+ pub fn count_adults(ages: &[u32]) -> usize {
+-    ages.iter().filter(|a| **a >= 18).count()
++    ages.iter().filter(|&&a| a >= 18).count()
+ }
+ 
+ pub fn any_overdue(days: &[i64]) -> bool {

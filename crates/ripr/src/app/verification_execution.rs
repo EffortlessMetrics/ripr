@@ -84,6 +84,14 @@ const ENVIRONMENT_FLOOR: &[&str] = &[
     "PATHEXT",
     "TEMP",
     "TMP",
+    // The Windows counterpart of HOME. Git for Windows finds its global
+    // configuration through HOME, then HOMEDRIVE+HOMEPATH, then USERPROFILE;
+    // HOME is normally unset there, so without these the child's git ran
+    // without the user's global config (safe.directory, core.autocrlf) while
+    // the same route on Unix read it.
+    "USERPROFILE",
+    "HOMEDRIVE",
+    "HOMEPATH",
     // Unix platform essentials. HOME is required for git to resolve its own
     // configuration; it is ambient but not a credential.
     "HOME",
@@ -126,6 +134,10 @@ const DISPOSITION_WRITE_FAILED: &str = "verification_result_write_failed";
 struct Refusal {
     disposition: &'static str,
     reason: String,
+    /// True for a deliberate policy refusal (exit code 3): a typed refusal
+    /// RIPR declined to commit. False for an operational failure reading or
+    /// resolving execution state (exit code 2).
+    typed: bool,
 }
 
 impl Refusal {
@@ -133,6 +145,15 @@ impl Refusal {
         Self {
             disposition,
             reason: reason.into(),
+            typed: true,
+        }
+    }
+
+    fn operational(disposition: &'static str, reason: impl Into<String>) -> Self {
+        Self {
+            disposition,
+            reason: reason.into(),
+            typed: false,
         }
     }
 }
@@ -146,6 +167,10 @@ impl From<Refusal> for String {
 
 fn rejected(reason: impl Into<String>) -> Refusal {
     Refusal::new(DISPOSITION_REJECTED, reason)
+}
+
+fn operationally_rejected(reason: impl Into<String>) -> Refusal {
+    Refusal::operational(DISPOSITION_REJECTED, reason)
 }
 
 fn wrong_root(reason: impl Into<String>) -> Refusal {
@@ -252,6 +277,11 @@ pub(crate) struct ExecutionOutcome {
     pub(crate) disposition: &'static str,
     /// True when RIPR could not produce and commit a bounded observation.
     pub(crate) failed: bool,
+    /// True when the terminal state is a typed refusal (the bounded
+    /// observation RIPR declined to commit), as opposed to an operational
+    /// failure such as `verification_result_write_failed`. The CLI maps typed
+    /// refusals to the decision exit code 3.
+    pub(crate) refused: bool,
 }
 
 /// Execute one validated producer-owned verification packet.
@@ -292,6 +322,7 @@ fn refusal_outcome(refusal: &Refusal) -> ExecutionOutcome {
         rendered: render(&response),
         disposition: refusal.disposition,
         failed: true,
+        refused: refusal.typed,
     }
 }
 
@@ -331,8 +362,9 @@ fn run(
 
     let spec = &validated.command_spec;
     let root_identity = display_path(&root);
-    let head_before = current_git_head(&root)
-        .map_err(|error| rejected(format!("read HEAD before execution failed: {error}")))?;
+    let head_before = current_git_head(&root).map_err(|error| {
+        operationally_rejected(format!("read HEAD before execution failed: {error}"))
+    })?;
     let dirty_before = git_worktree_dirty(&root)?;
 
     // Disclosure is derived from the validated spec, never asserted as fixed
@@ -360,11 +392,13 @@ fn run(
         eprintln!("verification preflight: {disclosure}");
     }
 
-    let executable = std::env::current_exe()
-        .map_err(|error| rejected(format!("resolve ripr executable failed: {error}")))?;
+    let executable = std::env::current_exe().map_err(|error| {
+        operationally_rejected(format!("resolve ripr executable failed: {error}"))
+    })?;
     let observation = run_process(&executable, spec, &root, cancel_after_ms)?;
-    let head_after = current_git_head(&root)
-        .map_err(|error| rejected(format!("read HEAD after execution failed: {error}")))?;
+    let head_after = current_git_head(&root).map_err(|error| {
+        operationally_rejected(format!("read HEAD after execution failed: {error}"))
+    })?;
     let dirty_after = git_worktree_dirty(&root)?;
     let currentness = if head_before != head_after {
         VerificationCurrentnessV1::HistoricalNoncurrent
@@ -378,8 +412,9 @@ fn run(
         root_identity,
         head_before: head_before.clone(),
         head_after: head_after.clone(),
-        command_spec_sha256: crate::domain::command_spec_sha256(spec)
-            .map_err(|error| rejected(format!("command spec digest failed: {error}")))?,
+        command_spec_sha256: crate::domain::command_spec_sha256(spec).map_err(|error| {
+            operationally_rejected(format!("command spec digest failed: {error}"))
+        })?,
         process_disposition: observation.disposition,
         exit_status: observation.exit_status,
         stdout_sha256: digest(&observation.stdout.bytes),
@@ -434,6 +469,7 @@ fn run(
             rendered: render(&response),
             disposition,
             failed: false,
+            refused: false,
         }),
         Err(reason) => {
             response.result_committed = false;
@@ -443,6 +479,7 @@ fn run(
                 rendered: render(&response),
                 disposition: DISPOSITION_WRITE_FAILED,
                 failed: true,
+                refused: false,
             })
         }
     }
@@ -509,7 +546,7 @@ fn validate_packet_route(root: &Path, packet_path: &Path) -> Result<CandidateRou
     // producer performs, so any divergence is caller authorship.
     let reproduced = displays
         .iter()
-        .filter_map(|display| agent_command_spec_from_display(display))
+        .filter_map(|display| agent_command_spec_from_display(display, root))
         .collect::<Vec<_>>();
 
     let typed_value = packet
@@ -563,7 +600,7 @@ fn validate_packet_route(root: &Path, packet_path: &Path) -> Result<CandidateRou
         .get("verify_command")
         .and_then(Value::as_str)
         .ok_or_else(|| rejected("packet verify_command is required"))?;
-    let headline_spec = agent_command_spec_from_display(headline)
+    let headline_spec = agent_command_spec_from_display(headline, root)
         .ok_or_else(|| rejected("packet verify_command is not a canonical route"))?;
     if headline_spec != command_spec {
         return Err(rejected(
@@ -617,13 +654,16 @@ fn bind_producer_route(root: &Path, candidate: CandidateRoute) -> Result<Validat
     }
 
     // The authority step: the route is constructed here, not accepted.
+    // The recomputed display binds the selected root (#3999); the packet's
+    // display may be the portable `--root .` shape or a root-bound one, so
+    // the comparison is route identity, which excludes the display.
     let recomputed = agent_verify_command_spec(
-        ".",
+        &root.to_string_lossy(),
         &candidate.declared_before,
         &candidate.declared_after,
         None,
     );
-    if candidate.command_spec != recomputed {
+    if !candidate.command_spec.same_route(&recomputed) {
         return Err(rejected(
             "packet route does not equal the canonical verify route recomputed from the validated producer artifacts",
         ));
@@ -1096,10 +1136,13 @@ mod tests {
     /// — `command_specs.verify` is an array derived from
     /// `verification_commands` — so the fixture cannot drift into a shape the
     /// producer never emits.
-    fn producer_envelope(displays: &[String], headline: &str) -> Value {
+    ///
+    /// `root` is the selected root the producer bound its displays to and the
+    /// consumer recovers them against (#3999).
+    fn producer_envelope(root: &Path, displays: &[String], headline: &str) -> Value {
         let verify = displays
             .iter()
-            .filter_map(|display| agent_command_spec_from_display(display))
+            .filter_map(|display| agent_command_spec_from_display(display, root))
             .collect::<Vec<_>>();
         serde_json::json!({
             "schema_version": PACKET_SCHEMA_VERSION,
@@ -1131,6 +1174,11 @@ mod tests {
             Ok(Self {
                 path: normalize(&path),
             })
+        }
+
+        /// The selected root as a producer binds it into a display.
+        fn bound(&self) -> String {
+            self.path.to_string_lossy().into_owned()
         }
 
         fn write(&self, name: &str, contents: &[u8]) -> Result<(), String> {
@@ -1166,8 +1214,9 @@ mod tests {
     #[test]
     fn accepts_the_canonical_producer_array_shape() -> Result<(), String> {
         let root = seeded_root("accept")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
-        let envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         let packet = root.write_packet("packet.json", &envelope)?;
         let candidate = validate_packet_route(&root.path, &packet)?;
         assert_eq!(candidate.command_spec.program, "ripr");
@@ -1181,7 +1230,7 @@ mod tests {
     #[test]
     fn rejects_a_single_object_verify_spec_the_producer_never_emits() -> Result<(), String> {
         let root = seeded_root("object")?;
-        let spec = agent_verify_command_spec(".", "before.json", "after.json", None);
+        let spec = agent_verify_command_spec(&root.bound(), "before.json", "after.json", None);
         let envelope = serde_json::json!({
             "schema_version": PACKET_SCHEMA_VERSION,
             "packets": [{
@@ -1202,8 +1251,9 @@ mod tests {
     #[test]
     fn rejects_caller_authored_typed_spec_not_reproducible_from_displays() -> Result<(), String> {
         let root = seeded_root("forged")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
-        let mut envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
+        let mut envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         // Swap the verify route for a receipt route while leaving the display
         // text untouched: the classic borrowed-authority forgery.
         envelope["packets"][0]["command_specs"]["verify"][0]["args"][1] =
@@ -1219,7 +1269,8 @@ mod tests {
     #[test]
     fn rejects_every_caller_mutated_typed_field() -> Result<(), String> {
         let root = seeded_root("fields")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
         let mutations: Vec<(&str, Value)> = vec![
             ("program", Value::String("cmd".to_string())),
             ("cwd", Value::String("..".to_string())),
@@ -1242,7 +1293,8 @@ mod tests {
             ),
         ];
         for (field, replacement) in mutations {
-            let mut envelope = producer_envelope(std::slice::from_ref(&display), &display);
+            let mut envelope =
+                producer_envelope(&root.path, std::slice::from_ref(&display), &display);
             envelope["packets"][0]["command_specs"]["verify"][0][field] = replacement;
             let packet = root.write_packet(&format!("packet-{field}.json"), &envelope)?;
             let error = validate_packet_route(&root.path, &packet)
@@ -1276,12 +1328,12 @@ mod tests {
         root.write("alt-after.json", b"{}")?;
         // A route the producer never emitted, rewritten consistently everywhere.
         let forged = crate::agent::loop_commands::agent_verify_command(
-            ".",
+            &root.bound(),
             "alt-before.json",
             "alt-after.json",
             None,
         );
-        let envelope = producer_envelope(std::slice::from_ref(&forged), &forged);
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&forged), &forged);
         let packet = root.write_packet("coherent.json", &envelope)?;
         // Consistency alone cannot tell this apart from a producer packet.
         let candidate = validate_packet_route(&root.path, &packet)?;
@@ -1309,7 +1361,7 @@ mod tests {
         // escape from the root even before provenance is consulted.
         for escape in [
             crate::agent::loop_commands::agent_verify_command(
-                ".",
+                &root.bound(),
                 "../outside.json",
                 "alt-after.json",
                 None,
@@ -1318,7 +1370,7 @@ mod tests {
             "ripr agent receipt --root . --verify-json alt-before.json --seam-id x --json"
                 .to_string(),
         ] {
-            let envelope = producer_envelope(std::slice::from_ref(&escape), &escape);
+            let envelope = producer_envelope(&root.path, std::slice::from_ref(&escape), &escape);
             let packet = root.write_packet("escape-attempt.json", &envelope)?;
             assert!(
                 validate_packet_route(&root.path, &packet).is_err(),
@@ -1331,10 +1383,11 @@ mod tests {
     #[test]
     fn rejects_ambiguous_and_empty_executable_route_sets() -> Result<(), String> {
         let root = seeded_root("ambiguous")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
 
         // Two identical executable routes are ambiguous, not "obviously the same".
-        let envelope = producer_envelope(&[display.clone(), display.clone()], &display);
+        let envelope = producer_envelope(&root.path, &[display.clone(), display.clone()], &display);
         let packet = root.write_packet("two.json", &envelope)?;
         let error = validate_packet_route(&root.path, &packet)
             .err()
@@ -1343,7 +1396,7 @@ mod tests {
 
         // A redirect route is shell-required, so nothing is executable.
         let redirect = format!("{display} > out.json");
-        let envelope = producer_envelope(std::slice::from_ref(&redirect), &redirect);
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&redirect), &redirect);
         let packet = root.write_packet("redirect.json", &envelope)?;
         let error = validate_packet_route(&root.path, &packet)
             .err()
@@ -1356,12 +1409,12 @@ mod tests {
     fn rejects_inputs_outside_the_selected_root() -> Result<(), String> {
         let root = seeded_root("escape")?;
         let display = crate::agent::loop_commands::agent_verify_command(
-            ".",
+            &root.bound(),
             "../escaped.json",
             "after.json",
             None,
         );
-        let envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         let packet = root.write_packet("packet.json", &envelope)?;
         let error = validate_packet_route(&root.path, &packet)
             .err()
@@ -1373,13 +1426,16 @@ mod tests {
     #[test]
     fn unauthorized_execution_is_refused_with_a_public_disposition() -> Result<(), String> {
         let root = seeded_root("unauthorized")?;
-        let display = agent_verify_command_spec(".", "before.json", "after.json", None).display;
-        let envelope = producer_envelope(std::slice::from_ref(&display), &display);
+        let display =
+            agent_verify_command_spec(&root.bound(), "before.json", "after.json", None).display;
+        let envelope = producer_envelope(&root.path, std::slice::from_ref(&display), &display);
         let packet = root.write_packet("packet.json", &envelope)?;
         let outcome =
             execute_verify_packet(&root.path, &packet, Path::new("result.json"), false, None);
         assert_eq!(outcome.disposition, DISPOSITION_REJECTED);
         assert!(outcome.failed);
+        // A typed refusal maps to the decision exit code 3 at the CLI.
+        assert!(outcome.refused);
         let parsed: Value =
             serde_json::from_str(&outcome.rendered).map_err(|error| error.to_string())?;
         assert_eq!(
@@ -1566,6 +1622,60 @@ mod tests {
                 "undeclared variable {name} reached the child"
             );
         }
+    }
+
+    /// Native proof for the Windows home variables in the floor: the child's
+    /// git finds the user's global config only when USERPROFILE crosses, and
+    /// the floor carries it. HOME and HOMEDRIVE/HOMEPATH are removed so
+    /// USERPROFILE alone decides, and the control without it must not see the
+    /// marker.
+    #[cfg(windows)]
+    #[test]
+    fn windows_child_git_reads_global_config_through_userprofile() -> Result<(), String> {
+        let profile =
+            std::env::temp_dir().join(format!("ripr-verify-profile-{}", std::process::id()));
+        std::fs::create_dir_all(&profile).map_err(|err| format!("create profile: {err}"))?;
+        std::fs::write(
+            profile.join(".gitconfig"),
+            "[ripr]\n\tprobe = floor-home-ok\n",
+        )
+        .map_err(|err| format!("write gitconfig: {err}"))?;
+        let profile_text = profile.display().to_string();
+        let run = |with_profile: bool| -> Result<String, String> {
+            let mut env: Vec<(String, String)> = child_environment()
+                .into_iter()
+                .filter(|(name, _)| {
+                    !["HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE"].contains(&name.as_str())
+                })
+                .collect();
+            if with_profile {
+                env.push(("USERPROFILE".to_string(), profile_text.clone()));
+            }
+            let output = Command::new("git")
+                .args(["config", "--global", "--get", "ripr.probe"])
+                .env_clear()
+                .envs(env)
+                .stdin(Stdio::null())
+                .output()
+                .map_err(|err| format!("spawn git: {err}"))?;
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        };
+        let with_profile = run(true);
+        let without_profile = run(false);
+        let _ = std::fs::remove_dir_all(&profile);
+        if !ENVIRONMENT_FLOOR.contains(&"USERPROFILE") {
+            return Err("USERPROFILE must be in the environment floor".to_string());
+        }
+        if with_profile? != "floor-home-ok" {
+            return Err("git did not read the global config through USERPROFILE".to_string());
+        }
+        let control = without_profile?;
+        if !control.is_empty() {
+            return Err(format!(
+                "control without USERPROFILE still read global config: {control}"
+            ));
+        }
+        Ok(())
     }
 
     #[test]

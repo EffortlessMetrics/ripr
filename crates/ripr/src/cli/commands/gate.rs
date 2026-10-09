@@ -4,6 +4,7 @@
 //! live in `crate::output::gate`. This module owns argv parsing, output
 //! destination selection, and exit mapping for the gate command family.
 
+use crate::cli::CommandError;
 use crate::cli::commands_options::GateOptions;
 use crate::cli::help;
 use crate::cli::parse::expect_value;
@@ -13,8 +14,21 @@ use std::io::IsTerminal;
 use std::path::PathBuf;
 
 use super::{non_empty_path_arg, non_empty_string_arg, write_text_file};
+use crate::output::gate::GATE_STATUS_CONFIG_ERROR;
 
-pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
+/// Map a failing gate-evaluate status onto the process exit contract.
+/// The producer tokens live on `output::gate`; `config_error` is
+/// could-not-complete and `blocked` is a completed blocking decision.
+/// Callers only pass statuses `gate_decision_should_fail` already accepted.
+pub(crate) fn gate_evaluate_exit_error(status: &str, message: String) -> CommandError {
+    if status == GATE_STATUS_CONFIG_ERROR {
+        CommandError::Failure(message)
+    } else {
+        CommandError::Decision(message)
+    }
+}
+
+pub(in crate::cli) fn gate(args: &[String]) -> Result<(), CommandError> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         help::print_gate_help();
         return Ok(());
@@ -26,9 +40,9 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
         None => ("evaluate", &[][..]),
     };
     if subcommand != "evaluate" {
-        return Err(format!(
+        return Err(CommandError::from(format!(
             "unknown gate subcommand {subcommand:?}; expected `evaluate`"
-        ));
+        )));
     }
 
     let options = parse_gate_options(rest)?;
@@ -43,9 +57,9 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
         && options.input.gap_ledger.is_none()
         && options.input.repo_exposure.is_none()
     {
-        return Err(
+        return Err(CommandError::from(
             "gate evaluate requires at least one of --pr-guidance <path>, --gap-ledger <path>, or --repo-exposure <path>; see `ripr gate --help` for all options".to_string(),
-        );
+        ));
     }
     let report = output::gate::build_gate_decision_report(&options.input)?;
     let rendered_json = output::gate::render_gate_decision_json(&report)?;
@@ -56,15 +70,21 @@ pub(in crate::cli) fn gate(args: &[String]) -> Result<(), String> {
     println!("Wrote {}", options.out_md.display());
     if output::gate::gate_decision_should_fail(&report) {
         let detail = output::gate::gate_decision_inline_detail(&report);
-        Err(format!(
+        let message = format!(
             "ripr gate decision is {}{}; see {} for the full report",
             output::gate::gate_decision_status(&report),
             detail,
             options.out.display()
-        ))
-    } else {
-        Ok(())
+        );
+        // A config_error means the evaluation could not complete (exit 2);
+        // only a completed evaluation reaching its blocking decision is a
+        // Decision (exit 3).
+        return Err(gate_evaluate_exit_error(
+            output::gate::gate_decision_status(&report),
+            message,
+        ));
     }
+    Ok(())
 }
 
 fn parse_gate_options(args: &[String]) -> Result<GateOptions, String> {
@@ -223,6 +243,27 @@ fn default_visible_only_warning(
 mod tests {
     use super::super::tests::{args, repo_root, unique_command_test_dir};
     use super::*;
+    use crate::output::gate::{GATE_STATUS_BLOCKED, GATE_STATUS_CONFIG_ERROR};
+
+    #[test]
+    fn gate_evaluate_exit_mapping_matches_the_typed_contract() {
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_CONFIG_ERROR, "config".to_string()).exit_code(),
+            crate::cli::EXIT_COULD_NOT_COMPLETE
+        );
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_BLOCKED, "blocked".to_string()).exit_code(),
+            crate::cli::EXIT_DECISION_OR_REFUSAL
+        );
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_CONFIG_ERROR, "config".to_string()),
+            CommandError::Failure("config".to_string())
+        );
+        assert_eq!(
+            gate_evaluate_exit_error(GATE_STATUS_BLOCKED, "blocked".to_string()),
+            CommandError::Decision("blocked".to_string())
+        );
+    }
 
     /// Removes owned temporary roots when the test returns, including `?`
     /// failures and assertion panics.
@@ -326,14 +367,16 @@ mod tests {
         }
         assert_eq!(
             bare_result,
-            Err(
+            Err(CommandError::Failure(
                 "gate evaluate requires at least one of --pr-guidance <path>, --gap-ledger <path>, or --repo-exposure <path>; see `ripr gate --help` for all options"
                     .to_string()
-            )
+            ))
         );
         assert_eq!(
             gate(&args(&["inspect"])),
-            Err("unknown gate subcommand \"inspect\"; expected `evaluate`".to_string())
+            Err(CommandError::Failure(
+                "unknown gate subcommand \"inspect\"; expected `evaluate`".to_string()
+            ))
         );
         assert_eq!(
             parse_gate_options(&args(&["--mode", "strict"])),
@@ -394,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_command_writes_visible_only_reports() -> Result<(), String> {
+    fn gate_command_writes_visible_only_reports() -> Result<(), CommandError> {
         let dir = unique_command_test_dir("gate-visible");
         std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
         let out = dir.join("gate-decision.json");
@@ -402,7 +445,9 @@ mod tests {
         gate(&args(&[
             "evaluate",
             "--root",
-            &repo_root().display().to_string(),
+            &crate::testing::fixture_workspace::hermetic_gate_fixture_root()?
+                .display()
+                .to_string(),
             "--pr-guidance",
             "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
             "--out",
@@ -424,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn gate_command_writes_blocked_report_before_error() -> Result<(), String> {
+    fn gate_command_writes_blocked_report_before_error() -> Result<(), CommandError> {
         // #1711: every verdict-affecting input is read through --root, so
         // the test owns its root instead of the real checkout. A stale
         // canonical-delta.json planted OUTSIDE the owned root (a sibling
@@ -463,10 +508,22 @@ mod tests {
             &out.display().to_string(),
         ]));
 
-        assert!(matches!(result, Err(message) if message.contains("blocked")));
+        // A blocked gate decision is a successful evaluation reaching its
+        // blocking decision: it maps to the decision exit code 3, not the
+        // could-not-complete code 2.
+        let Err(decision) = result else {
+            return Err(CommandError::Failure(
+                "expected a blocked gate decision error, got Ok".to_string(),
+            ));
+        };
+        assert!(
+            matches!(&decision, CommandError::Decision(message) if message.contains("blocked")),
+            "blocked decision must carry the Decision variant: {decision:?}"
+        );
+        assert_eq!(decision.exit_code(), 3);
         let json_text =
             std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
-        assert!(json_text.contains("\"status\": \"blocked\""));
+        assert!(json_text.contains(&format!("\"status\": \"{GATE_STATUS_BLOCKED}\"")));
         assert!(json_text.contains("\"decision\": \"blocking\""));
         // Prove no outside mutation: the ambient residue is byte-identical,
         // and no canonical-delta was created from or written outside the
@@ -474,6 +531,42 @@ mod tests {
         let ambient_after = std::fs::read_to_string(ambient_pr.join("canonical-delta.json"))
             .map_err(|err| format!("re-read ambient residue: {err}"))?;
         assert_eq!(ambient_after, stale);
+        Ok(())
+    }
+
+    #[test]
+    fn gate_command_maps_producer_config_error_to_failure() -> Result<(), CommandError> {
+        let dir = unique_command_test_dir("gate-config-error");
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create gate dir: {err}"))?;
+        let _owned = TempRootGuard {
+            roots: vec![dir.clone()],
+        };
+        let out = dir.join("gate-decision.json");
+        let missing = dir.join("missing-guidance.json");
+        let result = gate(&args(&[
+            "evaluate",
+            "--root",
+            &dir.display().to_string(),
+            "--pr-guidance",
+            &missing.display().to_string(),
+            "--out",
+            &out.display().to_string(),
+        ]));
+
+        let Err(error) = result else {
+            return Err(CommandError::Failure(
+                "expected a config_error failure, got Ok".to_string(),
+            ));
+        };
+        assert!(
+            matches!(&error, CommandError::Failure(message) if message.contains(GATE_STATUS_CONFIG_ERROR)),
+            "config_error must carry the Failure variant: {error:?}"
+        );
+        assert_eq!(error.exit_code(), crate::cli::EXIT_COULD_NOT_COMPLETE);
+        let json_text =
+            std::fs::read_to_string(&out).map_err(|err| format!("read gate json: {err}"))?;
+        assert!(json_text.contains(&format!("\"status\": \"{GATE_STATUS_CONFIG_ERROR}\"")));
+        std::fs::remove_dir_all(&dir).map_err(|err| format!("remove gate dir: {err}"))?;
         Ok(())
     }
 }

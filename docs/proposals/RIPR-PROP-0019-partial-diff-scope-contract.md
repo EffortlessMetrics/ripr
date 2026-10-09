@@ -191,7 +191,7 @@ oversized diff
 
 ## Implementation mapping (for #1999)
 
-- Selection + budgets: `crates/ripr/src/analysis/language/rust.rs` beside the
+- Selection + budgets: `crates/ripr/src/analysis/language/rust/mod.rs` beside the
   existing guards (shared helper, same env-override pattern).
 - Result state and disclosure: the existing limitation/run-status vocabulary
   in `crates/ripr/src/output/` (no new free-form strings).

@@ -21,6 +21,10 @@
 # `ripr-swarm/main` SHA recorded by
 # `docs/release-candidates/0.11.0-live-head-selection.json`. It must not be
 # interpreted as a C-to-T projection or a floating-main candidate.
+# Lifecycle state (active template, pinned candidate, historical, invalid) of
+# that file and every other retained artifact is checked by the same command
+# against `docs/release-candidates/index.json` (#3842), whose current rows must
+# name the `goal_issue` controller declared below.
 #
 # Scope limit, stated so it is not mistaken for completeness:
 #

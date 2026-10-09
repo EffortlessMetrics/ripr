@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 391be2d..26559cf 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,7 +19,7 @@ pub fn word_count(lines: &[&str]) -> usize {
+ pub fn running_balance(deposits: &[u64]) -> u64 {
+     let mut balance = 0;
+     for d in deposits {
+-        balance = balance + d;
++        balance += d;
+     }
+     balance
+ }

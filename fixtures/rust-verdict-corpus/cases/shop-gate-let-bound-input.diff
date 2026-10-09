@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..8699bb2 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -89,7 +89,7 @@ pub fn cap(value: u32) -> u32 {
+ }
+ 
+ pub fn gate(value: u32) -> bool {
+-    value >= 10
++    10 <= value
+ }
+ 
+ #[cfg(test)]

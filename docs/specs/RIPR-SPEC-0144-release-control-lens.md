@@ -64,28 +64,169 @@ qualify a release, or mutate development `main`.
 
 ## Active live-head boundary
 
-The active publication candidate is one exact transaction-boundary head:
+The active release candidate is exactly the accepted transaction-boundary
+`ripr-swarm/main` commit, its actual tree and complete reachable history.
+[#1609](https://github.com/EffortlessMetrics/ripr-swarm/issues/1609) owns the
+reviewed manifest and pin. A later control commit is not candidate product code.
+
+### Manifest schema 1.1
+
+The checked-in JSON is an `active_selection_template`, never an executable
+qualification grant. Its nullable transaction fields become present only in
+one `pinned_exact_head` manifest. The direct consumer rejects older/unknown
+schemas, unknown fields, the template state, and missing/null bindings.
 
 ```text
-SWARM_PARENT = exact ripr-swarm/main SHA selected at the release transaction boundary
-0.11.0 candidate = SWARM_PARENT
+schema_version = "1.1"
+kind = "ripr_swarm_live_head_release_authority"
+release_line = "0.11.0"
+authority_issue = 2379
+candidate_owner_issue = 1609
+status = "pinned_exact_head"
+candidate = repository, sha, tree, ref, package
+package = name, version, workspace_manifest_sha256,
+          package_manifest_sha256, lock_sha256
+range = last_integrated_swarm_parent, all_reachable_count,
+        first_parent_count, all_reachable_sha256, first_parent_sha256,
+        record_set_sha256
+prerequisites = selected_claims(#2766), denominator(#2768), audit(#3807)
+pin = remote_ref_readback(#1609), ruleset(#1609)
+qualification = state("required_not_run"), required_execution_owners,
+                proof_inputs
+source_parent = null
+non_claims = nonempty explicit claim limits
 ```
 
-The pin receipt records the exact immutable ref, source parent, merge base,
-all-reachable and first-parent counts, ordered SHA-list digest, PR dispositions,
-toolchain, claims, and non-claims. Exact swarm qualification and source
-preflight must consume those values unchanged. Later `main` movement is outside
-0.11.0. Repinning is allowed only for a release-invalidating exact-candidate or
-source-preflight failure; movement alone never repins. The historical
-`release-control --live` report is an observation/disposition producer, not the
-active pin producer. The future pin producer must bind the named swarm remote
-to `EffortlessMetrics/ripr-swarm` and fail closed on a different origin.
+Every evidence reference carries `owner_issue`, a controller-relative `path`,
+and the raw lowercase 64-hex `sha256`. Each of the three prerequisite references
+has the shape `{ packet: Evidence, acceptance: OwnerAcceptance }`. The proposed
+small `OwnerAcceptance` envelope is part of this same manifest, not another
+registry or an audit engine:
 
-The live-head rule includes all history reachable from the selected head. It
-does not construct candidate-only tree `T`, remove selected hunks, or make a
-T-bound denominator a publication authority. The hard-cut and replacement
-freeze receipts remain historical audit evidence and are explicitly superseded
-by the checked-in live-head decision.
+```text
+status = "accepted"
+candidate_sha / candidate_tree = the exact manifest candidate
+reviewed_packet_sha256 = packet.sha256
+decision_ref = exact existing owner issue's native acceptance-comment URL
+```
+
+The trusted release controller imports this envelope from the independently
+reviewed owner decision. The producer must not manufacture it. Missing,
+non-accepted, wrong-candidate, wrong-packet or absent-owner-reference status is
+`not_established`, even when the expected manifest hash matches. A syntactically
+valid URL is a binding to the reviewed decision, not independent authentication
+that GitHub or a human approved it. The release operator must verify the native
+decision before accepting the manifest's raw digest. This adapter does not
+re-prove the human #3807 judgment or interpret historical green report fields. Candidate commit/tree IDs are complete
+lowercase 40-hex Git objects; the protected ref is exactly
+`refs/tags/ripr-release-0.11.0-<candidate.sha>`. Package identities bind actual
+committed `Cargo.toml`, `crates/ripr/Cargo.toml` and `Cargo.lock` bytes. The
+package/version must equal the admitted source. The repository is exactly
+`EffortlessMetrics/ripr-swarm`. The direct consumer supports exactly these
+case-sensitive origin strings: `https://github.com/EffortlessMetrics/ripr-swarm`,
+`https://github.com/EffortlessMetrics/ripr-swarm.git`, and
+`git@github.com:EffortlessMetrics/ripr-swarm.git`. Other transports, aliases,
+ports and spellings refuse; this is not a general Git URL normalizer.
+
+The range starts after `45b56c0957ad7e7360114edceca4b844c85f846e`. Schema 1.1
+aligns with the existing source-promotion ordered-range helper:
+
+- all reachable: `git rev-list --topo-order --reverse BASE..CANDIDATE`;
+- first parent: `git rev-list --first-parent --reverse BASE..CANDIDATE`;
+- each full SHA followed by LF, including the final LF; hash those UTF-8 bytes
+  with SHA256 and retain lowercase hex without the `sha256:` prefix.
+
+The adapter checks base ancestry, recomputes both counts and ordered digests
+against the admitted source, and rechecks them at source custody boundaries.
+Replacement refs are disabled. These digests are not interchangeable with the
+historical denominator's JSON hashes. The accepted #2768 packet must supply
+this exact recipe. `record_set_sha256` remains the reviewed owner's normalized
+record-set claim bound by the retained packet and independent manifest digest;
+this adapter does not reconstruct or adjudicate the ledger.
+The selected-claim/denominator/audit owners retain semantic acceptance. Their
+raw packet bindings are required, but a digest or self-issued `passed` label
+cannot establish that their predicates were accepted.
+
+The pin readback is the exact candidate SHA followed by one newline. The
+retained ruleset names `release-transaction-pins`, targets the exact
+`refs/tags/ripr-release-*` namespace without exclusions or bypass actors, is
+active and contains update and deletion protection. The authorized operator
+must retain fresh native remote/ref/protection observations before and after
+execution. Local custody checks do not manufacture remote authenticity.
+
+### Independent acceptance and explicit admission modes
+
+#1609 accepts the complete manifest and its prerequisite packet identities
+before qualification. The operator supplies that independently accepted raw
+manifest SHA256 through `--candidate-manifest-sha256`; a producer must never
+compute its own output digest and silently treat that as acceptance. The
+constructor compares the expected raw digest before parsing and revalidates
+all captured bytes. Retained input limits are 64 proof references, 16 MiB per
+file, and 64 MiB total including the manifest and five prerequisite/pin files.
+Reads use a file handle with a limit+1 byte cap, regular-file checks, and
+before/after observed length/modification time (plus device/inode on Unix).
+Paths are rechecked for containment. These are unlocked snapshots: swaps
+between observations, same-size/timestamp-preserving writes and later mutation
+remain possible; no atomic, locked or authenticated filesystem claim is made.
+It does not approve a release or authenticate the actor.
+An unreviewed sidecar, active template, same-version executable, or historical
+receipt cannot stand in for this accepted input.
+
+The existing #4915 corpus arguments select two explicit modes:
+
+- controller/source/artifact only: retained historical registry admission;
+- that complete group plus accepted manifest SHA256: direct schema-1.1 #1609
+  admission, independent of milestone policy/registry state.
+
+A partial, malformed or refused direct input fails before packaging. There is
+no automatic fallback between modes or into ambient legacy smoke. The broader
+#3924 lifecycle-consumer defer is preserved; existing registry policy checks
+remain enforced separately.
+
+### Consumed downstream native decisions
+
+Digest-pinned direct custody remains preparation/execution evidence. The source
+handoff now requires SPEC-0148's native #1609 and #2769 decisions, retrieved
+through the existing authenticated read-only controller route. #1609's strict
+acceptance payload binds this whole raw manifest, the #2766 packet and native
+comment-body digest, selected applicable owner roster, proof-input identities,
+complete required qualification rows and any explicit excluded subjects.
+#2769 binds that same native selection body and the complete raw result bundle.
+The broad matrix and selected successor obligations remain owner judgments;
+no fixed template roster or generic CI result substitutes for their acceptance.
+
+The actual source-promotion command compares these bindings, verifies trusted
+GitHub association/location, reads every required result packet, rejects missing
+or non-positive selected rows, and rereads custody before output. Native payload
+unknown fields refuse. A locally authored acceptance file cannot stand in for
+a retrieved decision. Existing historical registry/direct corpus modes do not
+issue this handoff. The full field, count, budget and trusted-operator limitations
+are in [SOURCE_PROMOTION_PREFLIGHT.md](../SOURCE_PROMOTION_PREFLIGHT.md#native-selection-and-complete-qualification-admission).
+
+### Source and qualification stage separation
+
+`source_parent` is null here: source #1769 binds it only after swarm
+qualification, together with source preflight/guarded-join identities. The
+swarm pin does not predict or hold source main. Required candidate executions
+remain `required_not_run` in the immutable manifest, and later qualification
+receipts bind its digest rather than editing that state in place. Proof-input
+identities do not establish that their executions passed.
+
+Later main movement does not retarget the pin. Changed candidate/ref/input
+bytes refuse and require the governed successor. Full source/swarm histories
+remain mandatory; the historical C-to-T recipes below do not become current
+because their implementation still exists.
+
+### Discriminating controls and implementation
+
+`reports::release::candidate_harness::live_head` owns the direct typed input;
+its sibling source/archive owners retain real Git, package and install custody.
+Tests refuse the active template, missing bindings, unknown schema/fields,
+self-issued input without an independently pinned digest, wrong repository/
+ref/package, changed raw prerequisite bytes, wrong remote readback, inadequate
+protection, empty required rows and predicted source parent. Existing real Git
+controls retain moved-ref/HEAD/tree and source-substitution refusals. Actual
+package/install and final-candidate proof are separate from those data controls.
 
 ## Historical candidate-relative hard-cut boundary
 

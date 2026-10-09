@@ -2,12 +2,13 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/constant_declaration_probe_reconciliation/input
 
-Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 1 unknown
+Summary: 1 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 NOTE fixtures/constant_declaration_probe_reconciliation/input/src/lib.rs:1
+  id: probe:src_lib.rs:static_unknown:c48715e6
 
 Changed
   before: pub(crate) const OBSERVATION_SCHEMA_GENERATION: u32 = 4;
@@ -34,10 +35,13 @@ Weakness
   - Syntax-first analysis cannot classify this change; use deep mode or real mutation
 
 Stop reasons:
-  - no_changed_rust_line
+  - no_changed_rust_line — ripr could not place the changed line inside a Rust function it analyzes
 
 Next step
-  Escalate to real mutation testing or deep static analysis for this probe.
+  No static test path reaches this change (a test may still reach it through macros, dynamic dispatch, or integration tests that static evidence does not follow). Add or point to a test that exercises it and asserts the result first; deep mode and real mutation testing need a reaching test to say more.
+Drill in:
+  ripr explain --root fixtures/constant_declaration_probe_reconciliation/input --diff fixtures/constant_declaration_probe_reconciliation/diff.patch --mode fast probe:src_lib.rs:static_unknown:c48715e6
+  ripr context --root fixtures/constant_declaration_probe_reconciliation/input --diff fixtures/constant_declaration_probe_reconciliation/diff.patch --mode fast --at probe:src_lib.rs:static_unknown:c48715e6
 
 
 Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope

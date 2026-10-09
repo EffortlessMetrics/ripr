@@ -12,7 +12,7 @@ typechecker or test runner, and they do not make generated CI blocking.
 | Language | Status | Default | Evidence scope |
 | --- | --- | --- | --- |
 | Rust | reference path | enabled | Rust static exposure evidence and the existing CLI, CI, editor, report, and gate surfaces. |
-| TypeScript and JavaScript | preview | disabled | Syntax-first owners, tests, assertions, probes, related tests, and visible static limits for `.ts`, `.tsx`, `.js`, and `.jsx`. |
+| TypeScript and JavaScript | preview | disabled | Syntax-first owners, tests, assertions, probes, related tests, and visible static limits for `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs`. |
 | Python | preview static facts; scoped repair routing is `usable alpha` | detected Python projects without `ripr.toml`; otherwise disabled unless configured | Syntax-first owners, tests, assertions, probes, related tests, RIPR-stage evidence, selected repair-class missing discriminators, fail-closed static limits, and bounded repair cards/packets for selected pytest/unittest routes. |
 
 The preview adapters feed the same output schema and review surfaces as Rust.
@@ -58,7 +58,11 @@ ripr doctor --root .
 ```
 
 `doctor` should show the loaded config and enabled languages. Missing
-`ripr.toml` remains healthy. With no Python project markers, the built-in
+`ripr.toml` remains healthy. On a root with no Rust markers (no `Cargo.toml`
+or `.rs` files), the `Cargo.toml`, `cargo`, and `rustc` checks are reported as
+skipped with the reason instead of failing, so a Python-only or
+TypeScript-only repository does not need a Rust toolchain for `doctor` to
+pass. With no Python project markers, the built-in
 Rust-only default is active. With Python project markers such as
 `pyproject.toml`, `setup.py`, `requirements.txt`, `pytest.ini`, `tox.ini`,
 `noxfile.py`, or Python files under `src/` or `tests/`, `ripr` enables Python
@@ -89,7 +93,8 @@ test_roots = [
 bridge_hints = "ripr.bun.bridge.toml"
 ```
 
-The `typescript` adapter covers `.ts`, `.tsx`, `.js`, and `.jsx` files, so the
+The `typescript` adapter covers `.ts`, `.tsx`, `.mts`, `.cts`, `.js`,
+`.jsx`, `.mjs`, and `.cjs` files, so the
 profile does not add a separate `javascript` language key. `profiles.bun_ub`
 is advisory configuration only: it records test roots and the bridge-hint file
 for Bun Blob / ArrayBuffer cross-language evidence, and `ripr doctor --root .`
@@ -102,6 +107,20 @@ for the operator loop that reads `rust_ungripped_ts_discriminated`,
 `rust_ungripped_ts_missing_discriminator`, `ts_mention_not_observer`, and
 `bridge_unknown` results, plus
 `public_reachable_panic_boundary_unrevealed` FFI limitation receipts.
+
+## What Diff Analysis Refuses
+
+Diff analysis refuses vendored, built, and generated TypeScript/JavaScript
+trees before they enter the changed-file count: `node_modules`, `dist`,
+`build`, `coverage`, `vendor`, `__generated__`, and the repository tooling
+directories already pruned from the workspace walk (`.git`, `target`, `.ripr`,
+`.direnv`). `*.generated.*` files and minified bundles (`*.min.js`,
+`*.min.mjs`, `*.min.cjs`) are refused the same way. Near-misses such as
+`src/build.ts`, `generated.ts` and `admin.js` stay ordinary source. Unlike Python, this
+adapter has no excluded-role ledger, so those trees are omitted entirely
+rather than counted as an excluded role. A repair packet may still name a
+Jest/Vitest, Node, Cypress, Jasmine, or `__tests__` test path as its edit
+target; a production file cannot.
 
 ## Run The Local Preview Loop
 
@@ -155,7 +174,7 @@ interpretation guide and integration rules.
 | `dynamic_dispatch` | The call target is selected dynamically, such as computed member calls (`obj[name]` followed by invocation) or `getattr(obj, name)(...)`. |
 | `metaprogramming` | The code shape can change behavior through metaprogramming, such as decorators, proxies, or metaclasses. |
 | `missing_import_graph` | The adapter did not resolve a full project import graph. |
-| `decorator_indirection` | A Python decorator may change the callable boundary. Simple route decorators such as `@api.post(...)` can still be treated as static route metadata when the changed body has a supported repair shape. |
+| `decorator_indirection` | A Python decorator may change the callable boundary. Simple route decorators such as `@api.post(...)` can still be treated as static route metadata when the changed body has a supported repair shape. `functools.lru_cache`, `functools.cache`, and `functools.cached_property` are not this limit when they bind from `functools`. |
 | `mocked_module` | A test replaces or mocks the module or symbol under review. |
 | `opaque_custom_assertion_helper` | A Python test uses a custom assertion helper whose body is not inspected. |
 | `property_based_test` | A Python test uses generated inputs, such as Hypothesis `@given(...)`, whose concrete cases are not known statically. |
@@ -233,22 +252,38 @@ Consumption boundary: the repo-scoped CLI formats (`repo-exposure-*`,
 Rust/Perl seam inventory and do not render preview-language findings, so a
 Python-only or TypeScript-only workspace still shows zero seams in those
 formats — a known limitation, not a clean result. Repo-exposure emits a
-`typescript_diff_first` limitation entry for TS/JS-only workspaces pointing
-the user at diff-scoped analysis; Python-only runs do not currently carry an
-equivalent entry. Python's repo-mode evidence is consumed through the shared
-repo analysis result (`run_repo_analysis` / `check_workspace_repo`): its
+`typescript_diff_first` limitation entry for TS/JS-only workspaces and a
+`python_diff_first` limitation entry for Python-only workspaces, both
+pointing at diff-scoped `ripr check`. Neither entry fabricates seams.
+Python's repo-mode evidence is still consumed through the shared repo
+analysis result (`run_repo_analysis` / `check_workspace_repo`): its
 findings, per-language file counts, and `language_runs` partial-run
-disclosure — no renderer reconstructs Python semantics.
+disclosure — no seam renderer reconstructs Python semantics.
+
+Diff mode bounds the Python workspace walk the same way the TypeScript
+adapter does: at most 800 discovered `.py` files
+(`RIPR_PYTHON_MAX_WORKSPACE_FILES`, aligned with the repo-mode
+`RIPR_MAX_REPO_INDEX_FILES` default), a 16 MiB per-file read cap
+(`RIPR_PYTHON_MAX_FILE_READ_BYTES`), and a 64 MiB per-run workspace read
+budget (`RIPR_PYTHON_MAX_WORKSPACE_READ_BYTES`). Files refused by any bound
+and unreadable changed files are named typed limitations on the diff
+result, never silent skips.
 
 | Format | Rust repo | Perl repo | TypeScript repo | Python repo |
 | --- | --- | --- | --- | --- |
-| `repo-exposure-json` / `repo-exposure-md` / `repo-sarif` | full | full | empty (stub) | seams: none rendered; evidence via repo analysis result |
+| `repo-exposure-json` / `repo-exposure-md` / `repo-sarif` | full | full | empty (stub); `typescript_diff_first` limitation | seams: none rendered; `python_diff_first` limitation |
 | `repo-seams-json` / `repo-seams-md` | full | full | empty (stub) | seams: none rendered; evidence via repo analysis result |
 | `repo-badge-json` / `repo-badge-shields` | full | full | empty (stub) | seams: none rendered; capped/partial runs never badge-eligible |
 | `agent-seam-packets-json` | full | full | empty (stub) | seams: none rendered; evidence via repo analysis result |
 
 Diff-scoped formats (`check --json`, `check --format human`, SARIF from a diff,
 review-comments) work normally on all four languages.
+
+The Perl column assumes a ripr built with Cargo feature `lang-perl` plus a
+compatible Perl fact packet or exporter. Default builds do not compile the Perl
+adapter, and the canonical exporter (`perl-ripr-facts`) is not yet published, so
+no released ripr build plus exporter combination analyzes Perl yet; a released
+install reports changed Perl files as not analyzed.
 
 **Until the TypeScript stub is implemented**, do not interpret a zero-seam
 repo-mode report for TypeScript as evidence of clean coverage. Run
@@ -343,7 +378,7 @@ Preview language evidence does not mean:
   default;
 - RIPR edited source files or generated tests.
 
-The useful claim is narrower: for explicitly enabled preview languages, RIPR can
+The useful claim is narrower: for enabled (configured or detected) preview languages, RIPR can
 surface syntax-first static evidence, related tests, missing discriminators,
 static limits, and repair-oriented next actions in the same review surfaces used
 by Rust.

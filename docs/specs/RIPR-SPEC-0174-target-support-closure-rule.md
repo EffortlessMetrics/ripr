@@ -130,10 +130,13 @@ closure edge that proves no discriminator is lost — the binary label
 alone is not such an edge, so the omission stays unsupported until that
 evidence exists.
 
-A custom-path target file with no heuristic package root and no
-attributed dependents selects changed files only (plus existing module
-parents). That fallback is the honest current limitation, not a license
-to drop the package once dependents are attributed.
+A custom-path target file with no heuristic package root (`[lib] path =
+"lib/core.rs"`) belongs to its nearest manifest directory, so Draft/Fast
+narrowing keeps that package together exactly as it does for a `src/`
+file. The earlier changed-files-only fallback left the package's
+integration tests unindexed and read a tested change as
+`no_static_path`; it is retired. A nested manifest still owns its own
+custom targets, and attributed dependents still add their packages.
 
 ## Test Mapping
 
@@ -147,8 +150,9 @@ to drop the package once dependents are attributed.
   `tests/it.rs`, proving the package edge carries it.
 - `crates/ripr/src/analysis/workspace/select.rs::tests::module_closure_brings_lib_sibling_for_bin_only_change`
   pins the module-parent edge for the binary shape directly.
-- `crates/ripr/src/analysis/workspace/select.rs::tests::custom_target_change_without_dependents_stays_changed_files_only`
-  pins the honest custom-path fallback and its omission.
+- `crates/ripr/src/analysis/workspace/select.rs::tests::custom_target_change_keeps_its_manifest_package_together`
+  pins custom-path ownership by nearest manifest, including the
+  nested-package boundary.
 - `crates/ripr/src/analysis/workspace/select.rs::tests::dependent_custom_target_files_enter_selection_by_root_prefix`
   and `nested_crate_inside_dependent_stays_out_unless_itself_dependent`
   (existing) pin the dependent-prefix edge and the nested-crate

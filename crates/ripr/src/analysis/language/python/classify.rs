@@ -1,7 +1,9 @@
+use super::boundary::{BoundaryActivation, python_boundary_evidence};
 use super::discriminators::python_missing_discriminators;
 use super::no_behavior::{
     changed_default_overridden_params, format_param_name_list, is_annotation_only_def_change,
-    is_annotation_only_var_change, is_python_no_behavior_line,
+    is_annotation_only_var_change, is_new_def_header_without_defaults, is_python_no_behavior_line,
+    is_structural_def_header_text,
 };
 use super::probe_shape::{
     canonical_python_gap_for, classify_probe_shape, python_flow_sink_for,
@@ -12,7 +14,8 @@ use super::related_tests::{
     verify_command_for_test,
 };
 use super::sink_alignment::{SinkAlignment, classify_sink_alignment_with_old};
-use super::static_limits::static_limit_for_change;
+use super::static_limits::{implicit_dunder_dispatch_limit, static_limit_for_change};
+use super::transitive_reach::apply_python_no_static_path_limit;
 use super::{
     PythonOracleShape, PythonOwner, PythonTest, fingerprint_probe_id, normalize_expression,
     owner_for_changed_line, python_recommended_next_step, python_weak_missing_summary,
@@ -63,6 +66,15 @@ pub(super) fn classify_change_with_old(
 pub(super) struct PythonNoBehaviorContext {
     pub(super) new_line_in_docstring: bool,
     pub(super) old_line_in_docstring: bool,
+    /// The changed line is the first line of its enclosing owner, and that
+    /// owner's span carries at least one other added behavior line.
+    pub(super) opens_owner_with_added_body: bool,
+    /// The changed line only names parameters or opens/closes a multi-line
+    /// `def` header (`no_behavior::multi_line_def_header_span`).
+    pub(super) structural_def_header_line: bool,
+    /// The changed line lies inside a multi-line `def` header, so any
+    /// parameter default on it is the owner's own default.
+    pub(super) multi_line_def_header_line: bool,
 }
 
 /// Classify a change from producer-owned owner, relation, and oracle facts.
@@ -88,6 +100,15 @@ pub(super) fn classify_change_with_context(
     if new_is_noop && old_is_noop {
         return None;
     }
+    // Structural `def`-header guard: `self,`, `key,`, `):` inside a
+    // multi-line header carry no behavior of their own (cachetools c0fdf6a
+    // probed nine such lines of a reflowed `__setitem__` signature). A paired
+    // old line must be structural too, so `key=None,` -> `key,` keeps its probe.
+    if no_behavior.structural_def_header_line
+        && old_line_text.is_none_or(is_structural_def_header_text)
+    {
+        return None;
+    }
     // Annotation-only `def`-header guard (#1289): Python does not enforce type
     // annotations at runtime, so a `def` change that touches only parameter/return
     // annotations — leaving the callable's runtime signature (name, parameter names
@@ -97,6 +118,18 @@ pub(super) fn classify_change_with_context(
     // beyond an annotation differs (e.g. a default-value change, which IS behavioral).
     if let Some(old) = old_line_text
         && is_annotation_only_def_change(old, line_text)
+    {
+        return None;
+    }
+    // New-declaration guard: an unpaired `def` header that opens a NEW owner
+    // whose body carries its own added lines has no behavior of its own — the
+    // body lines are the probes. Crediting `exposed` here would claim a
+    // discriminator for a line with nothing to discriminate. Fails closed on a
+    // changed header (paired old line), a default value (runtime behavior), a
+    // one-line `def f(x): return x`, and a multi-line header.
+    if old_line_text.is_none()
+        && no_behavior.opens_owner_with_added_body
+        && is_new_def_header_without_defaults(line_text)
     {
         return None;
     }
@@ -121,7 +154,8 @@ pub(super) fn classify_change_with_context(
     let related = find_related_tests(owner, all_tests);
     let alignment =
         classify_sink_alignment_with_old(owner, line_text, old_line_text, &related, all_tests);
-    let static_limit = static_limit_for_change(line_text, owner, &related_candidates);
+    let static_limit = static_limit_for_change(line_text, owner, &related_candidates)
+        .or_else(|| implicit_dunder_dispatch_limit(owner, all_tests, &related_candidates));
     let (family, delta) = classify_probe_shape(line_text);
     let has_oracle_eligible_relation = related_candidates
         .iter()
@@ -155,9 +189,33 @@ pub(super) fn classify_change_with_context(
     // `verbose=True` default change — the changed default is never exercised, so a
     // strong observing oracle does not discriminate it (#1289 trap 45). Block
     // `exposed` in that case and name the parameter(s) to test by omission.
-    let changed_default_override =
-        changed_default_overridden_params(old_line_text, line_text, owner, &related_candidates);
+    let changed_default_override = changed_default_overridden_params(
+        old_line_text,
+        line_text,
+        no_behavior.multi_line_def_header_line,
+        owner,
+        &related_candidates,
+    );
     let changed_default_exercised_ok = changed_default_override.is_none();
+
+    // A changed relational predicate (`qty > on_hand` -> `qty >= on_hand`) only
+    // behaves differently when its operands are equal, so a strong exact-value
+    // oracle that calls the owner away from that boundary still passes after
+    // the change. Mirror the Rust activation rule: once a strong related test
+    // calls the owner with literal arguments, `exposed` requires one of those
+    // calls to bind both operands to equal values. Unresolved operands
+    // (attributes, computed expressions) never count as observed, so this fails
+    // closed to `weakly_exposed` and names the missing `left == right`
+    // boundary. With no literal owner inputs at all the gate cannot see the
+    // activation either way; that case keeps the oracle verdict and carries a
+    // named `boundary_activation_unresolved` limitation instead.
+    let boundary = (static_limit.is_none() && matches!(family, ProbeFamily::Predicate))
+        .then(|| python_boundary_evidence(line_text, owner, &related_candidates))
+        .flatten();
+    let boundary_gap = boundary
+        .as_ref()
+        .filter(|evidence| evidence.activation == BoundaryActivation::Missing);
+    let mut boundary_downgraded = false;
 
     let (class, reach_state, observe_state, discriminate_state, mut missing) = if static_limit
         .is_some()
@@ -211,6 +269,7 @@ pub(super) fn classify_change_with_context(
         && alignment.observes()
         && error_path_oracle_ok
         && changed_default_exercised_ok
+        && boundary_gap.is_none()
     {
         (
             ExposureClass::Exposed,
@@ -243,6 +302,30 @@ pub(super) fn classify_change_with_context(
                 format_param_name_list(params),
                 owner.name,
                 format_param_name_list(params),
+            )],
+        )
+    } else if strongest_strength >= OracleStrength::Strong.rank()
+        && alignment.observes()
+        && error_path_oracle_ok
+        && let Some(gap) = boundary_gap
+    {
+        // A strong oracle observes the owner's output, but no strong related
+        // call places the comparison operands on the changed boundary, so the
+        // changed predicate is never activated where old and new disagree.
+        boundary_downgraded = true;
+        (
+            ExposureClass::WeaklyExposed,
+            StageState::Yes,
+            StageState::Yes,
+            StageState::Weak,
+            vec![format!(
+                "A strong Python oracle reaches `{}`, but static evidence does not place a related test input at the changed predicate boundary{}. {}.",
+                owner.name,
+                gap.discriminator
+                    .as_deref()
+                    .map(|value| format!(" `{value}`"))
+                    .unwrap_or_default(),
+                gap.reason,
             )],
         )
     } else if strongest_strength >= OracleStrength::Strong.rank() {
@@ -339,6 +422,8 @@ pub(super) fn classify_change_with_context(
     let infect = StageEvidence::new(
         if static_limit.is_some() {
             StageState::Unknown
+        } else if boundary_downgraded {
+            StageState::Weak
         } else {
             StageState::Yes
         },
@@ -348,6 +433,8 @@ pub(super) fn classify_change_with_context(
                 "Static limit `{}` prevents a safe Python infection claim.",
                 limit.kind.as_str()
             )
+        } else if boundary_downgraded {
+            "Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.".to_string()
         } else {
             python_infection_evidence(&family, line_text).summary
         },
@@ -361,7 +448,23 @@ pub(super) fn classify_change_with_context(
         && matches!(class, ExposureClass::WeaklyExposed)
         && has_oracle_eligible_relation
     {
-        if let Some(params) = &changed_default_override {
+        if boundary_downgraded {
+            // The boundary downgrade names the equality that would activate the
+            // changed predicate, with the reason listing the operand values the
+            // strong related calls actually bind.
+            boundary_gap
+                .and_then(|gap| {
+                    gap.discriminator
+                        .as_ref()
+                        .map(|value| MissingDiscriminatorFact {
+                            value: value.clone(),
+                            reason: gap.reason.clone(),
+                            flow_sink: flow_sink.clone(),
+                        })
+                })
+                .into_iter()
+                .collect()
+        } else if let Some(params) = &changed_default_override {
             // The override downgrade names a specific, actionable missing
             // discriminator — "call the owner WITHOUT the changed-default
             // parameter(s)" — that the generic `python_missing_discriminators`
@@ -453,6 +556,18 @@ pub(super) fn classify_change_with_context(
     }
     if let Some(limit) = &static_limit {
         evidence.push(limit.evidence.clone());
+    }
+    // Name the unresolved boundary activation only where it qualifies a credited
+    // `exposed` verdict; a finding that is already weak gains nothing from it.
+    if matches!(class, ExposureClass::Exposed)
+        && let Some(unresolved) = boundary
+            .as_ref()
+            .filter(|evidence| evidence.activation == BoundaryActivation::Unresolved)
+    {
+        evidence.push(format!(
+            "boundary_activation_unresolved: {}",
+            unresolved.reason
+        ));
     }
     for discriminator in &missing_discriminators {
         evidence.push(format!("missing_discriminator: {}", discriminator.value));
@@ -546,7 +661,7 @@ pub(super) fn classify_change_with_context(
         probe.after.as_deref(),
     );
 
-    Some(Finding {
+    let mut finding = Finding {
         id: probe.id.0.clone(),
         canonical_gap,
         probe,
@@ -565,7 +680,9 @@ pub(super) fn classify_change_with_context(
         missing,
         flow_sinks: flow_sink.into_iter().collect(),
         activation: crate::domain::ActivationEvidence {
-            observed_values: Vec::new(),
+            observed_values: boundary
+                .map(|evidence| evidence.observed_values)
+                .unwrap_or_default(),
             missing_discriminators,
         },
         stop_reasons: static_limit
@@ -573,6 +690,7 @@ pub(super) fn classify_change_with_context(
             .map(stop_reason_for_python_static_limit)
             .into_iter()
             .collect(),
+        related_tests_matched_total: None,
         related_tests: related,
         recommended_next_step: recommended,
         language: Some(DomainLanguageId::Python),
@@ -585,5 +703,7 @@ pub(super) fn classify_change_with_context(
         alignment_reason: Some(surfaced_alignment.alignment_reason),
         // Resolved above, before the probe moved into the finding (#3281).
         source_currentness,
-    })
+    };
+    apply_python_no_static_path_limit(&mut finding, owner, owners, all_tests);
+    Some(finding)
 }

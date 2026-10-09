@@ -1,0 +1,12 @@
+pub fn score(value: i32) -> i32 {
+    value + 2
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn observes_score() {
+        let value = super::score(1);
+        assert!(matches!(value, 2));
+    }
+}

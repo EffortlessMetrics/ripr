@@ -1,26 +1,34 @@
 use crate::domain::{OracleKind, OracleStrength, SymbolId};
 use ra_ap_syntax::{
     AstNode, Edition, SourceFile, TextSize,
-    ast::{self, HasAttrs, HasName},
+    ast::{self, HasAttrs, HasGenericParams, HasName},
 };
+mod property_macros;
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use super::super::extract::PROBE_SHAPE_UNSAFE_BOUNDARY;
 use super::super::extract::ShadowAuthority;
 use super::super::extract::extract_pattern_words;
 use super::super::facts::FileFacts;
+use super::super::facts::FunctionContainer;
+use super::super::facts::FunctionImplContext;
+use super::super::facts::FunctionItemFact;
 use super::super::facts::FunctionSourceRole;
 use super::super::facts::LetBindingFact;
 use super::super::facts::ModuleDeclarationFact;
 use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
-use super::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
+#[cfg(test)]
+use super::SyntaxNodeFact;
+use super::{
+    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange, parse_clean_source_file,
+    rust_nesting_refusal,
+};
 use crate::analysis::rust_index::{
-    FunctionFact, OracleFact, PROBE_SHAPE_CALL_DELETION, PROBE_SHAPE_ERROR_PATH,
-    PROBE_SHAPE_FIELD_CONSTRUCTION, PROBE_SHAPE_MATCH_ARM, PROBE_SHAPE_PREDICATE,
-    PROBE_SHAPE_RETURN_VALUE, PROBE_SHAPE_SIDE_EFFECT, ProbeShapeFact, TestFact,
+    FunctionFact, OracleFact, ProbeShapeFact, ProbeShapeKind, SourceText, TestFact,
     classify_assertion, err_return_guard_oracles, extract_call_facts, extract_identifier_tokens,
     extract_line_scanned_oracles, extract_literal_facts, extract_return_facts,
     guarded_result_match_scan_with_shadow_authority, is_unwrap_err_bound_error_assertion,
@@ -47,10 +55,9 @@ pub(crate) fn rust_include_directives(
     text: &str,
     max_directives: usize,
 ) -> Result<Vec<RustIncludeDirective>, String> {
-    let parse = SourceFile::parse(text, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(text) else {
         return Err("rust_include_parent_parse_unavailable".to_string());
-    }
+    };
     let line_index = LineIndex::new(text);
     let mut directives = Vec::new();
     for macro_call in parse
@@ -112,10 +119,7 @@ pub(crate) fn parser_oracles_for_function(
     function_text: &str,
     function_start_line: usize,
 ) -> Option<Vec<OracleFact>> {
-    let parse = SourceFile::parse(function_text, Edition::CURRENT);
-    if !parse.errors().is_empty() {
-        return None;
-    }
+    let parse = parse_clean_source_file(function_text)?;
     let function = parse
         .tree()
         .syntax()
@@ -130,7 +134,180 @@ pub(crate) fn parser_oracles_for_function(
     Some(oracles)
 }
 
-fn include_literal_path(expression: &str) -> Option<PathBuf> {
+/// Module scope of a file's functions, keyed by (fn-token line, name) as
+/// function and test facts record them.
+#[derive(Debug, Default)]
+pub(crate) struct ModuleItemScopes {
+    /// Every fn that is a direct item of the file or of an inline
+    /// `mod name { .. }`, mapped to the line span of its innermost inline
+    /// module (`None` at the file's top level). A fn nested in another fn's
+    /// body, or an associated fn, is absent: it is not visible module-wide.
+    pub(crate) item_fns: BTreeMap<(usize, String), Option<(usize, usize)>>,
+    /// Fns whose body holds a `use` item, which may shadow a module item.
+    pub(crate) fns_with_local_use: std::collections::BTreeSet<(usize, String)>,
+    /// Fns whose code may not run when called: an `async fn` (the call
+    /// only builds a future) or a body holding a closure or `async` block.
+    pub(crate) fns_with_deferred_code: std::collections::BTreeSet<(usize, String)>,
+    /// Names each fn calls as a parsed single-segment free function
+    /// (`check(..)`), outside macro arguments, strings, comments, closures,
+    /// `async` blocks and nested `fn` items.
+    pub(crate) direct_calls: BTreeMap<(usize, String), std::collections::BTreeSet<String>>,
+    /// Fns carrying a `cfg` or `cfg_attr` attribute anywhere in their
+    /// syntax (outer, inner `#![..]`, or on a statement), whitespace
+    /// ignored: such a fn may not be the one that compiles.
+    pub(crate) fns_with_cfg: std::collections::BTreeSet<(usize, String)>,
+    /// Names each fn binds inside itself: every identifier pattern
+    /// (parameters, `let`, `for`, `if let`, closure and match bindings)
+    /// and every named node in its body (`const`, `static`, nested `fn`,
+    /// tuple `struct`, enum variant, macro, and so on).
+    pub(crate) bound_names: BTreeMap<(usize, String), std::collections::BTreeSet<String>>,
+}
+
+/// The module scopes of `text`'s functions. `None` when the file does not
+/// parse cleanly, so a caller that needs module scope fails closed.
+pub(crate) fn module_item_scopes(text: &str) -> Option<ModuleItemScopes> {
+    let parse = parse_clean_source_file(text)?;
+    let line_index = LineIndex::new(text);
+    let mut scopes = ModuleItemScopes::default();
+    for function in parse
+        .tree()
+        .syntax()
+        .descendants()
+        .filter_map(ast::Fn::cast)
+    {
+        let (Some(name), Some(fn_token)) = (function.name(), function.fn_token()) else {
+            continue;
+        };
+        let key = (
+            line_index.line(fn_token.text_range().start()),
+            name.text().to_string(),
+        );
+        if function
+            .syntax()
+            .descendants()
+            .filter_map(ast::Attr::cast)
+            .any(|attribute| {
+                let compact: String = attribute
+                    .syntax()
+                    .text()
+                    .to_string()
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect();
+                compact.starts_with("#[cfg") || compact.starts_with("#![cfg")
+            })
+        {
+            scopes.fns_with_cfg.insert(key.clone());
+        }
+        let bound = function
+            .syntax()
+            .descendants()
+            .filter(|node| node != function.syntax())
+            .filter_map(|node| {
+                ast::AnyHasName::cast(node)
+                    .and_then(|named| named.name())
+                    .map(|name| name.text().to_string())
+            })
+            .collect();
+        scopes.bound_names.insert(key.clone(), bound);
+        if let Some(body) = function.body() {
+            if body
+                .syntax()
+                .descendants()
+                .any(|node| ast::Use::can_cast(node.kind()))
+            {
+                scopes.fns_with_local_use.insert(key.clone());
+            }
+            if function.async_token().is_some()
+                || body.syntax().descendants().any(|node| {
+                    ast::ClosureExpr::can_cast(node.kind())
+                        || ast::BlockExpr::cast(node)
+                            .is_some_and(|block| block.async_token().is_some())
+                })
+            {
+                scopes.fns_with_deferred_code.insert(key.clone());
+            }
+            let called = body
+                .syntax()
+                .descendants()
+                .filter_map(ast::CallExpr::cast)
+                // A call inside a closure, `async` block or nested `fn` may
+                // never run.
+                .filter(|call| {
+                    !call
+                        .syntax()
+                        .ancestors()
+                        .take_while(|node| node != body.syntax())
+                        .any(|node| {
+                            ast::ClosureExpr::can_cast(node.kind())
+                                || ast::Fn::can_cast(node.kind())
+                                || ast::BlockExpr::cast(node)
+                                    .is_some_and(|block| block.async_token().is_some())
+                        })
+                })
+                .filter_map(|call| match call.expr()? {
+                    ast::Expr::PathExpr(path) => {
+                        let path = path.path()?;
+                        if path.qualifier().is_some() {
+                            return None;
+                        }
+                        Some(path.segment()?.name_ref()?.text().to_string())
+                    }
+                    _ => None,
+                })
+                .collect();
+            scopes.direct_calls.insert(key.clone(), called);
+        }
+        let Some(parent) = function.syntax().parent() else {
+            continue;
+        };
+        let module = match parent.kind() {
+            ra_ap_syntax::SyntaxKind::SOURCE_FILE => None,
+            ra_ap_syntax::SyntaxKind::ITEM_LIST => {
+                match parent.parent().and_then(ast::Module::cast) {
+                    Some(module) => {
+                        let range = module.syntax().text_range();
+                        Some((
+                            line_index.line(range.start()),
+                            line_index.line_for_range_end(range.end()),
+                        ))
+                    }
+                    None => continue,
+                }
+            }
+            _ => continue,
+        };
+        scopes.item_fns.insert(key, module);
+    }
+    Some(scopes)
+}
+
+/// How many times the first `fn` item in `fn_text` binds `name`: every
+/// named node inside it (parameter and `let`/`for`/`if let`/closure/match
+/// identifier patterns, nested items), the fn's own name excluded. `None`
+/// when the text does not parse cleanly or holds no `fn`, so a caller that
+/// needs an exact binding count fails closed. Identifiers bound inside a
+/// macro invocation's token tree are not parsed patterns and are not
+/// counted here; callers keep a lexical scan for those.
+pub(crate) fn fn_name_binding_count(fn_text: &str, name: &str) -> Option<usize> {
+    let parse = parse_clean_source_file(fn_text)?;
+    let function = parse
+        .tree()
+        .syntax()
+        .descendants()
+        .find_map(ast::Fn::cast)?;
+    Some(
+        function
+            .syntax()
+            .descendants()
+            .filter(|node| node != function.syntax())
+            .filter_map(|node| ast::AnyHasName::cast(node).and_then(|named| named.name()))
+            .filter(|bound| bound.text() == name)
+            .count(),
+    )
+}
+
+pub(super) fn include_literal_path(expression: &str) -> Option<PathBuf> {
     let (_, arguments) = expression.split_once('!')?;
     let arguments = arguments.trim();
     let arguments = arguments.strip_suffix(';').unwrap_or(arguments).trim();
@@ -141,7 +318,7 @@ fn include_literal_path(expression: &str) -> Option<PathBuf> {
     parse_rust_string_literal(inner).map(PathBuf::from)
 }
 
-fn parse_rust_string_literal(literal: &str) -> Option<String> {
+pub(super) fn parse_rust_string_literal(literal: &str) -> Option<String> {
     if let Some(body) = literal
         .strip_prefix('"')
         .and_then(|body| body.strip_suffix('"'))
@@ -182,12 +359,20 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
         summarize_file_with_parser(path, text)
     }
 
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        owner_changed_nodes(facts, ranges)
+    #[cfg(test)]
+    fn changed_nodes(
+        &self,
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
+        owner_changed_nodes(functions, ranges)
     }
 }
 
 pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, String> {
+    if let Some(reason) = rust_nesting_refusal(text) {
+        return Err(reason);
+    }
     let parse = SourceFile::parse(text, Edition::CURRENT);
     let errors = parse.errors();
     if !errors.is_empty() {
@@ -196,10 +381,13 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
 
     let source = parse.tree();
     let line_index = LineIndex::new(text);
+    // #5415 step 2: one allocation for the file; bodies and shape snippets
+    // below share spans of it instead of copying substrings.
+    let shared_source: Arc<str> = Arc::from(text);
+    let empty_invocations = super::owner_pin::empty_local_macro_invocation_ranges(source.syntax());
     let module_declarations = module_declaration_facts(&source, &line_index);
     let mut functions = Vec::new();
     let mut tests = Vec::new();
-    let mut file_calls = Vec::new();
     let mut file_returns = Vec::new();
     let mut file_literals = Vec::new();
     let mut file_probe_shapes = Vec::new();
@@ -217,10 +405,23 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
         let start_line = line_index.line(fn_start);
         let end_line = line_index.line_for_range_end(fn_end);
         let body = slice_text(text, fn_start, fn_end);
-        let calls = extract_call_facts(&body, start_line);
+        // Keep the original function body as source authority. Only call
+        // evidence excludes known-empty invocations, including their bytes on
+        // a mixed line that later argument/activation readers consume.
+        let call_offset = u32::from(fn_start) as usize;
+        let call_end = u32::from(fn_end) as usize;
+        let call_body = crate::analysis::extract::property_macros::mask_evidence_ranges(
+            &body,
+            empty_invocations
+                .iter()
+                .filter(|range| range.start >= call_offset && range.end <= call_end)
+                .map(|range| range.start - call_offset..range.end - call_offset),
+        );
+        let calls = extract_call_facts(&call_body, start_line);
         let returns = extract_return_facts(&body, start_line);
         let literals = extract_literal_facts(&body, start_line);
-        let probe_shapes = extract_parser_probe_shapes(&function, text, &line_index);
+        let probe_shapes =
+            extract_parser_probe_shapes(&function, text, &shared_source, &line_index);
         // A plain helper inside an inline `#[cfg(test)]` module is test
         // infrastructure even when it has no `#[test]` attribute. Classify
         // that role at the producer boundary so diff probes, seam inventory,
@@ -246,7 +447,6 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
         let (nested_fn_names, let_bindings) =
             collect_body_shadow_facts(&function, &|offset| line_index.line(offset), start_line);
 
-        file_calls.extend(calls.clone());
         file_returns.extend(returns.clone());
         file_literals.extend(literals.clone());
         file_probe_shapes.extend(probe_shapes);
@@ -257,14 +457,17 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
             file: path_buf.clone(),
             start_line,
             end_line,
-            body: body.clone(),
+            body: SourceText::shared_or_owned(&shared_source, u32::from(fn_start) as usize, &body),
             calls: calls.clone(),
             returns: returns.clone(),
             literals: literals.clone(),
             source_role,
             attrs: attrs.clone(),
+            impl_attrs: collect_impl_attr_syntax(&function),
             nested_fn_names: nested_fn_names.clone(),
             let_bindings: let_bindings.clone(),
+            item: function_item_fact(&function),
+            impl_context: function_impl_context(&function),
         };
 
         if has_test_attribute {
@@ -273,7 +476,11 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
                 file: path_buf.clone(),
                 start_line,
                 end_line,
-                body,
+                body: SourceText::shared_or_owned(
+                    &shared_source,
+                    u32::from(fn_start) as usize,
+                    &body,
+                ),
                 calls,
                 assertions: extract_parser_oracles(&function, text, &line_index),
                 literals,
@@ -288,8 +495,6 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
 
     disambiguate_duplicate_symbol_ids(&mut functions);
 
-    file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
-    file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
     file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
     file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
@@ -298,7 +503,7 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
         a.start_line
             .cmp(&b.start_line)
             .then(a.end_line.cmp(&b.end_line))
-            .then(a.kind.cmp(&b.kind))
+            .then(a.kind.as_str().cmp(b.kind.as_str()))
             .then(a.text.cmp(&b.text))
     });
     file_probe_shapes.dedup_by(|a, b| {
@@ -312,14 +517,17 @@ pub fn summarize_file_with_parser(path: &Path, text: &str) -> Result<FileFacts, 
         path: path_buf,
         functions,
         tests,
-        calls: file_calls,
         returns: file_returns,
         literals: file_literals,
         probe_shapes: file_probe_shapes,
         used_lexical_fallback: false,
         module_declarations,
+        unresolved_property_macros: property_macros::unresolved_property_macros(
+            &source,
+            &line_index,
+        ),
         role_provenance: SourceRoleProvenance::default(),
-        source: text.to_string(),
+        source: shared_source,
     })
 }
 
@@ -464,10 +672,9 @@ pub(crate) fn shadow_facts_for_body_text(body: &str) -> (Vec<String>, Vec<LetBin
     // on its own line after the body, so the opening line — and every
     // body-relative offset — is unchanged.
     let wrapped = format!("fn __ripr_shadow_facts__() {{ {body}\n}}");
-    let parse = SourceFile::parse(&wrapped, Edition::CURRENT);
-    if !parse.errors().is_empty() {
+    let Some(parse) = parse_clean_source_file(&wrapped) else {
         return (Vec::new(), Vec::new());
-    }
+    };
     let Some(function) = parse.tree().syntax().descendants().find_map(ast::Fn::cast) else {
         return (Vec::new(), Vec::new());
     };
@@ -489,7 +696,7 @@ pub(crate) fn shadow_facts_for_body_text(body: &str) -> (Vec<String>, Vec<LetBin
 /// statically resolvable. Returning `Default` here would resolve the default
 /// file that Rust does not compile under the conditional configuration and
 /// could hand its functions an evidence role they did not earn.
-fn path_target_from_attributes(attributes: &[String]) -> ModulePathTarget {
+pub(super) fn path_target_from_attributes(attributes: &[String]) -> ModulePathTarget {
     if cfg_predicates::attributes_conditionally_introduce_path(
         attributes.iter().map(String::as_str),
     ) {
@@ -569,6 +776,99 @@ fn parser_symbol_id(path: &Path, function: &ast::Fn, name: &str) -> SymbolId {
     SymbolId(segments.join("::"))
 }
 
+/// Where `function` is declared (#4478): the nearest enclosing item that
+/// decides which call syntax can name it. The walk stops at the first `fn`,
+/// `impl` or `trait` ancestor, so a helper `fn` nested in a method body is
+/// `Local`, not a method of the `impl`.
+fn function_item_fact(function: &ast::Fn) -> FunctionItemFact {
+    let container = function
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .find_map(|node| {
+            if ast::Fn::can_cast(node.kind()) {
+                return Some(FunctionContainer::Local);
+            }
+            if let Some(impl_block) = ast::Impl::cast(node.clone()) {
+                let self_ty = impl_block
+                    .self_ty()
+                    .map(|ty| compact_syntax_text(ty.syntax().text().to_string()));
+                return Some(match (impl_block.trait_(), self_ty) {
+                    (_, None) => FunctionContainer::Unknown,
+                    (None, Some(self_ty)) => FunctionContainer::Inherent { self_ty },
+                    (Some(trait_ty), Some(self_ty)) => FunctionContainer::TraitImpl {
+                        trait_path: compact_syntax_text(trait_ty.syntax().text().to_string()),
+                        self_ty,
+                    },
+                });
+            }
+            let trait_item = ast::Trait::cast(node)?;
+            Some(match trait_item.name() {
+                Some(name) => FunctionContainer::Trait {
+                    trait_name: name.text().to_string(),
+                },
+                None => FunctionContainer::Unknown,
+            })
+        })
+        .unwrap_or(FunctionContainer::Free);
+    let has_self_param = function
+        .param_list()
+        .is_some_and(|params| params.self_param().is_some());
+    FunctionItemFact {
+        container,
+        has_self_param,
+        has_body: function.body().is_some(),
+    }
+}
+
+/// The item a type-path call `T::name(` would find this `fn` in (#4558).
+/// The nearest enclosing `fn`, `impl` or `trait` decides; modules and the
+/// file root make it a free function.
+fn function_impl_context(function: &ast::Fn) -> FunctionImplContext {
+    for ancestor in function.syntax().ancestors().skip(1) {
+        if ast::Fn::can_cast(ancestor.kind())
+            || ast::BlockExpr::can_cast(ancestor.kind())
+            || ast::Const::can_cast(ancestor.kind())
+            || ast::Static::can_cast(ancestor.kind())
+        {
+            // A `fn` item local to a function, block, const or static
+            // initializer is not nameable through a type.
+            return FunctionImplContext::Free;
+        }
+        if ast::Trait::can_cast(ancestor.kind()) {
+            return FunctionImplContext::Unknown;
+        }
+        if let Some(impl_block) = ast::Impl::cast(ancestor) {
+            return impl_self_type_name(&impl_block)
+                .map_or(FunctionImplContext::Unknown, |self_type| {
+                    FunctionImplContext::Impl { self_type }
+                });
+        }
+    }
+    FunctionImplContext::Free
+}
+
+/// Last segment of an impl's self type when it is a plain named path that
+/// is not one of the impl's own generic parameters (`impl<T> Trait for T`
+/// reaches every type).
+fn impl_self_type_name(impl_block: &ast::Impl) -> Option<String> {
+    let ast::Type::PathType(path_type) = impl_block.self_ty()? else {
+        return None;
+    };
+    let segment = path_type.path()?.segment()?;
+    let name = segment.name_ref()?.text().to_string();
+    let is_generic_parameter = impl_block.generic_param_list().is_some_and(|params| {
+        params.type_or_const_params().any(|param| {
+            param
+                .syntax()
+                .children()
+                .filter_map(ast::Name::cast)
+                .any(|param_name| param_name.text() == name.as_str())
+        })
+    });
+    (!is_generic_parameter).then_some(name)
+}
+
 fn impl_owner_segment(impl_block: &ast::Impl) -> String {
     let self_ty = match impl_block.self_ty() {
         Some(ty) => compact_syntax_text(ty.syntax().text().to_string()),
@@ -634,11 +934,198 @@ fn is_cfg_test_module_member(function: &ast::Fn) -> bool {
         .syntax()
         .ancestors()
         .filter_map(ast::Module::cast)
-        .any(|module| {
-            cfg_predicates::attributes_require_test(
-                module.attrs().map(|attr| attr.syntax().text().to_string()),
+        .any(|module| module_attributes_require_test(&module))
+}
+
+/// One parser-backed inline or out-of-line module whose attributes structurally
+/// require a test build. Nested modules inside an already test-gated module
+/// are omitted so they cannot compete as insertion anchors.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct GovernedCfgTestModule {
+    pub(crate) name: String,
+    pub(crate) parent_modules: Vec<String>,
+    pub(crate) item_start: usize,
+    pub(crate) body_start: Option<usize>,
+    pub(crate) close_brace_start: Option<usize>,
+    pub(crate) is_inline: bool,
+    /// Every outer and inner attribute on the module is known to be enabled
+    /// in a plain `cargo test` build. `false` covers feature, target and
+    /// other gates whose state ripr does not assume.
+    pub(crate) enabled_in_test_build: bool,
+}
+
+/// Parser-owned inventory of governed `cfg(test)` modules in one source file.
+///
+/// Uses the same `cfg_predicates` authority as cfg-test membership. `None`
+/// means the file was not parser-valid; callers stay Missing rather than
+/// guessing from line text.
+pub(crate) fn governed_cfg_test_modules(source: &str) -> Option<Vec<GovernedCfgTestModule>> {
+    let parse = parse_clean_source_file(source)?;
+    Some(governed_cfg_test_modules_in(&parse.tree()))
+}
+
+/// Module facts new-test-target admission reads from one source file.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct InlineUnitModuleLayout {
+    /// [`governed_cfg_test_modules`] for the file.
+    pub(crate) modules: Vec<GovernedCfgTestModule>,
+    /// Every function's enclosing non-cfg-test module names, keyed by start
+    /// line, as [`production_owner_module_path`] answers one line at a time.
+    pub(crate) owner_module_paths: BTreeMap<usize, Vec<String>>,
+}
+
+/// [`InlineUnitModuleLayout`] from one parse of `source`. `None` when the
+/// file is not parser-valid.
+pub(crate) fn inline_unit_module_layout(source: &str) -> Option<InlineUnitModuleLayout> {
+    let parse = parse_clean_source_file(source)?;
+    let file = parse.tree();
+    Some(InlineUnitModuleLayout {
+        modules: governed_cfg_test_modules_in(&file),
+        owner_module_paths: production_owner_module_paths_in(&file, &LineIndex::new(source)),
+    })
+}
+
+fn governed_cfg_test_modules_in(file: &ast::SourceFile) -> Vec<GovernedCfgTestModule> {
+    let mut modules = Vec::new();
+    for module in file.syntax().descendants().filter_map(ast::Module::cast) {
+        if module
+            .syntax()
+            .ancestors()
+            .skip(1)
+            .any(|node| ast::Fn::can_cast(node.kind()))
+        {
+            continue;
+        }
+        if !module_attributes_require_test(&module) {
+            continue;
+        }
+        if ancestor_module_requires_test(&module) {
+            continue;
+        }
+        let Some(name) = module.name() else {
+            continue;
+        };
+        let parent_modules = ancestor_module_names(&module);
+        let item_start = usize::from(module.syntax().text_range().start());
+        let enabled_in_test_build = module
+            .attrs()
+            .chain(
+                module
+                    .item_list()
+                    .into_iter()
+                    .flat_map(|items| items.attrs()),
             )
-        })
+            .all(|attr| {
+                cfg_predicates::attribute_test_build_availability(&attr.syntax().text().to_string())
+                    == Some(true)
+            });
+        match module.item_list() {
+            Some(items) => {
+                let Some(open) = items.l_curly_token() else {
+                    continue;
+                };
+                let Some(close) = items.r_curly_token() else {
+                    continue;
+                };
+                modules.push(GovernedCfgTestModule {
+                    name: name.text().to_string(),
+                    parent_modules,
+                    item_start,
+                    body_start: Some(usize::from(open.text_range().end())),
+                    close_brace_start: Some(usize::from(close.text_range().start())),
+                    is_inline: true,
+                    enabled_in_test_build,
+                });
+            }
+            None => modules.push(GovernedCfgTestModule {
+                name: name.text().to_string(),
+                parent_modules,
+                item_start,
+                body_start: None,
+                close_brace_start: None,
+                is_inline: false,
+                enabled_in_test_build,
+            }),
+        }
+    }
+    modules.sort_by(|left, right| {
+        left.parent_modules
+            .cmp(&right.parent_modules)
+            .then(left.name.cmp(&right.name))
+            .then(left.item_start.cmp(&right.item_start))
+    });
+    modules
+}
+
+/// Enclosing module names of the production function on `start_line`, excluding
+/// cfg-test modules. `None` when the file does not parse or the function is
+/// missing.
+#[cfg(test)]
+pub(crate) fn production_owner_module_path(source: &str, start_line: usize) -> Option<Vec<String>> {
+    let parse = parse_clean_source_file(source)?;
+    production_owner_module_paths_in(&parse.tree(), &LineIndex::new(source)).remove(&start_line)
+}
+
+/// Enclosing non-cfg-test module names of every function, keyed by start
+/// line. When two functions start on one line, the first in source order
+/// wins, matching a preorder search for that line.
+fn production_owner_module_paths_in(
+    file: &ast::SourceFile,
+    line_index: &LineIndex,
+) -> BTreeMap<usize, Vec<String>> {
+    let mut paths = BTreeMap::new();
+    for function in file.syntax().descendants().filter_map(ast::Fn::cast) {
+        let line = function
+            .fn_token()
+            .map(|token| line_index.line(token.text_range().start()))
+            .unwrap_or_else(|| line_index.line(function.syntax().text_range().start()));
+        paths.entry(line).or_insert_with(|| {
+            let mut modules = Vec::new();
+            for module in function
+                .syntax()
+                .ancestors()
+                .skip(1)
+                .filter_map(ast::Module::cast)
+            {
+                if module_attributes_require_test(&module) {
+                    continue;
+                }
+                if let Some(name) = module.name() {
+                    modules.push(name.text().to_string());
+                }
+            }
+            modules.reverse();
+            modules
+        });
+    }
+    paths
+}
+
+pub(super) fn module_attributes_require_test(module: &ast::Module) -> bool {
+    cfg_predicates::attributes_require_test(
+        module.attrs().map(|attr| attr.syntax().text().to_string()),
+    )
+}
+
+fn ancestor_module_requires_test(module: &ast::Module) -> bool {
+    module
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .filter_map(ast::Module::cast)
+        .any(|ancestor| module_attributes_require_test(&ancestor))
+}
+
+fn ancestor_module_names(module: &ast::Module) -> Vec<String> {
+    let mut names = module
+        .syntax()
+        .ancestors()
+        .skip(1)
+        .filter_map(ast::Module::cast)
+        .filter_map(|ancestor| ancestor.name().map(|name| name.text().to_string()))
+        .collect::<Vec<_>>();
+    names.reverse();
+    names
 }
 
 fn collect_attr_syntax(function: &ast::Fn) -> Vec<String> {
@@ -648,13 +1135,30 @@ fn collect_attr_syntax(function: &ast::Fn) -> Vec<String> {
         .collect()
 }
 
+/// Attributes on the `impl` block directly enclosing `function`, empty for a
+/// free function or a trait body.
+fn collect_impl_attr_syntax(function: &ast::Fn) -> Vec<String> {
+    function
+        .syntax()
+        .parent()
+        .and_then(|list| list.parent())
+        .and_then(ast::Impl::cast)
+        .map(|item| {
+            item.attrs()
+                .map(|attr| attr.syntax().text().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn extract_parser_probe_shapes(
     function: &ast::Fn,
     text: &str,
+    source: &Arc<str>,
     line_index: &LineIndex,
 ) -> Vec<ProbeShapeFact> {
     let mut shapes = Vec::new();
-    push_unsafe_boundary_probe_shapes(&mut shapes, function, line_index);
+    push_unsafe_boundary_probe_shapes(&mut shapes, function, source, line_index);
 
     for if_expr in function
         .syntax()
@@ -666,7 +1170,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_PREDICATE,
+                source,
+                ProbeShapeKind::Predicate,
                 condition.syntax().text_range().start(),
                 condition.syntax().text_range().end(),
             );
@@ -683,7 +1188,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_PREDICATE,
+                source,
+                ProbeShapeKind::Predicate,
                 condition.syntax().text_range().start(),
                 condition.syntax().text_range().end(),
             );
@@ -703,7 +1209,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_PREDICATE,
+                source,
+                ProbeShapeKind::Predicate,
                 bin_expr.syntax().text_range().start(),
                 bin_expr.syntax().text_range().end(),
             );
@@ -720,7 +1227,8 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
-            PROBE_SHAPE_RETURN_VALUE,
+            source,
+            ProbeShapeKind::ReturnValue,
             range.start(),
             range.end(),
         );
@@ -730,7 +1238,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_ERROR_PATH,
+                source,
+                ProbeShapeKind::ErrorPath,
                 range.start(),
                 range.end(),
             );
@@ -745,7 +1254,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_RETURN_VALUE,
+                source,
+                ProbeShapeKind::ReturnValue,
                 range.start(),
                 range.end(),
             );
@@ -754,7 +1264,8 @@ fn extract_parser_probe_shapes(
                     &mut shapes,
                     line_index,
                     text,
-                    PROBE_SHAPE_ERROR_PATH,
+                    source,
+                    ProbeShapeKind::ErrorPath,
                     range.start(),
                     range.end(),
                 );
@@ -773,7 +1284,8 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
-            PROBE_SHAPE_CALL_DELETION,
+            source,
+            ProbeShapeKind::CallDeletion,
             range.start(),
             range.end(),
         );
@@ -782,7 +1294,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_RETURN_VALUE,
+                source,
+                ProbeShapeKind::ReturnValue,
                 range.start(),
                 range.end(),
             );
@@ -792,7 +1305,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_ERROR_PATH,
+                source,
+                ProbeShapeKind::ErrorPath,
                 range.start(),
                 range.end(),
             );
@@ -810,7 +1324,8 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
-            PROBE_SHAPE_CALL_DELETION,
+            source,
+            ProbeShapeKind::CallDeletion,
             range.start(),
             range.end(),
         );
@@ -823,7 +1338,8 @@ fn extract_parser_probe_shapes(
                 &mut shapes,
                 line_index,
                 text,
-                PROBE_SHAPE_SIDE_EFFECT,
+                source,
+                ProbeShapeKind::SideEffect,
                 range.start(),
                 range.end(),
             );
@@ -840,7 +1356,8 @@ fn extract_parser_probe_shapes(
             &mut shapes,
             line_index,
             text,
-            PROBE_SHAPE_FIELD_CONSTRUCTION,
+            source,
+            ProbeShapeKind::FieldConstruction,
             range.start(),
             range.end(),
         );
@@ -852,17 +1369,18 @@ fn extract_parser_probe_shapes(
         .filter_map(ast::MatchExpr::cast)
     {
         if let Some(token) = match_expr.match_token() {
+            let snippet = match_expr_probe_text(
+                text,
+                match_expr.expr().map(|expr| expr.syntax().text_range()),
+                match_expr.syntax().text_range(),
+            );
             push_probe_shape_with_text(
                 &mut shapes,
                 line_index,
-                PROBE_SHAPE_MATCH_ARM,
+                ProbeShapeKind::MatchArm,
                 token.text_range().start(),
                 token.text_range().end(),
-                match_expr_probe_text(
-                    text,
-                    match_expr.expr().map(|expr| expr.syntax().text_range()),
-                    match_expr.syntax().text_range(),
-                ),
+                link_shape_text(source, token.text_range().start(), snippet),
             );
         }
     }
@@ -873,17 +1391,18 @@ fn extract_parser_probe_shapes(
         .filter_map(ast::MatchArm::cast)
     {
         if let Some(token) = arm.fat_arrow_token() {
+            let snippet = match_arm_probe_text(
+                text,
+                arm.syntax().text_range().start(),
+                token.text_range().start(),
+            );
             push_probe_shape_with_text(
                 &mut shapes,
                 line_index,
-                PROBE_SHAPE_MATCH_ARM,
+                ProbeShapeKind::MatchArm,
                 token.text_range().start(),
                 token.text_range().end(),
-                match_arm_probe_text(
-                    text,
-                    arm.syntax().text_range().start(),
-                    token.text_range().start(),
-                ),
+                link_shape_text(source, token.text_range().start(), snippet),
             );
         }
     }
@@ -892,7 +1411,7 @@ fn extract_parser_probe_shapes(
         a.start_line
             .cmp(&b.start_line)
             .then(a.end_line.cmp(&b.end_line))
-            .then(a.kind.cmp(&b.kind))
+            .then(a.kind.as_str().cmp(b.kind.as_str()))
             .then(a.text.cmp(&b.text))
     });
     shapes.dedup_by(|a, b| {
@@ -907,6 +1426,7 @@ fn extract_parser_probe_shapes(
 fn push_unsafe_boundary_probe_shapes(
     shapes: &mut Vec<ProbeShapeFact>,
     function: &ast::Fn,
+    source: &Arc<str>,
     line_index: &LineIndex,
 ) {
     if let Some(unsafe_token) = function.unsafe_token() {
@@ -917,10 +1437,14 @@ fn push_unsafe_boundary_probe_shapes(
         push_probe_shape_with_text(
             shapes,
             line_index,
-            PROBE_SHAPE_UNSAFE_BOUNDARY,
+            ProbeShapeKind::UnsafeBoundary,
             unsafe_token.text_range().start(),
             function.syntax().text_range().end(),
-            format!("unsafe fn {name}"),
+            link_shape_text(
+                source,
+                unsafe_token.text_range().start(),
+                format!("unsafe fn {name}"),
+            ),
         );
     }
 
@@ -935,10 +1459,14 @@ fn push_unsafe_boundary_probe_shapes(
         push_probe_shape_with_text(
             shapes,
             line_index,
-            PROBE_SHAPE_UNSAFE_BOUNDARY,
+            ProbeShapeKind::UnsafeBoundary,
             unsafe_token.text_range().start(),
             block.syntax().text_range().end(),
-            "unsafe block".to_string(),
+            link_shape_text(
+                source,
+                unsafe_token.text_range().start(),
+                "unsafe block".to_string(),
+            ),
         );
     }
 }
@@ -947,38 +1475,52 @@ fn push_probe_shape(
     shapes: &mut Vec<ProbeShapeFact>,
     line_index: &LineIndex,
     text: &str,
-    kind: &str,
+    source: &Arc<str>,
+    kind: ProbeShapeKind,
     start: TextSize,
     end: TextSize,
 ) {
-    let snippet = slice_text(text, start, end)
-        .trim()
-        .trim_end_matches(';')
-        .to_string();
+    let raw = slice_text(text, start, end);
+    let snippet = raw.trim().trim_end_matches(';').to_string();
     if snippet.is_empty() {
         return;
     }
-    push_probe_shape_with_text(shapes, line_index, kind, start, end, snippet);
+    // Trimming only strips edges, so the snippet still sits verbatim at the
+    // leading-trimmed offset; trailing whitespace and `;` fall outside the
+    // shared window. `shared_or_owned` re-validates and keeps an owned copy
+    // if the span ever disagrees.
+    let leading = raw.len() - raw.trim_start().len();
+    let link_start = (u32::from(start) as usize).saturating_add(leading);
+    let text = SourceText::shared_or_owned(source, link_start, &snippet);
+    push_probe_shape_with_text(shapes, line_index, kind, start, end, text);
 }
 
 fn push_probe_shape_with_text(
     shapes: &mut Vec<ProbeShapeFact>,
     line_index: &LineIndex,
-    kind: &str,
+    kind: ProbeShapeKind,
     start: TextSize,
     end: TextSize,
-    snippet: String,
+    text: SourceText,
 ) {
-    if snippet.is_empty() {
+    if text.is_empty() {
         return;
     }
     shapes.push(ProbeShapeFact {
         start_line: line_index.line(start),
         end_line: line_index.line_for_range_end(end),
         start_byte: u32::from(start) as usize,
-        kind: kind.to_string(),
-        text: snippet,
+        kind,
+        text,
     });
+}
+
+/// Link a synthetic or normalized snippet that may not sit verbatim in the
+/// source. Verbatim snippets share the allocation; anything else (match-arm
+/// normalization, `unsafe fn {name}` synthesis) stays owned with identical
+/// text.
+fn link_shape_text(source: &Arc<str>, start: TextSize, snippet: String) -> SourceText {
+    SourceText::shared_or_owned(source, u32::from(start) as usize, &snippet)
 }
 
 fn match_expr_probe_text(
@@ -1098,7 +1640,10 @@ fn extract_parser_oracles(
     // RIPR-SPEC-0106 (Part A): pre-scan the function body for `unwrap_err`/
     // `expect_err` variable bindings so assertions on those variables can be
     // upgraded to ExactErrorVariant.
-    let function_text = function.syntax().text().to_string();
+    let original_function_text = function.syntax().text().to_string();
+    let function_text = crate::analysis::extract::property_macros::property_safe_scanner_text(
+        &original_function_text,
+    );
     let bound_error_vars = unwrap_err_bound_variables(&function_text);
 
     let mut assertions = Vec::new();
@@ -1203,10 +1748,9 @@ fn extract_parser_oracles(
             let_bindings: &let_bindings,
         },
     );
-    for oracle in
-        extract_line_scanned_oracles(&function.syntax().text().to_string(), function_start)
-            .into_iter()
-            .filter(|oracle| !guarded_matches.match_start_lines.contains(&oracle.line))
+    for oracle in extract_line_scanned_oracles(&function_text, function_start)
+        .into_iter()
+        .filter(|oracle| !guarded_matches.match_start_lines.contains(&oracle.line))
     {
         assertions.push(oracle);
     }
@@ -1282,7 +1826,7 @@ pub(crate) fn slice_text(text: &str, start: TextSize, end: TextSize) -> String {
     text.get(start..end).unwrap_or("").to_string()
 }
 
-fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
+pub(super) fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
     let start = text_size_to_usize(start);
     let mut end = text_size_to_usize(end);
     let bytes = text.as_bytes();
@@ -1296,14 +1840,62 @@ fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) -> String {
     text.get(start..end).unwrap_or("").trim().to_string()
 }
 
+#[cfg(test)]
 fn owner_changed_nodes(
-    facts: &crate::analysis::facts::FileFacts,
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
     ranges: &[TextRange],
 ) -> Vec<SyntaxNodeFact> {
-    let mut nodes = Vec::new();
+    owner_changed_nodes_with(functions, ranges, node_for_changed_owner)
+}
+
+pub(crate) fn changed_owner_spans(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+) -> Vec<ChangedOwnerSpan> {
+    owner_changed_nodes_with(functions, ranges, |function, _| ChangedOwnerSpan {
+        start_line: function.start_line,
+        end_line: function.end_line,
+        owner: Some(function.id.clone()),
+    })
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static CHANGED_OWNER_BODY_MATERIALIZATIONS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn changed_owner_body_materialization_count() -> usize {
+    CHANGED_OWNER_BODY_MATERIALIZATIONS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+fn node_for_changed_owner(function: &FunctionFact, kind: &str) -> SyntaxNodeFact {
+    #[cfg(test)]
+    CHANGED_OWNER_BODY_MATERIALIZATIONS.with(|count| {
+        count.set(count.get().saturating_add(1));
+    });
+    SyntaxNodeFact {
+        file: function.file.clone(),
+        kind: kind.to_string(),
+        start_line: function.start_line,
+        end_line: function.end_line,
+        text: function.body.to_string(),
+        owner: Some(function.id.clone()),
+    }
+}
+
+/// Retain the first owner for each output key before materializing any body.
+/// Repeated changed lines in one large owner must not clone its body per line.
+fn owner_changed_nodes_with<T>(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+    mut build: impl FnMut(&FunctionFact, &str) -> T,
+) -> Vec<T> {
+    let mut selected = std::collections::BTreeMap::new();
     for range in ranges {
-        let mut owners = facts
-            .functions
+        let mut owners = functions
             .iter()
             .filter(|function| {
                 ranges_overlap(
@@ -1320,37 +1912,27 @@ fn owner_changed_nodes(
                 .then(right.start_line.cmp(&left.start_line))
                 .then(left.id.0.cmp(&right.id.0))
         });
-        if let Some(function) = owners.first() {
-            nodes.push(SyntaxNodeFact {
-                file: function.file.clone(),
-                kind: if function.source_role.is_evidence_role() {
-                    "test_function".to_string()
-                } else {
-                    "function".to_string()
-                },
-                start_line: function.start_line,
-                end_line: function.end_line,
-                text: function.body.clone(),
-                owner: Some(function.id.clone()),
-            });
+        if let Some(&function) = owners.first() {
+            let kind = if function.source_role.is_evidence_role() {
+                "test_function"
+            } else {
+                "function"
+            };
+            selected
+                .entry((
+                    &function.file,
+                    function.start_line,
+                    function.end_line,
+                    kind,
+                    &function.id,
+                ))
+                .or_insert(function);
         }
     }
-    nodes.sort_by(|left, right| {
-        left.file
-            .cmp(&right.file)
-            .then(left.start_line.cmp(&right.start_line))
-            .then(left.end_line.cmp(&right.end_line))
-            .then(left.kind.cmp(&right.kind))
-            .then(left.owner.cmp(&right.owner))
-    });
-    nodes.dedup_by(|left, right| {
-        left.file == right.file
-            && left.start_line == right.start_line
-            && left.end_line == right.end_line
-            && left.kind == right.kind
-            && left.owner == right.owner
-    });
-    nodes
+    selected
+        .into_iter()
+        .map(|((_, _, _, kind, _), function)| build(function, kind))
+        .collect()
 }
 
 fn ranges_overlap(start1: usize, end1: usize, start2: usize, end2: usize) -> bool {
@@ -1368,6 +1950,202 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Independent reference for the pre-refactor selection and stable dedup.
+    fn legacy_owner_changed_nodes(
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
+        let mut nodes = Vec::new();
+        for range in ranges {
+            let mut owners = functions
+                .iter()
+                .filter(|function| {
+                    ranges_overlap(
+                        range.start_line,
+                        range.end_line,
+                        function.start_line,
+                        function.end_line,
+                    )
+                })
+                .collect::<Vec<_>>();
+            owners.sort_by(|left, right| {
+                function_span(left)
+                    .cmp(&function_span(right))
+                    .then(right.start_line.cmp(&left.start_line))
+                    .then(left.id.0.cmp(&right.id.0))
+            });
+            if let Some(function) = owners.first() {
+                nodes.push(SyntaxNodeFact {
+                    file: function.file.clone(),
+                    kind: if function.source_role.is_evidence_role() {
+                        "test_function".to_string()
+                    } else {
+                        "function".to_string()
+                    },
+                    start_line: function.start_line,
+                    end_line: function.end_line,
+                    text: function.body.to_string(),
+                    owner: Some(function.id.clone()),
+                });
+            }
+        }
+        nodes.sort_by(|left, right| {
+            left.file
+                .cmp(&right.file)
+                .then(left.start_line.cmp(&right.start_line))
+                .then(left.end_line.cmp(&right.end_line))
+                .then(left.kind.cmp(&right.kind))
+                .then(left.owner.cmp(&right.owner))
+        });
+        nodes.dedup_by(|left, right| {
+            left.file == right.file
+                && left.start_line == right.start_line
+                && left.end_line == right.end_line
+                && left.kind == right.kind
+                && left.owner == right.owner
+        });
+        nodes
+    }
+
+    fn changed_range(line: usize) -> TextRange {
+        TextRange {
+            start_line: line,
+            start_column: 1,
+            end_line: line,
+            end_column: 1,
+        }
+    }
+
+    #[test]
+    fn changed_owners_materialize_one_body_for_many_lines() -> Result<(), String> {
+        let source = format!("fn large() {{\n{}\n}}\n", "    touch();\n".repeat(6_000));
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), &source)?;
+        let ranges = (2..=6_001).map(changed_range).collect::<Vec<_>>();
+        let mut materialized = 0usize;
+        let nodes = owner_changed_nodes_with(
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
+            &ranges,
+            |function, kind| {
+                materialized += 1;
+                node_for_changed_owner(function, kind)
+            },
+        );
+        assert_eq!(materialized, 1, "one full body per distinct output owner");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].text, source.trim_end());
+        Ok(())
+    }
+
+    #[test]
+    fn changed_owners_match_legacy_nested_selection_and_first_equal_key() -> Result<(), String> {
+        let source = "fn outer() {\n    fn inner() {\n        touch();\n    }\n    finish();\n}\n";
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        let mut functions = facts.functions;
+        let first = functions
+            .iter()
+            .find(|function| function.name == "inner")
+            .ok_or("nested function missing")?
+            .clone();
+        let mut later = first.clone();
+        later.body = "different payload for the same owner key".into();
+        functions.push(later);
+        let mut tied = first.clone();
+        tied.id.0 = format!("{}.later", tied.id.0);
+        functions.push(tied);
+        let ranges = vec![
+            changed_range(5),
+            changed_range(3),
+            changed_range(3),
+            changed_range(1),
+            changed_range(99),
+        ];
+        let selected = owner_changed_nodes(
+            crate::analysis::facts::FactSlice::from_slice(&functions),
+            &ranges,
+        );
+        let legacy = legacy_owner_changed_nodes(
+            crate::analysis::facts::FactSlice::from_slice(&functions),
+            &ranges,
+        );
+        assert_eq!(selected, legacy);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[1].owner.as_ref(), Some(&first.id));
+        assert_eq!(selected[1].text, first.body.as_str());
+        Ok(())
+    }
+
+    /// #4558: where each `fn` sits, as a type-path call `T::name(` sees it.
+    #[test]
+    fn impl_context_names_the_self_type_only_for_plain_named_impls() -> Result<(), Box<dyn Error>> {
+        let source = concat!(
+            "pub fn current() {}\n",
+            "pub struct LevelFilter;\n",
+            "impl LevelFilter { pub fn inherent() { fn local() {} } }\n",
+            "impl core::fmt::Display for crate::metadata::LevelFilter { fn fmt_like() {} }\n",
+            "impl<T> Wrapper<T> { fn generic_args() {} }\n",
+            "impl<T: Tr> Tr2 for T { fn blanket() {} }\n",
+            "impl Tr for &LevelFilter { fn by_ref() {} }\n",
+            "trait Tr { fn defaulted() {} }\n",
+            "mod nested { pub fn in_module() {} }\n",
+            "impl LevelFilter { const C: () = { fn in_const() {} }; }\n",
+        );
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        let context = |name: &str| {
+            facts
+                .functions
+                .iter()
+                .find(|function| function.name == name)
+                .map(|function| function.impl_context.clone())
+        };
+        let named = |self_type: &str| {
+            Some(FunctionImplContext::Impl {
+                self_type: self_type.to_string(),
+            })
+        };
+        assert_eq!(context("current"), Some(FunctionImplContext::Free));
+        assert_eq!(context("in_module"), Some(FunctionImplContext::Free));
+        assert_eq!(context("local"), Some(FunctionImplContext::Free));
+        assert_eq!(context("in_const"), Some(FunctionImplContext::Free));
+        assert_eq!(context("inherent"), named("LevelFilter"));
+        assert_eq!(context("fmt_like"), named("LevelFilter"));
+        assert_eq!(context("generic_args"), named("Wrapper"));
+        assert_eq!(context("blanket"), Some(FunctionImplContext::Unknown));
+        assert_eq!(context("by_ref"), Some(FunctionImplContext::Unknown));
+        assert_eq!(context("defaulted"), Some(FunctionImplContext::Unknown));
+        Ok(())
+    }
+
+    #[test]
+    fn impl_block_attrs_are_kept_apart_from_the_method_attrs() -> Result<(), String> {
+        let source = r#"
+#[pymethods]
+impl Ledger {
+    #[getter]
+    pub fn charge(&self) -> u64 { 1 }
+}
+
+#[pyfunction]
+pub fn fee() -> u64 { 5 }
+"#;
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        let function = |name: &str| {
+            facts
+                .functions
+                .iter()
+                .find(|function| function.name == name)
+        };
+        let charge = function("charge").ok_or("charge not summarized")?;
+        assert_eq!(charge.attrs, vec!["#[getter]".to_string()]);
+        assert_eq!(charge.impl_attrs, vec!["#[pymethods]".to_string()]);
+        let fee = function("fee").ok_or("fee not summarized")?;
+        assert_eq!(fee.attrs, vec!["#[pyfunction]".to_string()]);
+        assert!(
+            fee.impl_attrs.is_empty(),
+            "a free function has no impl attributes"
+        );
+        Ok(())
+    }
 
     #[test]
     #[cfg(unix)]
@@ -1581,15 +2359,81 @@ pub fn validate(value: i32) -> Result<i32, String> {
             facts
                 .probe_shapes
                 .iter()
-                .any(|p| p.kind == PROBE_SHAPE_PREDICATE),
+                .any(|p| p.kind == ProbeShapeKind::Predicate),
             "Should extract predicate probe shapes"
         );
         assert!(
             facts
                 .probe_shapes
                 .iter()
-                .any(|p| p.kind == PROBE_SHAPE_ERROR_PATH),
+                .any(|p| p.kind == ProbeShapeKind::ErrorPath),
             "Should extract error_path probe shapes"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn predicate_start_byte_skips_a_string_decoy_on_the_same_line() -> Result<(), Box<dyn Error>> {
+        let source = concat!(
+            "pub fn price(montant_é: i32, discount_threshold: i32) -> bool {\n",
+            "    let decoy = \"montant_é > discount_threshold { false } else { true }\"; if montant_é > discount_threshold { false } else { true }\n",
+            "}\n",
+        );
+        let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), source)?;
+        let predicates: Vec<_> = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == ProbeShapeKind::Predicate)
+            .collect();
+        assert!(
+            !predicates.is_empty(),
+            "expected predicate shapes, got {:?}",
+            facts.probe_shapes
+        );
+        let decoy = source
+            .find("montant_é > discount_threshold")
+            .ok_or("decoy missing")?;
+        let rest = source
+            .get(decoy.saturating_add(1)..)
+            .ok_or("slice after decoy is not a scalar boundary")?;
+        let producer = rest
+            .find("montant_é > discount_threshold")
+            .map(|offset| decoy.saturating_add(1).saturating_add(offset))
+            .ok_or("producer missing")?;
+        assert!(
+            predicates.iter().any(|shape| shape.start_byte == producer),
+            "if-condition start_byte missing: decoy={decoy} producer={producer} shapes={predicates:?}"
+        );
+        assert!(
+            predicates.iter().all(|shape| shape.start_byte != decoy),
+            "string decoy was credited as a predicate origin: {predicates:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn predicate_start_byte_survives_tab_cjk_astral_and_combining_prefix()
+    -> Result<(), Box<dyn Error>> {
+        let prefix = "\tlet 日本語 = \"🎉e\u{0301}\"; if ";
+        let source = format!(
+            "pub fn price(montant_é: i32, discount_threshold: i32) -> bool {{\n{prefix}montant_é > discount_threshold {{ false }} else {{ true }}\n}}\n"
+        );
+        let facts = RaRustSyntaxAdapter.summarize_file(Path::new("src/lib.rs"), &source)?;
+        assert!(
+            !facts.used_lexical_fallback,
+            "parser should own this unicode prefix"
+        );
+        let predicates: Vec<_> = facts
+            .probe_shapes
+            .iter()
+            .filter(|shape| shape.kind == ProbeShapeKind::Predicate)
+            .collect();
+        let producer = source
+            .find("montant_é > discount_threshold")
+            .ok_or("predicate missing")?;
+        assert!(
+            predicates.iter().any(|shape| shape.start_byte == producer),
+            "producer={producer} shapes={predicates:?}"
         );
         Ok(())
     }
@@ -1622,8 +2466,8 @@ pub fn read_raw(ptr: *const u8) -> u8 {
         let boundaries = facts
             .probe_shapes
             .iter()
-            .filter(|shape| shape.kind == PROBE_SHAPE_UNSAFE_BOUNDARY)
-            .map(|shape| (shape.text.clone(), shape.start_line, shape.end_line))
+            .filter(|shape| shape.kind == ProbeShapeKind::UnsafeBoundary)
+            .map(|shape| (shape.text.to_string(), shape.start_line, shape.end_line))
             .collect::<Vec<_>>();
 
         assert_eq!(
@@ -1660,7 +2504,7 @@ pub fn wrap(value: u64) -> Result<Option<u64>, ()> {
         let return_shapes = facts
             .probe_shapes
             .iter()
-            .filter(|shape| shape.kind == PROBE_SHAPE_RETURN_VALUE)
+            .filter(|shape| shape.kind == ProbeShapeKind::ReturnValue)
             .map(|shape| shape.text.as_str())
             .collect::<Vec<_>>();
 
@@ -1692,20 +2536,21 @@ pub fn wrap(value: u64) -> Result<Option<u64>, ()> {
             end_column: 80,
         }];
 
+        let facts = crate::analysis::facts::FileFacts {
+            path: std::path::PathBuf::from("nonexistent.rs"),
+            functions: vec![],
+            tests: vec![],
+            returns: vec![],
+            literals: vec![],
+            probe_shapes: vec![],
+            used_lexical_fallback: false,
+            module_declarations: Vec::new(),
+            unresolved_property_macros: Vec::new(),
+            role_provenance: Default::default(),
+            source: String::new().into(),
+        };
         let nodes = adapter.changed_nodes(
-            &crate::analysis::facts::FileFacts {
-                path: std::path::PathBuf::from("nonexistent.rs"),
-                functions: vec![],
-                tests: vec![],
-                calls: vec![],
-                returns: vec![],
-                literals: vec![],
-                probe_shapes: vec![],
-                used_lexical_fallback: false,
-                module_declarations: Vec::new(),
-                role_provenance: Default::default(),
-                source: String::new(),
-            },
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
             &ranges,
         );
 
@@ -2465,6 +3310,54 @@ mod shadow_fact_equivalence_tests {
                 lexical.match_start_lines, parser_backed.match_start_lines,
                 "owned-statement lines must agree for:\n{body}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parser_bodies_and_verbatim_shapes_share_the_file_allocation() -> Result<(), String> {
+        // #5415 step 2 mechanism pin: parser bodies slice exact spans, so
+        // they must share the file allocation (one 36MB source instead of
+        // ~84MB of substring copies). Synthetic/normalized shape text stays
+        // owned by construction; verbatim shapes share.
+        let text = "fn alpha(x: i32) -> i32 {\n    if x > 0 {\n        x\n    } else {\n        0\n    }\n}\n#[test]\nfn beta() {\n    assert_eq!(alpha(1), 1);\n}\n";
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), text)?;
+        assert_eq!(facts.functions.len(), 2);
+        assert_eq!(facts.tests.len(), 1);
+        assert!(
+            !facts.probe_shapes.is_empty(),
+            "needs shapes to pin sharing"
+        );
+        let alpha = facts
+            .functions
+            .iter()
+            .find(|function| function.name == "alpha")
+            .ok_or("missing alpha")?;
+        assert_eq!(
+            alpha.body.as_str(),
+            &text[..text.find("\n#[test]").unwrap_or(text.len())]
+        );
+        for body in facts
+            .functions
+            .iter()
+            .map(|function| &function.body)
+            .chain(facts.tests.iter().map(|test| &test.body))
+        {
+            assert!(
+                body.shared_source()
+                    .is_some_and(|arc| Arc::ptr_eq(arc, &facts.source)),
+                "parser body must share the file allocation: {body:?}"
+            );
+        }
+        assert!(
+            facts.probe_shapes.iter().any(|shape| shape
+                .text
+                .shared_source()
+                .is_some_and(|arc| Arc::ptr_eq(arc, &facts.source))),
+            "at least the verbatim predicate shape must share the allocation"
+        );
+        for shape in &facts.probe_shapes {
+            assert!(!shape.text.is_empty());
         }
         Ok(())
     }

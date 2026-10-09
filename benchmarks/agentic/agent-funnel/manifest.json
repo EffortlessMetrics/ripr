@@ -1,0 +1,26 @@
+{
+  "schema_version": "ripr-agentic-bench-manifest-v1",
+  "bench": "agent-funnel",
+  "bench_index": "B1",
+  "title": "Agent-funnel E2E",
+  "stimulus": "Run ripr first-action against a small git fixture, then execute the printed after_snapshot, analysis_outcome, verify, and receipt commands byte for byte through bash from a foreign working directory, plus stdout-only and stale-verify anti-gaming twins.",
+  "oracle_states": ["pass", "fail"],
+  "oracle_command": "cargo test -p ripr --test agentic_bench_agent",
+  "selected_target": { "path": "input/src/lib.rs", "scope": "exact" },
+  "allowed_surface": [{ "path": "input", "scope": "subtree" }],
+  "fixtures": [
+    {
+      "path": "input/Cargo.toml",
+      "sha256": "sha256:e360859203f29c6ea67e0041562d585ff720489d8aada34108881ad2b6ff9fe9"
+    },
+    {
+      "path": "input/src/lib.rs",
+      "sha256": "sha256:0656ec79def352524409bf600a1a57abc4a7a096c73059ee4de3c00376cd3392"
+    },
+    {
+      "path": "input/tests/pricing.rs",
+      "sha256": "sha256:90ca9bacc7ab4bbf2671cb393b3013f99efee0a5331fac5b3ff50175b59caa14"
+    }
+  ],
+  "bounds": { "max_paths": 64, "max_file_bytes": 65536, "max_total_bytes": 1048576 }
+}

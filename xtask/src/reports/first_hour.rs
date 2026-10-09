@@ -615,6 +615,9 @@ fn build_fixture_repo(
     std::fs::create_dir_all(&tests).map_err(|error| format!("create fixture tests: {error}"))?;
     std::fs::write(repo.join("Cargo.toml"), FIXTURE_CARGO_TOML)
         .map_err(|error| format!("write fixture Cargo.toml: {error}"))?;
+    // The repair edit cage requires Cargo's complete build directory to be ignored.
+    std::fs::write(repo.join(".gitignore"), "/target/\n")
+        .map_err(|error| format!("write fixture .gitignore: {error}"))?;
     std::fs::write(repo.join("Cargo.lock"), FIXTURE_CARGO_LOCK)
         .map_err(|error| format!("write fixture Cargo.lock: {error}"))?;
     std::fs::write(src.join("lib.rs"), FIXTURE_LIB_BASE)
@@ -910,14 +913,40 @@ fn workflow_advisory_markers(workflow: &str) -> Result<(), String> {
     for marker in [
         "continue-on-error",
         "RIPR_UPLOAD_SARIF",
-        "cargo install ripr --locked",
-        "ripr pilot",
+        "ripr reports ci-packet",
     ] {
         if !workflow.contains(marker) {
             return Err(format!(
                 "generated workflow holds no advisory marker `{marker}`"
             ));
         }
+    }
+    let installs = workflow
+        .lines()
+        .filter_map(|line| {
+            line.trim_start()
+                .strip_prefix("cargo install ripr --version ")
+        })
+        .collect::<Vec<_>>();
+    let [install] = installs.as_slice() else {
+        return Err(
+            "generated workflow needs one version-pinned cargo install ripr fallback".into(),
+        );
+    };
+    let pin = install.strip_suffix(" --locked").ok_or_else(|| {
+        "generated workflow cargo install ripr fallback must retain --locked".to_string()
+    })?;
+    let parts = pin.split('.').collect::<Vec<_>>();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return Err("generated workflow fallback needs an exact release version pin".into());
+    }
+    let download_pin = format!("version={pin}");
+    if !workflow.lines().any(|line| line.trim() == download_pin) {
+        return Err("generated workflow prebuilt and cargo fallback version pins differ".into());
     }
     Ok(())
 }
@@ -931,6 +960,7 @@ struct InitEvidence {
     toml_conflict_preserved: bool,
     workflow_conflict_refused: bool,
     force_overwrites: bool,
+    force_preserves_config: bool,
 }
 
 /// Runs the installed init journey (issue step 3) on an isolated checkout:
@@ -1066,7 +1096,8 @@ fn run_init_journey(
     if workflow_kept != "# user workflow\n" {
         return Err("installed init overwrote the user-owned workflow".to_string());
     }
-    // The documented escape hatch provably works on the disposable checkout.
+    // A CI force refresh replaces the generated workflow and preserves the
+    // user-owned config, matching the documented upgrade contract.
     init_args.push("--force".to_string());
     journey_run(
         harness,
@@ -1080,7 +1111,9 @@ fn run_init_journey(
         .map_err(|error| format!("read forced ripr.toml: {error}"))?;
     let workflow_forced = std::fs::read_to_string(&workflow_path)
         .map_err(|error| format!("read forced workflow: {error}"))?;
-    toml_advisory_markers(&toml_forced)?;
+    if toml_forced != toml_kept {
+        return Err("installed init --ci github --force modified the user-owned ripr.toml".into());
+    }
     workflow_advisory_markers(&workflow_forced)?;
     // The forced run targets only the two generated files: a --force that
     // modifies or deletes the unrelated user workflow must still fail.
@@ -1097,7 +1130,9 @@ fn run_init_journey(
         rerun_refused: true,
         toml_conflict_preserved: true,
         workflow_conflict_refused: true,
+        // This records workflow replacement; config preservation is separate.
         force_overwrites: true,
+        force_preserves_config: true,
     })
 }
 
@@ -1111,6 +1146,7 @@ fn init_json(evidence: &InitEvidence) -> Value {
         "toml_conflict_preserved": evidence.toml_conflict_preserved,
         "workflow_conflict_refused": evidence.workflow_conflict_refused,
         "force_overwrites": evidence.force_overwrites,
+        "force_preserves_config": evidence.force_preserves_config,
     })
 }
 
@@ -3446,7 +3482,7 @@ mod tests {
     fn init_generation_must_stay_advisory() -> Result<(), String> {
         toml_advisory_markers("mode = \"draft\"\ninclude_unchanged_tests = true\n")?;
         workflow_advisory_markers(
-            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: cargo install ripr --locked\nrun: ripr pilot\n",
+            "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: |\n  version=0.10.0\n  cargo install ripr --version 0.10.0 --locked\n  ripr reports ci-packet\n",
         )?;
         // A blocking default or an unpinned install reference refuses.
         assert!(matches!(
@@ -3454,15 +3490,37 @@ mod tests {
             Err(error) if error.contains("mode = \"draft\"")
         ));
         assert!(matches!(
-            workflow_advisory_markers("run: cargo install ripr\nrun: ripr pilot\n"),
+            workflow_advisory_markers("run: cargo install ripr\nrun: ripr reports ci-packet\n"),
             Err(error) if error.contains("continue-on-error")
         ));
         assert!(matches!(
             workflow_advisory_markers(
-                "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: ripr pilot\n"
+                "continue-on-error: true\nRIPR_UPLOAD_SARIF: \"true\"\nrun: ripr reports ci-packet\n"
             ),
-            Err(error) if error.contains("cargo install ripr --locked")
+            Err(error) if error.contains("version-pinned cargo install ripr")
         ));
+        let pinned = "continue-on-error: true\nRIPR_UPLOAD_SARIF: true\nversion=0.10.0\ncargo install ripr --version 0.10.0 --locked\nripr reports ci-packet\n";
+        workflow_advisory_markers(pinned)?;
+        assert!(matches!(
+            workflow_advisory_markers(&pinned.replace("ripr reports ci-packet", "ripr pilot")),
+            Err(error) if error.contains("ripr reports ci-packet")
+        ));
+        for (bad, expected) in [
+            (pinned.replace(" --locked", ""), "retain --locked"),
+            (pinned.replace(" --version 0.10.0", ""), "version-pinned"),
+            (
+                pinned.replace("version=0.10.0", "version=0.9.0"),
+                "pins differ",
+            ),
+            (
+                pinned.replace("--version 0.10.0", "--version *"),
+                "exact release",
+            ),
+        ] {
+            assert!(
+                matches!(workflow_advisory_markers(&bad), Err(error) if error.contains(expected))
+            );
+        }
         Ok(())
     }
 

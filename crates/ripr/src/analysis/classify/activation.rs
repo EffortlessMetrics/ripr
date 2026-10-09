@@ -3,6 +3,7 @@ use super::related_tests::body_contains_owner_call;
 use super::text::{delimited_contents_at, enum_variant_values, exact_error_variant};
 use crate::domain::*;
 
+#[cfg(test)]
 pub(in crate::analysis) fn activation_evidence(
     probe: &Probe,
     owner_fn: Option<&FunctionSummary>,
@@ -12,9 +13,41 @@ pub(in crate::analysis) fn activation_evidence(
     index: &crate::analysis::rust_index::RustIndex,
     workspace_complete: bool,
 ) -> ActivationEvidence {
+    activation_evidence_with_value_facts(
+        probe,
+        owner_fn,
+        related_tests,
+        flow_sinks,
+        helper_chain,
+        index,
+        workspace_complete,
+        None,
+    )
+}
+
+/// `activation_evidence`, reading each related test's owner-independent
+/// value facts through `value_facts` when the classifier supplies its
+/// run-scoped memo.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "activation_evidence's inputs plus the optional run-scoped memo"
+)]
+pub(in crate::analysis) fn activation_evidence_with_value_facts(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+    related_tests: &[&TestSummary],
+    flow_sinks: &[FlowSinkFact],
+    helper_chain: Option<&super::helper_transfer::HelperChain>,
+    index: &crate::analysis::rust_index::RustIndex,
+    workspace_complete: bool,
+    value_facts: Option<&TestValueFacts>,
+) -> ActivationEvidence {
     let mut observed_values = related_tests
         .iter()
-        .flat_map(|test| value_facts_for_test(test, owner_fn))
+        .flat_map(|test| match value_facts {
+            Some(memo) => memo.facts_for(index, test, owner_fn),
+            None => value_facts_for_test(test, owner_fn),
+        })
         .collect::<Vec<_>>();
     observed_values.extend(observed_discriminator_values(
         probe,
@@ -64,12 +97,73 @@ struct ParameterValue {
     text: String,
 }
 
+/// `value_facts_for_test` per (related test, owner), computed at most once
+/// for as long as the memo lives.
+///
+/// The facts depend only on the test and the owner, never on the probe, and
+/// every probe in an owner relates to largely the same tests, so a
+/// classification run shares one memo across its probes (it rides the
+/// run-scoped `RelatedTestCandidateIndex`). Entries are keyed by the test's
+/// and owner's slots in the index the memo was first queried with; a test
+/// or owner that is not an element of that index, or a query against
+/// another index, is computed fresh and never cached, so a key can only
+/// ever name the same fact values.
+/// A related test's slot in `RustIndex::tests` and its owner's slot in
+/// `RustIndex::functions` (`None` for an ownerless probe).
+type TestOwnerSlot = (usize, Option<usize>);
+
+#[derive(Clone, Debug, Default)]
+pub(in crate::analysis) struct TestValueFacts {
+    index_identity: std::cell::Cell<Option<(usize, usize, u64)>>,
+    by_slot: std::cell::RefCell<std::collections::BTreeMap<TestOwnerSlot, Vec<ValueFact>>>,
+}
+
+impl TestValueFacts {
+    /// `value_facts_for_test(test, owner_fn)`.
+    pub(in crate::analysis) fn facts_for(
+        &self,
+        index: &crate::analysis::rust_index::RustIndex,
+        test: &TestSummary,
+        owner_fn: Option<&FunctionSummary>,
+    ) -> Vec<ValueFact> {
+        let Some(key) = self.slot_key(index, test, owner_fn) else {
+            return value_facts_for_test(test, owner_fn);
+        };
+        if let Some(facts) = self.by_slot.borrow().get(&key) {
+            return facts.clone();
+        }
+        let facts = value_facts_for_test(test, owner_fn);
+        self.by_slot.borrow_mut().insert(key, facts.clone());
+        facts
+    }
+
+    fn slot_key(
+        &self,
+        index: &crate::analysis::rust_index::RustIndex,
+        test: &TestSummary,
+        owner_fn: Option<&FunctionSummary>,
+    ) -> Option<TestOwnerSlot> {
+        let identity = index.storage_identity();
+        match self.index_identity.get() {
+            None => self.index_identity.set(Some(identity)),
+            Some(bound) if bound != identity => return None,
+            Some(_) => {}
+        }
+        let test_slot = index.test_slot(test)?;
+        let owner_slot = match owner_fn {
+            Some(owner) => Some(index.function_slot(owner)?),
+            None => None,
+        };
+        Some((test_slot, owner_slot))
+    }
+}
+
 fn value_facts_for_test(test: &TestSummary, owner_fn: Option<&FunctionSummary>) -> Vec<ValueFact> {
     let owner_name = owner_fn.map(|owner| owner.name.as_str()).unwrap_or("");
     let parameters = owner_fn.map(function_parameters).unwrap_or_default();
     let mut facts = Vec::new();
 
-    for call in &test.calls {
+    for call in test.body_calls() {
         if !owner_name.is_empty() && call.name != owner_name {
             continue;
         }
@@ -77,7 +171,7 @@ fn value_facts_for_test(test: &TestSummary, owner_fn: Option<&FunctionSummary>) 
             continue;
         };
         for (idx, argument) in arguments.iter().enumerate() {
-            for value in scalar_values(argument) {
+            for value in owner_argument_values(test, argument) {
                 let value = parameters
                     .get(idx)
                     .map(|parameter| format!("{parameter} = {value}"))
@@ -162,13 +256,15 @@ fn observed_discriminator_values(
     index: &crate::analysis::rust_index::RustIndex,
     workspace_complete: bool,
 ) -> Vec<ValueFact> {
-    let Some((left, right)) = comparison_operands(&probe.expression) else {
-        return Vec::new();
-    };
     let Some(owner) = owner_fn else {
         return Vec::new();
     };
     let parameters = function_parameters(owner);
+    let Some((left, right)) =
+        oriented_comparison_operands(owner, &parameters, &probe.expression, probe.location.line)
+    else {
+        return Vec::new();
+    };
     let call_values = call_values_for_owner(owner, &parameters, related_tests, helper_chain);
     let left_parameter = boundary_operand_parameter(owner, &parameters, &left);
     let right_parameter = boundary_operand_parameter(owner, &parameters, &right);
@@ -190,6 +286,9 @@ fn observed_discriminator_values(
         index,
         workspace_complete,
     );
+    let right_constant = (right_resolved.is_none() && right_parameter.is_none())
+        .then(|| boundary_constant(owner, &right, index))
+        .flatten();
     let mut facts = Vec::new();
 
     for row in call_values {
@@ -205,12 +304,7 @@ fn observed_discriminator_values(
             .and_then(|resolved| {
                 exact_operand_for_row(resolved, &row, &inputs, index, workspace_complete)
             })
-            .or_else(|| {
-                literal_operand_value(&right).map(|value| ExactOperand {
-                    provenance: format!("literal operand {right} = {value}"),
-                    value,
-                })
-            });
+            .or_else(|| visible_operand(&right, right_constant.as_ref()));
         if let (Some(left_value), Some(right_value)) = (&left_exact, &right_exact)
             && left_value.value == right_value.value
         {
@@ -239,7 +333,9 @@ fn observed_discriminator_values(
             .as_deref()
             .and_then(|parameter| parameter_value(&row, parameter))
             .map(|value| value.value)
-            .or_else(|| literal_operand_value(&right));
+            .or_else(|| {
+                visible_operand(&right, right_constant.as_ref()).map(|operand| operand.value)
+            });
         if right_value
             .as_deref()
             .is_some_and(|value| comparable_value(value) == comparable_value(&left_value.value))
@@ -247,6 +343,23 @@ fn observed_discriminator_values(
             facts.push(ValueFact {
                 line: left_value.line,
                 text: left_value.text.clone(),
+                value: format!("{left} == {right}"),
+                context: ValueContext::FunctionArgument,
+            });
+        }
+    }
+    if let (Some(constant), Some(left_parameter)) = (&right_constant, left_parameter.as_deref()) {
+        for (line, text) in owner_calls_passing_constant(
+            related_tests,
+            owner,
+            &parameters,
+            left_parameter,
+            constant,
+            index,
+        ) {
+            facts.push(ValueFact {
+                line,
+                text: format!("{text} | argument names constant {right}"),
                 value: format!("{left} == {right}"),
                 context: ValueContext::FunctionArgument,
             });
@@ -331,7 +444,7 @@ pub(crate) fn resolve_direct_call(
         return None;
     }
     let callee = index
-        .functions
+        .functions()
         .iter()
         .find(|function| function.name == callee_name)?;
     let arguments = super::helper_transfer::split_call_arguments_text(trimmed, &callee_name)?;
@@ -456,6 +569,79 @@ struct ExactOperand {
     provenance: String,
 }
 
+/// What the owner says about a boundary operand that may be a local
+/// binding (#4228).
+pub(in crate::analysis) enum LocalBoundary {
+    /// No `let` in the owner declares the operand.
+    NotLocal,
+    /// A live local whose initializer needs no test input
+    /// (`let limit = 100;`), folded by the same binding relation and
+    /// bounded evaluator `check` uses per row.
+    Exact(String),
+    /// A local whose value depends on test inputs or that the evaluator
+    /// cannot fold. No input-free value exists to match a test against.
+    Unresolved,
+}
+
+pub(in crate::analysis) fn local_boundary(
+    owner: &FunctionSummary,
+    operand: &str,
+    predicate_line: usize,
+) -> LocalBoundary {
+    if let Some(initializer) = live_local_initializer(owner, operand, predicate_line)
+        && let super::value_transfer::EvalOutcome::Exact { value, .. } =
+            super::value_transfer::evaluate_initializer(
+                &initializer,
+                &super::value_transfer::ExactInputs::new(),
+            )
+    {
+        return LocalBoundary::Exact(value.render());
+    }
+    if owner_declares_local(owner, operand, predicate_line) {
+        LocalBoundary::Unresolved
+    } else {
+        LocalBoundary::NotLocal
+    }
+}
+
+/// Whether the owner's body declares `operand` with `let` (or `let mut`)
+/// on or before the predicate line. A declaration after the predicate
+/// cannot be the compared binding (a same-named constant still is), so it
+/// does not count. Comments and strings are masked first; an operand that
+/// is not an identifier (a literal such as `100`) returns early.
+fn owner_declares_local(owner: &FunctionSummary, operand: &str, predicate_line: usize) -> bool {
+    let is_identifier = operand
+        .chars()
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+        && operand
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_');
+    if !is_identifier {
+        return false;
+    }
+    let masked = crate::analysis::language::mask_rust_comments_and_strings(&owner.body);
+    masked
+        .lines()
+        .enumerate()
+        .take_while(|(offset, _)| owner.start_line + offset <= predicate_line)
+        .flat_map(|(_, line)| line.split([';', '{', '}']))
+        .any(|statement| {
+            let statement = statement.trim();
+            let Some(rest) = statement.strip_prefix("let ") else {
+                return false;
+            };
+            let rest = rest.trim_start();
+            let rest = rest.strip_prefix("mut ").map_or(rest, str::trim_start);
+            rest.strip_prefix(operand).is_some_and(|after| {
+                !after
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            })
+        })
+}
+
 /// The initializer of a local binding whose live span (per the #3294
 /// binding relation) covers the predicate line: the predicate must be
 /// one of the binding's direct uses, so the initializer provably feeds
@@ -546,7 +732,12 @@ fn missing_discriminator_facts(
         missing.push(fact);
     }
     if matches!(probe.family, ProbeFamily::FieldConstruction)
-        && let Some(fact) = missing_field_value_discriminator(probe, related_tests, flow_sinks)
+        && let Some(fact) = missing_field_value_discriminator(
+            probe,
+            owner_fn.map(|owner| owner.name.as_str()),
+            related_tests,
+            flow_sinks,
+        )
     {
         missing.push(fact);
     }
@@ -622,6 +813,12 @@ fn unresolved_local_operand_edge(
 pub(in crate::analysis) const ERROR_RETURN_GUARD_UNRESOLVED_MARKER: &str =
     "error return guard unresolved";
 
+/// Actual return/error/field probes also retain an unresolved infection
+/// edge when their paired before producer is an opaque constructor and the
+/// parser establishes the inline replacement beneath a bare boolean guard.
+/// This branch makes no before/after equivalence claim and does not depend
+/// on observer strength; finding guidance separately admits owner observers.
+///
 /// #1579: name the guard when a bare-identifier predicate guards a
 /// changed error return an exact observer already covers. A guard
 /// with visible literals keeps its satisfiable boundary repair; only
@@ -640,6 +837,16 @@ pub(in crate::analysis) fn unresolved_guard_error_edge(
     flow_sinks: &[FlowSinkFact],
     helper_chain: Option<&super::helper_transfer::HelperChain>,
 ) -> Option<String> {
+    if let Some((guard, producer)) = owner_fn
+        .and_then(|owner| crate::analysis::syntax::guarded_opaque_error_transition(probe, owner))
+    {
+        return Some(format!(
+            "{ERROR_RETURN_GUARD_UNRESOLVED_MARKER}: `{guard}` guards the changed error return; before-producing expression `{producer}()` is opaque, so value divergence from the inline producer is unestablished"
+        ));
+    }
+    if probe.family != ProbeFamily::Predicate {
+        return None;
+    }
     let guard = probe.expression.trim();
     if !super::value_transfer::is_identifier(guard) || !extract_literals(guard).is_empty() {
         return None;
@@ -703,9 +910,10 @@ fn missing_boundary_discriminator(
     index: &crate::analysis::rust_index::RustIndex,
     workspace_complete: bool,
 ) -> Option<MissingDiscriminatorFact> {
-    let (left, right) = comparison_operands(&probe.expression)?;
     let owner = owner_fn?;
     let parameters = function_parameters(owner);
+    let (left, right) =
+        oriented_comparison_operands(owner, &parameters, &probe.expression, probe.location.line)?;
     let call_values = call_values_for_owner(owner, &parameters, related_tests, helper_chain);
     if call_values.is_empty() {
         return None;
@@ -733,6 +941,9 @@ fn missing_boundary_discriminator(
         index,
         workspace_complete,
     );
+    let right_constant = (right_resolved.is_none() && right_parameter.is_none())
+        .then(|| boundary_constant(owner, &right, index))
+        .flatten();
     let exact_rows: Vec<(Vec<ExactOperand>, Vec<ExactOperand>)> = call_values
         .iter()
         .map(|row| {
@@ -752,12 +963,7 @@ fn missing_boundary_discriminator(
                 .and_then(|resolved| {
                     exact_operand_for_row(resolved, row, &inputs, index, workspace_complete)
                 })
-                .or_else(|| {
-                    literal_operand_value(&right).map(|value| ExactOperand {
-                        provenance: format!("literal operand {right} = {value}"),
-                        value,
-                    })
-                })
+                .or_else(|| visible_operand(&right, right_constant.as_ref()))
                 .into_iter()
                 .collect::<Vec<_>>();
             (lefts, rights)
@@ -784,13 +990,63 @@ fn missing_boundary_discriminator(
                     .as_deref()
                     .and_then(|parameter| parameter_value(row, parameter))
                     .map(|value| value.value)
-                    .or_else(|| literal_operand_value(&right));
+                    .or_else(|| {
+                        visible_operand(&right, right_constant.as_ref())
+                            .map(|operand| operand.value)
+                    });
                 right_value.as_deref().is_some_and(|value| {
                     comparable_value(value) == comparable_value(&left_value.value)
                 })
             })
         });
-    if equality_observed {
+    let constant_named = right_constant
+        .as_ref()
+        .zip(left_parameter.as_deref())
+        .is_some_and(|(constant, left_parameter)| {
+            !owner_calls_passing_constant(
+                related_tests,
+                owner,
+                &parameters,
+                left_parameter,
+                constant,
+                index,
+            )
+            .is_empty()
+        });
+    if equality_observed || constant_named {
+        return None;
+    }
+    // A local boundary that no row evaluates (a single-line `let`, or an
+    // initializer the bounded evaluator cannot fold) has no value a test
+    // can match, so naming it would ask for a repair ripr can never
+    // confirm (#4228). The grip path routes the same local to its
+    // unresolved-operand limitation.
+    if right_parameter.is_none()
+        && exact_rows.iter().all(|(_, rights)| rights.is_empty())
+        && matches!(
+            local_boundary(owner, &right, probe.location.line),
+            LocalBoundary::Unresolved
+        )
+        && unresolved_local_operand_edge(
+            &right,
+            &right_resolved,
+            exact_rows.iter().all(|(_, rights)| rights.is_empty()),
+            right_parameter.is_none() && visible_operand(&right, right_constant.as_ref()).is_none(),
+            &call_values,
+        )
+        .is_none()
+    {
+        return None;
+    }
+    // A constant ripr cannot pin to one declaration in the owner's file
+    // (imported, or declared twice) can never be matched by a test, so
+    // naming it as the missing discriminator would ask for a repair ripr
+    // cannot confirm. The stage stays unknown instead ("no literal
+    // boundary was visible"), mirroring the repo-seam unresolved route.
+    if right_constant
+        .as_ref()
+        .is_some_and(|constant| !constant.lookup.is_declared_once())
+    {
         return None;
     }
 
@@ -811,7 +1067,8 @@ fn missing_boundary_discriminator(
     let right_parameter_values = right_parameter
         .as_deref()
         .and_then(|parameter| parameter_value_set(&call_values, parameter));
-    let right_literal = literal_operand_value(&right);
+    let right_literal =
+        visible_operand(&right, right_constant.as_ref()).map(|operand| operand.value);
     // #1429: an `unknown` listing for a computed local the evaluator
     // cannot resolve records analyzer inability, not test absence.
     let mut unresolved_notes = Vec::new();
@@ -843,6 +1100,17 @@ fn missing_boundary_discriminator(
         format!(
             "No related test call uses {left} equal to {right}; observed {left} values: {}; target {right} value: {right_value}",
             list_or_unknown(&left_values)
+        )
+    } else if let Some(constant) = right_constant.as_ref() {
+        let symbolic = if constant.lookup.is_declared_once() {
+            format!("; a test that passes {right} itself is recognized")
+        } else {
+            String::new()
+        };
+        format!(
+            "No related test call uses {left} equal to {right}; observed {left} values: {}; ripr cannot see the value of constant {right} statically ({}), so a test that already calls with that value is not recognized{symbolic}",
+            list_or_unknown(&left_values),
+            constant.lookup.limitation()
         )
     } else {
         format!(
@@ -904,6 +1172,7 @@ fn missing_error_variant_discriminator(
 /// oracle, the discriminator is NOT missing and this returns `None`.
 fn missing_field_value_discriminator(
     probe: &Probe,
+    owner_name: Option<&str>,
     related_tests: &[&TestSummary],
     flow_sinks: &[FlowSinkFact],
 ) -> Option<MissingDiscriminatorFact> {
@@ -922,6 +1191,12 @@ fn missing_field_value_discriminator(
     // The match uses word-boundary semantics via `contains_as_whole_word` to
     // avoid token coincidence (e.g. `id` matching inside `provider`), the
     // recurring false-observation family. See reveal.rs:413 for the same guard.
+    // A read of the field by name observes it as well as the whole
+    // initializer text does, but only on the owner's result (`cfg.retries`
+    // after `let cfg = default_config()`, or `default_config().retries`):
+    // `fallback.retries` on an unrelated value would clear the fact and let
+    // the shared field token promote the initializer (#4428 review).
+    let field_read = constructed_field_name(&probe.expression).map(|name| format!(".{name}"));
     let field_already_observed = related_tests.iter().any(|test| {
         test.assertions.iter().any(|assertion| {
             matches!(
@@ -930,7 +1205,13 @@ fn missing_field_value_discriminator(
                     | OracleKind::WholeObjectEquality
                     | OracleKind::RelationalCheck
                     | OracleKind::Snapshot
-            ) && super::reveal::contains_as_whole_word(&assertion.text, &probe.expression)
+            ) && (super::reveal::contains_as_whole_word(&assertion.text, &probe.expression)
+                || field_read
+                    .as_deref()
+                    .zip(owner_name)
+                    .is_some_and(|(read, owner)| {
+                        reads_owner_result_field(&test.body, &assertion.text, read, owner)
+                    }))
         })
     });
     if field_already_observed {
@@ -950,6 +1231,103 @@ fn missing_field_value_discriminator(
     })
 }
 
+/// The field a struct-literal initializer line constructs: `retries: 1,` and
+/// the shorthand `retries,` both name `retries`. `None` for anything that is
+/// not a plain `ident: value` or `ident` initializer.
+fn constructed_field_name(expression: &str) -> Option<&str> {
+    let trimmed = expression.trim().trim_end_matches(',').trim();
+    let name = match trimmed.find(':') {
+        Some(colon) if trimmed[colon..].starts_with("::") => return None,
+        Some(colon) => trimmed[..colon].trim(),
+        None => trimmed,
+    };
+    let mut chars = name.chars();
+    let starts_ident = chars
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_');
+    (starts_ident && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')).then_some(name)
+}
+
+/// Whether `assertion` reads `read` (`.field`) on a value the test got from
+/// calling `owner`: a direct `owner(..).field` chain, or a receiver the test
+/// body binds with `let [mut] recv = ..owner(..)..;`.
+fn reads_owner_result_field(body: &str, assertion: &str, read: &str, owner: &str) -> bool {
+    let is_ident = |ch: char| ch.is_ascii_alphanumeric() || ch == '_';
+    let owner_call = format!("{owner}(");
+    assertion.match_indices(read).any(|(start, matched)| {
+        if assertion[start + matched.len()..]
+            .chars()
+            .next()
+            .is_some_and(is_ident)
+        {
+            return false;
+        }
+        let before = &assertion[..start];
+        if before.ends_with(')') {
+            return call_before_is_owner(before, owner);
+        }
+        let receiver_start = before
+            .rfind(|ch: char| !is_ident(ch))
+            .map_or(0, |index| index + 1);
+        let receiver = &before[receiver_start..];
+        !receiver.is_empty() && binds_from_owner_call(body, receiver, &owner_call)
+    })
+}
+
+/// Whether the call whose `)` ends `before` is a call of `owner`: the
+/// matching `(` is preceded by `owner` as a whole identifier
+/// (`default_config()`, `Config::default_config(..)`), not merely an owner
+/// call somewhere else in the assertion (`other().retries` beside
+/// `default_config()`).
+fn call_before_is_owner(before: &str, owner: &str) -> bool {
+    let mut depth = 0usize;
+    let mut open = None;
+    for (index, ch) in before.char_indices().rev() {
+        match ch {
+            ')' => depth += 1,
+            '(' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    open = Some(index);
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(callee) = open.map(|index| &before[..index]) else {
+        return false;
+    };
+    callee.strip_suffix(owner).is_some_and(|prefix| {
+        !prefix
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    })
+}
+
+/// Whether `body` has `let [mut] receiver = ...;` whose initializer calls
+/// the owner.
+fn binds_from_owner_call(body: &str, receiver: &str, owner_call: &str) -> bool {
+    body.match_indices("let ").any(|(start, _)| {
+        if body[..start]
+            .chars()
+            .next_back()
+            .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+        {
+            return false;
+        }
+        let statement = body[start + 4..].split(';').next().unwrap_or_default();
+        let rest = statement.trim_start();
+        let rest = rest.strip_prefix("mut ").unwrap_or(rest).trim_start();
+        let Some(rest) = rest.strip_prefix(receiver) else {
+            return false;
+        };
+        let rest = rest.trim_start();
+        (rest.starts_with('=') || rest.starts_with(':')) && rest.contains(owner_call)
+    })
+}
+
 fn owner_call_parameter_values(
     related_tests: &[&TestSummary],
     owner_name: &str,
@@ -960,7 +1338,7 @@ fn owner_call_parameter_values(
         return rows;
     }
     for test in related_tests {
-        for call in &test.calls {
+        for call in test.body_calls() {
             if call.name != owner_name {
                 continue;
             }
@@ -972,7 +1350,7 @@ fn owner_call_parameter_values(
                 .enumerate()
                 .filter_map(|(idx, argument)| {
                     let parameter = parameters.get(idx)?;
-                    let value = scalar_values(argument).into_iter().next()?;
+                    let value = owner_argument_values(test, argument).into_iter().next()?;
                     Some(ParameterValue {
                         parameter: parameter.clone(),
                         value,
@@ -1251,7 +1629,7 @@ fn body_contains_direct_local_alias(body: &str, operand: &str, parameter: &str) 
     })
 }
 
-fn comparison_operands(expression: &str) -> Option<(String, String)> {
+pub(in crate::analysis) fn comparison_operands(expression: &str) -> Option<(String, String)> {
     for operator in [">=", "<=", "==", "!=", ">", "<"] {
         if let Some((left, right)) = expression.split_once(operator) {
             let left = clean_operand(left);
@@ -1262,6 +1640,32 @@ fn comparison_operands(expression: &str) -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// The comparison operands with the owner-bound side first. A reversed
+/// predicate (`100 < amount`) compares the parameter on the right, but
+/// every boundary resolver reads the left operand as the tested input and
+/// the right one as the boundary, so the operands swap when only the right
+/// side binds to a parameter or a local (#4228). Equality is symmetric,
+/// so the swap changes which side is looked up, not what is compared.
+fn oriented_comparison_operands(
+    owner: &FunctionSummary,
+    parameters: &[String],
+    expression: &str,
+    predicate_line: usize,
+) -> Option<(String, String)> {
+    let (left, right) = comparison_operands(expression)?;
+    let owner_bound = |operand: &str| {
+        boundary_operand_parameter(owner, parameters, operand).is_some()
+            || live_local_initializer(owner, operand, predicate_line).is_some()
+            // Any declared local keeps the left side, as before #4228:
+            // the swap exists for literals, not to reinterpret locals.
+            || owner_declares_local(owner, operand, usize::MAX)
+    };
+    if !owner_bound(&left) && owner_bound(&right) {
+        return Some((right, left));
+    }
+    Some((left, right))
 }
 
 fn clean_operand(operand: &str) -> String {
@@ -1278,7 +1682,104 @@ fn clean_operand(operand: &str) -> String {
     cleaned.to_string()
 }
 
-fn literal_operand_value(operand: &str) -> Option<String> {
+/// The constant a changed comparison's right-hand operand names
+/// (`amount >= DISCOUNT_THRESHOLD` -> `DISCOUNT_THRESHOLD`), if any.
+pub(in crate::analysis) fn boundary_constant_operand_name(expression: &str) -> Option<String> {
+    let (_, right) = comparison_operands(expression)?;
+    crate::analysis::value_resolution::constant_operand_name(&right).map(str::to_string)
+}
+
+/// A boundary operand that names a constant (`DISCOUNT_THRESHOLD`,
+/// `Self::LIMIT`), with what the owner's source file says about it through
+/// the shared named-constant lookup in `analysis::value_resolution`.
+struct BoundaryConstant {
+    name: String,
+    lookup: crate::analysis::value_resolution::NamedConstant,
+}
+
+/// Resolve a comparison operand that names a constant. Only a
+/// constant-shaped operand is looked up, and only in the owner's own
+/// source file.
+fn boundary_constant(
+    owner: &FunctionSummary,
+    operand: &str,
+    index: &crate::analysis::rust_index::RustIndex,
+) -> Option<BoundaryConstant> {
+    let name = crate::analysis::value_resolution::constant_operand_name(operand)?;
+    let lookup = index.files().get(&owner.file).map_or(
+        crate::analysis::value_resolution::NamedConstant::Undeclared,
+        |facts| crate::analysis::value_resolution::named_constant(&facts.source, name),
+    );
+    Some(BoundaryConstant {
+        name: name.to_string(),
+        lookup,
+    })
+}
+
+/// The statically visible value of the right-hand boundary operand: its
+/// literal, or the literal value of the same-file constant it names.
+fn visible_operand(operand: &str, constant: Option<&BoundaryConstant>) -> Option<ExactOperand> {
+    if let Some(value) = literal_operand_value(operand) {
+        return Some(ExactOperand {
+            provenance: format!("literal operand {operand} = {value}"),
+            value,
+        });
+    }
+    let value = constant?.lookup.value()?.to_string();
+    Some(ExactOperand {
+        provenance: format!("constant {operand} = {value} (same-file const)"),
+        value,
+    })
+}
+
+/// Direct owner calls in related tests whose argument for the compared
+/// parameter names the boundary constant itself (`discounted_total(
+/// DISCOUNT_THRESHOLD)`): that argument is the boundary value by
+/// identity, whatever its value. Requires the owner's file to declare the
+/// constant exactly once, and skips a test whose own file may declare a
+/// constant of the same name.
+fn owner_calls_passing_constant(
+    related_tests: &[&TestSummary],
+    owner: &FunctionSummary,
+    parameters: &[String],
+    left_parameter: &str,
+    constant: &BoundaryConstant,
+    index: &crate::analysis::rust_index::RustIndex,
+) -> Vec<(usize, String)> {
+    let Some(position) = parameters
+        .iter()
+        .position(|parameter| parameter == left_parameter)
+    else {
+        return Vec::new();
+    };
+    if !constant.lookup.is_declared_once() {
+        return Vec::new();
+    }
+    related_tests
+        .iter()
+        .filter(|test| {
+            !crate::analysis::value_resolution::test_file_may_shadow_constant(
+                &owner.file,
+                &test.file,
+                index
+                    .files()
+                    .get(&test.file)
+                    .map(|facts| facts.data().source.as_ref()),
+                &constant.name,
+            )
+        })
+        .flat_map(|test| test.calls.iter())
+        .filter(|call| call.name == owner.name)
+        .filter_map(|call| {
+            let arguments = call_arguments(&call.text, &call.name)?;
+            let argument = arguments.get(position)?;
+            crate::analysis::value_resolution::argument_names_constant(argument, &constant.name)
+                .then(|| (call.line, call.text.clone()))
+        })
+        .collect()
+}
+
+pub(in crate::analysis) fn literal_operand_value(operand: &str) -> Option<String> {
     scalar_values(operand).into_iter().next()
 }
 
@@ -1305,6 +1806,83 @@ fn list_or_unknown(values: &[String]) -> String {
     }
 }
 
+/// The values a related test feeds into the changed owner's inputs:
+/// arguments of a direct owner call (literal or let-bound, per
+/// [`owner_argument_values`]), table-row cells, and builder-method
+/// arguments. Assertion arguments are oracle values (the expected side of
+/// `assert_eq!(other(x), 2000)`), not inputs, and are excluded, as are the
+/// derived `left == right` boundary facts. A `parameter = value` fact
+/// yields its bare value.
+pub(in crate::analysis) fn owner_input_values(activation: &ActivationEvidence) -> Vec<&str> {
+    activation
+        .observed_values
+        .iter()
+        .filter(|fact| {
+            matches!(
+                fact.context,
+                ValueContext::FunctionArgument
+                    | ValueContext::TableRow
+                    | ValueContext::BuilderMethod
+            ) && !fact.value.contains(" == ")
+        })
+        .map(|fact| {
+            fact.value
+                .split_once(" = ")
+                .filter(|(parameter, _)| is_plain_identifier(parameter))
+                .map_or(fact.value.as_str(), |(_, value)| value)
+        })
+        .collect()
+}
+
+/// The scalar values one owner-call argument carries. A literal argument
+/// yields its literals; a bare identifier yields the scalar it is bound to
+/// by a `let IDENT = LITERAL;` in the same test body, read through the
+/// shared value-extraction authority
+/// ([`crate::analysis::value_resolution::test_let_bound_literal`]) rather
+/// than a second let scanner. Only a bound number or boolean counts: the
+/// shared scan strips string contents, so a string binding is not an exact
+/// value here. An identifier with no `let` binding may be an rstest
+/// `#[case]` parameter, which yields one value per case row
+/// ([`crate::analysis::value_resolution::test_case_bound_literals`]).
+/// Anything else (a computed expression, a non-literal initializer)
+/// yields nothing.
+pub(in crate::analysis) fn owner_argument_values(
+    test: &TestSummary,
+    argument: &str,
+) -> Vec<String> {
+    let direct = scalar_values(argument);
+    if !direct.is_empty() {
+        return direct;
+    }
+    let name = argument.trim();
+    if !is_plain_identifier(name) {
+        return Vec::new();
+    }
+    let let_bound: Vec<String> =
+        crate::analysis::value_resolution::test_let_bound_literal(&test.body, name)
+            .filter(|value| !value.starts_with(['"', '\'']))
+            .filter(|value| scalar_values(value).as_slice() == std::slice::from_ref(value))
+            .into_iter()
+            .collect();
+    if !let_bound.is_empty() {
+        return let_bound;
+    }
+    // An rstest `#[case]` parameter carries one value per case row.
+    crate::analysis::value_resolution::test_case_bound_literals(test, name)
+        .into_iter()
+        .filter(|value| !value.starts_with(['"', '\'']))
+        .filter(|value| scalar_values(value).as_slice() == std::slice::from_ref(value))
+        .collect()
+}
+
+fn is_plain_identifier(text: &str) -> bool {
+    !text.is_empty()
+        && !text.starts_with(|ch: char| ch.is_ascii_digit())
+        && text
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
 pub(in crate::analysis) fn has_observed_boundary_equality(activation: &ActivationEvidence) -> bool {
     activation
         .observed_values
@@ -1328,7 +1906,7 @@ fn sort_value_facts(facts: &mut Vec<ValueFact>) {
     });
 }
 
-fn call_arguments(text: &str, name: &str) -> Option<Vec<String>> {
+pub(in crate::analysis) fn call_arguments(text: &str, name: &str) -> Option<Vec<String>> {
     let needle = format!("{name}(");
     let start = text.find(&needle)? + name.len();
     let contents = delimited_contents_at(text, start)?;
@@ -1460,6 +2038,17 @@ fn scalar_values(text: &str) -> Vec<String> {
                 }
             }
         }
+        // Digits inside an identifier or a type suffix (`x1`, the `32` of
+        // `99u32`, the `64` of `1.5f64`) are not a separate value: read as
+        // one they sort ahead of the real literal and become its boundary.
+        let in_identifier = idx
+            .checked_sub(1)
+            .and_then(|prev| chars.get(prev))
+            .is_some_and(|(_, prev_ch)| prev_ch.is_ascii_alphanumeric() || *prev_ch == '_');
+        if ch.is_ascii_digit() && in_identifier {
+            idx += 1;
+            continue;
+        }
         if ch.is_ascii_digit()
             || (ch == '-'
                 && chars
@@ -1468,9 +2057,19 @@ fn scalar_values(text: &str) -> Vec<String> {
         {
             let mut end = byte_idx + ch.len_utf8();
             let mut cursor = idx + 1;
+            let mut seen_fraction = false;
             while cursor < chars.len() {
                 let (next_byte, next_ch) = chars[cursor];
-                if next_ch.is_ascii_digit() || next_ch == '_' {
+                // A fraction (`1.5`) belongs to the literal: stopping at
+                // the `.` would read `amount > 1.5` as `amount > 1` (#4271).
+                // A `.` not followed by a digit is a range or method call.
+                let fraction = next_ch == '.'
+                    && !seen_fraction
+                    && chars
+                        .get(cursor + 1)
+                        .is_some_and(|(_, after)| after.is_ascii_digit());
+                if next_ch.is_ascii_digit() || next_ch == '_' || fraction {
+                    seen_fraction |= fraction;
                     end = next_byte + next_ch.len_utf8();
                     cursor += 1;
                 } else {
@@ -1506,6 +2105,56 @@ fn looks_like_builder_method(line: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn constructed_field_name_reads_plain_and_shorthand_initializers() {
+        assert_eq!(constructed_field_name("retries: 1,"), Some("retries"));
+        assert_eq!(constructed_field_name("retries,"), Some("retries"));
+        assert_eq!(
+            constructed_field_name("ptr: NonNull::from(Box::leak(ptr))"),
+            Some("ptr")
+        );
+        assert_eq!(constructed_field_name("Self::default()"), None);
+        assert_eq!(constructed_field_name("a + b"), None);
+    }
+
+    #[test]
+    fn field_reads_count_only_on_the_owner_result() {
+        let body =
+            "fn t() {\n    let cfg = default_config();\n    let fallback = Config::fallback();\n";
+        let reads = |assertion: &str| {
+            reads_owner_result_field(body, assertion, ".retries", "default_config")
+        };
+        assert!(reads("assert_eq!(cfg.retries, 3);"));
+        assert!(reads("assert_eq!(default_config().retries, 3);"));
+        // #4428 review: an unrelated value's same-named field is not the
+        // constructed field.
+        assert!(!reads("assert_eq!(fallback.retries, 3);"));
+        assert!(!reads("assert_eq!(cfg.retries_left, 3);"));
+        assert!(!reads("assert_eq!(Config::fallback().retries, 3);"));
+        // #4428 review: the read must sit on the owner call itself, not on
+        // another call in the same assertion.
+        assert!(!reads(
+            "assert_eq!(other().retries, default_config().timeout_secs);"
+        ));
+        assert!(!reads("assert_eq!(my_default_config().retries, 3);"));
+        assert!(reads(
+            "assert_eq!(Config::default_config(\"x\").retries, 3);"
+        ));
+        assert!(reads("assert_eq!(default_config(load(1)).retries, 3);"));
+        assert!(!reads_owner_result_field(
+            "let e = make();",
+            "assert!(e.downcast_ref::<Box<dyn E>>().is_some());",
+            ".ptr",
+            "make"
+        ));
+        assert!(reads_owner_result_field(
+            "let mut cfg: Config = default_config();",
+            "assert_eq!(cfg.retries, 3);",
+            ".retries",
+            "default_config"
+        ));
+    }
+
     use super::*;
     use crate::analysis::facts::FunctionSourceRole;
     use crate::analysis::rust_index::{CallFact, OracleFact};
@@ -1633,21 +2282,24 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 9,
-            body: "pub fn split_after(input: &str, delim: char) -> &str {\n    let end = input.rfind(delim).map_or(1, |idx| idx);\n    let start = delim.len_utf8();\n    if end == start {\n        &input[..end]\n    } else {\n        input\n    }\n}".to_string(),
+            body: "pub fn split_after(input: &str, delim: char) -> &str {\n    let end = input.rfind(delim).map_or(1, |idx| idx);\n    let start = delim.len_utf8();\n    if end == start {\n        &input[..end]\n    } else {\n        input\n    }\n}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let test = TestSummary {
             name: "absent_delimiter_boundary".to_string(),
             file: PathBuf::from("tests/split.rs"),
             start_line: 4,
             end_line: 6,
-            body: "split_after(\"ab\", 'x');".to_string(),
+            body: "split_after(\"ab\", 'x');".into(),
             calls: vec![CallFact {
                 name: "split_after".to_string(),
                 line: 5,
@@ -1706,7 +2358,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 11,
-            body: "pub fn quote_body(rest: &str, open: char, close: char) -> Option<&str> {\n    let start = open.len_utf8();\n    let end = rest.rfind(close)?;\n    if end == start {\n        Some(\"\")\n    } else if end > start {\n        Some(&rest[start..end])\n    } else {\n        None\n    }\n}".to_string(),
+            body: "pub fn quote_body(rest: &str, open: char, close: char) -> Option<&str> {\n    let start = open.len_utf8();\n    let end = rest.rfind(close)?;\n    if end == start {\n        Some(\"\")\n    } else if end > start {\n        Some(&rest[start..end])\n    } else {\n        None\n    }\n}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -1714,13 +2366,16 @@ mod tests {
             attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_attrs: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let test = TestSummary {
             name: "empty_body_equality_case".to_string(),
             file: PathBuf::from("tests/q.rs"),
             start_line: 4,
             end_line: 6,
-            body: "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));".to_string(),
+            body: "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));".into(),
             calls: vec![CallFact {
                 name: "quote_body".to_string(),
                 line: 5,
@@ -1828,7 +2483,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 7,
-            body: "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}".to_string(),
+            body: "pub fn discounted_total(amount: i32, discount_threshold: i32) -> i32 {\n    if amount >= discount_threshold {\n        amount - 10\n    } else {\n        amount\n    }\n}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -1836,13 +2491,16 @@ mod tests {
             attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            impl_attrs: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let above = TestSummary {
             name: "above_threshold".to_string(),
             file: PathBuf::from("tests/d.rs"),
             start_line: 4,
             end_line: 6,
-            body: "assert_eq!(discounted_total(150, 100), 140);".to_string(),
+            body: "assert_eq!(discounted_total(150, 100), 140);".into(),
             calls: vec![CallFact {
                 name: "discounted_total".to_string(),
                 line: 5,
@@ -1859,7 +2517,7 @@ mod tests {
             file: PathBuf::from("tests/d.rs"),
             start_line: 8,
             end_line: 10,
-            body: "assert_eq!(discounted_total(50, 100), 50);".to_string(),
+            body: "assert_eq!(discounted_total(50, 100), 50);".into(),
             calls: vec![CallFact {
                 name: "discounted_total".to_string(),
                 line: 9,
@@ -2058,6 +2716,164 @@ mod tests {
         );
     }
 
+    fn test_with_body_call(body: &str, call_line: usize, call: &str) -> TestSummary {
+        TestSummary {
+            name: "score_boundary".to_string(),
+            file: PathBuf::from("tests/score.rs"),
+            start_line: 10,
+            end_line: 10 + body.lines().count(),
+            body: body.into(),
+            calls: vec![CallFact {
+                name: "score".to_string(),
+                line: call_line,
+                text: call.to_string(),
+            }],
+            assertions: Vec::new(),
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        }
+    }
+
+    fn boundary_activation(test: &TestSummary) -> ActivationEvidence {
+        let owner = function("pub fn score(amount: i32) -> bool {\n    amount > 10\n}");
+        activation_evidence(
+            &probe(ProbeFamily::Predicate, "amount > 10"),
+            Some(&owner),
+            &[test],
+            &[],
+            None,
+            &crate::analysis::rust_index::RustIndex::default(),
+            false,
+        )
+    }
+
+    #[test]
+    fn let_bound_owner_argument_is_an_owner_input() {
+        // `let amount = 10; score(amount)`: the let-bound literal flows
+        // into the owner, so it is an input row and reaches the boundary.
+        let test = test_with_body_call(
+            "fn score_boundary() {\n    let amount = 10;\n    assert!(score(amount));\n}",
+            12,
+            "assert!(score(amount));",
+        );
+        let activation = boundary_activation(&test);
+
+        assert!(has_observed_boundary_equality(&activation));
+        assert!(activation.missing_discriminators.is_empty());
+        assert_eq!(owner_input_values(&activation), vec!["10"]);
+    }
+
+    #[test]
+    fn owner_call_outside_the_test_span_binds_no_test_value() {
+        // A credited helper's `score(amount)` (#4574) sits on the helper's
+        // line; the test's `let amount = 10` binds a different variable.
+        let mut test = test_with_body_call(
+            "fn score_boundary() {\n    let amount = 10;\n    check(amount + 5);\n}",
+            3,
+            "score(amount)",
+        );
+        test.calls[0].line = 3;
+        let activation = boundary_activation(&test);
+
+        assert!(owner_input_values(&activation).is_empty());
+        assert!(!has_observed_boundary_equality(&activation));
+    }
+
+    #[test]
+    fn rstest_case_parameter_owner_argument_is_an_owner_input() {
+        // `#[case(10, false)] fn t(#[case] amount: i32, ..) { score(amount) }`:
+        // each case row's value flows into the owner (#4601).
+        let mut test = test_with_body_call(
+            "fn score_boundary(#[case] amount: i32, #[case] expected: bool) {\n    assert_eq!(score(amount), expected);\n}",
+            11,
+            "assert_eq!(score(amount), expected);",
+        );
+        test.attrs = vec![
+            "#[rstest]".to_string(),
+            "#[case(10, false)]".to_string(),
+            "#[case(11, true)]".to_string(),
+        ];
+        let activation = boundary_activation(&test);
+
+        assert_eq!(owner_input_values(&activation), vec!["10", "11"]);
+        assert!(has_observed_boundary_equality(&activation));
+    }
+
+    #[test]
+    fn rstest_case_parameter_fails_closed_on_mut_or_let_rebinding() {
+        for body in [
+            "fn score_boundary(#[case] mut amount: i32) {\n    amount += 1;\n    assert!(score(amount));\n}",
+            "fn score_boundary(#[case] amount: i32) {\n    let amount = amount + 1;\n    assert!(score(amount));\n}",
+            "fn score_boundary(#[case] amount: i32) {\n    let (amount, _) = (amount + 5, 0);\n    assert!(score(amount));\n}",
+            "fn score_boundary(#[case] amount: i32) {\n    for amount in [amount + 5] {\n        assert!(score(amount));\n    }\n}",
+            "fn score_boundary(#[case] amount: i32) {\n    if let Some(amount) = Some(amount + 5) {\n        assert!(score(amount));\n    }\n}",
+            "fn score_boundary(#[case] amount: i32) {\n    let run = |amount: i32| score(amount);\n    assert!(run(amount + 5));\n    assert!(score(amount));\n}",
+            "fn score_boundary(#[case] amount: i32) {\n    fn far(amount: i32) -> bool { score(amount) }\n    assert!(far(amount + 100));\n}",
+        ] {
+            let mut test = test_with_body_call(body, 12, "assert!(score(amount));");
+            test.attrs = vec!["#[rstest]".to_string(), "#[case(10)]".to_string()];
+            if body.contains("fn far") {
+                test.nested_fn_names = vec!["far".to_string()];
+            }
+            let activation = boundary_activation(&test);
+
+            assert!(
+                owner_input_values(&activation).is_empty(),
+                "`{body}` must not bind a case value to the owner"
+            );
+        }
+    }
+
+    #[test]
+    fn let_bound_owner_argument_fails_closed_on_mut_shadowed_or_computed_bindings() {
+        for body in [
+            "fn score_boundary() {\n    let mut amount = 10;\n    assert!(score(amount));\n}",
+            "fn score_boundary() {\n    let amount = 10;\n    let amount = amount + 1;\n    assert!(score(amount));\n}",
+            "fn score_boundary() {\n    let amount = base() + 10;\n    assert!(score(amount));\n}",
+            "fn score_boundary() {\n    let amount = \"10\";\n    assert!(score(amount));\n}",
+        ] {
+            let call_line = 10
+                + body
+                    .lines()
+                    .position(|line| line.contains("score(amount)"))
+                    .unwrap_or_default();
+            let test = test_with_body_call(body, call_line, "assert!(score(amount));");
+            let activation = boundary_activation(&test);
+
+            assert!(
+                !has_observed_boundary_equality(&activation),
+                "`{body}` must not bind an exact owner input"
+            );
+            assert!(
+                owner_input_values(&activation).is_empty(),
+                "`{body}` must not yield an owner input; got {:?}",
+                activation.observed_values
+            );
+        }
+    }
+
+    #[test]
+    fn owner_input_values_exclude_assertion_expected_values() {
+        // The owner call's argument is an input; the expected value of an
+        // assertion on another function is an oracle value.
+        let mut test = test_with_call("score_boundary", "assert!(score(5));");
+        test.body = "assert!(score(5));\nassert_eq!(tax_bps(\"EU\"), 10);".into();
+        test.assertions = vec![oracle_fact(
+            "assert_eq!(tax_bps(\"EU\"), 10);",
+            OracleKind::ExactValue,
+        )];
+        let activation = boundary_activation(&test);
+
+        assert_eq!(owner_input_values(&activation), vec!["5"]);
+        assert!(
+            activation.observed_values.iter().any(|fact| {
+                fact.value == "10" && fact.context == ValueContext::AssertionArgument
+            })
+        );
+    }
+
     #[test]
     fn activation_evidence_ignores_commented_match_wrapper_pattern() {
         let owner = function(
@@ -2145,6 +2961,144 @@ mod tests {
                 .reason
                 .contains("observed amount values: unknown")
         );
+    }
+
+    fn constant_boundary_activation(
+        constant_source: &str,
+        calls: &[&str],
+    ) -> (ActivationEvidence, Vec<TestSummary>) {
+        constant_boundary_activation_with_test_file(constant_source, "use app::score;", calls)
+    }
+
+    fn constant_boundary_activation_with_test_file(
+        constant_source: &str,
+        test_file_source: &str,
+        calls: &[&str],
+    ) -> (ActivationEvidence, Vec<TestSummary>) {
+        let owner = function("pub fn score(amount: i32) -> bool {\n    amount > LIMIT\n}");
+        let mut index = crate::analysis::rust_index::RustIndex::default();
+        index.insert_file_only(
+            PathBuf::from("src/lib.rs"),
+            crate::analysis::facts::FileFacts {
+                path: PathBuf::from("src/lib.rs"),
+                source: format!("{constant_source}\n{}", owner.body).into(),
+                ..Default::default()
+            },
+        );
+        index.insert_file_only(
+            PathBuf::from("tests/score.rs"),
+            crate::analysis::facts::FileFacts {
+                path: PathBuf::from("tests/score.rs"),
+                source: test_file_source.into(),
+                ..Default::default()
+            },
+        );
+        let tests = calls
+            .iter()
+            .map(|call| test_with_call("score_boundary", call))
+            .collect::<Vec<_>>();
+        let related = tests.iter().collect::<Vec<_>>();
+        let activation = activation_evidence(
+            &probe(ProbeFamily::Predicate, "amount > LIMIT"),
+            Some(&owner),
+            &related,
+            &[],
+            None,
+            &index,
+            false,
+        );
+        (activation, tests)
+    }
+
+    #[test]
+    fn same_file_constant_boundary_is_observed_at_its_literal_value() {
+        let (activation, _) =
+            constant_boundary_activation("const LIMIT: i32 = 10;", &["score(5);", "score(10);"]);
+        assert!(has_observed_boundary_equality(&activation));
+        assert!(activation.missing_discriminators.is_empty());
+
+        let (off_boundary, _) =
+            constant_boundary_activation("const LIMIT: i32 = 10;", &["score(5);", "score(11);"]);
+        assert!(!has_observed_boundary_equality(&off_boundary));
+        assert_eq!(off_boundary.missing_discriminators.len(), 1);
+        assert_eq!(
+            off_boundary.missing_discriminators[0].value,
+            "amount == LIMIT"
+        );
+        assert!(
+            off_boundary.missing_discriminators[0]
+                .reason
+                .ends_with("target LIMIT value: 10"),
+            "{:?}",
+            off_boundary.missing_discriminators
+        );
+    }
+
+    #[test]
+    fn argument_naming_the_constant_is_the_boundary_by_identity() {
+        let (activation, _) = constant_boundary_activation(
+            "const LIMIT: i32 = 5 * 2;",
+            &["score(5);", "score(crate::LIMIT);"],
+        );
+        assert!(has_observed_boundary_equality(&activation));
+        assert!(activation.missing_discriminators.is_empty());
+
+        // Opaque value and no argument naming it: the missing boundary is
+        // honest about what ripr cannot see.
+        let (opaque, _) =
+            constant_boundary_activation("const LIMIT: i32 = 5 * 2;", &["score(5);", "score(10);"]);
+        assert!(!has_observed_boundary_equality(&opaque));
+        assert_eq!(opaque.missing_discriminators.len(), 1);
+        assert!(
+            opaque.missing_discriminators[0]
+                .reason
+                .contains("ripr cannot see the value of constant LIMIT statically"),
+            "{:?}",
+            opaque.missing_discriminators
+        );
+    }
+
+    #[test]
+    fn argument_naming_a_test_file_constant_of_the_same_name_is_not_the_boundary() {
+        // `tests/score.rs` declares its own `LIMIT = 3`; `score(LIMIT)` there
+        // passes 3, not the owner's boundary, so identity must not credit it.
+        let (shadowed, _) = constant_boundary_activation_with_test_file(
+            "const LIMIT: i32 = 5 * 2;",
+            "use app::score;\nconst LIMIT: i32 = 3;\n",
+            &["score(5);", "score(LIMIT);"],
+        );
+        assert!(!has_observed_boundary_equality(&shadowed));
+        assert_eq!(shadowed.missing_discriminators.len(), 1);
+
+        // The same call from a test file that only imports the owner's
+        // constant is still the boundary by identity.
+        let (imported, _) = constant_boundary_activation_with_test_file(
+            "const LIMIT: i32 = 5 * 2;",
+            "use app::{score, LIMIT};\n",
+            &["score(5);", "score(LIMIT);"],
+        );
+        assert!(has_observed_boundary_equality(&imported));
+        assert!(imported.missing_discriminators.is_empty());
+    }
+
+    #[test]
+    fn constant_not_pinned_to_the_owner_file_fails_closed() {
+        for constant_source in [
+            "use crate::config::LIMIT;",
+            "mod eu { pub const LIMIT: i32 = 10; }\nmod us { pub const LIMIT: i32 = 20; }",
+        ] {
+            let (activation, _) =
+                constant_boundary_activation(constant_source, &["score(5);", "score(LIMIT);"]);
+            assert!(
+                !has_observed_boundary_equality(&activation),
+                "`{constant_source}` must not credit the boundary"
+            );
+            assert!(
+                activation.missing_discriminators.is_empty(),
+                "`{constant_source}` must not name an unconfirmable repair: {:?}",
+                activation.missing_discriminators
+            );
+        }
     }
 
     #[test]
@@ -2258,7 +3212,7 @@ mod tests {
             body: r#"let rows = [(99, 100), (100, 100)];
 let input = Request::builder().amount(100).token("abc").build();
 assert_eq!(input.amount, 100);"#
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             assertions: vec![oracle_fact(
                 "assert_eq!(input.amount, 100);",
@@ -2304,7 +3258,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/value.rs"),
             start_line: 10,
             end_line: 12,
-            body: "other(AuthError::Ignored);\nscore(AuthError::RevokedToken);".to_string(),
+            body: "other(AuthError::Ignored);\nscore(AuthError::RevokedToken);".into(),
             calls: vec![
                 CallFact {
                     line: 11,
@@ -2337,6 +3291,383 @@ assert_eq!(input.amount, 100);"#
                 .any(|fact| fact.value == "AuthError::RevokedToken")
         );
         assert!(!facts.iter().any(|fact| fact.value == "AuthError::Ignored"));
+    }
+
+    /// The run-scoped memo answers every (test, owner) query exactly as a
+    /// fresh `value_facts_for_test` does, on the first (computing) query and
+    /// every later (cached) one; owners that differ only in their parameter
+    /// names get different facts, and a test or index the memo is not bound
+    /// to is computed fresh without being cached.
+    #[test]
+    fn test_value_facts_memo_matches_fresh_facts_for_every_test_and_owner() -> Result<(), String> {
+        let call = |line: usize, text: &str| CallFact {
+            line,
+            name: "score".to_string(),
+            text: text.to_string(),
+        };
+        let test = |name: &str, body: &str, calls: Vec<CallFact>| TestSummary {
+            name: name.to_string(),
+            file: PathBuf::from("tests/value.rs"),
+            start_line: 10,
+            end_line: 14,
+            body: body.into(),
+            calls,
+            assertions: vec![oracle_fact(
+                "assert_eq!(total, 100);",
+                OracleKind::ExactValue,
+            )],
+            literals: Vec::new(),
+            attrs: Vec::new(),
+            nested_fn_names: Vec::new(),
+            let_bindings: Vec::new(),
+        };
+        let index = crate::analysis::rust_index::RustIndex::from_owned(
+            crate::analysis::facts::OwnedRustIndex {
+                tests: vec![
+                    test(
+                        "enum_call",
+                        "score(AuthError::RevokedToken);",
+                        vec![call(11, "score(AuthError::RevokedToken);")],
+                    ),
+                    test(
+                        "literal_call",
+                        "let rows = [(99, 100)];\nscore(7);",
+                        vec![call(12, "score(7);")],
+                    ),
+                ],
+                functions: vec![
+                    function("pub fn score(error: AuthError) -> u32 {\n    0\n}"),
+                    function("pub fn score(code: AuthError) -> u32 {\n    0\n}"),
+                ],
+                ..Default::default()
+            },
+        );
+        let memo = TestValueFacts::default();
+        let owners = [
+            None,
+            Some(index.functions().at(0)),
+            Some(index.functions().at(1)),
+        ];
+        for round in 0..2 {
+            for test in &index.tests() {
+                for owner in owners {
+                    assert_eq!(
+                        memo.facts_for(&index, test, owner),
+                        value_facts_for_test(test, owner),
+                        "round {round}: {} / {:?}",
+                        test.name,
+                        owner.map(|owner| owner.body.as_str())
+                    );
+                }
+            }
+        }
+        assert_ne!(
+            memo.facts_for(&index, index.tests().at(1), owners[1]),
+            memo.facts_for(&index, index.tests().at(1), owners[2]),
+            "the owner's parameter names are part of the facts"
+        );
+        let cached = memo.by_slot.borrow().len();
+        assert_eq!(cached, index.tests().len() * owners.len());
+
+        let detached = index.tests()[0].clone();
+        assert_eq!(
+            memo.facts_for(&index, &detached, owners[1]),
+            value_facts_for_test(&detached, owners[1])
+        );
+        let other_index = index.clone();
+        assert_eq!(
+            memo.facts_for(&other_index, other_index.tests().at(0), None),
+            value_facts_for_test(other_index.tests().at(0), None)
+        );
+        assert_eq!(memo.by_slot.borrow().len(), cached);
+
+        // Membership reordering can leave the arena allocations at the same
+        // addresses. A surviving memo must compute uncached after the revision
+        // changes rather than reinterpret its old flat ordinal keys.
+        let mut reordered = index;
+        let before = reordered.storage_identity();
+        reordered.reverse_flat_membership()?;
+        let after = reordered.storage_identity();
+        assert_eq!((before.0, before.1), (after.0, after.1));
+        assert_ne!(before.2, after.2);
+        for test in reordered.tests() {
+            for owner in reordered.functions() {
+                assert_eq!(
+                    memo.facts_for(&reordered, test, Some(owner)),
+                    value_facts_for_test(test, Some(owner))
+                );
+            }
+        }
+        assert_eq!(memo.by_slot.borrow().len(), cached);
+        Ok(())
+    }
+
+    // #4228: a reversed literal (`100 < amount`) and a local boundary
+    // (`let limit = 100;`) close at the boundary input and stay open one
+    // step off it. An invisible local names no repair; an unsupported
+    // computed local retains the public typed limitation fact without credit.
+    #[test]
+    fn reversed_and_local_boundaries_close_only_at_the_boundary_value() {
+        enum Expect {
+            Closed,
+            Missing(&'static str),
+            NoRepair,
+            Unresolved(&'static str),
+        }
+        let cases = [
+            (
+                "    100 < amount",
+                "100 < amount",
+                2,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    100 < amount",
+                "100 < amount",
+                2,
+                "score(101);",
+                Expect::Missing("amount == 100"),
+            ),
+            (
+                "    100 <= amount",
+                "100 <= amount",
+                2,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    100 <= amount",
+                "100 <= amount",
+                2,
+                "score(99);",
+                Expect::Missing("amount == 100"),
+            ),
+            (
+                "    -100 < amount",
+                "-100 < amount",
+                2,
+                "score(-100);",
+                Expect::Closed,
+            ),
+            (
+                "    -100 < amount",
+                "-100 < amount",
+                2,
+                "score(-99);",
+                Expect::Missing("amount == -100"),
+            ),
+            (
+                "    let limit = 100;\n    amount > limit",
+                "amount > limit",
+                3,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    let limit = 100;\n    amount > limit",
+                "amount > limit",
+                3,
+                "score(101);",
+                Expect::Missing("amount == limit"),
+            ),
+            (
+                "    let limit = 100;\n    amount >= limit",
+                "amount >= limit",
+                3,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    let limit = 100;\n    limit < amount",
+                "limit < amount",
+                3,
+                "score(100);",
+                Expect::Closed,
+            ),
+            (
+                "    let limit = 100;\n    limit < amount",
+                "limit < amount",
+                3,
+                "score(101);",
+                Expect::Missing("limit == amount"),
+            ),
+            // #4271: a decimal boundary and a decimal test argument are
+            // read whole, so `1` does not hit the boundary `1.5`.
+            (
+                "    amount > 1.5",
+                "amount > 1.5",
+                2,
+                "score(1.5);",
+                Expect::Closed,
+            ),
+            (
+                "    amount > 1.5",
+                "amount > 1.5",
+                2,
+                "score(1.0);",
+                Expect::Missing("amount == 1.5"),
+            ),
+            (
+                "    1.5 < amount",
+                "1.5 < amount",
+                2,
+                "score(1.2);",
+                Expect::Missing("amount == 1.5"),
+            ),
+            (
+                "    amount > 1.5f64",
+                "amount > 1.5f64",
+                2,
+                "score(1.0);",
+                Expect::Missing("amount == 1.5f64"),
+            ),
+            // A type suffix is not a second literal: `9.5f64` is 9.5, not
+            // 64, and `99u32` is 99, not 32.
+            (
+                "    amount > 9.5f64",
+                "amount > 9.5f64",
+                2,
+                "score(64.0);",
+                Expect::Missing("amount == 9.5f64"),
+            ),
+            (
+                "    amount > 99u32",
+                "amount > 99u32",
+                2,
+                "score(32);",
+                Expect::Missing("amount == 99u32"),
+            ),
+            (
+                "    amount > 99u32",
+                "amount > 99u32",
+                2,
+                "score(99);",
+                Expect::Closed,
+            ),
+            // The evaluator cannot fold these initializers, so a test at
+            // 100 could never close them: no repair is named.
+            (
+                "    let limit = 100; amount > limit",
+                "amount > limit",
+                2,
+                "score(100);",
+                Expect::NoRepair,
+            ),
+            (
+                "    let limit = amount / 2 + 50;\n    amount > limit",
+                "amount > limit",
+                3,
+                "score(100);",
+                Expect::Unresolved("amount == limit"),
+            ),
+        ];
+        for (body, predicate, line, call, expect) in cases {
+            // Decimal cases compare a real `f64` input.
+            let ty = if predicate.contains('.') {
+                "f64"
+            } else {
+                "i32"
+            };
+            let owner = function(&format!(
+                "pub fn score(amount: {ty}) -> bool {{\n{body}\n}}"
+            ));
+            let test = test_with_call("score_boundary", call);
+            let mut probe = probe(ProbeFamily::Predicate, predicate);
+            probe.location = SourceLocation::new("src/lib.rs", line, 5);
+            let activation = activation_evidence(
+                &probe,
+                Some(&owner),
+                &[&test],
+                &[],
+                None,
+                &crate::analysis::rust_index::RustIndex::default(),
+                false,
+            );
+            let missing: Vec<&str> = activation
+                .missing_discriminators
+                .iter()
+                .map(|fact| fact.value.as_str())
+                .collect();
+            match expect {
+                Expect::Closed => assert!(
+                    has_observed_boundary_equality(&activation) && missing.is_empty(),
+                    "`{predicate}` with {call} must close; missing {missing:?}"
+                ),
+                Expect::Missing(value) => assert!(
+                    !has_observed_boundary_equality(&activation) && missing == [value],
+                    "`{predicate}` with {call} must name {value}; missing {missing:?}"
+                ),
+                Expect::Unresolved(value) => assert!(
+                    !has_observed_boundary_equality(&activation)
+                        && missing == [value]
+                        && activation.missing_discriminators.iter().all(|fact| {
+                            fact.reason.contains(BOUNDARY_OPERAND_UNRESOLVED_MARKER)
+                        }),
+                    "`{predicate}` ({body}) with {call} must retain only its unresolved limitation; missing {missing:?}"
+                ),
+                Expect::NoRepair => assert!(
+                    !has_observed_boundary_equality(&activation) && missing.is_empty(),
+                    "`{predicate}` ({body}) with {call} must not credit or name a repair; missing {missing:?}"
+                ),
+            }
+        }
+    }
+
+    // #4270: a commented `match` alias does not bind `amount`; the live
+    // `let amount = 1;` does. `check` compares `threshold` against 1, the
+    // same contract grip holds (`test_grip_evidence` commented-alias
+    // tests): `raw_amount == threshold` never closes, `threshold == 1` does.
+    #[test]
+    fn commented_alias_leaves_the_local_boundary_in_charge() {
+        let bodies = [
+            "    // match raw_amount { Some(amount) => if amount >= threshold { amount - 10 } else { amount }, _ => 0 }\n    let amount = 1;\n    if amount >= threshold { amount - 10 } else { amount }",
+            "    let _note = 0; // match raw_amount { Some(amount) => if amount >= threshold { amount - 10 } else { amount }, _ => 0 }\n    let amount = 1;\n    if amount >= threshold { amount - 10 } else { amount }",
+            "    let _seen = match raw_amount { _ => false };\n    // Some(amount)\n    let amount = 1;\n    if amount >= threshold { amount - 10 } else { amount }",
+            "    let _seen = match raw_amount { _ => false }; // Some(amount)\n    let amount = 1;\n    if amount >= threshold { amount - 10 } else { amount }",
+        ];
+        for body in bodies {
+            let mut owner = function(&format!(
+                "pub fn score(raw_amount: Option<i32>, threshold: i32) -> i32 {{\n{body}\n}}"
+            ));
+            owner.end_line = owner.body.lines().count();
+            // The predicate is the body's last line, after the signature.
+            let line = 1 + body.lines().count();
+            let mut probe = probe(ProbeFamily::Predicate, "amount >= threshold");
+            probe.location = SourceLocation::new("src/lib.rs", line, 5);
+            for (call, closes) in [
+                ("score(Some(50), 50);", false),
+                ("score(Some(50), 1);", true),
+            ] {
+                let test = test_with_call("score_boundary", call);
+                let activation = activation_evidence(
+                    &probe,
+                    Some(&owner),
+                    &[&test],
+                    &[],
+                    None,
+                    &crate::analysis::rust_index::RustIndex::default(),
+                    false,
+                );
+                let missing: Vec<&str> = activation
+                    .missing_discriminators
+                    .iter()
+                    .map(|fact| fact.value.as_str())
+                    .collect();
+                if closes {
+                    assert!(
+                        has_observed_boundary_equality(&activation) && missing.is_empty(),
+                        "{call} hits the local boundary 1 ({body:?}); missing {missing:?}"
+                    );
+                } else {
+                    assert!(
+                        !has_observed_boundary_equality(&activation)
+                            && missing == ["amount == threshold"],
+                        "{call} must leave the local boundary open ({body:?}); missing {missing:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
@@ -2374,7 +3705,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/value.rs"),
             start_line: 10,
             end_line: 12,
-            body: "other(1);\nscore(2);".to_string(),
+            body: "other(1);\nscore(2);".into(),
             calls: vec![
                 CallFact {
                     line: 11,
@@ -2447,6 +3778,30 @@ assert_eq!(input.amount, 100);"#
             scalar_values(r#""a\"b" -12"#),
             vec!["\"a\\\"b\"".to_string(), "-12".to_string()]
         );
+        // #4271: a fraction is part of the literal; a range or a method
+        // call on an integer is not.
+        assert_eq!(
+            scalar_values("f(1.5, -0.25, 1_000.5)"),
+            vec![
+                "-0.25".to_string(),
+                "1.5".to_string(),
+                "1_000.5".to_string()
+            ]
+        );
+        assert_eq!(
+            scalar_values("f(99u32, 9.5f64, x1, 100_u8)"),
+            vec!["100_".to_string(), "9.5".to_string(), "99".to_string()]
+        );
+        assert_eq!(
+            scalar_values("f(0..5, 2.max(3), 1.2.3)"),
+            vec![
+                "0".to_string(),
+                "1.2".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "5".to_string()
+            ]
+        );
 
         let mut facts = vec![
             value_fact(1, "score(1)", "1", ValueContext::FunctionArgument),
@@ -2480,14 +3835,17 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 3,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         }
     }
 
@@ -2497,7 +3855,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/score.rs"),
             start_line: 10,
             end_line: 12,
-            body: call.to_string(),
+            body: call.into(),
             calls: vec![CallFact {
                 name: "score".to_string(),
                 line: 11,
@@ -2517,7 +3875,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/score.rs"),
             start_line: 10,
             end_line: 12,
-            body: assertion.to_string(),
+            body: assertion.into(),
             calls: Vec::new(),
             assertions: vec![oracle_fact(assertion, kind)],
             literals: Vec::new(),
@@ -2559,7 +3917,7 @@ assert_eq!(input.amount, 100);"#
     fn guard_error_edge_names_mutable_guard_parameter() -> Result<(), String> {
         let mut owner = guard_owner();
         owner.body = "pub fn score(mut cancelled: bool) -> i32 {\n    if cancelled {\n        1\n    } else {\n        0\n    }\n}"
-            .to_string();
+            .into();
         let mut probe = probe(ProbeFamily::Predicate, "cancelled");
         probe.location = SourceLocation::new("src/lib.rs", 2, 5);
         let test = guard_test(
@@ -2594,7 +3952,7 @@ assert_eq!(input.amount, 100);"#
             file: PathBuf::from("tests/score.rs"),
             start_line: 10,
             end_line: 14,
-            body: body.to_string(),
+            body: body.into(),
             calls: vec![CallFact {
                 name: "score".to_string(),
                 line: 11,

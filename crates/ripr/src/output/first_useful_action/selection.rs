@@ -5,7 +5,7 @@ use super::{
     ActionInputs, FirstUsefulActionInput, FirstUsefulActionReport, ParsedSources,
     acknowledged_report, actionable_report, baseline_only_report, gap_record_report,
     missing_assistant_proof_report, no_actionable_report, read_error_report, receipt_report,
-    stale_report, suppressed_report, waived_report,
+    repair_start_report, stale_report, suppressed_report, waived_report,
 };
 
 pub(super) fn select_report(
@@ -28,6 +28,8 @@ pub(super) fn select_report(
         report
     } else if let Some(report) = gap_record_report(input, parsed, inputs, generated_at) {
         with_gap_verify_command_spec(report, parsed)
+    } else if let Some(report) = repair_start_report(input, parsed, inputs, generated_at) {
+        report
     } else if let Some(report) = missing_assistant_proof_report(input, parsed, inputs, generated_at)
     {
         report

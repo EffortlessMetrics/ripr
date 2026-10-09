@@ -59,6 +59,7 @@
         },
         "missing_discriminator": "amount == discount_threshold",
         "receipt_command": null,
+        "repair_command": null,
         "repair_target": null,
         "seam_id": "summary-seam",
         "test_intent": null,
@@ -128,6 +129,7 @@
         },
         "missing_discriminator": "amount == discount_threshold",
         "receipt_command": null,
+        "repair_command": null,
         "repair_target": null,
         "seam_id": "suppressed-seam",
         "test_intent": null,
@@ -170,6 +172,14 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "pr_guidance": {
+        "content_hash": "sha256:a32a26e5210468948278138ab5c89414ff4d35aa83da5f864daecf9aeb759797"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 1,

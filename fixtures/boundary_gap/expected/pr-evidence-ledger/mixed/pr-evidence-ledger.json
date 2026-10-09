@@ -43,6 +43,7 @@
     "baseline_resolved": 3,
     "baseline_still_present": 2,
     "blocking_candidates": 0,
+    "count_source": "baseline_delta",
     "new_policy_eligible": 1,
     "ripr_zero_state": "not_yet",
     "suppressed": 1,
@@ -87,7 +88,7 @@
   ],
   "tool": "ripr",
   "top_repair_route": {
-    "agent_command": "ripr agent start --root . --seam-id new --out target/ripr/workflow",
+    "agent_command": null,
     "canonical_gap_id": null,
     "language": null,
     "language_status": null,

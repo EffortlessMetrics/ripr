@@ -38,16 +38,28 @@ avoid the finding. The enclosing match cannot substitute for the arm.
 
 ## Evidence and qualification boundary
 
-Source carry of swarm `22160dddd` (ripr-swarm#3766) under ripr#1714. The
-donor's public-API negative reported `Exposed` instead of `WeaklyExposed`
-pre-repair (fourteen of fifteen integration cases passing, the comment
-negative failing); all fifteen pass post-repair. Source qualification
-re-witnesses that red/green pair in this tree rather than inheriting it.
+Historical source carry of swarm `22160dddd` (ripr-swarm#3766) under
+ripr#1714 retained the donor red/green pair: the public-API comment negative
+reported `Exposed` instead of `WeaklyExposed` before repair (fourteen of
+fifteen integration cases passed), and all fifteen were reported passing
+after repair. Those observations belong to their original donor/source
+trees. Source qualification must re-witness that pair against the accepted
+merged tree; this note does not infer a current passing run.
 
-This fixture's source and full diff were checked for exact application and
-reversal. Expected outputs (`check.json`, `human.txt`, `human-full.txt`)
-were generated after the production correction and reviewed: one
-`weakly_exposed` finding with `observation_unverified`, zero `exposed`.
-The `rust_match_arm_comment_literal_oracle` honesty-corpus case pins that
-non-promotion independent of the golden. No observed bad output is
-accepted as a golden.
+The equivalent public-API negative at test-only head
+`8dfd0cebd4a7d02207b0512721b768dc23f0647c` reported `Exposed` instead of
+`WeaklyExposed`; the aligned comment positive passed. The retained UB Review
+artifact is run `35271299866`, artifact `10519262903`, ZIP SHA-256
+`c06c5ba5a3112bc3aca725c78e7f1ee9309287411c2dba4d79ec38d6af94d2c2`.
+The corresponding fifteen-test integration target reported fourteen passes
+and one failure. The nested negative variant did not run past its earlier
+failed assertion; its outcome is not inferred.
+
+The retained parent fixture source and full diff were checked for exact
+application and reversal. Its historical expected outputs (`check.json`,
+`human.txt`, `human-full.txt`) were generated after the production correction
+and reviewed: one `weakly_exposed` finding with `observation_unverified`,
+zero `exposed`. Merged-producer regeneration and current qualification remain
+pending; these parent receipts do not establish a current passing run. The
+`rust_match_arm_comment_literal_oracle` honesty-corpus case independently
+pins non-promotion. No observed bad output is accepted as a golden.

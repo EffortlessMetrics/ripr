@@ -211,6 +211,7 @@ mod tests {
             flow_sinks: vec![],
             activation: ActivationEvidence::default(),
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![],
             recommended_next_step: None,
             language: None,
@@ -235,6 +236,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }
     }
 

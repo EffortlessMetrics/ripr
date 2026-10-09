@@ -1,0 +1,10 @@
+diff --git a/src/a.ts b/src/a.ts
+index 0000000..1111111 100644
+--- a/src/a.ts
++++ b/src/a.ts
+@@ -1,4 +1,4 @@
+ /** Changed owner: forwarded by the barrel but NOT imported by the test. */
+ export function applyDiscount(cents: number): number {
+-    return cents - 5;
++    return cents - 10;
+ }

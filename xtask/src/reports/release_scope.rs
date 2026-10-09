@@ -152,6 +152,10 @@ struct GitFacts {
     observed_candidate_parent_sha: Option<String>,
     execution_commit_is_present: bool,
     observed_execution_paths: Vec<String>,
+    /// Strict-decode or capture failure for the execution-path inventory.
+    /// `Some` forces a reconciliation reason: a corrupt inventory must
+    /// never read as an empty (matching) one.
+    execution_paths_error: Option<String>,
     preserved_paths_present: bool,
     execution_commit_parents: Vec<String>,
     missing_dependent_commits: Vec<String>,
@@ -215,6 +219,9 @@ fn build_report_with_facts(input: &ScopeInput, facts: GitFacts) -> Result<ScopeR
         ));
     }
 
+    if let Some(error) = facts.execution_paths_error.as_deref() {
+        reasons.push(format!("execution path inventory unreadable: {error}"));
+    }
     let expected_paths = sorted_unique(&input.execution_only_paths);
     let observed_paths = sorted_unique(&facts.observed_execution_paths);
     if has_duplicates(&input.execution_only_paths) {
@@ -340,16 +347,34 @@ fn collect_git_facts(input: &ScopeInput, root: &Path) -> GitFacts {
             &format!("{}^{{commit}}", input.candidate_parent_ref),
         ],
     );
-    let observed_execution_paths = git_output_lines(
-        root,
-        &[
-            "show",
-            "--format=",
-            "--name-only",
-            "--no-renames",
-            &input.execution_commit,
-        ],
-    );
+    // Raw NUL-delimited inventory (#4006): `-z` output is never C-quoted,
+    // so exotic names survive byte-exact; parsing rules come from the
+    // shared authority in `decode_execution_paths`, not from line splitting
+    // here. Capture and decode failures are recorded on the facts (not
+    // swallowed into an empty inventory) so the report reconciles instead
+    // of matching against a silently missing observation.
+    let owned = [
+        "show",
+        "--format=",
+        "--name-only",
+        "--no-renames",
+        "-z",
+        input.execution_commit.as_str(),
+    ]
+    .iter()
+    .map(|arg| (*arg).to_string())
+    .collect::<Vec<_>>();
+    let (observed_execution_paths, execution_paths_error) =
+        match crate::run::capture_process_output_in("git", &owned, Some(root), &[], &[], &[]) {
+            Err(error) => (
+                Vec::new(),
+                Some(format!("git show inventory: {}", error.message)),
+            ),
+            Ok(output) => match decode_execution_paths(&output) {
+                Ok(paths) => (paths, None),
+                Err(error) => (Vec::new(), Some(error)),
+            },
+        };
     let preserved_paths_present = input.preserved_paths.iter().all(|path| {
         git_succeeds(
             root,
@@ -372,10 +397,32 @@ fn collect_git_facts(input: &ScopeInput, root: &Path) -> GitFacts {
         observed_candidate_parent_sha,
         execution_commit_is_present,
         observed_execution_paths,
+        execution_paths_error,
         preserved_paths_present,
         execution_commit_parents,
         missing_dependent_commits,
     }
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8 or empty records fail loudly
+/// instead of collapsing through lossy conversion.
+fn decode_execution_paths(output: &[u8]) -> Result<Vec<String>, String> {
+    ripr::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("release-scope execution-path inventory: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "release-scope execution-path inventory: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
 }
 
 fn sorted_unique(values: &[String]) -> Vec<String> {
@@ -413,16 +460,6 @@ fn git_output(root: &Path, args: &[&str]) -> Option<String> {
         return None;
     }
     Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
-}
-
-fn git_output_lines(root: &Path, args: &[&str]) -> Vec<String> {
-    git_output(root, args)
-        .unwrap_or_default()
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect()
 }
 
 fn sha256_json(input: &ScopeInput) -> Result<String, String> {
@@ -496,9 +533,139 @@ mod tests {
             observed_candidate_parent_sha: Some(input.candidate_parent_sha.clone()),
             execution_commit_is_present: true,
             observed_execution_paths: input.execution_only_paths.clone(),
+            execution_paths_error: None,
             preserved_paths_present: true,
             execution_commit_parents: vec!["captured-parent".to_string()],
             missing_dependent_commits: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn strict_execution_path_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the
+        // release-scope decode boundary: non-UTF-8 records fail loudly
+        // instead of collapsing through lossy conversion.
+        let err = match decode_execution_paths(b"ok.txt\0\xffbad\0") {
+            Err(err) => err,
+            Ok(paths) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {paths:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unreadable_execution_inventory_reconciles_explicitly() -> Result<(), String> {
+        // A corrupt inventory must surface its own reconciliation reason,
+        // never read as an empty (matching) observation.
+        let input = fixture()?;
+        let mut facts = captured_facts(&input);
+        facts.execution_paths_error =
+            Some("release-scope execution-path inventory: path record 0 is empty".to_string());
+        let report = build_report_with_facts(&input, facts)?;
+        if report.status != "reconcile_required" {
+            return Err("unreadable execution inventory was accepted".to_string());
+        }
+        if !report
+            .reconciliation_reasons
+            .iter()
+            .any(|reason| reason.contains("execution path inventory unreadable"))
+        {
+            return Err(format!(
+                "missing explicit unreadable-inventory reason: {:?}",
+                report.reconciliation_reasons
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn execution_paths_decode_exotic_names_exact() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory (#4006): space and
+        // non-ASCII names must decode byte-exact; the old line parser kept
+        // git's C-quoted octal form. Asserts through the real
+        // `collect_git_facts` production path in a synthetic repository.
+        let repo = temp_repo("ripr-release-scope-names")?;
+        fixture_git(&repo, &["init", "--initial-branch=main"])?;
+        fixture_git(
+            &repo,
+            &["config", "user.email", "ripr-scope@example.invalid"],
+        )?;
+        fixture_git(&repo, &["config", "user.name", "RIPR Scope Test"])?;
+        write_repo_file(&repo, "sp ace.txt", "spaces\n")?;
+        write_repo_file(&repo, "uni-\u{e9}.txt", "unicode\n")?;
+        fixture_git(&repo, &["add", "-A"])?;
+        fixture_git(&repo, &["commit", "--no-gpg-sign", "-m", "exotic"])?;
+        let sha = fixture_git_output(&repo, &["rev-parse", "HEAD"])?;
+
+        let mut input = fixture()?;
+        input.candidate_parent_ref = sha.clone();
+        input.candidate_parent_sha = sha.clone();
+        input.execution_commit = sha;
+        input.execution_only_paths = vec!["sp ace.txt".to_string(), "uni-\u{e9}.txt".to_string()];
+        input.candidate_excluded_paths = Vec::new();
+        input.preserved_paths = Vec::new();
+        input.strictly_dependent_commits = Vec::new();
+
+        let facts = collect_git_facts(&input, &repo);
+        let mut observed = facts.observed_execution_paths.clone();
+        observed.sort();
+        std::fs::remove_dir_all(&repo)
+            .map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        if observed != input.execution_only_paths {
+            return Err(format!(
+                "exotic execution-path inventory mismatch: got {observed:?}, want {:?}",
+                input.execution_only_paths
+            ));
+        }
+        Ok(())
+    }
+
+    fn temp_repo(name: &str) -> Result<std::path::PathBuf, String> {
+        let unique = format!(
+            "{}-{}-{}",
+            name,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|err| format!("system clock before epoch: {err}"))?
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        std::fs::create_dir_all(&path)
+            .map_err(|err| format!("create {}: {err}", path.display()))?;
+        Ok(path)
+    }
+
+    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+        let path = repo.join(relative);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("create {}: {err}", parent.display()))?;
+        }
+        std::fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn fixture_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+        fixture_git_output(repo, args).map(|_| ())
+    }
+
+    fn fixture_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
+        // Route through the centralized runner: the fixture must not add
+        // its own raw spawn site.
+        let owned: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+        let output =
+            crate::run::capture_output_in_dir("git", &owned, repo, "release scope fixture git")?;
+        if output.status.success() {
+            Ok(output.stdout.trim().to_string())
+        } else {
+            Err(format!(
+                "git fixture command failed: {args:?}; stderr: {}",
+                output.stderr.trim()
+            ))
         }
     }
 

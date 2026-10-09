@@ -281,6 +281,14 @@ and the CLI dirty-worktree disclosure semantics are unchanged.
   default-base commit (#2261).
 - `crates/ripr/src/lsp/input_identity.rs::tests::status_payload_projects_loader_default_and_unresolved_labels`
   — derived status label vocabulary.
+- `crates/ripr/src/lsp/input_identity.rs::tests::stable_id_normalizes_host_separator_spelling`
+  — opaque identity does not encode host path-separator spelling.
+- `crates/ripr/src/lsp/input_identity.rs::tests::canonical_identity_text_excludes_volatile_process_and_client_facts`
+  — PID, client name, and wall-clock keys stay out of semantic identity text.
+- `crates/ripr/src/lsp/input_identity.rs::tests::deadlines_and_position_encoding_do_not_enter_refresh_identity`
+  — git timeout, refresh deadline, and position encoding are not analysis inputs.
+- `crates/ripr/src/lsp/input_identity.rs::tests::session_option_semantic_flags_participate_in_identity`
+  — include-unchanged-tests and seam-diagnostics flags still invalidate identity.
 - `crates/ripr/src/lsp/refresh_scheduler.rs::tests::accepted_refresh_resolves_git_inputs_once_and_shares_one_record`
   — one resolution per accepted refresh, shared with the identity.
 - `crates/ripr/src/lsp/refresh_scheduler.rs::tests::default_base_refresh_resolves_once_and_carries_the_loader_default_sha`

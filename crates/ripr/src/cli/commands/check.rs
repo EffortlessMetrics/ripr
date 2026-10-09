@@ -7,11 +7,17 @@
 
 use crate::analysis;
 use crate::app::{self, CheckInput, OutputFormat};
+use crate::cli::commands_context::ensure_command_root;
 use crate::cli::help;
-use crate::cli::parse::{expect_value, parse_format, parse_mode};
+use crate::cli::parse::{
+    disclose_attached_terminal_stdin_read, expect_value, parse_format, parse_mode,
+};
 use crate::cli::suggest::unknown_argument;
 use crate::config::{CheckInputExplicit, RiprConfig, apply_to_check_input, load_for_root};
+use crate::git::WorkTreeRootProbe;
 use crate::output;
+use crate::output::human::terminal_safe;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 
 fn repo_scope_diff_bound_warning(
@@ -29,6 +35,46 @@ Use --format json for diff-scoped findings, or --format repo-exposure-summary-js
     ))
 }
 
+/// A repo-scoped format does not read the diff, but `--base` is still
+/// recorded as snapshot provenance (`base_revision`) and `--diff` still
+/// names an input. Both must exist, exactly as on the diff-scoped path,
+/// so a typo exits 2 instead of producing an artifact that records a ref
+/// or file that is not there (#4445).
+fn validate_repo_scope_diff_inputs(
+    input: &CheckInput,
+    base_explicitly_provided: bool,
+) -> Result<(), String> {
+    if let Some(diff) = input.diff_file.as_deref() {
+        if diff != Path::new("-") && !diff.is_file() {
+            return Err(format!(
+                "check: --diff {} is not a readable file",
+                diff.display()
+            ));
+        }
+        return Ok(());
+    }
+    if !base_explicitly_provided {
+        return Ok(());
+    }
+    let Some(base) = input.base.as_deref() else {
+        return Ok(());
+    };
+    let commit = format!("{base}^{{commit}}");
+    let output = crate::git::run_git_output_with_deadline(
+        &input.root,
+        &["rev-parse", "--verify", "--quiet", commit.as_str()],
+        input.git_timeout,
+    )?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "check: base revision {base:?} does not resolve to a commit in {}",
+            input.root.display()
+        ))
+    }
+}
+
 pub(super) fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, String> {
     let start = std::fs::canonicalize(start).map_err(|error| {
         format!(
@@ -38,22 +84,143 @@ pub(super) fn resolve_workspace_root(start: &Path) -> Result<Option<PathBuf>, St
     })?;
 
     for ancestor in start.ancestors() {
-        let manifest = ancestor.join("Cargo.toml");
-        let Ok(contents) = std::fs::read_to_string(&manifest) else {
-            continue;
-        };
-        let Ok(document) = toml::from_str::<toml::Value>(&contents) else {
-            continue;
-        };
-        if document.get("workspace").is_some_and(toml::Value::is_table) {
+        if manifest_declares_workspace(&ancestor.join("Cargo.toml")) {
             return Ok(Some(ancestor.to_path_buf()));
+        }
+        // Verified roots and unverified markers bound the walk: an enclosing
+        // workspace must not claim a repository Git cannot inspect either.
+        match implicit_git_boundary(ancestor)? {
+            Some(WorkTreeRootProbe::Root | WorkTreeRootProbe::Unverified) => break,
+            Some(WorkTreeRootProbe::InsideWorkTree) | None => {}
         }
     }
     Ok(None)
 }
 
-fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
-    let Some(root) = resolve_workspace_root(Path::new("."))? else {
+fn implicit_git_boundary(dir: &Path) -> Result<Option<WorkTreeRootProbe>, String> {
+    if !dir.join(".git").exists() {
+        return Ok(None);
+    }
+    crate::git::probe_work_tree_root(dir)
+        .map(Some)
+        .map_err(|error| {
+            format!(
+                "{error}; cannot verify implicit Git root at {}",
+                dir.display()
+            )
+        })
+}
+
+fn manifest_declares_workspace(manifest: &Path) -> bool {
+    std::fs::read_to_string(manifest)
+        .ok()
+        .and_then(|contents| toml::from_str::<toml::Value>(&contents).ok())
+        .is_some_and(|document| document.get("workspace").is_some_and(toml::Value::is_table))
+}
+
+/// Why an implicit run moved away from the current directory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ImplicitRootReason {
+    Workspace,
+    Package,
+    /// #4553: JavaScript and Python workspace declarations.
+    PnpmWorkspace,
+    PackageJsonWorkspaces,
+    UvWorkspace,
+    GitTopLevel,
+}
+
+impl ImplicitRootReason {
+    fn disclosure(self) -> &'static str {
+        match self {
+            Self::Workspace => "Cargo.toml contains [workspace]",
+            Self::Package => "nearest Cargo.toml",
+            Self::PnpmWorkspace => "pnpm-workspace.yaml",
+            Self::PackageJsonWorkspaces => "package.json declares workspaces",
+            Self::UvWorkspace => "pyproject.toml contains [tool.uv.workspace]",
+            Self::GitTopLevel => "git top level; no Cargo.toml found",
+        }
+    }
+}
+
+/// Resolve the root an implicit run analyzes from `start`.
+///
+/// A `[workspace]` manifest anywhere above wins. Otherwise the nearest
+/// ancestor holding a `Cargo.toml`, a JavaScript or Python workspace
+/// declaration (`pnpm-workspace.yaml`, a `package.json` with `workspaces`,
+/// a `pyproject.toml` with `[tool.uv.workspace]`), or a verified Git top level is the
+/// root. So a run from `repo/src` of a single-crate repo analyzes the crate
+/// instead of silently scoping the diff to `src/` and reporting a clean,
+/// complete result (#4610), and a run from one package of a pnpm/npm/yarn/bun
+/// or uv monorepo analyzes the workspace, where sibling-package tests are
+/// visible (#4553). The walk stops at the git top level so a stray manifest
+/// outside the repository is never adopted. An unverified `.git` entry bounds
+/// traversal without becoming a root; absent a local manifest, retain `start`.
+pub(super) fn resolve_project_root(
+    start: &Path,
+) -> Result<Option<(PathBuf, ImplicitRootReason)>, String> {
+    if let Some(root) = resolve_workspace_root(start)? {
+        return Ok(Some((root, ImplicitRootReason::Workspace)));
+    }
+    let start = std::fs::canonicalize(start).map_err(|error| {
+        format!(
+            "resolve implicit project root from {} failed: {error}",
+            start.display()
+        )
+    })?;
+    for ancestor in start.ancestors() {
+        if ancestor.join("Cargo.toml").is_file() {
+            return Ok(Some((ancestor.to_path_buf(), ImplicitRootReason::Package)));
+        }
+        if let Some(reason) = non_cargo_workspace_marker(ancestor) {
+            return Ok(Some((ancestor.to_path_buf(), reason)));
+        }
+        match implicit_git_boundary(ancestor)? {
+            Some(WorkTreeRootProbe::Root) => {
+                return Ok(Some((
+                    ancestor.to_path_buf(),
+                    ImplicitRootReason::GitTopLevel,
+                )));
+            }
+            Some(WorkTreeRootProbe::Unverified) => break,
+            Some(WorkTreeRootProbe::InsideWorkTree) | None => {}
+        }
+    }
+    Ok(None)
+}
+
+fn non_cargo_workspace_marker(dir: &Path) -> Option<ImplicitRootReason> {
+    if dir.join("pnpm-workspace.yaml").is_file() {
+        return Some(ImplicitRootReason::PnpmWorkspace);
+    }
+    if std::fs::read_to_string(dir.join("package.json"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .is_some_and(|manifest| manifest.get("workspaces").is_some())
+    {
+        return Some(ImplicitRootReason::PackageJsonWorkspaces);
+    }
+    if std::fs::read_to_string(dir.join("pyproject.toml"))
+        .ok()
+        .and_then(|text| toml::from_str::<toml::Value>(&text).ok())
+        .is_some_and(|document| {
+            document
+                .get("tool")
+                .and_then(|tool| tool.get("uv"))
+                .and_then(|uv| uv.get("workspace"))
+                .is_some_and(toml::Value::is_table)
+        })
+    {
+        return Some(ImplicitRootReason::UvWorkspace);
+    }
+    None
+}
+
+pub(super) fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String> {
+    let resolved = resolve_project_root(Path::new(".")).map_err(|error| {
+        format!("{error}; pass --root PATH to select the analysis root explicitly")
+    })?;
+    let Some((root, reason)) = resolved else {
         return Ok(());
     };
     let current = std::fs::canonicalize(".")
@@ -63,25 +230,35 @@ fn resolve_implicit_workspace_root(input: &mut CheckInput) -> Result<(), String>
     }
 
     eprintln!(
-        "ripr: resolved workspace root to {} (Cargo.toml contains [workspace])",
-        root.display()
+        "{}",
+        terminal_safe(format!(
+            "ripr: resolved workspace root to {} ({})",
+            root.display(),
+            reason.disclosure()
+        ))
     );
     input.root = root;
     Ok(())
 }
 
 fn parse_git_timeout(value: &str) -> Result<Option<std::time::Duration>, String> {
-    let secs: u64 = value.parse().map_err(|_parse_err| {
-        format!("--git-timeout requires a non-negative integer (seconds); got {value:?}")
-    })?;
-    validate_git_timeout_secs(secs)
+    parse_git_timeout_from("--git-timeout", value)
 }
 
-fn validate_git_timeout_secs(secs: u64) -> Result<Option<std::time::Duration>, String> {
+/// Parse a git timeout in seconds from `source` (the flag or the env var),
+/// naming that source in every refusal so a typo never runs with a silently
+/// different deadline (#4374).
+fn parse_git_timeout_from(
+    source: &str,
+    value: &str,
+) -> Result<Option<std::time::Duration>, String> {
+    let secs: u64 = value.parse().map_err(|_parse_err| {
+        format!("{source} requires a non-negative integer (seconds); got {value:?}")
+    })?;
     let timeout = std::time::Duration::from_secs(secs);
     if std::time::Instant::now().checked_add(timeout).is_none() {
         return Err(format!(
-            "--git-timeout is too large for the platform deadline; got {secs} seconds"
+            "{source} is too large for the platform deadline; got {secs} seconds"
         ));
     }
     Ok((secs > 0).then_some(timeout))
@@ -89,18 +266,39 @@ fn validate_git_timeout_secs(secs: u64) -> Result<Option<std::time::Duration>, S
 
 fn git_timeout_from_env(
     explicit: bool,
-    env_value: Option<&str>,
+    env_value: Result<String, std::env::VarError>,
 ) -> Result<Option<Option<std::time::Duration>>, String> {
     if explicit {
         return Ok(None);
     }
-    let Some(value) = env_value else {
-        return Ok(None);
-    };
-    let Ok(secs) = value.parse::<u64>() else {
-        return Ok(None);
-    };
-    validate_git_timeout_secs(secs).map(Some)
+    match env_value {
+        Ok(value) => parse_git_timeout_from("RIPR_GIT_TIMEOUT", &value).map(Some),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        // Present but unreadable is still a misconfiguration (#4374).
+        Err(std::env::VarError::NotUnicode(_)) => {
+            Err("RIPR_GIT_TIMEOUT must be valid UTF-8".to_string())
+        }
+    }
+}
+
+/// Record one argv output selection, refusing a second one that disagrees
+/// (#4535). Repeating the same format is accepted.
+fn select_output_format(
+    selection: &mut Option<String>,
+    format: &mut OutputFormat,
+    spelling: String,
+    chosen: OutputFormat,
+) -> Result<(), String> {
+    if let Some(previous) = selection.as_deref()
+        && *format != chosen
+    {
+        return Err(format!(
+            "`{previous}` and `{spelling}` select different output formats; pass one"
+        ));
+    }
+    *format = chosen;
+    *selection = Some(spelling);
+    Ok(())
 }
 
 pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
@@ -123,6 +321,10 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // default path triggers auto-resolution.
     let mut base_explicitly_provided = false;
     let mut worktree_explicitly_provided = false;
+    // #4535: the output selection that argv made, spelled as the user wrote
+    // it, so a second selection that disagrees is refused by name instead of
+    // silently winning.
+    let mut format_selection: Option<String> = None;
     let mut root_explicitly_provided = false;
     // RIPR-SPEC-0140: explicit artifact sink for the explain/context reuse
     // pair. No implicit cache: the user names the artifact path.
@@ -130,6 +332,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     let mut git_timeout_explicitly_provided = false;
     let mut candidate_tree: Option<String> = None;
     let mut candidate_base: Option<String> = None;
+    let mut quiet = false;
     let mut i = 0usize;
     while i < args.len() {
         match args[i].as_str() {
@@ -177,10 +380,23 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 // position is not the effective mode. It fires once after the
                 // config merge below.
             }
-            "--json" => input.format = OutputFormat::Json,
+            "--json" => {
+                select_output_format(
+                    &mut format_selection,
+                    &mut input.format,
+                    "--json".to_string(),
+                    OutputFormat::Json,
+                )?;
+            }
             "--format" => {
                 i += 1;
-                input.format = parse_format(expect_value(args, i, "--format")?)?;
+                let value = expect_value(args, i, "--format")?;
+                select_output_format(
+                    &mut format_selection,
+                    &mut input.format,
+                    format!("--format {value}"),
+                    parse_format(value)?,
+                )?;
             }
             "--gap-ledger" => {
                 i += 1;
@@ -212,6 +428,9 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 input.git_timeout = parse_git_timeout(value)?;
                 git_timeout_explicitly_provided = true;
             }
+            "--quiet" => {
+                quiet = true;
+            }
             "--help" | "-h" => {
                 help::print_check_help();
                 return Ok(());
@@ -220,7 +439,18 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         }
         i += 1;
     }
-    if !root_explicitly_provided {
+    if root_explicitly_provided {
+        // An explicit --root that is not a directory reached the diff loader
+        // and surfaced git's spawn failure, complete with the full argv:
+        // `failed to run git diff: failed to run git -C /no/such/dir ["-c",
+        // "core.quotePath=true", "diff", ...]: No such file or directory`.
+        // Validate it through the same authority `rerun`, `agent`, and
+        // `swarm` already use, so the user is told which path is wrong rather
+        // than being handed the invocation that failed on it. Only an explicit
+        // root is checked: the implicit path below legitimately walks up from
+        // the current directory.
+        ensure_command_root(&input.root, "check")?;
+    } else {
         resolve_implicit_workspace_root(&mut input)?;
     }
     // RIPR-SPEC-0084: when no --base was explicitly given AND no --diff file
@@ -238,7 +468,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // not passed on the command line. Seconds; 0 disables the deadline.
     if let Some(timeout) = git_timeout_from_env(
         git_timeout_explicitly_provided,
-        std::env::var("RIPR_GIT_TIMEOUT").ok().as_deref(),
+        std::env::var("RIPR_GIT_TIMEOUT"),
     )? {
         input.git_timeout = timeout;
     }
@@ -293,7 +523,19 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
                 .to_string(),
         );
     }
-    let config = load_for_root(&input.root)?;
+    // #4252: a bound subject configures itself from its candidate tree
+    // (#3279 R4 below), so the worktree ripr.toml is never read for it.
+    // Loading it here only to feed the argv gates let a worktree file the
+    // subject must ignore still decide the run: an unparseable file, or a
+    // `languages.enabled` entry this binary lacks (`python` in a Rust-only
+    // build), aborted it with exit 2, and a worktree `[analysis] mode`
+    // carried into a subject whose tree sets none. The gates below read
+    // only argv-derived state, so the pure default serves them.
+    let config = if candidate_tree.is_some() {
+        RiprConfig::default()
+    } else {
+        load_for_root(&input.root)?
+    };
     apply_to_check_input(&mut input, &config, explicit);
     let format = input.format;
     // #3278 review M1: repo-scope formats, repo exposure, and the gap
@@ -323,6 +565,37 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     // requested artifact. --worktree runs record the base-to-worktree diff
     // source, which is re-resolvable at reuse time.
     if let Some(path) = write_artifact.as_ref() {
+        // #5112: analysis consumes stdin for this sentinel, but artifact
+        // identity re-reads a named file. A literal '-' in the cwd must
+        // never let those unrelated bytes stand in for the consumed input.
+        if input.diff_file.as_deref() == Some(Path::new("-")) {
+            return Err(format!(
+                "--write-artifact {} cannot be combined with --diff -: stdin bytes are not retained in the artifact identity; save stdin to a named diff file, then pass --diff <path> with --write-artifact",
+                path.display()
+            ));
+        }
+        // #4951/#4958: Windows strips trailing dots and spaces from EVERY
+        // path component, not only the final one. `--write-artifact artifact.`
+        // would silently write `artifact` (and the literal final name cannot
+        // be created through the std filesystem API this artifact writer
+        // uses — even a `\\?\` verbatim path is rejected), and an interior
+        // `--write-artifact a./b.json` would write `a/b.json` — while the
+        // completion output and the suggested `explain --from` / `context
+        // --from` follow-ups keep naming the typed spelling. The literal
+        // path is not addressable as typed through this writer, so the
+        // substitution must not be silent: refuse, naming the normalized
+        // path the platform would actually write. Elsewhere the names are
+        // literal and writable, so nothing is refused.
+        if !crate::cli::commands_context::windows_stripped_components(path).is_empty() {
+            let written = crate::cli::commands_context::windows_normalized_path(path);
+            return Err(format!(
+                "--write-artifact {} would be written as {written:?} on this platform \
+                 (Windows strips trailing dots and spaces), so the on-disk artifact and the \
+                 suggested follow-up commands would name different files; \
+                 pass a name without trailing dots or spaces",
+                path.display()
+            ));
+        }
         // #3278 review B1: the artifact records a diff source and its
         // reuse verifier re-resolves it; a tree-to-tree subject diff is
         // not re-resolvable from the recorded shape, so the artifact
@@ -393,6 +666,36 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
              Use draft or deep (--mode on the command line, or [analysis] mode in ripr.toml)."
         );
     }
+    // #4946(a): restate the unchanged-tests tradeoff where the user waits.
+    // Fires on the EFFECTIVE setting after `apply_to_check_input`, and only
+    // on the paths that actually consume it: the diff-scoped pipeline
+    // narrows the index from `input.include_unchanged_tests`
+    // (`analysis/workspace/select.rs` narrows every mode when it is false),
+    // while repo-scoped formats run their own corpus walks that never read
+    // this setting, so a smaller/faster-index claim there would be false
+    // (#4946 review). The repair route names the knob that owns the value —
+    // the CLI flag when it was passed, `[analysis] include_unchanged_tests`
+    // otherwise — because there is no positive CLI counterpart, so "drop
+    // the flag" is unreachable advice for the config-driven case (#4946
+    // review). stderr only: stdout and every machine format are unchanged.
+    if !input.include_unchanged_tests && !format.is_repo_scope() {
+        let (knob, repair) = if explicit.include_unchanged_tests {
+            (
+                "--no-unchanged-tests",
+                "Drop the flag to restore default test recall.",
+            )
+        } else {
+            (
+                "[analysis] include_unchanged_tests = false",
+                "Set it to true or remove it from ripr.toml to restore default test recall.",
+            )
+        };
+        eprintln!(
+            "ripr: unchanged tests are excluded from the index ({knob}): Reach evidence \
+             cannot name tests the diff does not touch, in exchange for a much smaller, \
+             faster index. {repair}"
+        );
+    }
     // #2901: OraclePolicy (snapshot_strength, mock_expectation_strength,
     // broad_error_strength) is consumed only by the Rust adapter. Python,
     // Perl, and TypeScript silently ignore it. Warn when a non-Rust language
@@ -415,7 +718,10 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     if let Some(warning) =
         repo_scope_diff_bound_warning(format, base_explicitly_provided, input.diff_file.as_deref())
     {
-        eprintln!("{warning}");
+        eprintln!("{}", terminal_safe(warning));
+    }
+    if format.is_repo_scope() {
+        validate_repo_scope_diff_inputs(&input, base_explicitly_provided)?;
     }
     if let Some(gap_ledger) = gap_ledger.as_ref() {
         write_stdout_chunked(&render_check_gap_ledger_badge(
@@ -423,46 +729,107 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         )?)?;
         return Ok(());
     }
+    // #4945: the sink is wired BEFORE every repo-format path so the
+    // longest-running surfaces project the same producer stages the
+    // diff-scoped path promises (`ripr progress: <stage> [<scope>]`,
+    // throttled heartbeats included). Both the audit-path disclosure and the
+    // stage lines are stderr-only and cannot change machine stdout.
+    let progress = (!quiet).then(|| {
+        crate::cli::progress::CliProgressSink::for_stderr(
+            std::io::stderr().is_terminal(),
+            crate::cli::progress::ProgressPolicy::STANDARD,
+        )
+    });
+    let progress_sink = progress
+        .as_ref()
+        .map(|sink| sink as &dyn crate::app::AnalysisProgressSink);
+    // #4945: invocation-time cost disclosure for the full-repo audit-path
+    // formats. One line, before the run begins, naming the expected cost
+    // class (cold full-corpus walk; the warm-rerun clause is honest per
+    // format — see `repo_audit_path_disclosure`) — like the repo-scope
+    // --base/--diff warning above, this is an advisory notice, so it is not
+    // part of the --quiet-suppressed progress stream.
+    if let Some(disclosure) = format.repo_audit_path_disclosure() {
+        eprintln!("{disclosure}");
+    }
     if matches!(format, OutputFormat::RepoExposureJson) {
-        let (classified, limit_info) =
-            analysis::inventory_classified_seams_at_with_config(&input.root, &config)?;
-        let ts_guidance =
-            output::render::detect_ts_full_repo_guidance_pub(&input.root, &classified);
-        let artifact_context =
-            crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
-                input.root.clone(),
-                input.mode.as_str().to_string(),
-                input.base.clone(),
-                &config,
-            )?;
-        let stdout = std::io::stdout();
-        let mut handle = stdout.lock();
-        output::repo_exposure::write_repo_exposure_json_with_context(
-            &classified,
-            limit_info.as_ref(),
-            ts_guidance.as_ref(),
-            &artifact_context,
-            &mut handle,
+        // #4945: this early return renders straight from the inventory, so it
+        // brackets the walk itself with repo-scope stage boundaries instead of
+        // relying on `check_with_progress` (which this path never reaches).
+        app::repo_inventory_with_progress(
+            progress_sink,
+            || analysis::inventory_classified_seams_report_at_with_config(&input.root, &config),
+            |report| {
+                let ts_guidance = output::render::detect_ts_full_repo_guidance_pub(
+                    &input.root,
+                    &report.classified,
+                );
+                let python_guidance = output::render::detect_python_repo_exposure_guidance_pub(
+                    &input.root,
+                    &report.classified,
+                );
+                let generated_skip = output::repo_exposure::GeneratedRustSkip::from_paths(
+                    report.skipped_generated,
+                    report.naming_only_skips,
+                );
+                let artifact_context =
+                    crate::agent::artifact::RepoExposureArtifactContext::for_repo_exposure(
+                        input.root.clone(),
+                        input.mode.as_str().to_string(),
+                        input.base.clone(),
+                        &config,
+                    )?;
+                let stdout = std::io::stdout();
+                let mut handle = stdout.lock();
+                output::repo_exposure::write_repo_exposure_json_with_context(
+                    &report.classified,
+                    report.limit_info.as_ref(),
+                    ts_guidance.as_ref(),
+                    python_guidance.as_ref(),
+                    generated_skip.as_ref(),
+                    &artifact_context,
+                    &mut handle,
+                )?;
+                Ok(())
+            },
         )?;
+        // Producer `completed` was held until the streaming stdout write
+        // finished; a failed write already dropped the sink, which projected
+        // `failed` instead.
+        if let Some(sink) = &progress {
+            sink.commit_success();
+        }
         return Ok(());
     }
-    // Capture root and diff_file before input is moved into the analysis call.
-    // These are needed for the RIPR-SPEC-0112 disclosure check after the analysis.
-    let input_root = input.root.clone();
+    // Capture diff_file before input is moved into the analysis call; the
+    // RIPR-SPEC-0112 disclosure gate after the analysis needs it.
     let input_diff_file_is_some = input.diff_file.is_some();
     let limited_check_input = input.clone();
+    // #4319: `--diff -` reads the diff from stdin. On an attached terminal
+    // that blocks until EOF with no visible sign of why, so the cli adapter
+    // discloses the read before dispatching; the analysis loader itself
+    // stays silent for library callers. Only the diff-scoped pipeline path
+    // consumes the stdin read — repo-scoped and seam-inventory formats
+    // ignore `--diff` entirely (see the zero-findings warning below), so
+    // they must not claim to be reading it.
+    if !format.is_repo_scope() && !format.is_repo_seam_inventory() {
+        disclose_attached_terminal_stdin_read(input.diff_file.as_deref());
+    }
+    let progress_scope = if format.is_repo_scope() {
+        app::AnalysisProgressScope::Repo
+    } else if worktree_explicitly_provided {
+        app::AnalysisProgressScope::Worktree
+    } else {
+        app::AnalysisProgressScope::Diff
+    };
     let output_result = if format.is_repo_seam_inventory() {
         // Repo seam-driven formats do not consume legacy repo `Findings`,
         // so skip `run_repo_analysis` and let `render_check` drive the
         // seam walker directly from `output.root`. The synthesized
         // `CheckOutput` carries only the fields these renderers read.
         Ok(app::repo_seam_inventory_input(input))
-    } else if format.is_repo_scope() {
-        app::check_workspace_repo_with_config(input, &config)
-    } else if worktree_explicitly_provided {
-        app::check_workspace_worktree_with_config(input, &config)
     } else {
-        app::check_workspace_with_config(input, &config)
+        app::check_with_progress(input, &config, progress_scope, progress_sink)
     };
     let mut output = match output_result {
         Ok(output) => output,
@@ -491,23 +858,54 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
         )?;
     }
     // RIPR-SPEC-0083: disclose when no scope was provided and the result is empty.
-    // The guidance fires only when scope was NOT explicitly provided — it must
-    // NOT fire when --diff/--base/--mode produced a real analyzed-empty result.
-    if !scope_explicitly_provided && output.findings.is_empty() {
+    // #4012: gate on what was actually analyzed, not on what was typed. A
+    // resolved default branch that analyzed changed files is a real
+    // analyzed-empty result (ordinary no_behavioral_candidates), not
+    // missing scope — so the producer outcome's changed_file_count is the
+    // discriminator. Repo-scope formats analyze the whole repo by
+    // definition, so the diff-scope disclosure never applies to them.
+    let analyzed_changed_files = output
+        .analysis_outcome
+        .as_ref()
+        .is_some_and(|outcome| outcome.counts.changed_file_count > 0);
+    if !scope_explicitly_provided
+        && output.findings.is_empty()
+        && !analyzed_changed_files
+        && !format.is_repo_scope()
+    {
         output.no_scope_provided = true;
+        // A default base that resolves to HEAD's own commit (for example
+        // `origin/HEAD` tracking the checked-out branch in a clone of a
+        // feature branch) leaves nothing to compare. These two resolutions
+        // run after the diff was loaded, so they are later observations, not
+        // the analyzed snapshot; the hint states them as such and names the
+        // repair.
+        if let Some(base) = output.base.as_deref() {
+            let root = &limited_check_input.root;
+            let timeout = limited_check_input.git_timeout;
+            if let Some(hedge) = default_base_is_head_hedge(
+                base,
+                analysis::resolve_base_commit(root, Some(base), timeout).as_deref(),
+                analysis::resolve_base_commit(root, Some("HEAD"), timeout).as_deref(),
+            ) {
+                eprintln!("{}", terminal_safe(hedge));
+            }
+        }
     }
     // #2425: when --diff was explicitly provided but produced zero findings
-    // on a diff-scoped format, warn on stderr that the diff may be malformed.
-    // A non-diff file (log, source, random text) produces zero parsed files
-    // silently, which can be mistaken for a clean bill of health. This does
-    // NOT change the exit code or the JSON contract — stderr advisory only.
-    // Repo-scoped formats (repo-exposure-json, etc.) intentionally ignore
-    // --diff for their analysis scope, so the warning is gated to diff-scoped
-    // formats only.
-    if input_diff_file_is_some && output.findings.is_empty() && !format.is_repo_scope() {
-        eprintln!(
-            "ripr: --diff produced zero findings. If the diff file is not a valid unified diff, this result is empty because nothing was parsed — not because all behavior is covered."
-        );
+    // on a diff-scoped format, disclose on stderr why the result is empty.
+    // This does NOT change the exit code or the JSON contract — stderr
+    // advisory only. Repo-scoped formats (repo-exposure-json, etc.)
+    // intentionally ignore --diff for their analysis scope, so the hedge is
+    // gated to diff-scoped formats only. #4376(a)/#4395(c): the hedge runs
+    // before stdout is rendered, so it must name the typed cause when one
+    // exists instead of guessing at diff validity.
+    if input_diff_file_is_some
+        && output.findings.is_empty()
+        && !format.is_repo_scope()
+        && let Some(hedge) = zero_findings_diff_hedge(output.analysis_outcome.as_ref())
+    {
+        eprintln!("{}", terminal_safe(hedge));
     }
     // #2642: surface expired suppression entries as a stderr warning so they
     // are visible even in --json mode (the human output already shows them as
@@ -522,36 +920,115 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
             suppression.warnings.len()
         );
     }
-    // RIPR-SPEC-0112: disclose when --base was explicitly provided (committed-history
-    // diff) AND the working tree has uncommitted changes to tracked source files.
-    // Those changes were NOT analyzed. A zero-finding result in this state must NOT
-    // be read as a clean pass — the user's uncommitted edits were excluded from the diff.
-    // Fires independent of findings.is_empty() (honest whether or not committed diff
-    // had findings), but the false-clean risk is highest when findings are empty.
-    // Does NOT fire when --diff was used (file-based diff; no live worktree scope).
-    if base_explicitly_provided
-        && !worktree_explicitly_provided
+    // RIPR-SPEC-0112: the analysis sets `unanalyzed_working_tree` when a
+    // committed-history diff (an explicit --base or the resolved default base;
+    // both run `git diff <base>...HEAD`) read the HEAD content of tracked
+    // source or test files that have uncommitted edits. Those edits were NOT
+    // analyzed, so a zero-finding result must not read as a clean pass. It
+    // stays off for --diff, --worktree, --candidate-tree and repo-scope
+    // formats, none of which is a committed-history diff of the live tree.
+    let committed_history_diff = !worktree_explicitly_provided
         && !input_diff_file_is_some
-        && analysis::working_tree_has_tracked_changes(&input_root)
-    {
-        output.unanalyzed_working_tree = true;
+        && candidate_tree.is_none()
+        && !format.is_repo_scope();
+    if !committed_history_diff {
+        output.unanalyzed_working_tree = false;
+        // #5258: the untracked list drives the same disclosure family; a
+        // non-committed-history mode must not inherit it either.
+        output.untracked_working_tree_source_paths.clear();
     }
-    let navigation = if worktree_explicitly_provided && write_artifact.is_none() {
-        None
-    } else {
-        Some(app::finding_navigation(
-            &limited_check_input,
-            write_artifact.as_deref(),
-            explicit.mode,
-        ))
-    };
-    write_stdout_chunked(&app::render_check_with_config_and_navigation(
+    // A `--worktree` run carries `--worktree` into its drill-in commands, so
+    // `explain` and `context` analyze the same uncommitted edits and the
+    // block never needs an artifact to stay executable (#4321).
+    let drill_in = app::FindingDrillIn::Commands(app::finding_navigation_with_worktree(
+        &limited_check_input,
+        write_artifact.as_deref(),
+        explicit.mode,
+        worktree_explicitly_provided,
+    ));
+    // #4945: repo seam-driven formats run their walks inside the render arms,
+    // so the sink threads through rendering to bracket those walks with
+    // repo-scope stage boundaries; diff-scoped arms ignore it.
+    write_stdout_chunked(&app::render_check_with_config_and_navigation_and_progress(
         &output,
         &format,
         &config,
-        navigation.as_ref(),
+        Some(&drill_in),
+        progress_sink,
     )?)?;
+    if let Some(sink) = &progress {
+        sink.commit_success();
+    }
     Ok(())
+}
+
+/// The stderr warning for an empty default-base result when the default base
+/// and HEAD each resolve to the same commit after analysis. It states those
+/// two later observations only; it does not attribute the analyzed range.
+/// `None` unless both commits resolved and are equal.
+fn default_base_is_head_hedge(
+    base: &str,
+    base_commit: Option<&str>,
+    head_commit: Option<&str>,
+) -> Option<String> {
+    match (base_commit, head_commit) {
+        (Some(base_commit), Some(head_commit)) if base_commit == head_commit => Some(format!(
+            "ripr: after analysis, the default base `{base}` and HEAD each resolved to the same commit. This empty result alone is not a clean pass. Pass `--base <ref>` for the branch your change should be compared against (for example `--base origin/main`)."
+        )),
+        _ => None,
+    }
+}
+
+/// The stderr hedge for an explicit `--diff` run that produced zero findings
+/// (#2425, #2491). The first stderr line a user reads must be the true cause
+/// of the empty result (#4376(a), #4395(c)):
+///
+/// - when the producer outcome records a language adapter that was disabled
+///   by config or unavailable in this binary, name that typed cause;
+/// - when the diff parsed to at least one changed file, the diff was valid
+///   and the analysis outcome on stdout already explains the empty result,
+///   so no diff-validity guess is printed;
+/// - only when nothing parsed (or no outcome exists) print the generic
+///   "may not be a valid unified diff" hint.
+fn zero_findings_diff_hedge(
+    outcome: Option<&crate::analysis_outcome::AnalysisOutcome>,
+) -> Option<String> {
+    use crate::analysis_outcome::AnalysisLimitationKind;
+    let generic = "ripr: --diff produced zero findings. If the diff file is not a valid unified diff, this result is empty because nothing was parsed — not because all behavior is covered.";
+    let Some(outcome) = outcome else {
+        return Some(generic.to_string());
+    };
+    // A well-formed binary- or mode-only diff already got its own stderr note
+    // from the pipeline; the generic "may not be a valid diff" hedge would
+    // contradict it.
+    if outcome.limitations.iter().any(|limitation| {
+        limitation.kind == AnalysisLimitationKind::MalformedDiff
+            && limitation.bounded_detail.as_deref() == Some(crate::analysis::NON_TEXT_ONLY_DETAIL)
+    }) {
+        return None;
+    }
+    let causes = outcome
+        .limitations
+        .iter()
+        .filter(|limitation| limitation.kind == AnalysisLimitationKind::LanguageAdapterUnavailable)
+        .map(|limitation| {
+            limitation
+                .bounded_detail
+                .clone()
+                .unwrap_or_else(|| limitation.recovery.detail.trim_end_matches('.').to_string())
+        })
+        .collect::<Vec<_>>();
+    if !causes.is_empty() {
+        return Some(format!(
+            "ripr: --diff produced zero findings because changed files were not analyzed: {}. \
+             This empty result is not a clean pass; see the analysis outcome for the recovery.",
+            causes.join("; ")
+        ));
+    }
+    if outcome.counts.changed_file_count > 0 {
+        return None;
+    }
+    Some(generic.to_string())
 }
 
 /// Write `text` to stdout in bounded chunks.
@@ -593,7 +1070,7 @@ fn render_check_gap_ledger_badge(
             );
         }
     };
-    let text = std::fs::read_to_string(gap_ledger)
+    let text = crate::bounded_input::read_to_string(gap_ledger)
         .map_err(|err| format!("failed to read gap ledger {}: {err}", gap_ledger.display()))?;
     let policy = output::badge::BadgePolicy {
         suppressions_path: config.suppressions().display_path(),
@@ -797,6 +1274,228 @@ mod tests {
     use super::*;
 
     #[test]
+    fn check_refuses_two_output_selections_that_disagree() -> Result<(), String> {
+        // #4535: before, the last selection silently won.
+        for (argv, first, second) in [
+            (
+                ["--json", "--format", "human"],
+                "`--json`",
+                "`--format human`",
+            ),
+            (
+                ["--format", "sarif", "--json"],
+                "`--format sarif`",
+                "`--json`",
+            ),
+        ] {
+            let Err(error) = check(&args(&argv)) else {
+                return Err(format!("{argv:?} must be refused"));
+            };
+            if !(error.contains(first)
+                && error.contains(second)
+                && error.ends_with("select different output formats; pass one"))
+            {
+                return Err(format!("{argv:?} must name both selections, got {error}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn select_output_format_accepts_a_repeated_selection() -> Result<(), String> {
+        let mut selection = None;
+        let mut format = OutputFormat::Human;
+        select_output_format(
+            &mut selection,
+            &mut format,
+            "--json".into(),
+            OutputFormat::Json,
+        )?;
+        select_output_format(
+            &mut selection,
+            &mut format,
+            "--format json".into(),
+            OutputFormat::Json,
+        )?;
+        if format != OutputFormat::Json {
+            return Err(format!("expected json, got {format:?}"));
+        }
+        Ok(())
+    }
+
+    /// Run the real diff pipeline over the sample workspace's valid Rust diff
+    /// with the given effective language set, returning the producer outcome
+    /// the zero-findings hedge consumes.
+    fn sample_diff_outcome(
+        label: &str,
+        enabled: Vec<crate::domain::LanguageId>,
+    ) -> Result<(usize, crate::analysis_outcome::AnalysisOutcome), String> {
+        let root = copy_sample_workspace_to_temp(label)?;
+        let mut config = RiprConfig::default();
+        config.languages.enabled = enabled;
+        let input = CheckInput {
+            root: root.clone(),
+            diff_file: Some(root.join("example.diff")),
+            ..CheckInput::default()
+        };
+        let result = app::check_workspace_with_config(input, &config);
+        if let Ok(()) = std::fs::remove_dir_all(&root) {}
+        let output = result?;
+        let outcome = output
+            .analysis_outcome
+            .ok_or_else(|| "diff pipeline must project an analysis outcome".to_string())?;
+        Ok((output.findings.len(), outcome))
+    }
+
+    #[test]
+    fn default_base_equal_to_head_is_named_and_distinct_commits_stay_silent() {
+        let hedge = default_base_is_head_hedge("origin/feat", Some("abc"), Some("abc"));
+        assert!(
+            hedge
+                .as_deref()
+                .is_some_and(|text| text.contains("`origin/feat`")
+                    && text.contains("each resolved to the same commit")
+                    && text.contains("--base")),
+            "{hedge:?}"
+        );
+        assert_eq!(
+            default_base_is_head_hedge("origin/main", Some("abc"), Some("def")),
+            None
+        );
+        // An unresolved side is never asserted equal.
+        assert_eq!(default_base_is_head_hedge("main", None, None), None);
+        assert_eq!(default_base_is_head_hedge("main", Some("abc"), None), None);
+    }
+
+    #[test]
+    fn zero_findings_hedge_names_config_excluded_rust_instead_of_diff_validity()
+    -> Result<(), String> {
+        // #4376(a): `[languages] enabled = ["typescript"]` over a valid Rust
+        // diff. The hedge must name the configuration cause, never the
+        // "may not be a valid unified diff" guess.
+        use crate::domain::LanguageId;
+        for (label, enabled) in [
+            ("hedge-rust-excluded-ts", vec![LanguageId::TypeScript]),
+            ("hedge-rust-excluded-empty", Vec::new()),
+        ] {
+            let (findings, outcome) = sample_diff_outcome(label, enabled)?;
+            assert_eq!(
+                findings, 0,
+                "fixture precondition: {label} must analyze nothing"
+            );
+            assert!(
+                outcome.counts.changed_file_count > 0,
+                "fixture precondition: the valid sample diff must parse"
+            );
+            assert_eq!(
+                outcome.kind,
+                crate::analysis_outcome::AnalysisOutcomeKind::PartialWithLimitations,
+                "an excluded Rust adapter must not claim a complete analysis ({label})"
+            );
+            let hedge = zero_findings_diff_hedge(Some(&outcome))
+                .ok_or_else(|| format!("{label}: a typed exclusion must be named on stderr"))?;
+            assert!(
+                hedge.contains("rust is not in the effective [languages].enabled set"),
+                "{label}: {hedge}"
+            );
+            assert!(
+                !hedge.contains("not a valid unified diff"),
+                "{label}: {hedge}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_stays_silent_for_a_well_formed_non_text_only_diff() -> Result<(), String>
+    {
+        let root = copy_sample_workspace_to_temp("hedge-binary-only")?;
+        std::fs::write(
+            root.join("example.diff"),
+            "diff --git a/logo.png b/logo.png\nBinary files a/logo.png and b/logo.png differ\n",
+        )
+        .map_err(|err| err.to_string())?;
+        let input = CheckInput {
+            root: root.clone(),
+            diff_file: Some(root.join("example.diff")),
+            ..CheckInput::default()
+        };
+        let result = app::check_workspace_with_config(input, &RiprConfig::default());
+        if let Ok(()) = std::fs::remove_dir_all(&root) {}
+        let outcome = result?
+            .analysis_outcome
+            .ok_or_else(|| "diff pipeline must project an analysis outcome".to_string())?;
+        assert_eq!(zero_findings_diff_hedge(Some(&outcome)), None);
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_names_unavailable_adapter_before_diff_validity() -> Result<(), String> {
+        // #4395(c): a valid diff whose only changed file needs an adapter
+        // that is not available (Perl in a default build) must lead with
+        // the availability cause.
+        use crate::analysis_outcome::{
+            AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
+            AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
+            AnalysisStage,
+        };
+        let outcome = AnalysisOutcome::new(
+            AnalysisOutcomeKind::PartialWithLimitations,
+            AnalysisIdentity::default(),
+            AnalysisOutcomeCounts {
+                changed_file_count: 1,
+                changed_line_count: 1,
+                ..AnalysisOutcomeCounts::default()
+            },
+            vec![
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageAdapterUnavailable,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::EnableLanguage,
+                        "Use a ripr binary built with Cargo feature `lang-perl`.",
+                    )?,
+                )
+                .with_detail(
+                    "perl changed 1 file(s), but the preview adapter was not enabled or available",
+                )?,
+            ],
+        )?;
+        let hedge = zero_findings_diff_hedge(Some(&outcome))
+            .ok_or_else(|| "an unavailable adapter must be named on stderr".to_string())?;
+        assert!(hedge.contains("perl changed 1 file(s)"), "{hedge}");
+        assert!(!hedge.contains("not a valid unified diff"), "{hedge}");
+        Ok(())
+    }
+
+    #[test]
+    fn zero_findings_hedge_is_silent_for_a_parsed_diff_and_generic_when_nothing_parsed()
+    -> Result<(), String> {
+        // A parsed Rust diff with Rust enabled: the diff was valid, so no
+        // diff-validity guess is printed (the outcome on stdout explains).
+        let (_, outcome) =
+            sample_diff_outcome("hedge-rust-enabled", vec![crate::domain::LanguageId::Rust])?;
+        assert!(outcome.counts.changed_file_count > 0);
+        assert!(
+            zero_findings_diff_hedge(Some(&outcome)).is_none(),
+            "a parsed diff must not be blamed for diff validity"
+        );
+        // Nothing parsed (or no outcome): the generic hint remains.
+        let empty = crate::analysis_outcome::AnalysisOutcome::new(
+            crate::analysis_outcome::AnalysisOutcomeKind::NoScope,
+            crate::analysis_outcome::AnalysisIdentity::default(),
+            crate::analysis_outcome::AnalysisOutcomeCounts::default(),
+            Vec::new(),
+        )?;
+        for outcome in [Some(&empty), None] {
+            let hedge = zero_findings_diff_hedge(outcome)
+                .ok_or_else(|| "an unparsed diff must keep the generic hint".to_string())?;
+            assert!(hedge.contains("not a valid unified diff"), "{hedge}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn repo_scope_format_with_base_emits_scope_warning() -> Result<(), String> {
         let warning = repo_scope_diff_bound_warning(OutputFormat::RepoExposureJson, true, None)
             .ok_or_else(|| "repo-scoped format plus --base should warn".to_string())?;
@@ -882,6 +1581,284 @@ mod tests {
         Ok(())
     }
 
+    fn outside_workspace_fixture(label: &str) -> Result<PathBuf, String> {
+        let workspace = std::fs::canonicalize(repo_root()).map_err(|error| error.to_string())?;
+        let candidate = unique_command_test_dir(label);
+        let parent = workspace
+            .parent()
+            .ok_or_else(|| "workspace root has no parent".to_string())?;
+        let name = candidate
+            .file_name()
+            .ok_or_else(|| "temporary fixture has no file name".to_string())?;
+        Ok(parent.join(name))
+    }
+
+    #[test]
+    fn project_root_walk_reaches_a_js_or_python_workspace_from_a_package() -> Result<(), String> {
+        let cases: [(&str, &str, &str, ImplicitRootReason); 3] = [
+            (
+                "pnpm-workspace.yaml",
+                "packages:\n  - 'packages/*'\n",
+                "packages/utils/src",
+                ImplicitRootReason::PnpmWorkspace,
+            ),
+            (
+                "package.json",
+                r#"{"name":"root","private":true,"workspaces":["packages/*"]}"#,
+                "packages/utils/src",
+                ImplicitRootReason::PackageJsonWorkspaces,
+            ),
+            (
+                "pyproject.toml",
+                "[tool.uv.workspace]\nmembers = [\"packages/*\"]\n",
+                "packages/core/src/core",
+                ImplicitRootReason::UvWorkspace,
+            ),
+        ];
+        for (index, (manifest, contents, nested, marker)) in cases.into_iter().enumerate() {
+            let root = outside_workspace_fixture(&format!("non-cargo-walk-{index}"))?;
+            let repo = root.join("repo");
+            let nested = repo.join(nested);
+            std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+            std::fs::write(repo.join(manifest), contents).map_err(|error| error.to_string())?;
+            // A package-level manifest between the start and the workspace
+            // root must not stop the walk.
+            let package = nested
+                .ancestors()
+                .find(|dir| {
+                    dir.parent()
+                        .is_some_and(|parent| parent.ends_with("packages"))
+                })
+                .map(Path::to_path_buf)
+                .ok_or_else(|| "fixture has no package directory".to_string())?;
+            std::fs::write(package.join("package.json"), r#"{"name":"member"}"#)
+                .map_err(|error| error.to_string())?;
+            std::fs::write(
+                package.join("pyproject.toml"),
+                "[project]\nname = \"member\"\n",
+            )
+            .map_err(|error| error.to_string())?;
+
+            let resolved = resolve_project_root(&nested);
+            let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+            std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+            assert_eq!(resolved?, Some((expected?, marker)), "{manifest}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_walk_reaches_a_package_manifest_from_its_source_dir() -> Result<(), String> {
+        let root = outside_workspace_fixture("project-root-package")?;
+        let nested = root.join("src/inner");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&root, &["init", "-b", "main"])?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            "[package]\nname = \"package-only\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&root).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::Package)),
+            "a package-only crate run from src/ must analyze the crate root"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_walk_ignores_markers_above_the_git_top_level() -> Result<(), String> {
+        let root = outside_workspace_fixture("non-cargo-walk-bounded")?;
+        let repo = root.join("repo");
+        let nested = repo.join("packages/utils");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+        // A workspace marker above the work tree belongs to something else.
+        std::fs::write(root.join("pnpm-workspace.yaml"), "packages: []\n")
+            .map_err(|error| error.to_string())?;
+        // A package.json without a workspaces field is not a marker.
+        std::fs::write(repo.join("package.json"), r#"{"name":"root"}"#)
+            .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_walk_stops_at_the_git_top_level() -> Result<(), String> {
+        let outer = outside_workspace_fixture("project-root-git-stop")?;
+        let repo = outer.join("repo");
+        let nested = repo.join("web/src");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+        // A manifest outside the repository must never be adopted.
+        std::fs::write(
+            outer.join("Cargo.toml"),
+            "[package]\nname = \"outside\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel)),
+            "the walk must stop at the git top level"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn enclosing_workspace_does_not_claim_a_nested_repository() -> Result<(), String> {
+        let outer = outside_workspace_fixture("project-root-nested-repo")?;
+        let inner = outer.join("vendor/tool");
+        let nested = inner.join("src");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&inner, &["init", "-b", "main"])?;
+        std::fs::write(outer.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+        std::fs::write(
+            inner.join("Cargo.toml"),
+            "[package]\nname = \"tool\"\nversion = \"0.1.0\"\n",
+        )
+        .map_err(|error| error.to_string())?;
+
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&inner).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::Package)),
+            "an enclosing workspace must not cross the nested repository's git boundary"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_does_not_promote_an_invalid_git_marker() -> Result<(), String> {
+        for is_file in [false, true] {
+            let root = outside_workspace_fixture("project-root-inert-git")?;
+            let project = root.join("project");
+            std::fs::create_dir_all(&project).map_err(|error| error.to_string())?;
+            if is_file {
+                std::fs::write(root.join(".git"), "gitdir: missing\n")
+                    .map_err(|error| error.to_string())?;
+            } else {
+                std::fs::create_dir(root.join(".git")).map_err(|error| error.to_string())?;
+            }
+            let resolved = resolve_project_root(&project);
+            std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+            assert_eq!(resolved?, None, "an invalid marker is not a Git top level");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_does_not_cross_an_unverified_git_boundary() -> Result<(), String> {
+        let outer = outside_workspace_fixture("project-root-unverified-boundary")?;
+        let marker = outer.join("unverified");
+        let project = marker.join("project");
+        std::fs::create_dir_all(&project).map_err(|error| error.to_string())?;
+        std::fs::write(outer.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+        std::fs::write(marker.join(".git"), "gitdir: missing\n")
+            .map_err(|error| error.to_string())?;
+        let resolved = resolve_project_root(&project);
+        std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+        assert_eq!(resolved?, None, "a refused marker must not widen discovery");
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_passes_an_inert_marker_inside_a_real_repository() -> Result<(), String> {
+        let root = outside_workspace_fixture("project-root-inert-inside-git")?;
+        let nested = root.join("inert/src");
+        std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&root, &["init", "-b", "main"])?;
+        std::fs::create_dir(root.join("inert/.git")).map_err(|error| error.to_string())?;
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&root).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_root_recognizes_a_linked_worktree_git_file() -> Result<(), String> {
+        let outer = outside_workspace_fixture("project-root-linked-worktree")?;
+        let repo = outer.join("repo");
+        let linked = outer.join("linked");
+        std::fs::create_dir_all(&repo).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &repo,
+            &[
+                "-c",
+                "user.name=RIPR test",
+                "-c",
+                "user.email=ripr@example.invalid",
+                "commit",
+                "--allow-empty",
+                "-m",
+                "seed linked worktree",
+            ],
+        )?;
+        let linked_arg = linked.to_str().ok_or("fixture linked path is not UTF-8")?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &repo,
+            &["worktree", "add", "--detach", linked_arg, "HEAD"],
+        )?;
+        assert!(linked.join(".git").is_file(), "fixture must use a Git file");
+        let nested = linked.join("src");
+        std::fs::create_dir(&nested).map_err(|error| error.to_string())?;
+        std::fs::write(outer.join("Cargo.toml"), "[workspace]\nmembers = []\n")
+            .map_err(|error| error.to_string())?;
+        let resolved = resolve_project_root(&nested);
+        let expected = std::fs::canonicalize(&linked).map_err(|error| error.to_string());
+        std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+        assert_eq!(
+            resolved?,
+            Some((expected?, ImplicitRootReason::GitTopLevel))
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_root_keeps_exact_git_path_bytes() -> Result<(), String> {
+        use std::os::unix::ffi::OsStringExt;
+        for name in [b" whitespace \n".to_vec(), b"non-utf8-\xff".to_vec()] {
+            let outer = outside_workspace_fixture("project-root-exact-bytes")?;
+            let repo = outer.join(std::ffi::OsString::from_vec(name));
+            let nested = repo.join("src");
+            std::fs::create_dir_all(&nested).map_err(|error| error.to_string())?;
+            crate::testing::fixture_git::fixture_git_ok(&repo, &["init", "-b", "main"])?;
+            let resolved = resolve_project_root(&nested);
+            let expected = std::fs::canonicalize(&repo).map_err(|error| error.to_string());
+            std::fs::remove_dir_all(&outer).map_err(|error| error.to_string())?;
+            assert_eq!(
+                resolved?,
+                Some((expected?, ImplicitRootReason::GitTopLevel))
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn git_timeout_cli_values_are_parsed_before_dispatch() -> Result<(), String> {
         assert_eq!(check(&args(&["--git-timeout", "0", "--help"])), Ok(()));
@@ -895,19 +1872,56 @@ mod tests {
     }
 
     #[test]
+    fn quiet_is_accepted_without_running_analysis() {
+        assert_eq!(check(&args(&["--quiet", "--help"])), Ok(()));
+    }
+
+    #[test]
     fn git_timeout_environment_is_a_fallback_and_zero_disables() -> Result<(), String> {
         assert_eq!(
-            git_timeout_from_env(false, Some("12")),
+            git_timeout_from_env(false, Ok("12".to_string())),
             Ok(Some(Some(std::time::Duration::from_secs(12))))
         );
-        assert_eq!(git_timeout_from_env(false, Some("0")), Ok(Some(None)));
-        assert_eq!(git_timeout_from_env(false, Some("invalid")), Ok(None));
-        assert_eq!(git_timeout_from_env(false, None), Ok(None));
-        assert_eq!(git_timeout_from_env(true, Some("12")), Ok(None));
-        let error = git_timeout_from_env(false, Some("18446744073709551615"))
+        assert_eq!(
+            git_timeout_from_env(false, Ok("0".to_string())),
+            Ok(Some(None))
+        );
+        assert_eq!(
+            git_timeout_from_env(false, Err(std::env::VarError::NotPresent)),
+            Ok(None)
+        );
+        assert_eq!(git_timeout_from_env(true, Ok("12".to_string())), Ok(None));
+        // An explicit --git-timeout wins, so a bad env value is not read.
+        assert_eq!(
+            git_timeout_from_env(true, Ok("invalid".to_string())),
+            Ok(None)
+        );
+        let error = git_timeout_from_env(false, Ok("18446744073709551615".to_string()))
             .err()
             .ok_or("an overflowing timeout should fail closed")?;
-        assert!(error.contains("too large"));
+        assert!(error.contains("RIPR_GIT_TIMEOUT is too large"), "{error}");
+        // #4374: non-numeric and beyond-u64 values fail closed naming the
+        // variable instead of silently keeping the default deadline.
+        for value in ["invalid", "99999999999999999999", "-1", ""] {
+            let error = git_timeout_from_env(false, Ok(value.to_string()))
+                .err()
+                .ok_or(format!("RIPR_GIT_TIMEOUT={value:?} should fail closed"))?;
+            assert_eq!(
+                error,
+                format!(
+                    "RIPR_GIT_TIMEOUT requires a non-negative integer (seconds); got {value:?}"
+                )
+            );
+        }
+        assert_eq!(
+            git_timeout_from_env(
+                false,
+                Err(std::env::VarError::NotUnicode(std::ffi::OsString::from(
+                    "x"
+                )))
+            ),
+            Err("RIPR_GIT_TIMEOUT must be valid UTF-8".to_string())
+        );
         Ok(())
     }
 
@@ -926,6 +1940,9 @@ mod tests {
     #[test]
     fn check_repo_exposure_json_streams_output() -> Result<(), String> {
         let root = copy_sample_workspace_to_temp("repo-exposure-json")?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         let root_arg = root.to_string_lossy().into_owned();
         assert_eq!(
             check(&[
@@ -947,6 +1964,9 @@ mod tests {
         let diff = root.join("oversized.diff");
         std::fs::create_dir_all(&root)
             .map_err(|err| format!("failed to create oversized diff root: {err}"))?;
+        // Own this fixture boundary without creating or replacing ripr.toml.
+        std::fs::write(root.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("write owned fixture boundary: {error}"))?;
         std::fs::write(&diff, oversized_rust_diff(2001))
             .map_err(|err| format!("failed to write oversized diff: {err}"))?;
         let root_arg = root.to_string_lossy().into_owned();
@@ -1018,5 +2038,105 @@ mod tests {
             check(&args(&["--format"])),
             Err("missing value for --format".to_string())
         );
+    }
+}
+
+// #4951/#4958: on Windows trailing dots and spaces are stripped from every
+// path component, so an artifact name carrying one — final or interior —
+// cannot land on disk as typed and must be refused with the normalized path
+// the platform would actually write.
+#[cfg(all(test, windows))]
+mod write_artifact_stripped_name_tests {
+    use super::super::super::commands::check;
+
+    struct Guard(std::path::PathBuf);
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn trailing_dot_artifact_name_is_refused_with_the_stripped_name() -> Result<(), String> {
+        let root = std::env::temp_dir().join(format!("ripr-4951-artifact-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let _guard = Guard(root.clone());
+        let error = check(&[
+            "--root".to_string(),
+            root.display().to_string(),
+            "--write-artifact".to_string(),
+            "artifact.".to_string(),
+        ])
+        .err()
+        .unwrap_or_default();
+        assert!(
+            error.contains("--write-artifact artifact. would be written as \"artifact\""),
+            "{error}"
+        );
+        assert!(
+            error.contains("Windows strips trailing dots and spaces"),
+            "{error}"
+        );
+        assert!(
+            error.contains("pass a name without trailing dots or spaces"),
+            "{error}"
+        );
+        // The refusal precedes analysis, so nothing was written under either
+        // spelling.
+        assert!(
+            !root.join("artifact").exists(),
+            "artifact must not be written"
+        );
+        assert!(
+            !root.join("artifact.").exists(),
+            "artifact. must not be written"
+        );
+        Ok(())
+    }
+
+    // #4958: an interior stripped component is refused too, naming the
+    // normalized path the platform would actually write.
+    #[test]
+    fn interior_stripped_artifact_component_is_refused_with_the_written_path() -> Result<(), String>
+    {
+        let root = std::env::temp_dir().join(format!("ripr-4958-artifact-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+        let _guard = Guard(root.clone());
+        let error = check(&[
+            "--root".to_string(),
+            root.display().to_string(),
+            "--write-artifact".to_string(),
+            "a./b.json".to_string(),
+        ])
+        .err()
+        .unwrap_or_default();
+        assert!(
+            error.contains("--write-artifact a./b.json would be written as"),
+            "{error}"
+        );
+        // The normalized written path is named (path Debug escapes the
+        // separator), and the refusal keeps the landed repair hint.
+        assert!(error.contains(r"a\\b.json"), "{error}");
+        assert!(
+            error.contains("Windows strips trailing dots and spaces"),
+            "{error}"
+        );
+        assert!(
+            error.contains("pass a name without trailing dots or spaces"),
+            "{error}"
+        );
+        // The refusal precedes analysis, so nothing was written under either
+        // interior spelling.
+        assert!(
+            !root.join("a").exists(),
+            "normalized directory must not be written"
+        );
+        assert!(
+            !root.join("a.").exists(),
+            "typed directory must not be written"
+        );
+        Ok(())
     }
 }

@@ -39,11 +39,15 @@ fn parse_validate_root(args: &[String]) -> Result<PathBuf, String> {
 fn validate_config(root: &Path) -> Result<&'static str, String> {
     if !root.is_dir() {
         return Err(format!(
-            "config validate root {} is not a directory",
+            "config validate root {} is not a directory; pass the directory that contains the workspace (for a Cargo.toml path, its parent directory)",
             root.display()
         ));
     }
-    load_for_root(root)?;
+    // A missing file is a valid first run, but saying "ripr.toml valid" there
+    // told users a file they never wrote had been checked.
+    if load_for_root(root)?.source_path.is_none() {
+        return Ok("✓ no ripr.toml found; built-in defaults apply");
+    }
     Ok("✓ ripr.toml valid")
 }
 
@@ -66,6 +70,15 @@ mod tests {
         std::env::temp_dir().join(format!("ripr-config-{label}-{nonce}"))
     }
 
+    /// Own a freshly claimed root and remove it even when a control fails.
+    struct OwnedConfigFixture(PathBuf);
+
+    impl Drop for OwnedConfigFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
     #[test]
     fn validate_accepts_a_valid_root_config() -> Result<(), String> {
         let root = temp_dir("valid");
@@ -86,12 +99,40 @@ mod tests {
 
     #[test]
     fn validate_accepts_a_missing_config_using_built_in_defaults() -> Result<(), String> {
-        let root = temp_dir("missing");
-        fs::create_dir_all(&root).map_err(|error| error.to_string())?;
+        let parent = temp_dir("missing");
+        fs::create_dir(&parent).map_err(|error| error.to_string())?;
+        let fixture = OwnedConfigFixture(parent);
+        let parent_config = fixture.0.join(CONFIG_FILE_NAME);
+        fs::write(
+            &parent_config,
+            "[analysis]\nmode = \"fast\"\n\n[languages]\nenabled = []\n",
+        )
+        .map_err(|error| error.to_string())?;
+        let root = fixture.0.join("workspace");
+        fs::create_dir(&root).map_err(|error| error.to_string())?;
 
-        let result = validate_config(&root);
-        fs::remove_dir_all(&root).map_err(|error| error.to_string())?;
-        if result? != "✓ ripr.toml valid" {
+        // Missing at the child is not missing everywhere: retain legitimate
+        // ancestor discovery and its loaded-file success message first.
+        let inherited = load_for_root(&root)?;
+        let expected_source =
+            fs::canonicalize(&parent_config).map_err(|error| error.to_string())?;
+        if inherited.source_path.as_deref() != Some(expected_source.as_path())
+            || inherited.analysis().mode().map(|mode| mode.as_str()) != Some("fast")
+            || validate_config(&root)? != "✓ ripr.toml valid"
+        {
+            return Err("a missing local config must preserve the loaded ancestor contract".into());
+        }
+
+        // A distinct repository owns its defaults. This empty boundary marker
+        // is the source loader's existing stopping contract; no Git is run.
+        fs::create_dir(root.join(".git")).map_err(|error| error.to_string())?;
+        let isolated = load_for_root(&root)?;
+        if isolated.source_path.is_some() || isolated.analysis().mode().is_some() {
+            return Err("repository boundary must exclude the parent configuration".into());
+        }
+        if root.join(CONFIG_FILE_NAME).exists()
+            || validate_config(&root)? != "✓ no ripr.toml found; built-in defaults apply"
+        {
             return Err("missing configuration returned the wrong success message".to_string());
         }
         Ok(())

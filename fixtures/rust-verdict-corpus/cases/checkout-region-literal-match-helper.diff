@@ -1,0 +1,13 @@
+diff --git a/src/rates.rs b/src/rates.rs
+index aad58f4..74e2cf6 100644
+--- a/src/rates.rs
++++ b/src/rates.rs
+@@ -18,7 +18,7 @@ impl Premium {
+ 
+ fn region_code(region: &str) -> &'static str {
+     match region {
+-        "north" => "N",
++        "north" => concat!("N"),
+         "south" => "S",
+         _ => "?",
+     }

@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_parametrize_basic/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:ddb09ec37d4fcf171e2c90cd9836c7da792ca3566ce5b9fdbacc7586cd4925a5","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:dc56365c2646d0d3","base_revision":null,"input_identity":"sha256:ddb09ec37d4fcf171e2c90cd9836c7da792ca3566ce5b9fdbacc7586cd4925a5","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -47,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"if amount >= 100:","line":2}
       ],
-      "evidence": ["owner: tax_band", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_tax.py", "suggested_test_name: test_tax_band", "suggested_test_node_id: tests/test_tax.py::test_tax_band", "suggested_verify_command: pytest tests/test_tax.py::test_tax_band", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_tax_band)", "test_fixtures: amount (test_tax_band)", "test_parametrized: pytest (test_tax_band)", "test_verify_command: pytest tests/test_tax.py::test_tax_band (test_tax_band)", "related_test_relation: syntactic_call (test_tax_band)", "test_oracle_shape: reach_only (test_tax_band)"],
+      "evidence": ["owner: tax_band", "owner_kind: function", "missing_discriminator: amount == 100", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_tax.py", "suggested_test_name: test_tax_band", "suggested_test_node_id: tests/test_tax.py::test_tax_band", "suggested_verify_command: python -m pytest tests/test_tax.py::test_tax_band", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_tax_band)", "test_fixtures: amount (test_tax_band)", "test_parametrized: pytest (test_tax_band)", "test_verify_command: python -m pytest tests/test_tax.py::test_tax_band (test_tax_band)", "related_test_relation: syntactic_call (test_tax_band)", "test_oracle_shape: reach_only (test_tax_band)"],
       "missing": ["Related Python test reaches `tax_band` but the strongest extracted oracle is `unknown`; add or strengthen a focused assertion for the changed boundary."],
       "assertion_texts": {
       },
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_tax.py",
         "suggested_test_name": "test_tax_band",
         "suggested_test_node_id": "tests/test_tax.py::test_tax_band",
-        "verify_command": "pytest tests/test_tax.py::test_tax_band",
+        "verify_command": "python -m pytest tests/test_tax.py::test_tax_band",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_tax.py::test_tax_band"
          },
         "verify": {
-          "command": "pytest tests/test_tax.py::test_tax_band",
+          "command": "python -m pytest tests/test_tax.py::test_tax_band",
           "confidence": "high"
          },
         "receipt": {
@@ -144,5 +143,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/tax.py","digest":"sha256:11aaa3c9a2eb69d583d3af982f9323e7bbc78ed8b39b207b6ac29fd5a9a4ec65"},{"path":"tests/test_tax.py","digest":"sha256:ed9bef92fdd3de945f51b5841bdaef2d0fd23418a1275a6844250775dbc135cb"}]}
 }

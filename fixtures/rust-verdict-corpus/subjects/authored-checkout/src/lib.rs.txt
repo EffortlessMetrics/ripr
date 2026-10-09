@@ -1,0 +1,9 @@
+//! A small checkout: fees, payments, invoices, limits and rates. Each module
+//! pairs one changed behavior with a test shape a spec names.
+
+pub mod fees;
+pub mod invoice;
+pub mod limits;
+pub mod payment;
+pub mod rates;
+pub mod store;

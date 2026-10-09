@@ -1,0 +1,63 @@
+//! Equality checks, one function per test style.
+
+pub fn is_admin(role: &str) -> bool {
+    role == "admin"
+}
+
+pub fn is_weekend(day: u8) -> bool {
+    day % 7 == 0 || day % 7 == 6
+}
+
+pub fn same_currency(a: &str, b: &str) -> bool {
+    a == b
+}
+
+pub fn is_origin(x: i32, y: i32) -> bool {
+    x == 0 && y == 0
+}
+
+pub fn is_default_port(port: u16) -> bool {
+    port == 443
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_admin_is_admin() {
+        assert!(is_admin("admin"));
+        assert!(!is_admin("guest"));
+    }
+
+    #[test]
+    fn weekend_table() {
+        let cases = [(0, true), (1, false), (5, false), (6, true), (13, true)];
+        for (day, want) in cases {
+            assert_eq!(is_weekend(day), want, "day {day}");
+        }
+    }
+
+    #[test]
+    fn same_currency_is_reflexive() {
+        for code in ["USD", "EUR", "JPY", "GBP"] {
+            assert!(same_currency(code, code), "{code}");
+        }
+    }
+
+    fn check_origin(x: i32, y: i32, want: bool) {
+        assert_eq!(is_origin(x, y), want, "({x}, {y})");
+    }
+
+    #[test]
+    fn origin_is_zero_zero() {
+        check_origin(0, 0, true);
+        check_origin(0, 1, false);
+        check_origin(1, 0, false);
+    }
+
+    #[test]
+    fn default_port_smoke() {
+        let _ = is_default_port(8080);
+    }
+}

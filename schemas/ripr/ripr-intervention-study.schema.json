@@ -1,0 +1,453 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/ripr-intervention-study.schema.json",
+  "title": "RIPR matched intervention study preregistration",
+  "description": "Frozen protocol for measuring RIPR-assisted repair against matched controls. This document does not execute agents, adjudicate repairs, or claim intervention value.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "kind",
+    "implementation_state",
+    "study_id",
+    "protocol_version",
+    "protocol_digest",
+    "parent_issue",
+    "sequence",
+    "study_phase",
+    "repository",
+    "task_series",
+    "eligibility",
+    "strata",
+    "tasks",
+    "conditions",
+    "assignment",
+    "shared_budget",
+    "condition_budget_overlays",
+    "intervention_surface",
+    "leakage_controls",
+    "attempt_policy",
+    "outcome_axes",
+    "non_authoritative_summary",
+    "adjudication",
+    "invalid_attempt_rules",
+    "stopping_rule",
+    "planned_analysis",
+    "claim_ceiling",
+    "protocol_lock",
+    "non_claims"
+  ],
+  "properties": {
+    "schema_version": { "const": "ripr_intervention_study.v1" },
+    "kind": { "const": "ripr_intervention_study" },
+    "implementation_state": { "const": "preregistration_only" },
+    "study_id": { "type": "string", "minLength": 1 },
+    "protocol_version": { "type": "string", "minLength": 1 },
+    "protocol_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "parent_issue": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "string", "minLength": 1 },
+    "study_phase": { "const": "preregistered" },
+    "repository": { "$ref": "#/$defs/repository" },
+    "task_series": { "$ref": "#/$defs/task_series" },
+    "eligibility": { "$ref": "#/$defs/eligibility" },
+    "strata": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/stratum" }
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/task" }
+    },
+    "conditions": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/condition" }
+    },
+    "assignment": { "$ref": "#/$defs/assignment" },
+    "shared_budget": { "$ref": "#/$defs/budget" },
+    "condition_budget_overlays": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "ripr_assisted"],
+      "properties": {
+        "control": { "$ref": "#/$defs/budget_overlay" },
+        "ripr_assisted": { "$ref": "#/$defs/budget_overlay" }
+      }
+    },
+    "intervention_surface": { "$ref": "#/$defs/intervention_surface" },
+    "leakage_controls": { "$ref": "#/$defs/leakage_controls" },
+    "attempt_policy": { "$ref": "#/$defs/attempt_policy" },
+    "outcome_axes": {
+      "type": "array",
+      "minItems": 8,
+      "items": { "$ref": "#/$defs/outcome_axis" }
+    },
+    "non_authoritative_summary": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/summary" }
+      ]
+    },
+    "adjudication": { "$ref": "#/$defs/adjudication" },
+    "invalid_attempt_rules": { "$ref": "#/$defs/invalid_attempt_rules" },
+    "stopping_rule": { "$ref": "#/$defs/stopping_rule" },
+    "planned_analysis": { "$ref": "#/$defs/planned_analysis" },
+    "claim_ceiling": { "$ref": "#/$defs/claim_ceiling" },
+    "protocol_lock": { "$ref": "#/$defs/protocol_lock" },
+    "non_claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_id", "clone_url", "analyzed_head_sha"],
+      "properties": {
+        "repository_id": { "type": "string", "minLength": 1 },
+        "clone_url": { "type": "string", "minLength": 1 },
+        "analyzed_head_sha": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        }
+      }
+    },
+    "task_series": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_series_id", "description"],
+      "properties": {
+        "task_series_id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["include", "exclude"],
+      "properties": {
+        "include": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "exclude": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "stratum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stratum_id", "behavior_family", "existing_proof_state", "route_completeness", "difficulty_class"],
+      "properties": {
+        "stratum_id": { "type": "string", "minLength": 1 },
+        "behavior_family": { "type": "string", "minLength": 1 },
+        "existing_proof_state": { "type": "string", "minLength": 1 },
+        "route_completeness": { "type": "string", "minLength": 1 },
+        "difficulty_class": { "type": "string", "minLength": 1 }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "stratum_id", "canonical_behavior", "existing_proof_state", "fixture_id"],
+      "properties": {
+        "task_id": { "type": "string", "minLength": 1 },
+        "stratum_id": { "type": "string", "minLength": 1 },
+        "canonical_behavior": { "type": "string", "minLength": 1 },
+        "existing_proof_state": { "type": "string", "minLength": 1 },
+        "fixture_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "condition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["condition_id", "description"],
+      "properties": {
+        "condition_id": { "enum": ["control", "ripr_assisted"] },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "assignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_before_outcomes",
+        "freeze_rule",
+        "may_change_after_outcome_or_grader_signal",
+        "pairing",
+        "pairs",
+        "assignment_seed"
+      ],
+      "properties": {
+        "selected_before_outcomes": { "type": "boolean" },
+        "freeze_rule": {
+          "enum": ["before_first_outcome_or_grader_signal", "after_outcome_visible"]
+        },
+        "may_change_after_outcome_or_grader_signal": { "type": "boolean" },
+        "pairing": { "const": "matched_stratum_counterbalanced" },
+        "pairs": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/pair" }
+        },
+        "assignment_seed": { "type": "string", "minLength": 1 }
+      }
+    },
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pair_id", "task_id", "first_condition", "second_condition"],
+      "properties": {
+        "pair_id": { "type": "string", "minLength": 1 },
+        "task_id": { "type": "string", "minLength": 1 },
+        "first_condition": { "enum": ["control", "ripr_assisted"] },
+        "second_condition": { "enum": ["control", "ripr_assisted"] }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model_id",
+        "operator_profile",
+        "runtime_id",
+        "tool_ids",
+        "wall_clock_ms",
+        "token_budget",
+        "retry_limit",
+        "command_authority"
+      ],
+      "properties": {
+        "model_id": { "type": "string", "minLength": 1 },
+        "operator_profile": { "type": "string", "minLength": 1 },
+        "runtime_id": { "type": "string", "minLength": 1 },
+        "tool_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "wall_clock_ms": { "type": "integer", "minimum": 0 },
+        "token_budget": { "type": "integer", "minimum": 0 },
+        "retry_limit": { "type": "integer", "minimum": 0 },
+        "command_authority": { "type": "string", "minLength": 1 }
+      }
+    },
+    "budget_overlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "additional_wall_clock_ms",
+        "additional_token_budget",
+        "additional_retries",
+        "additional_tools"
+      ],
+      "properties": {
+        "additional_wall_clock_ms": { "type": "integer", "minimum": 0 },
+        "additional_token_budget": { "type": "integer", "minimum": 0 },
+        "additional_retries": { "type": "integer", "minimum": 0 },
+        "additional_tools": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "intervention_surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "ripr_assisted"],
+      "properties": {
+        "control": { "$ref": "#/$defs/evidence_surface" },
+        "ripr_assisted": { "$ref": "#/$defs/evidence_surface" }
+      }
+    },
+    "evidence_surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_ripr_receipts",
+        "allowed_ripr_views",
+        "allowed_ripr_commands",
+        "may_read_ripr_outputs",
+        "undeclared_repository_context"
+      ],
+      "properties": {
+        "allowed_ripr_receipts": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "allowed_ripr_views": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "allowed_ripr_commands": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "may_read_ripr_outputs": { "type": "boolean" },
+        "undeclared_repository_context": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "leakage_controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prior_exposure",
+        "branch_reuse",
+        "cross_condition_artifacts",
+        "shared_scratch_state",
+        "operator_leakage"
+      ],
+      "properties": {
+        "prior_exposure": { "$ref": "#/$defs/isolation_policy" },
+        "branch_reuse": { "$ref": "#/$defs/isolation_policy" },
+        "cross_condition_artifacts": { "$ref": "#/$defs/isolation_policy" },
+        "shared_scratch_state": { "$ref": "#/$defs/isolation_policy" },
+        "operator_leakage": { "$ref": "#/$defs/isolation_policy" }
+      }
+    },
+    "isolation_policy": {
+      "enum": ["forbidden", "disclose_and_exclude", "independent_operators"]
+    },
+    "attempt_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_replacement_after_failure", "retry_policy_equal_across_conditions"],
+      "properties": {
+        "task_replacement_after_failure": {
+          "enum": ["forbidden", "allowed_after_difficult_failure"]
+        },
+        "retry_policy_equal_across_conditions": { "type": "boolean" }
+      }
+    },
+    "outcome_axis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["axis_id", "description", "compensating", "independently_observable"],
+      "properties": {
+        "axis_id": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "compensating": { "type": "boolean" },
+        "independently_observable": { "type": "boolean" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "authoritative"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "authoritative": { "const": false }
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "grader_identities",
+        "rubric_id",
+        "rubric_version",
+        "blinded_to_condition",
+        "min_independent_graders",
+        "disagreement_policy"
+      ],
+      "properties": {
+        "grader_identities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "rubric_id": { "type": "string", "minLength": 1 },
+        "rubric_version": { "type": "string", "minLength": 1 },
+        "blinded_to_condition": { "type": "boolean" },
+        "min_independent_graders": { "type": "integer", "minimum": 1 },
+        "disagreement_policy": { "const": "retain_per_axis_do_not_average_correctness" }
+      }
+    },
+    "invalid_attempt_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome_cells",
+        "retain_timeouts",
+        "retain_cancellations",
+        "retain_invalid_attempts",
+        "retain_missing_evidence",
+        "retain_instrument_failures",
+        "drop_timeouts",
+        "drop_invalid_attempts"
+      ],
+      "properties": {
+        "outcome_cells": {
+          "type": "array",
+          "minItems": 6,
+          "items": {
+            "enum": ["pass", "fail", "partial", "not_proven", "invalid", "instrument_failure"]
+          }
+        },
+        "retain_timeouts": { "type": "boolean" },
+        "retain_cancellations": { "type": "boolean" },
+        "retain_invalid_attempts": { "type": "boolean" },
+        "retain_missing_evidence": { "type": "boolean" },
+        "retain_instrument_failures": { "type": "boolean" },
+        "drop_timeouts": { "type": "boolean" },
+        "drop_invalid_attempts": { "type": "boolean" }
+      }
+    },
+    "stopping_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "planned_pair_count",
+        "may_depend_on_interim_estimate",
+        "favorable_interim_stop"
+      ],
+      "properties": {
+        "kind": { "enum": ["fixed_sample", "stop_on_favorable_interim"] },
+        "planned_pair_count": { "type": "integer", "minimum": 1 },
+        "may_depend_on_interim_estimate": { "type": "boolean" },
+        "favorable_interim_stop": { "enum": ["forbidden", "allowed"] }
+      }
+    },
+    "planned_analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["unit", "compares", "reports_exact_numerators_and_denominators"],
+      "properties": {
+        "unit": { "type": "string", "minLength": 1 },
+        "compares": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "reports_exact_numerators_and_denominators": { "type": "boolean" }
+      }
+    },
+    "claim_ceiling": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bounded_to_task_series",
+        "bounded_to_model_operator_profile",
+        "bounded_to_intervention_form",
+        "preregistration_proves_intervention_value"
+      ],
+      "properties": {
+        "bounded_to_task_series": { "type": "boolean" },
+        "bounded_to_model_operator_profile": { "type": "boolean" },
+        "bounded_to_intervention_form": { "type": "boolean" },
+        "preregistration_proves_intervention_value": { "type": "boolean" }
+      }
+    },
+    "protocol_lock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "immutable_after_first_attempt",
+        "first_attempt_recorded",
+        "mutation_without_new_study_id"
+      ],
+      "properties": {
+        "immutable_after_first_attempt": { "type": "boolean" },
+        "first_attempt_recorded": { "type": "boolean" },
+        "mutation_without_new_study_id": { "enum": ["forbidden", "allowed"] }
+      }
+    }
+  }
+}

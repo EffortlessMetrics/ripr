@@ -1,0 +1,155 @@
+{
+  "kind": "historical_exact_ripr_observation",
+  "status": "THREE_COMMANDS_COMPLETED",
+  "producer_head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+  "producer_tree": "307af00404a907dae69a9e7ad02c7de4003985e7",
+  "executable": {
+    "path": "/workspace/shared/targets/ripr/debug/ripr",
+    "bytes": 158795648,
+    "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+  },
+  "producer_receipt": {
+    "path": "regex-word-boundary-empty/static/producer-receipt-68770.json",
+    "bytes": 13822,
+    "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+  },
+  "execution_receipt": {
+    "path": "regex-word-boundary-empty/static/execution-receipt-68770.json",
+    "bytes": 37957,
+    "sha256": "1d886a503bebe88aa76e49f408a3b2e6b7a053a4b000b0912ffa2de66b6ae22a"
+  },
+  "observations": [
+    {
+      "variant": "corrected",
+      "native_exit": 0,
+      "json": {
+        "path": "regex-word-boundary-empty/static/68770-corrected.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/static/68770-corrected.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "inputs_before": {
+        "path": "regex-word-boundary-empty/static/68770-corrected-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "inputs_after": {
+        "path": "regex-word-boundary-empty/static/68770-corrected-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "classification": "exposed",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "reported_related_tests_total": 8,
+      "target_test_reported": false,
+      "complete_internal_selection": "NOT_ESTABLISHED by this bounded projection"
+    },
+    {
+      "variant": "original",
+      "native_exit": 0,
+      "json": {
+        "path": "regex-word-boundary-empty/static/68770-original.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/static/68770-original.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "inputs_before": {
+        "path": "regex-word-boundary-empty/static/68770-original-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "inputs_after": {
+        "path": "regex-word-boundary-empty/static/68770-original-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "classification": "exposed",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "reported_related_tests_total": 8,
+      "target_test_reported": false,
+      "complete_internal_selection": "NOT_ESTABLISHED by this bounded projection"
+    },
+    {
+      "variant": "weak",
+      "native_exit": 0,
+      "json": {
+        "path": "regex-word-boundary-empty/static/68770-weak.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "regex-word-boundary-empty/static/68770-weak.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "inputs_before": {
+        "path": "regex-word-boundary-empty/static/68770-weak-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+      },
+      "inputs_after": {
+        "path": "regex-word-boundary-empty/static/68770-weak-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+      },
+      "classification": "exposed",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "reported_related_tests_total": 8,
+      "target_test_reported": false,
+      "complete_internal_selection": "NOT_ESTABLISHED by this bounded projection"
+    }
+  ],
+  "all_three_json_byte_identical": true,
+  "json_sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3",
+  "projection_correction": "These are eight REPORTED related tests, not an established complete internal selection. The analysis owner packs its related assertion rows to eight before the JSON renderer computes related_tests_total. Absent means not reported; analysis_is_match_empty may not be described as internally unselected from this output alone.",
+  "counterfactual_boundary": "RIPR reports call_deletion/effect for info.set_match_empty(true). Removing that call leaves HirInfo bit 8 false for all boundary kinds; the historical is_negated implementation keeps negated boundaries true. No call-omission runtime binary is retained. Historical fixed/broken outcomes do not establish the call-deletion outcome.",
+  "semantic_boundary": "Independent review accepts corrected valid and original invalid for the historical empty-substring claim. Weak is only a removal control. These labels are independent of the three exposed static classifications.",
+  "false_exposure": "NOT_ESTABLISHED",
+  "subject_alignment": {
+    "path": "regex-word-boundary-empty/static/subject-alignment-68770.json",
+    "bytes": 28618,
+    "sha256": "c845db4a9f161dbaed1e7680e41a7af74d0041fcc16d712b4f71042f61788b16"
+  },
+  "corrected_summary": {
+    "path": "regex-word-boundary-empty/static/corrected-result-summary-68770.json",
+    "bytes": 18740,
+    "sha256": "41eb465a83652afd7a6db9c2145eaee9b64fd89e46e8fa297680abd8ae156614"
+  },
+  "original_summary_before_correction": {
+    "path": "regex-word-boundary-empty/static/original-result-summary-before-alignment.json",
+    "bytes": 18080,
+    "sha256": "d598f0dd7a4f6bce08d413c06d09e652dbf9e39d6e6173fd4db9825abbf948f4"
+  },
+  "old_attempt": {
+    "status": "INSTRUMENT_BUDGET_STOP; no JSON or static classification",
+    "producer_head": "0e57b1e27f25559ec3b1a133b71a56cf558017b3",
+    "receipt": {
+      "path": "regex-word-boundary-empty/static/initial-instrument-stop-receipt.json",
+      "bytes": 6653,
+      "sha256": "c09291f66b6ea2d3f2006ed431bb59f88e1468d8847147e0c7425cc8ef30a3b9"
+    }
+  },
+  "native_product_contract_tests": "NOT_RUN",
+  "accepted_corpus_row": "NOT_INSERTED",
+  "case_id": "regex-word-boundary-empty",
+  "normative_static_expectation": false,
+  "production_source_path": "regex-syntax/src/hir/mod.rs",
+  "test_source_path": "regex-syntax/src/hir/translate.rs",
+  "transforms": "Raw reports, stderr, producer/execution receipts and input inventories are copied byte-for-byte. Summary fields derive from those retained artifacts. No command/root identity or static result is rewritten. The curated subject-alignment summary omits only the obsolete native_target_release coordination field; its original remains in task evidence.",
+  "diff": {
+    "path": "regex-word-boundary-empty/patches/production.patch",
+    "bytes": 1612,
+    "sha256": "37e041abb479743a22a83b2f0e615dbebc8b8a4c000038c281a8af48c0fe5cc8"
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 74cd9b4..3ceb9f3 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -362,7 +362,7 @@ impl Unsigned for u128 {
+         };
+ 
+         // Format per four digits from the lookup table.
+-        while remain > 999 {
++        while remain >= 1000 {
+             offset -= 4;
+ 
+             // pull two pairs

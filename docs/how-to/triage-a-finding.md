@@ -18,9 +18,10 @@ ripr check --root . --json --suppression-policy .ripr/suppressions.toml
 ```
 
 The explicit policy flag is required for suppression-aware findings JSON.
-Badge-specific formats load the repository manifest, but their exposure-gap
-application currently matches exact `finding_id` entries; prefer an exact
-finding id when the exception applies to one finding.
+Badge-specific formats load the repository manifest and apply the same
+`finding_id` or path-glob (optionally `static_class`-narrowed) matching as
+`--suppression-policy`; prefer an exact finding id when the exception applies
+to one finding.
 
 ## 2. Inspect the evidence
 
@@ -108,6 +109,6 @@ to the suppressed bucket. Revisit the exception before its `review_by` or
 warning.
 
 For the full schema and policy-health field definitions, see the
-[configuration reference](../CONFIGURATION.md#ripr-suppressions-toml). The
+[configuration reference](../CONFIGURATION.md#riprsuppressionstoml). The
 repository does not currently provide a `ripr suppress` convenience command;
 that is separate follow-up work.

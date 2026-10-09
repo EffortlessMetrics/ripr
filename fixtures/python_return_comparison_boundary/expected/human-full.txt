@@ -1,0 +1,80 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_return_comparison_boundary/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING src/pricing.py:2
+  id: probe:src_pricing.py:python_preview:69ed856b
+
+Changed
+  after:      return total > 100
+
+Probe
+  family: predicate
+  delta:  control
+  owner:  python:src/pricing.py::is_large
+  canonical gap: gap:python:src/pricing.py:is_large:predicate_boundary:predicate:total>100
+
+Language
+  language: python
+  status: preview
+  owner kind: function
+
+Static exposure
+  weakly_exposed (warning, confidence 0.40)
+
+Evidence
+  - reach yes: 1 related Python test(s) found for owner `is_large`
+  - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
+  - propagation weak: Changed Python fallback expression can propagate through selected behavior; preview evidence does not prove the concrete downstream sink.
+  - observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)
+  - discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.
+  - local flow reaches unknown sink: return total > 100 (line 2)
+  - related test tests/test_pricing.py:4 test_large_order uses strong exact value oracle: assert is_large(500) == True
+  - source function argument value total = 500 at line 5
+
+Weakness
+  - A strong Python oracle reaches `is_large`, but static evidence does not place a related test input at the changed predicate boundary `total == 100`. No strong related test call places total equal to 100; observed total values: 500.
+  - missing discriminator total == 100: No strong related test call places total equal to 100; observed total values: 500
+
+Python repair card (preview/advisory)
+  card version: python_repair_card.v1
+  canonical gap: gap:python:src/pricing.py:is_large:predicate_boundary:predicate:total>100
+  authority: preview_advisory_only (python/preview)
+  repair action: strengthen_existing_test
+  changed owner: is_large
+  changed behavior: predicate_boundary changed at src/pricing.py:2: `return total > 100`
+  current test evidence: tests/test_pricing.py:4 test_large_order currently has oracle_strength=strong, oracle_kind=exact_value: assert is_large(500) == True
+  missing discriminator: total == 100
+  recommended test shape: Strengthen the existing pytest boundary assertion for `total == 100`. Keep the equality case as the minimum repair; optional pytest parameterization can add `99`, `100`, and `101` rows when expected values are clear.
+  suggested assertion: Assert the owner result or effect at `total == 100` first. Optional pytest shape: @pytest.mark.parametrize("total, expected", [(99, ...), (100, ...), (101, ...)]); fill expected values from domain behavior only.
+  suggested file: tests/test_pricing.py
+  suggested test: test_large_order
+  pytest node: tests/test_pricing.py::test_large_order
+  verify: python -m pytest tests/test_pricing.py::test_large_order (high)
+  receipt: unavailable_until_python_gap_ledger
+  receipt guidance: Save this `ripr check --format json` report, then run `ripr first-pr --check-output <check.json>` or `ripr reports gap-ledger --check-output <check.json>` to materialize a gap ledger with a concrete receipt command.
+  stop conditions:
+    - Stop if imports, fixtures, or test setup cannot call the changed owner.
+    - Stop if the expected value for the missing discriminator is ambiguous.
+    - Stop if adding the test appears to require a production-code edit.
+    - Stop before adding parametrized below/above rows if their expected values are not clear; keep only the equality-boundary assertion.
+  limits:
+    - Syntax-first Python preview evidence only.
+    - No source edits, generated tests, mutation execution, provider calls, or gate authority.
+    - Verify success alone is not a gap-closure receipt.
+
+Next step
+  Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `total == 100`.
+Drill in:
+  ripr explain --root fixtures/python_return_comparison_boundary/input --diff fixtures/python_return_comparison_boundary/diff.patch --mode fast probe:src_pricing.py:python_preview:69ed856b
+  ripr context --root fixtures/python_return_comparison_boundary/input --diff fixtures/python_return_comparison_boundary/diff.patch --mode fast --at probe:src_pricing.py:python_preview:69ed856b
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

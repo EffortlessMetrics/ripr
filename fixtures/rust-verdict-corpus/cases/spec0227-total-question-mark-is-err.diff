@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index e13b9d5..67ab1ea 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ fn digit(c: char) -> Result<u32, E> {
+ pub fn total(s: &str) -> Result<u32, E> {
+     let mut sum = 0;
+     for c in s.chars() {
+-        let d = digit(c)?;
++        let d = (digit(c))?;
+         sum += d;
+     }
+     Ok(sum)

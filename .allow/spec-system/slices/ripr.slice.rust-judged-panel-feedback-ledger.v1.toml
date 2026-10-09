@@ -1,0 +1,61 @@
+schema_version = "2.0"
+id = "ripr.slice.rust-judged-panel-feedback-ledger.v1"
+generation = 1
+
+source_issue = "issue:4796"
+design_reference = "RIPR-SPEC-0199"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds a checked feedback ledger and deterministic JSON/Markdown reports over
+the frozen #3806 Rust judgments. Every terminal judged case gets one
+disposition. Confirmed defects stay replay-only unless a producer-path fixture
+can retain the exact mechanism. Does not repair the analyzer, run #4795
+calibration, mutate GitHub, or close #3164.
+"""
+
+non_goals = [
+  "analyzer family repairs",
+  "GitHub issue or PR mutation",
+  "issue 4795 calibration or scorecard",
+  "issue 3164 parent closure",
+  "support-tier or release promotion",
+  "honesty-corpus writes",
+]
+
+return_conditions = [
+  "Return to root if this slice repairs analyzer families or writes the honesty corpus.",
+  "Return to root if runtime calibration sets a static class or expected_class shortcut.",
+  "Return to root if GitHub issues are created, assigned, closed, or labeled.",
+  "Return to root if #4795 or #3164 remaining work is absorbed.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:rust-judged-panel-feedback",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:rust-judged-panel",
+]
+
+forbidden_seams = [
+  "seam:ripr:analysis",
+  "seam:ripr:release:promotion",
+  "seam:ripr:github:mutation",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0199"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+commands = [
+  "cargo test -p xtask --locked --offline rust_analysis_feedback",
+  "cargo xtask rust-judged-panel check",
+]
+
+[support_claim]
+state = "unchanged"

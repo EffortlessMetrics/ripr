@@ -214,7 +214,7 @@ Before treating a proof report as a useful receipt, verify:
 - [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) explains
   how one or more proof packets become advisory completeness, movement,
   warning, and repair-queue summaries.
-- [CI strategy](CI.md#generated-github-workflow) describes generated workflow
+- [CI strategy](CI.md#copyable-ripr-advisory-workflow) describes generated workflow
   projection into GitHub summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#test-oracle-assistant-loop) defines the
   JSON and Markdown contract.

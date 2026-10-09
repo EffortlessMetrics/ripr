@@ -1,11 +1,14 @@
-use crate::analysis::facts::{FileFacts, FunctionFact, FunctionSourceRole, TestFact};
+use crate::analysis::facts::{FileFacts, FunctionFact, FunctionSourceRole, SourceText, TestFact};
 use crate::analysis::rust_index::{
     extract_assertions, extract_call_facts, extract_literal_facts, extract_return_facts,
 };
 use crate::domain::SymbolId;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use super::{LexicalRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
+use super::{LexicalRustSyntaxAdapter, RustSyntaxAdapter};
+#[cfg(test)]
+use super::{SyntaxNodeFact, TextRange};
 
 impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
@@ -15,17 +18,53 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
         ))
     }
 
-    fn changed_nodes(&self, facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
-        owner_changed_nodes(facts, ranges)
+    #[cfg(test)]
+    fn changed_nodes(
+        &self,
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
+        owner_changed_nodes(functions, ranges)
     }
 }
 
 pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts {
-    let source = text.clone();
+    let source: Arc<str> = Arc::from(text.as_str());
+    let opaque = crate::analysis::extract::property_macros::opaque_property_macros(&text);
+    let mut unresolved_property_macros = Vec::new();
+    let mut previous_offset = 0;
+    let mut macro_line = 1;
+    for item in &opaque {
+        macro_line += text[previous_offset..item.range.start]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        previous_offset = item.range.start;
+        unresolved_property_macros.push(crate::analysis::facts::UnresolvedPropertyMacroFact {
+            name: item.name.to_string(),
+            line: macro_line,
+            mentioned_identifiers: crate::analysis::extract::property_macros::mentioned_identifiers(
+                &text[item.body_start..item.range.end],
+            ),
+        });
+    }
+    // Only macro-bearing fallback files need offsets; ordinary fallback keeps
+    // its previous allocation path. The source itself is never overlaid.
+    let line_starts = if opaque.is_empty() {
+        Vec::new()
+    } else {
+        let mut offset = 0;
+        text.split_inclusive('\n')
+            .map(|line| {
+                let start = offset;
+                offset += line.len();
+                start
+            })
+            .collect::<Vec<_>>()
+    };
     let lines: Vec<&str> = text.lines().collect();
     let mut functions = Vec::new();
     let mut tests = Vec::new();
-    let mut file_calls = Vec::new();
     let mut file_returns = Vec::new();
     let mut file_literals = Vec::new();
     let mut pending_test = false;
@@ -33,6 +72,15 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
 
     while i < lines.len() {
         let trimmed = lines[i].trim();
+        let first_token = line_starts
+            .get(i)
+            .map(|start| start + lines[i].len() - lines[i].trim_start().len());
+        if first_token.is_some_and(|offset| opaque.iter().any(|item| item.range.contains(&offset)))
+        {
+            pending_test = false;
+            i += 1;
+            continue;
+        }
         if trimmed.starts_with("#[test]")
             || trimmed.starts_with("#[tokio::test")
             || trimmed.starts_with("#[async_std::test")
@@ -57,7 +105,10 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
             let calls = extract_call_facts(&body, start_line);
             let returns = extract_return_facts(&body, start_line);
             let literals = extract_literal_facts(&body, start_line);
-            file_calls.extend(calls.clone());
+            // Lexical bodies rejoin line slices with `\n`, so they are not
+            // verbatim substrings (line endings); both facts share one
+            // owned copy instead of the file allocation.
+            let linked_body = SourceText::owned(body.as_str());
             file_returns.extend(returns.clone());
             file_literals.extend(literals.clone());
             let function = FunctionFact {
@@ -72,7 +123,7 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 file: path.clone(),
                 start_line,
                 end_line,
-                body: body.clone(),
+                body: linked_body.clone(),
                 calls: calls.clone(),
                 returns: returns.clone(),
                 literals: literals.clone(),
@@ -89,6 +140,7 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 // iterator, so attrs stay empty. Value-extraction-v2's
                 // rstest support is parser-only.
                 attrs: Vec::new(),
+                impl_attrs: Vec::new(),
                 // #3727 Slice A: shadow facts are parser-only, mirroring
                 // probe_shapes. Consumers route this file's shadow decisions
                 // through the lexical scanners because
@@ -96,6 +148,11 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                 // emptiness, is the discriminator.
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
+                // #4478: the item container is parser-only; `Unknown` makes
+                // every consumer that needs it fail closed.
+                item: crate::analysis::facts::FunctionItemFact::default(),
+                // No parser: where the `fn` sits is not established (#4558).
+                impl_context: crate::analysis::facts::FunctionImplContext::Unknown,
             };
             if pending_test {
                 tests.push(TestFact {
@@ -103,9 +160,9 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
                     file: path.clone(),
                     start_line,
                     end_line,
-                    body: body.clone(),
+                    body: linked_body.clone(),
                     calls,
-                    assertions: extract_assertions(&body, start_line),
+                    assertions: property_safe_lexical_assertions(&body, start_line),
                     literals,
                     attrs: Vec::new(),
                     // Parser-only shadow facts (#3727 Slice A): empty under
@@ -126,8 +183,6 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         i += 1;
     }
 
-    file_calls.sort_by(|a, b| a.line.cmp(&b.line).then(a.name.cmp(&b.name)));
-    file_calls.dedup_by(|a, b| a.line == b.line && a.name == b.name && a.text == b.text);
     file_returns.sort_by(|a, b| a.line.cmp(&b.line).then(a.text.cmp(&b.text)));
     file_returns.dedup_by(|a, b| a.line == b.line && a.text == b.text);
     file_literals.sort_by(|a, b| a.line.cmp(&b.line).then(a.value.cmp(&b.value)));
@@ -137,7 +192,6 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         path,
         functions,
         tests,
-        calls: file_calls,
         returns: file_returns,
         literals: file_literals,
         // probe_shapes is intentionally empty: shape extraction is parser-only.
@@ -152,16 +206,45 @@ pub(crate) fn summarize_file_lexically(path: PathBuf, text: String) -> FileFacts
         // parse; out-of-line test modules under fallback files keep the
         // fail-closed standalone roles (#3533).
         module_declarations: Vec::new(),
+        unresolved_property_macros,
         role_provenance: super::super::facts::SourceRoleProvenance::default(),
         source,
     }
 }
 
-fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNodeFact> {
+/// Opaque property bodies cannot manufacture lexical assertion oracles.
+fn property_safe_lexical_assertions(
+    body: &str,
+    start_line: usize,
+) -> Vec<crate::analysis::facts::OracleFact> {
+    let macros = crate::analysis::extract::property_macros::opaque_property_macros(body);
+    if macros.is_empty() {
+        return extract_assertions(body, start_line);
+    }
+    let mut previous_offset = 0;
+    let mut line = start_line;
+    let mut assertions = Vec::new();
+    for (offset, part) in
+        crate::analysis::extract::property_macros::outside_property_macros(body, &macros)
+    {
+        line += body[previous_offset..offset]
+            .bytes()
+            .filter(|byte| *byte == b'\n')
+            .count();
+        previous_offset = offset;
+        assertions.extend(extract_assertions(part, line));
+    }
+    assertions
+}
+
+#[cfg(test)]
+fn owner_changed_nodes(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+) -> Vec<SyntaxNodeFact> {
     let mut nodes = Vec::new();
     for range in ranges {
-        let mut owners = facts
-            .functions
+        let mut owners = functions
             .iter()
             .filter(|function| {
                 ranges_overlap(
@@ -188,7 +271,7 @@ fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNod
                 },
                 start_line: function.start_line,
                 end_line: function.end_line,
-                text: function.body.clone(),
+                text: function.body.to_string(),
                 owner: Some(function.id.clone()),
             });
         }
@@ -211,10 +294,12 @@ fn owner_changed_nodes(facts: &FileFacts, ranges: &[TextRange]) -> Vec<SyntaxNod
     nodes
 }
 
+#[cfg(test)]
 fn function_span(function: &FunctionFact) -> usize {
     function.end_line.saturating_sub(function.start_line)
 }
 
+#[cfg(test)]
 fn ranges_overlap(
     left_start: usize,
     left_end: usize,
@@ -306,7 +391,7 @@ fn checks_value() {
                 .any(|function| function.name == "load_value")
         );
         assert!(facts.tests.iter().any(|test| test.name == "checks_value"));
-        assert!(facts.calls.iter().any(|call| call.name == "helper"));
+        assert!(facts.file_calls().iter().any(|call| call.name == "helper"));
         assert!(
             facts
                 .returns
@@ -400,7 +485,10 @@ fn checks_value() {
                 end_column: 40,
             },
         ];
-        let nodes = adapter.changed_nodes(&facts, &ranges);
+        let nodes = adapter.changed_nodes(
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
+            &ranges,
+        );
 
         assert_eq!(nodes.len(), 1);
         assert_eq!(nodes[0].kind, "test_function");
@@ -409,5 +497,22 @@ fn checks_value() {
             Some("src/lib.rs::checks_value")
         );
         Ok(())
+    }
+
+    #[test]
+    fn lexical_bodies_keep_normalized_text_without_sharing() {
+        // #5415 step 2: lexical bodies rejoin line slices with `\n`, so a
+        // CRLF file's body is not a verbatim substring. It stays owned
+        // with byte-identical content rather than sharing a wrong span.
+        let facts = summarize_file_lexically(
+            PathBuf::from("src/lib.rs"),
+            "fn alpha() -> i32 {\r\n    7\r\n}\r\n".to_string(),
+        );
+        assert_eq!(facts.functions.len(), 1);
+        assert_eq!(
+            facts.functions[0].body.as_str(),
+            "fn alpha() -> i32 {\n    7\n}\n"
+        );
+        assert_eq!(facts.functions[0].body.shared_source(), None);
     }
 }

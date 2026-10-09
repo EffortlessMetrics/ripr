@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..7bc8956 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -5,7 +5,7 @@ pub fn score(points: i64) -> i64 {
+ }
+ 
+ pub fn rebate(total: i64) -> i64 {
+-    total / 10
++    total / (2 * 5)
+ }
+ 
+ pub fn discount(total: i64) -> i64 {

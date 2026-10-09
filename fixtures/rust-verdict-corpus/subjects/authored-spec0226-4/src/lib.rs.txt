@@ -1,0 +1,16 @@
+//! An early return that bumps a value when the first input is larger.
+
+pub fn bump(a: u32, b: u32, x: u32) -> u32 {
+    if a > b { return x + 1 }
+    x
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bump;
+
+    #[test]
+    fn t() {
+        assert_eq!(bump(2, 1, 7), 8);
+    }
+}

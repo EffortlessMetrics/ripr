@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_adversarial_fstring_length_invariant_aggregate/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:0b31a3d392101c216764809631f2cf0f29fd3a3ec43847964f3c778f5cf39f3e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:0b31a3d392101c216764809631f2cf0f29fd3a3ec43847964f3c778f5cf39f3e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -43,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `exact_value` (rank 5)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior."}
        },
-      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `status_label`", "infection yes: Changed Python return expression can alter the owner return value: `return f\"NO:{code}\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return f\"NO:{code}\" (line 2)", "related test tests/test_status.py:4 test_len uses strong exact value oracle: assert len(status_label(7)) == 4", "missing discriminator return value == f\"NO:{code}\": changed Python returned-value at line 2 lacks a concrete repair discriminator"],
+      "evidence_path": ["reach yes: 1 related Python test(s) found for owner `status_label`", "infection yes: Changed Python return expression can alter the owner return value: `return f\"NO:{code}\"`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator weak: Related Python test uses a `exact_value` oracle, but static evidence does not establish discrimination of the changed behavior.", "local flow reaches returned value: return f\"NO:{code}\" (line 2)", "related test tests/test_status.py:4 test_len uses strong exact value oracle: assert len(status_label(7)) == 4", "missing discriminator return value == <expected value>: changed Python returned-value at line 2 lacks a concrete repair discriminator"],
       "flow_sinks": [
         {"kind":"return_value","text":"return f\"NO:{code}\"","line":2}
       ],
-      "evidence": ["owner: status_label", "owner_kind: function", "missing_discriminator: return value == f\"NO:{code}\"", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_status.py", "suggested_test_name: test_len", "suggested_test_node_id: tests/test_status.py::test_len", "suggested_verify_command: pytest tests/test_status.py::test_len", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_len)", "test_verify_command: pytest tests/test_status.py::test_len (test_len)", "related_test_relation: syntactic_call (test_len)", "test_oracle: exact_value strong (test_len)"],
+      "evidence": ["owner: status_label", "owner_kind: function", "missing_discriminator: return value == <expected value>", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_status.py", "suggested_test_name: test_len", "suggested_test_node_id: tests/test_status.py::test_len", "suggested_verify_command: python -m pytest tests/test_status.py::test_len", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_len)", "test_verify_command: python -m pytest tests/test_status.py::test_len (test_len)", "related_test_relation: syntactic_call (test_len)", "test_oracle: exact_value strong (test_len)"],
       "missing": ["A strong Python oracle reaches `status_label`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -56,7 +55,7 @@
         ],
         "missing_discriminators": [
           {
-            "value": "return value == f\"NO:{code}\"",
+            "value": "return value == <expected value>",
             "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
             "flow_sink": {"kind":"return_value","text":"return f\"NO:{code}\"","line":2}
           }
@@ -66,7 +65,7 @@
       ],
       "missing_discriminators": [
         {
-          "value": "return value == f\"NO:{code}\"",
+          "value": "return value == <expected value>",
           "reason": "changed Python returned-value at line 2 lacks a concrete repair discriminator",
           "flow_sink": {"kind":"return_value","text":"return f\"NO:{code}\"","line":2}
         }
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_status.py",
         "suggested_test_name": "test_len",
         "suggested_test_node_id": "tests/test_status.py::test_len",
-        "verify_command": "pytest tests/test_status.py::test_len",
+        "verify_command": "python -m pytest tests/test_status.py::test_len",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -100,8 +99,8 @@
         "changed_owner": "status_label",
         "changed_behavior": "return_value changed at src/status.py:2: `return f\"NO:{code}\"`",
         "current_test_evidence": "tests/test_status.py:4 test_len currently has oracle_strength=strong, oracle_kind=exact_value: assert len(status_label(7)) == 4",
-        "missing_discriminator": "return value == f\"NO:{code}\"",
-        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == f\"NO:{code}\"`.",
+        "missing_discriminator": "return value == <expected value>",
+        "recommended_test_shape": "Strengthen the existing pytest exact return-value assertion for `return value == <expected value>`.",
         "suggested_assertion": "Assert the returned value equals the expected value for the changed inputs.",
         "suggested_location": {
           "test_file": "tests/test_status.py",
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_status.py::test_len"
          },
         "verify": {
-          "command": "pytest tests/test_status.py::test_len",
+          "command": "python -m pytest tests/test_status.py::test_len",
           "confidence": "high"
          },
         "receipt": {
@@ -123,8 +122,8 @@
       "stop_reasons": [],
       "oracle_kind": "exact_value",
       "oracle_strength": "strong",
-      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == f\"NO:{code}\"`.",
-      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == f\"NO:{code}\"`.",
+      "recommended_next_step": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
+      "suggested_next_action": "Python preview: strengthen the existing related test with an exact return-value assertion for missing discriminator `return value == <expected value>`.",
       "language": "python",
       "language_status": "preview",
       "owner_kind": "function",
@@ -145,5 +144,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/status.py","digest":"sha256:91e98a3f7971f2ee70a7189374beff1a8f956b4eefdf3fff7cf8108d974a4b49"},{"path":"tests/test_status.py","digest":"sha256:6527f2e25d019377aacf97cd86772b759e612976577e2f9a63a2cdb63834ddc1"}]}
 }

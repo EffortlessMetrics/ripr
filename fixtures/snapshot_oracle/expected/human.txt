@@ -2,29 +2,31 @@ ripr static RIPR exposure analysis
 mode: fast
 root: fixtures/snapshot_oracle/input
 
-Summary: 1 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 0 unknown
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
 
-Analysis outcome: complete_with_findings (analysis complete).
+Analysis outcome: findings below (analysis complete; complete_with_findings).
   Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
 
 Start here:
-  State: top_gap
+  State: a test gap to inspect or repair (top_gap)
   Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
   File: fixtures/snapshot_oracle/input/src/lib.rs:2
-  Static exposure: weakly_exposed (warning, confidence 0.84)
-  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Static exposure: weak (weakly_exposed, warning, confidence 0.84)
+  Why weak: a related test reaches this change but does not observe the exact changed value
   Changed behavior: if code <= 299 {
-  Missing discriminator: code == 299
-  Related test: tests/rendering.rs:4 renders_error_status_snapshot
+  Missing discriminator (1 of 2): code == 299
+  Related test: tests/rendering.rs:4 renders_error_status_snapshot (no test input reaches `code == 299`)
   Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
-  Evidence:
+  Evidence: reach yes · infection weak · propagation yes · observation yes · discriminator weak
     - reach yes: Related tests appear to reach render_status: renders_error_status_snapshot
     - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
-    - 6 more evidence line(s) hidden
+    - 6 more detail line(s) in --format human-full
 
 Next: drill into the top finding:
   ripr explain --root fixtures/snapshot_oracle/input --diff fixtures/snapshot_oracle/diff.patch --mode fast probe:src_lib.rs:predicate:7f019e84
   ripr context --root fixtures/snapshot_oracle/input --diff fixtures/snapshot_oracle/diff.patch --mode fast --at probe:src_lib.rs:predicate:7f019e84
+Write a test for it:
+  ripr agent stub --root fixtures/snapshot_oracle/input --at src/lib.rs:2
 
 More:
   Full evidence: rerun with --format human-full

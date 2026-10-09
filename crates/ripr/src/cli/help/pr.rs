@@ -1,6 +1,6 @@
 pub(super) const PR_LEDGER_HELP: &str = r#"Record a read-only PR evidence ledger entry over existing reports.
 
-Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--gap-ledger PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH]
+Usage: ripr pr-ledger record --pr-number VALUE --base REV --head REV [--label LABEL]... [--gate PATH] [--baseline-delta PATH] [--zero-status PATH] [--pr-guidance PATH] [--gap-ledger PATH] [--recommendation-calibration PATH] [--agent-receipt PATH] [--coverage PATH] [--history PATH] [--out PATH] [--out-md PATH] [--out-jsonl PATH]
 
 Record options:
   --pr-number VALUE                    Pull request number or local identifier.
@@ -18,12 +18,15 @@ Record options:
   --history PATH                       Optional previous PR evidence ledger JSONL history.
   --out PATH                           JSON output path. Defaults to target/ripr/reports/pr-evidence-ledger.json.
   --out-md PATH                        Markdown output path. Defaults to target/ripr/reports/pr-evidence-ledger.md.
+  --out-jsonl PATH                     Optional append-only JSONL producer. Writes one compact record per run. Generated CI does not pass this flag.
 
 The PR evidence ledger is read-only advisory history over existing RIPR
 artifacts. It records PR-local movement, waiver visibility, suppressions,
 repair receipts, and optional coverage/grip frontier signals. It does not run
 analysis, mutate baselines, post comments, edit source, generate tests, call an
 LLM, run mutation testing, change gate policy, or make CI blocking by default.
+The JSON and Markdown reports are always rewritten. History JSONL is written
+only when `--out-jsonl` is explicit; generated workflows never pass that flag.
 "#;
 pub(super) const PR_COMMENTS_HELP: &str = r#"Plan or publish bounded inline PR comments (off / plan / inline).
 
@@ -52,10 +55,36 @@ create/update/keep/delete/skip/blocked operations for a later explicit
 publisher, but it never posts comments, calls GitHub, edits source, generates
 tests, runs mutation testing, changes gate authority, or makes CI blocking by
 default.
+
+Usage: ripr pr-comments existing [--root PATH] [--raw PATH] [--out PATH]
+
+Existing options:
+  --raw PATH                  `gh api --paginate --slurp` pages of the pull request's review comments. `-` reads standard input and keeps a copy there. Defaults to target/ripr/review/existing-comments.raw.json.
+  --out PATH                  Existing-comment metadata for `--existing-comments`. Defaults to target/ripr/review/existing-comments.json.
+
+Usage: ripr pr-comments requests --pull-request N --head-sha SHA [--root PATH] [--plan PATH] [--out-dir PATH]
+
+Requests options:
+  --pull-request N            Pull request the review is posted on.
+  --head-sha SHA              Head commit the review comments are placed on.
+  --plan PATH                 Publish plan. Defaults to target/ripr/review/comment-publish-plan.json.
+  --out-dir PATH              Request directory relative to --root, its earlier request files are replaced; absolute paths, `..` and symlinked directories are refused. Defaults to target/ripr/review/publish.
+
+`existing` keeps only marked comments that github-actions[bot] posted.
+`requests` writes one JSON payload per call and requests.tsv, one line per
+call in order: method, endpoint after repos/OWNER/REPO/, payload file, and the
+message to print once the call succeeds. An unsafe plan writes no requests
+and prints why. Neither command calls GitHub or reads a token; the generated
+workflow's comment steps hold GH_TOKEN and run `gh api`.
 "#;
 pub(super) const PR_REVIEW_HELP: &str = r#"Compose the first-screen PR review summary from existing review artifacts.
 
 Usage: ripr pr-review front-panel [--root PATH] [--pr-guidance PATH] [--first-action PATH] [--assistant-proof PATH] [--assistant-health PATH] [--ledger PATH] [--baseline-delta PATH] [--zero-status PATH] [--gate-decision PATH] [--recommendation-calibration PATH] [--mutation-calibration PATH] [--coverage-frontier PATH] [--receipt PATH] [--out PATH] [--out-md PATH]
+
+At least one artifact input is required. Each one below is individually
+optional, but `ripr pr-review front-panel` with none exits 2 rather than
+guessing where artifacts live, so the paths printed in `ripr help --all` are
+examples of what to pass, not defaults that are read for you.
 
 Front-panel options:
   --root PATH                         Workspace root label. Defaults to current directory.

@@ -118,7 +118,7 @@ completed normally.
           "no gate or badge authority"
         ]
       },
-      "repair_route": "TypeScript is analyzed diff-first; run 'ripr check --base origin/main' or '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript exposure is not yet modeled (named limitation)."
+      "repair_route": "TypeScript is analyzed diff-first; run 'ripr check' or '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript exposure is not yet modeled (named limitation)."
     }
   ],
   "metrics": { "seams_total": 0, ... },
@@ -161,7 +161,7 @@ A `## Limitations` section is inserted before the empty-seams message:
 
 **typescript_diff_first** (ts_file_count: 2)
 
-TypeScript is analyzed diff-first; run 'ripr check --base origin/main' or
+TypeScript is analyzed diff-first; run 'ripr check' or
 '--diff <file>' to evaluate changed TypeScript behavior. Full-repo TypeScript
 exposure is not yet modeled (named limitation).
 

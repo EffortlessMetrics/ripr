@@ -1,7 +1,7 @@
 use super::super::rust_index::FunctionSummary;
 use super::propagation_witness::{
-    PropagationWitnessV1, complete_direct_witness, normalize_semantic_text,
-    valid_owner_bound_partial_witness,
+    PropagationWitnessV1, complete_direct_witness, is_direct_collection_state_write,
+    normalize_semantic_text, valid_owner_bound_partial_witness,
 };
 use super::text::exact_error_variant;
 use crate::domain::*;
@@ -80,11 +80,7 @@ pub(in crate::analysis) fn propagation_evidence_with_witness(
         );
     };
 
-    let direct_sink = matches!(
-        sink.kind,
-        FlowSinkKind::ReturnValue | FlowSinkKind::ErrorVariant | FlowSinkKind::StructField
-    );
-    if direct_sink && integrated_direct_family(&probe.family) {
+    if requires_complete_direct_witness(probe, sink) {
         if sink.owner.as_ref() == probe.owner.as_ref()
             && complete_direct_witness(probe, witness)
             && witness.is_some_and(|witness| {
@@ -120,6 +116,14 @@ pub(in crate::analysis) fn propagation_evidence_with_witness(
     }
 
     propagation_evidence(probe, flow_sinks)
+}
+
+fn requires_complete_direct_witness(probe: &Probe, sink: &FlowSinkFact) -> bool {
+    let value_direct = matches!(
+        sink.kind,
+        FlowSinkKind::ReturnValue | FlowSinkKind::ErrorVariant | FlowSinkKind::StructField
+    ) && integrated_direct_family(&probe.family);
+    value_direct || is_direct_collection_state_write(probe, sink)
 }
 
 fn integrated_direct_family(family: &ProbeFamily) -> bool {
@@ -220,6 +224,14 @@ fn predicate_flow_sinks(
             FlowSinkKind::ErrorVariant,
             result_error_text(&error.text),
             error.line,
+            owner,
+        )];
+    }
+    if let Some(tail) = predicate_as_owner_tail(probe, owner_fn) {
+        return vec![flow_sink(
+            FlowSinkKind::ReturnValue,
+            tail.text,
+            tail.line,
             owner,
         )];
     }
@@ -379,6 +391,60 @@ fn first_error_return(
                 line: return_fact.line,
                 text: return_fact.text.clone(),
             })
+    })
+}
+
+/// The changed predicate when it is the owner's whole tail expression
+/// (`items >= 10` as the last expression of `fn ships_free(..) -> bool`):
+/// the comparison's boolean is the returned value itself, so it propagates
+/// to the return without any branch. Requires a non-unit signature, the
+/// changed line to be exactly the comparison (no `;`, `if`, `let`, or
+/// `return`), and only the function's closing brace after it. A predicate
+/// retargeted from a changed `let` initializer (RIPR-SPEC-0158) is excluded:
+/// its changed text is the initializer, not the returned comparison, and its
+/// operand value stays a named limitation rather than a repair target.
+fn predicate_as_owner_tail(
+    probe: &Probe,
+    owner_fn: Option<&FunctionSummary>,
+) -> Option<LocalTextFact> {
+    let function = owner_fn?;
+    // Compare code only: a trailing `// note` on the changed line must not
+    // hide the tail, and comment text must not make two lines match.
+    let code = |text: &str| {
+        crate::analysis::language::mask_rust_comments_and_strings(text)
+            .trim()
+            .to_string()
+    };
+    let expression = code(&probe.expression);
+    if probe.after.as_deref().map(code).as_deref() != Some(expression.as_str()) {
+        return None;
+    }
+    let masked = crate::analysis::language::mask_rust_comments_and_strings(&function.body);
+    let mut lines = masked.lines();
+    let signature = lines.next()?;
+    if !signature.contains("->") {
+        return None;
+    }
+    let offset = probe.location.line.checked_sub(function.start_line)?;
+    let changed = masked.lines().nth(offset)?.trim();
+    if offset == 0
+        || changed != expression
+        || changed.ends_with(';')
+        || ["if ", "let ", "return ", "match ", "while "]
+            .iter()
+            .any(|keyword| changed.starts_with(keyword))
+    {
+        return None;
+    }
+    let rest = masked
+        .lines()
+        .skip(offset + 1)
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    (rest == ["}"]).then_some(LocalTextFact {
+        line: probe.location.line,
+        text: expression,
     })
 }
 
@@ -836,6 +902,82 @@ mod tests {
     }
 
     #[test]
+    fn predicate_that_is_the_owner_tail_flows_to_the_returned_value() {
+        let owner = tail_owner("pub fn ships_free(items: u32) -> bool {\n    items >= 10\n}");
+        let probe = probe(ProbeFamily::Predicate, "items >= 10", 2);
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "items >= 10");
+        assert_eq!(sinks[0].line, 2);
+    }
+
+    #[test]
+    fn predicate_tail_with_a_trailing_comment_still_flows_to_the_returned_value() {
+        let owner = tail_owner(
+            "pub fn ships_free(items: u32) -> bool {\n    items >= 10 // free-shipping line\n}",
+        );
+        let mut probe = probe(
+            ProbeFamily::Predicate,
+            "items >= 10 // free-shipping line",
+            2,
+        );
+        probe.after = Some("items >= 10 // free-shipping line".to_string());
+
+        let sinks = local_flow_sinks(&probe, Some(&owner));
+
+        assert_eq!(sinks.len(), 1);
+        assert_eq!(sinks[0].kind, FlowSinkKind::ReturnValue);
+        assert_eq!(sinks[0].text, "items >= 10");
+        assert_eq!(sinks[0].line, 2);
+    }
+
+    #[test]
+    fn predicate_tail_sink_fails_closed_off_the_bare_returned_comparison() {
+        // (owner body, probe expression, probe `after` text): a unit owner,
+        // a comparison continued by `&&` on the next line, a let-bound
+        // comparison, and a predicate retargeted from a changed `let`
+        // initializer (its changed text is the initializer, not the tail).
+        for (body, expression, after) in [
+            (
+                "pub fn check(items: u32) {\n    items >= 10\n}",
+                "items >= 10",
+                "items >= 10",
+            ),
+            (
+                "pub fn ships_free(items: u32, ready: bool) -> bool {\n    items >= 10\n        && ready\n}",
+                "items >= 10",
+                "items >= 10",
+            ),
+            (
+                "pub fn ships_free(items: u32) -> bool {\n    let free = items >= 10;\n    free\n}",
+                "items >= 10",
+                "let free = items >= 10;",
+            ),
+            (
+                "pub fn within(other: &str) -> bool {\n    size == 3\n}",
+                "size == 3",
+                "other.len()",
+            ),
+        ] {
+            let owner = tail_owner(body);
+            let mut probe = probe(ProbeFamily::Predicate, expression, 2);
+            probe.after = Some(after.to_string());
+
+            let sinks = local_flow_sinks(&probe, Some(&owner));
+
+            assert!(
+                !sinks
+                    .iter()
+                    .any(|sink| sink.kind == FlowSinkKind::ReturnValue),
+                "`{body}` must not treat `{expression}` as the returned value: {sinks:?}"
+            );
+        }
+    }
+
+    #[test]
     fn error_path_flow_uses_exact_error_variant_text() {
         let probe = probe(
             ProbeFamily::ErrorPath,
@@ -1209,15 +1351,18 @@ mod tests {
             start_line: 1,
             end_line: 5,
             body: "pub fn score(amount: i32) -> Response {\n    if amount > 10 {\n        status: amount,\n    }\n}"
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
 
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount > 10", 2);
 
@@ -1243,14 +1388,17 @@ mod tests {
             start_line: 1,
             end_line: 6,
             body: "pub fn quote(amount: i32, threshold: i32) -> Quote {\n    let eligible = amount >= threshold;\n    Quote {\n        code: 200,\n        eligible,\n    }\n}"
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1271,14 +1419,17 @@ mod tests {
             start_line: 1,
             end_line: 6,
             body: "pub fn quote(amount: i32, threshold: i32) -> Quote {\n    let eligible = amount >= threshold;\n    Quote {\n        code: 200,\n        remaining: threshold,\n    }\n}"
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1304,7 +1455,7 @@ mod tests {
                 end_line: 6,
                 body: format!(
                     "pub fn quote() -> Quote {{\n    if {expression} {{\n        Quote {{\n            {field},\n        }}\n    }}\n    Quote {{ code: 0 }}\n}}"
-                ),
+                ).into(),
                 calls: Vec::new(),
                 returns: Vec::new(),
                 literals: Vec::new(),
@@ -1312,6 +1463,9 @@ mod tests {
                 nested_fn_names: Vec::new(),
                 let_bindings: Vec::new(),
                 attrs: Vec::new(),
+                impl_attrs: Vec::new(),
+                item: Default::default(),
+                impl_context: Default::default(),
             };
             let probe = probe(ProbeFamily::Predicate, expression, 2);
 
@@ -1341,7 +1495,7 @@ mod tests {
             start_line: 1,
             end_line: 8,
             body: "pub fn quote(amount: i32, threshold: i32) -> i32 {\n    if amount >= threshold {\n        amount + 1\n    }\n    0\n}"
-                .to_string(),
+                .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
@@ -1349,6 +1503,9 @@ mod tests {
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::Predicate, "amount >= threshold", 2);
 
@@ -1366,7 +1523,7 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: body.lines().count(),
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             returns: vec![ReturnFact {
                 line: 3,
@@ -1375,8 +1532,18 @@ mod tests {
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
+        }
+    }
+
+    fn tail_owner(body: &str) -> FunctionSummary {
+        FunctionSummary {
+            returns: Vec::new(),
+            ..function(body)
         }
     }
 
@@ -1520,14 +1687,17 @@ mod tests {
             end_line: 5,
             body:
                 "pub fn collect(x: i32) {\n    let mut items = Vec::new();\n    items.push(x);\n}"
-                    .to_string(),
+                    .into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         let probe = probe(ProbeFamily::SideEffect, "items.push(x * 9);", 3);
         let sinks = local_flow_sinks(&probe, Some(&owner));
@@ -1543,6 +1713,81 @@ mod tests {
         assert_eq!(sinks.len(), 1);
         // `self` receiver is NOT considered local-dropped — stays StateWrite
         assert_eq!(sinks[0].kind, FlowSinkKind::StateWrite);
+    }
+
+    #[test]
+    fn direct_collection_state_write_requires_complete_witness() {
+        let probe = probe(ProbeFamily::SideEffect, "items.push(5)", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StateWrite,
+            text: "items.push(5)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let witness = super::super::propagation_witness::current_path_witness(&probe, &sinks);
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, witness.as_ref());
+        assert_eq!(evidence.state, StageState::Yes);
+        assert!(evidence.summary.contains("Complete propagation witness"));
+
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &sinks, None).state,
+            StageState::Weak
+        );
+
+        let mut invalid = witness.clone();
+        if let Some(witness) = invalid.as_mut() {
+            witness.semantic_digest = "sha256:invalid".to_string();
+        }
+        assert_eq!(
+            propagation_evidence_with_witness(&probe, &sinks, invalid.as_ref()).state,
+            StageState::Weak
+        );
+    }
+
+    #[test]
+    fn event_call_side_effect_keeps_legacy_syntax_propagation() {
+        let probe = probe(ProbeFamily::SideEffect, "events.publish(score)", 2);
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::EventCall,
+            text: "events.publish(score)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, None);
+        assert_eq!(evidence.state, StageState::Yes);
+        assert!(
+            evidence
+                .summary
+                .contains("Changed behavior appears to influence")
+        );
+    }
+
+    #[test]
+    fn cache_insert_call_deletion_keeps_legacy_syntax_propagation() {
+        // observation_verified_call_deletion: `cache.insert` shares a method
+        // name with Vec::insert and must not enter the #4575 push family.
+        let probe = probe(
+            ProbeFamily::CallDeletion,
+            "cache.insert(\"result_key\", result)",
+            2,
+        );
+        let sinks = vec![FlowSinkFact {
+            kind: FlowSinkKind::StateWrite,
+            text: "cache.insert(\"result_key\", result)".to_string(),
+            line: 3,
+            owner: probe.owner.clone(),
+        }];
+        let evidence = propagation_evidence_with_witness(&probe, &sinks, None);
+        assert_eq!(evidence.state, StageState::Yes);
+        assert!(
+            evidence
+                .summary
+                .contains("Changed behavior appears to influence")
+        );
+        assert!(
+            !evidence.summary.contains("Complete propagation witness"),
+            "admitting cache.insert would drift delivered CallDeletion goldens"
+        );
     }
 
     fn probe(family: ProbeFamily, expression: &str, line: usize) -> Probe {

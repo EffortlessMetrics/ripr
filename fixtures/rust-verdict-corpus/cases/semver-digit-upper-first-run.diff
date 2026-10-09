@@ -1,0 +1,13 @@
+diff --git a/src/parse.rs b/src/parse.rs
+index e92d87a..d49f4b7 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -163,7 +163,7 @@ fn numeric_identifier(input: &str, pos: Position) -> Result<(u64, &str), Error>
+     let mut value = 0u64;
+ 
+     while let Some(&digit) = input.as_bytes().get(len) {
+-        if digit < b'0' || digit > b'9' {
++        if digit < b'0' || digit >= b'9' {
+             break;
+         }
+         if value == 0 && len > 0 {

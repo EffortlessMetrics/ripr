@@ -1,22 +1,25 @@
+mod complete_execution;
+
 use super::pr_causal_delta::write_canonical_delta;
 use super::write_parented_file;
 use crate::run::{
-    capture_output_with_timeout, run_output_owned, run_output_owned_with_timeout,
-    tool_build_timeout,
+    capture_output_with_timeout, capture_process_output, run_output_owned,
+    run_output_owned_with_timeout, tool_build_timeout,
 };
 use ripr::review_input::{
-    CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
-    REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
-    REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
-    canonical_projection, canonical_projection_all,
+    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION, REVIEW_INPUT_SELECTION_POLICY,
+    REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1, canonical_finding_index,
+    canonical_projection,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
+use std::process::ExitStatus;
 use std::time::Duration;
 
 const DEFAULT_ROOT: &str = ".";
@@ -28,9 +31,16 @@ const PR_CHECK_JSON: &str = "target/ripr/pr/check.json";
 const PR_CHECK_SUBJECT_JSON: &str = "target/ripr/pr/check.subject.json";
 const PR_REVIEW_INPUT_JSON: &str = "target/ripr/pr/review-input.json";
 const PR_DIFF: &str = "target/ripr/pr/pr.diff";
+const PR_CANONICAL_DIFF: &str = "target/ripr/pr/check.diff";
 const REVIEW_INPUT_MAX_BYTES: usize = 128 * 1024;
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 const PR_EVIDENCE_TIMEOUT_ENV: &str = "RIPR_PR_EVIDENCE_TIMEOUT_SECS";
+const DIFF_SCOPE_OVERSIZED_GUARD: &str = "diff_scope_oversized:";
+const CHILD_DIAGNOSTIC_MAX_CHARS: usize = 2048;
+const CHILD_DIAGNOSTIC_MAX_LINES: usize = 12;
+const TOOL_ERROR_MAX_CHARS: usize = 4096;
+const TOOL_ERROR_MAX_LINES: usize = 24;
+const TRUNCATED_MARKER: &str = "… [truncated]";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct PrEvidenceOptions {
@@ -55,6 +65,12 @@ pub(crate) fn ripr_pr(args: &[String]) -> Result<(), String> {
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
         print_help();
         return Ok(());
+    }
+    if args
+        .iter()
+        .any(|arg| arg == complete_execution::EXPERIMENT_FLAG)
+    {
+        return complete_execution::run_experiment(args);
     }
     let options = parse_options(args)?;
     let repo = repo_root()?;
@@ -101,7 +117,9 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]");
+    println!(
+        "usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check] [--experimental-complete-execution]"
+    );
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
@@ -137,22 +155,26 @@ fn write_pr_evidence_with_runner(
         &changed_files,
         &options.root,
     )?;
-    let result = match run_check(repo, options) {
+    match run_check(repo, options) {
         Ok(check_json) => {
             match write_pr_evidence_packet(repo, options, &changed_files, &check_json) {
                 Ok(()) => Ok(()),
                 Err(err) => {
                     let diagnostic =
                         format!("RIPR check output could not be converted into PR evidence: {err}");
+                    remove_stale_check_artifact(repo).map_err(|cleanup| {
+                        format!("{diagnostic}; artifact revocation failed: {cleanup}")
+                    })?;
                     write_pr_evidence_error_packet(repo, options, &changed_files, &diagnostic)?;
                     Err(diagnostic)
                 }
             }
         }
-        Err(err) => write_pr_evidence_error_packet(repo, options, &changed_files, &err),
-    };
-    result?;
-    reject_error_packet(repo)
+        Err(err) => {
+            write_pr_evidence_error_packet(repo, options, &changed_files, &err)?;
+            reject_error_packet(repo)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -161,12 +183,35 @@ fn write_pr_evidence_from_check_json(
     options: &PrEvidenceOptions,
     check_json: &str,
 ) -> Result<(), String> {
+    remove_stale_check_artifact(repo)?;
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
 
     let changed_files = changed_files(repo, options)?;
     write_diff(repo, options)?;
     write_pr_evidence_packet(repo, options, &changed_files, check_json)
+}
+
+fn validate_current_pr_evidence_configuration(
+    root: &Path,
+    analysis_outcome: &Value,
+    expected_config: &ripr::config::RiprConfig,
+) -> Result<(), String> {
+    let current_config = ripr::config::load_for_root(root)
+        .map_err(|error| format!("load producer evidence configuration: {error}"))?;
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+        analysis_outcome,
+        &current_config,
+    )?;
+    if ripr::config::repo_exposure_config_identity_hash(&current_config)
+        != ripr::config::repo_exposure_config_identity_hash(expected_config)
+    {
+        return Err(
+            "producer configuration_fingerprint does not match the current configuration"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn write_pr_evidence_packet(
@@ -195,7 +240,9 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
     let config = ripr::config::load_for_root(&root)
         .map_err(|err| format!("load review input config: {err}"))?;
-    let canonical_diff = fs::read(repo.join(PR_DIFF))
+    #[cfg(test)]
+    mutate_configuration_after_load(&root, ConfigurationObservation::Publication)?;
+    let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
         "schema_version": "ripr.pr_check_subject.v1",
@@ -216,26 +263,11 @@ fn write_pr_evidence_packet(
         .get("findings")
         .and_then(Value::as_array)
         .ok_or_else(|| "ripr check output findings must be an array".to_string())?;
-    let entries = canonical_projection_all(findings, &root)
-        .map_err(|error| format!("derive canonical finding index: {error}"))?;
-    if entries.len() > REVIEW_INDEX_MAX_ENTRIES {
-        return Err("canonical finding index exceeds entry limit".to_string());
-    }
-    let encoded_entries = serde_json::to_vec(&entries)
-        .map_err(|error| format!("serialize canonical finding index: {error}"))?;
-    if encoded_entries.len() > REVIEW_INDEX_MAX_BYTES {
-        return Err("canonical finding index exceeds byte limit".to_string());
-    }
-    let index = CanonicalFindingIndexV1 {
-        schema_version: REVIEW_INDEX_SCHEMA_VERSION.to_string(),
-        total_finding_count: entries.len() as u64,
-        index_sha256: format!("sha256:{:x}", Sha256::digest(&encoded_entries)),
-        entries,
-    };
+    let (index, index_byte_count) = canonical_finding_index(findings, &root)?;
     subject["canonical_finding_index"] = serde_json::to_value(index)
         .map_err(|error| format!("serialize canonical finding index: {error}"))?;
     subject["canonical_finding_index_entry_count"] = json!(findings.len());
-    subject["canonical_finding_index_byte_count"] = json!(encoded_entries.len());
+    subject["canonical_finding_index_byte_count"] = json!(index_byte_count);
     let review_input = producer_review_input(&check_value, repo, options, &subject)?;
     let review_input_text = format!(
         "{}\n",
@@ -262,16 +294,16 @@ fn write_pr_evidence_packet(
             .map_err(|err| format!("serialize check subject receipt: {err}"))?
     );
 
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
+
     write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
     write_parented_file(
         &repo.join(PR_REVIEW_INPUT_JSON),
         PR_REVIEW_INPUT_JSON,
         review_input_text,
-    )?;
-    write_parented_file(
-        &repo.join(PR_CHECK_SUBJECT_JSON),
-        PR_CHECK_SUBJECT_JSON,
-        subject_text,
     )?;
 
     write_parented_file(
@@ -293,9 +325,86 @@ fn write_pr_evidence_packet(
         ));
     }
 
+    // The saved status check is fallible, so it must precede authority.
+    reject_error_packet(repo)?;
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
-    Ok(())
+    // Reobserve configuration immediately before committing admission authority.
+    validate_current_pr_evidence_configuration(
+        &root,
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
+    // Commit admission authority only after every fallible producer operation.
+    publish_check_subject(repo, &subject_text)
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConfigurationObservation {
+    Publication,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONFIGURATION_MUTATION: std::cell::RefCell<
+        Option<(ConfigurationObservation, PathBuf, Option<String>)>
+    > = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn mutate_configuration_after_load(
+    root: &Path,
+    point: ConfigurationObservation,
+) -> Result<(), String> {
+    let selected = CONFIGURATION_MUTATION
+        .with(|slot| slot.borrow().as_ref().is_some_and(|entry| entry.0 == point));
+    if !selected {
+        return Ok(());
+    }
+    let mutation = CONFIGURATION_MUTATION.with(|slot| slot.borrow_mut().take());
+    let Some((_, expected_root, text)) = mutation else {
+        return Err("controlled configuration mutation was not retained".into());
+    };
+    if root != expected_root {
+        return Err("controlled configuration mutation reached a different root".into());
+    }
+    let path = root.join("ripr.toml");
+    match text {
+        Some(text) => fs::write(path, text),
+        None => fs::remove_file(path),
+    }
+    .map_err(|error| format!("controlled configuration mutation failed: {error}"))
+}
+
+#[cfg(test)]
+fn with_configuration_mutation(
+    root: &Path,
+    point: ConfigurationObservation,
+    text: Option<&str>,
+    work: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    struct MutationLease;
+    impl Drop for MutationLease {
+        fn drop(&mut self) {
+            let _ = CONFIGURATION_MUTATION.with(|slot| slot.borrow_mut().take());
+        }
+    }
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let occupied = CONFIGURATION_MUTATION.with(|slot| slot.borrow().is_some());
+    if occupied {
+        return Err("nested controlled configuration mutation".into());
+    }
+    CONFIGURATION_MUTATION.with(|slot| {
+        *slot.borrow_mut() = Some((point, root, text.map(str::to_string)));
+    });
+    let _lease = MutationLease;
+    let result = work();
+    let pending = CONFIGURATION_MUTATION.with(|slot| slot.borrow().is_some());
+    if pending {
+        return Err("controlled configuration mutation checkpoint was not reached".into());
+    }
+    result
 }
 
 fn producer_review_input(
@@ -326,7 +435,7 @@ fn producer_review_input(
         .map_err(|error| format!("serialize review input projection: {error}"))?;
     let projection_bytes = serde_json::to_vec(&findings_value)
         .map_err(|err| format!("serialize producer review input digest: {err}"))?;
-    let canonical_diff = fs::read(repo.join(PR_DIFF))
+    let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for review input binding: {err}"))?;
     if projection_bytes.len() > REVIEW_INPUT_MAX_BYTES {
         return Err(format!(
@@ -360,7 +469,14 @@ fn producer_review_input(
 }
 
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
-    for relative in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+    // The subject is admission authority. Remove it before touching subordinate
+    // artifacts or attempting setup/analysis; only missing files are harmless.
+    for relative in [
+        PR_CHECK_SUBJECT_JSON,
+        PR_CHECK_JSON,
+        PR_REVIEW_INPUT_JSON,
+        complete_execution::RECEIPT,
+    ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -368,6 +484,46 @@ fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn publish_check_subject(repo: &Path, contents: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    static STAGE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    let destination = repo.join(PR_CHECK_SUBJECT_JSON);
+    let parent = destination.parent().ok_or("check subject has no parent")?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("stage check subject clock: {error}"))?
+        .as_nanos();
+    let sequence = STAGE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let stage = parent.join(format!(
+        ".ripr-pr-subject-{}-{nanos}-{sequence}.tmp",
+        std::process::id()
+    ));
+    // Exclusive creation cannot truncate an existing file or follow its link.
+    // An open failure leaves that unowned path untouched.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&stage)
+        .map_err(|error| format!("create staged check subject failed: {error}"))?;
+    let result = (|| {
+        file.write_all(contents.as_bytes())
+            .map_err(|error| format!("write staged check subject failed: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("sync staged check subject failed: {error}"))?;
+        drop(file);
+        fs::rename(&stage, &destination)
+            .map_err(|error| format!("failed to finalize {PR_CHECK_SUBJECT_JSON}: {error}"))
+    })();
+    if result.is_err() {
+        // Only this invocation's exclusively created stage is ours to remove.
+        // Preserve the primary failure if cleanup also fails.
+        let _ = fs::remove_file(&stage);
+    }
+    result
 }
 
 fn write_pr_evidence_error_packet(
@@ -464,6 +620,9 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             )];
         }
     };
+    if let Some(error) = ripr::reject_pr_evidence_error_packet(&subject) {
+        return vec![error];
+    }
     let expected = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
         (
@@ -494,6 +653,31 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             })
         })
         .collect();
+    match digest_file(&repo.join(PR_CANONICAL_DIFF)) {
+        Ok((digest, _)) => {
+            if subject.get("canonical_diff_sha256").and_then(Value::as_str) != Some(digest.as_str())
+            {
+                violations.push(format!(
+                    "{PR_CHECK_SUBJECT_JSON} canonical_diff_sha256 does not match {PR_CANONICAL_DIFF}"
+                ));
+            }
+            match load_canonical_check_diff(repo, options) {
+                Ok(expected) => {
+                    if digest != format!("sha256:{:x}", Sha256::digest(expected.as_bytes())) {
+                        violations.push(format!(
+                            "{PR_CANONICAL_DIFF} does not match the requested canonical base/head diff"
+                        ));
+                    }
+                }
+                Err(error) => {
+                    violations.push(format!("cannot reconstruct {PR_CANONICAL_DIFF}: {error}"))
+                }
+            }
+        }
+        Err(error) => violations.push(format!(
+            "missing or unreadable {PR_CANONICAL_DIFF}: {error}"
+        )),
+    }
     if subject.get("check_byte_count").and_then(Value::as_u64) != Some(check_byte_count) {
         violations.push(format!(
             "{PR_CHECK_SUBJECT_JSON} check_byte_count does not match check.json"
@@ -574,6 +758,26 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             "missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"
         )),
     }
+    match ripr::config::load_for_root(&repo.join(&options.root)) {
+        Ok(config) => {
+            if let Err(error) = ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+                subject.get("analysis_outcome").unwrap_or(&Value::Null),
+                &config,
+            ) {
+                violations.push(error);
+            }
+            if subject
+                .get("configuration_fingerprint")
+                .and_then(Value::as_str)
+                != Some(ripr::config::repo_exposure_config_identity_hash(&config).as_str())
+            {
+                violations.push(format!(
+                    "{PR_CHECK_SUBJECT_JSON} configuration_fingerprint does not match the current configuration"
+                ));
+            }
+        }
+        Err(error) => violations.push(format!("load producer evidence configuration: {error}")),
+    }
     violations
 }
 
@@ -621,31 +825,66 @@ fn resolve_revision(repo: &Path, rev: &str, object_kind: &str) -> Result<String,
 }
 
 fn changed_files(repo: &Path, options: &PrEvidenceOptions) -> Result<Vec<String>, String> {
+    // Raw NUL-delimited inventory (#4004, #4006): `-z` output is never
+    // C-quoted, so exotic names survive byte-exact; parsing rules come from
+    // the shared authority below, not from line splitting here. The
+    // `--diff-filter=ACMR` scope is the retained packet contract.
     let range = format!("{}...{}", options.base, options.head);
-    let output = run_git_output(
-        repo,
-        &["diff", "--name-only", "--diff-filter=ACMR", range.as_str()],
-    )?;
-    Ok(output
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect())
+    let git_args = vec![
+        "-C".to_string(),
+        repo.display().to_string(),
+        "diff".to_string(),
+        "--name-only".to_string(),
+        "-z".to_string(),
+        "--diff-filter=ACMR".to_string(),
+        range,
+    ];
+    let output = capture_process_output("git", &git_args, &[])
+        .map_err(|error| format!("git diff --name-only -z inventory: {}", error.message))?;
+    decode_changed_files(&output)
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8, empty, or truncated records fail
+/// loudly instead of collapsing through lossy conversion.
+fn decode_changed_files(output: &[u8]) -> Result<Vec<String>, String> {
+    ripr::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("PR evidence changed-file inventory: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "PR evidence changed-file inventory: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
 }
 
 fn write_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
     let out = repo.join(PR_DIFF);
-    let range = format!("{}...{}", options.base, options.head);
-    let diff = run_git_output(
-        repo,
-        &["diff", "--unified=0", "--no-ext-diff", range.as_str()],
-    )?;
-    write_parented_file(&out, PR_DIFF, diff)
+    // Route the packet diff through the shared pinned Git assembly (#3930,
+    // #4004): ambient textconv, color, external-diff, and context config must
+    // not change the packet presentation. The assembly pins `-c
+    // core.quotePath=true`, `--no-ext-diff`, `--no-textconv`, `--no-color`,
+    // `--src-prefix=a/`, `--dst-prefix=b/`, `--binary`, and three-context
+    // presentation.
+    let diff = ripr::analysis::load_pr_evidence_diff_range(repo, &options.base, &options.head)?;
+    write_parented_file(&out, PR_DIFF, diff)?;
+    let canonical = load_canonical_check_diff(repo, options)?;
+    write_parented_file(&repo.join(PR_CANONICAL_DIFF), PR_CANONICAL_DIFF, canonical)
+}
+
+fn load_canonical_check_diff(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
+    ripr::analysis::load_canonical_pr_evidence_diff_range(repo, &options.base, &options.head)
 }
 
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
-    let diff_path = repo.join(PR_DIFF);
+    let diff_path = repo.join(PR_CANONICAL_DIFF);
     let diff_arg = diff_path.display().to_string();
     let root_arg = command_root_arg(repo, &options.root);
     let ripr_args = vec![
@@ -698,25 +937,144 @@ fn run_ripr_check_binary(
     let output = capture_output_with_timeout(
         binary,
         &ripr_args,
-        &[],
+        // Review admission requires the complete finding set. The interactive
+        // JSON default may retain only a disclosed prefix; never reuse that
+        // bounded document as complete producer evidence. Keep timed capture
+        // and the canonical-index/projection bounds unchanged.
+        &[("RIPR_CHECK_FINDINGS_BYTES", "0")],
         timeout,
         "ripr check for PR evidence",
     )?;
     if output.timed_out {
+        let (shell, label) = native_retry_shell();
         return Err(format!(
-            "ripr check for PR evidence timed out after {} seconds; retry command: {}",
+            "ripr check for PR evidence timed out after {} seconds; retry command ({label}): {}",
             timeout.as_secs(),
-            pr_evidence_retry_command(options)
+            pr_evidence_retry_command(options, shell)
         ));
     }
     if output.status.is_some_and(|status| status.success()) {
         Ok(output.stdout)
     } else {
-        Err(format!(
-            "ripr check for PR evidence failed\nstdout:\n{}\nstderr:\n{}",
-            output.stdout.trim(),
-            output.stderr.trim()
+        Err(format_ripr_check_child_failure(
+            output.status,
+            &output.stdout,
+            &output.stderr,
         ))
+    }
+}
+
+fn format_ripr_check_child_failure(
+    status: Option<ExitStatus>,
+    stdout: &str,
+    stderr: &str,
+) -> String {
+    let status = describe_native_status(status);
+    let child = actionable_child_reason(stdout, stderr);
+    if child.is_empty() {
+        format!("ripr check for PR evidence failed ({status})")
+    } else {
+        format!("ripr check for PR evidence failed ({status})\n{child}")
+    }
+}
+
+fn describe_native_status(status: Option<ExitStatus>) -> String {
+    let Some(status) = status else {
+        return "native status: unknown".to_string();
+    };
+    if let Some(code) = status.code() {
+        return format!("native status: exit {code}");
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(signal) = status.signal() {
+            return format!("native status: signal {signal}");
+        }
+    }
+    "native status: unknown".to_string()
+}
+
+fn actionable_child_reason(stdout: &str, stderr: &str) -> String {
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        return bounded_text(
+            &prefer_named_guard(stderr),
+            CHILD_DIAGNOSTIC_MAX_CHARS,
+            CHILD_DIAGNOSTIC_MAX_LINES,
+        );
+    }
+    let stdout = stdout.trim();
+    if stdout.is_empty() || looks_like_json_payload(stdout) {
+        return String::new();
+    }
+    bounded_text(
+        &prefer_named_guard(stdout),
+        CHILD_DIAGNOSTIC_MAX_CHARS,
+        CHILD_DIAGNOSTIC_MAX_LINES,
+    )
+}
+
+fn looks_like_json_payload(text: &str) -> bool {
+    matches!(text.trim_start().as_bytes().first(), Some(b'{' | b'['))
+}
+
+fn prefer_named_guard(text: &str) -> String {
+    let lines: Vec<&str> = text.lines().collect();
+    if let Some(index) = lines.iter().position(|line| is_named_guard_line(line)) {
+        lines[index..].join("\n")
+    } else {
+        text.to_string()
+    }
+}
+
+fn is_named_guard_line(line: &str) -> bool {
+    let trimmed = line.trim();
+    let without_reporter = trimmed.strip_prefix("ripr: ").unwrap_or(trimmed);
+    without_reporter.starts_with(DIFF_SCOPE_OVERSIZED_GUARD)
+}
+
+fn bounded_text(text: &str, max_chars: usize, max_lines: usize) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    let mut truncated = false;
+    for (index, line) in trimmed.lines().enumerate() {
+        if index >= max_lines {
+            truncated = true;
+            break;
+        }
+        lines.push(line);
+    }
+    let mut joined = lines.join("\n");
+    if joined.chars().count() > max_chars {
+        truncated = true;
+        joined = joined.chars().take(max_chars).collect();
+        joined = joined.trim_end().to_string();
+    }
+    if truncated {
+        if joined.is_empty() {
+            TRUNCATED_MARKER.to_string()
+        } else {
+            format!("{joined}{TRUNCATED_MARKER}")
+        }
+    } else {
+        joined
+    }
+}
+
+fn bounded_tool_error_message(error: &str) -> String {
+    let trimmed = error.trim();
+    if trimmed.is_empty() {
+        return "RIPR PR evidence generation did not complete.".to_string();
+    }
+    let bounded = bounded_text(trimmed, TOOL_ERROR_MAX_CHARS, TOOL_ERROR_MAX_LINES);
+    if bounded.is_empty() {
+        "RIPR PR evidence generation did not complete.".to_string()
+    } else {
+        bounded
     }
 }
 
@@ -739,11 +1097,71 @@ fn parse_positive_timeout_secs(name: &str, value: &str) -> Result<u64, String> {
     }
 }
 
-fn pr_evidence_retry_command(options: &PrEvidenceOptions) -> String {
+#[derive(Clone, Copy)]
+enum RetryShell {
+    Bash,
+    PowerShell,
+}
+
+fn native_retry_shell() -> (RetryShell, &'static str) {
+    if cfg!(windows) {
+        (RetryShell::PowerShell, "PowerShell")
+    } else {
+        (RetryShell::Bash, "Bash")
+    }
+}
+
+fn pr_evidence_retry_command(options: &PrEvidenceOptions, shell: RetryShell) -> String {
+    let quote = |value: &str| match shell {
+        RetryShell::Bash => bash_retry_arg(value),
+        RetryShell::PowerShell => powershell_retry_arg(value),
+    };
     format!(
         "cargo xtask ripr-pr --base {} --head {} --root {}",
-        options.base, options.head, options.root
+        quote(&options.base),
+        quote(&options.head),
+        quote(&options.root)
     )
+}
+
+// Match the product command renderer's safe bare set; Bash otherwise needs
+// close-escape-reopen, while PowerShell doubles quotes inside a literal.
+fn retry_arg_is_plain(value: &str) -> bool {
+    !value.is_empty()
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '/' | '_' | '-' | ':'))
+}
+
+fn bash_retry_arg(value: &str) -> String {
+    if retry_arg_is_plain(value) {
+        value.to_string()
+    } else if value.contains('\n') || value.contains('\r') {
+        // `first_line` retains only one physical warning line in the packet.
+        // ANSI-C quoting keeps valid Unix roots with newlines copyable while
+        // still making backslashes and apostrophes literal Bash data.
+        let mut escaped = String::new();
+        for ch in value.chars() {
+            match ch {
+                '\\' => escaped.push_str("\\\\"),
+                '\'' => escaped.push_str("\\'"),
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                _ => escaped.push(ch),
+            }
+        }
+        format!("$'{escaped}'")
+    } else {
+        format!("'{}'", value.replace('\'', r"'\''"))
+    }
+}
+
+fn powershell_retry_arg(value: &str) -> String {
+    if retry_arg_is_plain(value) {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "''"))
+    }
 }
 
 fn ripr_exe_name() -> &'static str {
@@ -825,6 +1243,7 @@ fn pr_evidence_packet(
     } else {
         Value::Null
     };
+    let targeted_mutation_route = targeted_mutation_route(check_value, ripr_severe_gap);
 
     json!({
         "schema_version": "0.1",
@@ -846,7 +1265,8 @@ fn pr_evidence_packet(
             "severe_gaps": severe_gaps,
             "requires_targeted_mutation": ripr_severe_gap,
             "ripr_severe_gap": ripr_severe_gap,
-            "routing_reason": routing_reason
+            "routing_reason": routing_reason,
+            "targeted_mutation_route": targeted_mutation_route
         },
         "artifacts": [
             {
@@ -906,7 +1326,12 @@ fn pr_evidence_error_packet(
             "severe_gaps": 0,
             "requires_targeted_mutation": false,
             "ripr_severe_gap": false,
-            "routing_reason": null
+            "routing_reason": null,
+            "targeted_mutation_route": {
+                "status": "not_required",
+                "candidates": [],
+                "limitations": []
+            }
         },
         "artifacts": [
             {
@@ -948,19 +1373,123 @@ fn pr_evidence_error_packet(
     })
 }
 
+/// Keep the legacy diagnostic entry point on the live packet path while using
+/// the bounded UTF-8-safe formatter and its explicit truncation marker.
 fn first_line(text: &str) -> String {
-    let mut diagnostic = text
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .take(8)
-        .collect::<Vec<_>>()
-        .join("\n");
-    if diagnostic.is_empty() {
-        diagnostic = "RIPR PR evidence generation did not complete.".to_string();
+    bounded_tool_error_message(text)
+}
+
+/// Mirrors `targeted_mutation_route` in `crates/ripr/src/app/pr_evidence.rs`
+/// so the compatibility shim emits the same schema-required route the
+/// `ripr pr-evidence` producer emits. Candidates derive only from
+/// producer-owned probe facts on findings whose `source_currentness` is
+/// `candidate_current` — a current head obligation, never base-side evidence.
+/// Inputs that cannot yield a safe candidate produce honest limitations,
+/// never invented candidates.
+fn targeted_mutation_route(check_value: &Value, required: bool) -> Value {
+    let mut candidates = Vec::new();
+    let mut limitations = Vec::new();
+    let mut seen = BTreeSet::new();
+    for finding in check_value
+        .get("findings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(classification) = finding.get("classification").and_then(Value::as_str) else {
+            continue;
+        };
+        // Candidate-actionable eligibility (#3281): mutation candidates are
+        // current obligations; base-side evidence never names a head target.
+        if finding.get("source_currentness").and_then(Value::as_str) != Some("candidate_current") {
+            continue;
+        }
+        if !matches!(
+            classification,
+            "weakly_exposed" | "reachable_unrevealed" | "no_static_path"
+        ) {
+            continue;
+        }
+        let Some(probe) = finding.get("probe").and_then(Value::as_object) else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "message": "finding has no producer-owned probe facts from which to derive a safe mutation candidate"
+            }));
+            continue;
+        };
+        let family = probe
+            .get("family")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let file = probe.get("file").and_then(Value::as_str);
+        let line = probe.get("line").and_then(Value::as_u64);
+        let expression = probe.get("expression").and_then(Value::as_str);
+        let Some((from, to)) = (family == "predicate")
+            .then(|| expression.and_then(predicate_operator_flip))
+            .flatten()
+        else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "family": family,
+                "message": format!("no safe concrete mutation candidate could be derived for {family} producer evidence")
+            }));
+            continue;
+        };
+        let Some(file) = file.filter(|file| !file.trim().is_empty()) else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "family": family,
+                "message": "predicate mutation candidate has no producer-owned source file"
+            }));
+            continue;
+        };
+        let Some(line) = line else {
+            limitations.push(json!({
+                "kind": "no_safe_candidate",
+                "family": family,
+                "message": "predicate mutation candidate has no unambiguous source line"
+            }));
+            continue;
+        };
+        let key = format!("{file}:{line}:{from}:{to}");
+        if !seen.insert(key) {
+            continue;
+        }
+        candidates.push(json!({
+            "file": file,
+            "line": line,
+            "kind": "predicate_operator_flip",
+            "from": from,
+            "to": to,
+            "command": format!("cargo mutants --file \"{}\"", file.replace('"', "\\\"")),
+            "expected_observation": format!("the focused boundary test should observe the predicate change {from} -> {to}")
+        }));
     }
-    diagnostic.truncate(4096);
-    diagnostic
+    let status = if !required {
+        "not_required"
+    } else if candidates.is_empty() {
+        "static_limitation"
+    } else {
+        "candidate"
+    };
+    json!({
+        "status": status,
+        "candidates": candidates,
+        "limitations": limitations
+    })
+}
+
+fn predicate_operator_flip(expression: &str) -> Option<(&'static str, &'static str)> {
+    [
+        (">=", ">"),
+        ("<=", "<"),
+        ("==", "!="),
+        ("!=", "=="),
+        (">", ">="),
+        ("<", "<="),
+    ]
+    .into_iter()
+    .find_map(|(from, to)| expression.contains(from).then_some((from, to)))
 }
 
 fn count_field(summary: Option<&Map<String, Value>>, key: &str) -> usize {
@@ -1030,6 +1559,7 @@ fn validate_packet_value(
     {
         violations.push("summary.routing_reason is missing or not string/null".to_string());
     }
+    validate_targeted_mutation_route(summary, &mut violations);
 
     validate_artifacts(packet, &mut violations);
     if !markdown_exists {
@@ -1044,6 +1574,49 @@ fn validate_packet_value(
         None => violations.push("advisory_limits is missing or not an array".to_string()),
     }
     violations
+}
+
+/// Presence and eligibility check for the schema-required
+/// `summary.targeted_mutation_route`. The app producer
+/// (`crates/ripr/src/app/pr_evidence.rs`) pairs `status: "not_required"`
+/// with `requires_targeted_mutation: false` and never derives candidates
+/// from base-side evidence, so a packet whose route disagrees with the
+/// eligibility rule is producer drift, not a softer state.
+fn validate_targeted_mutation_route(summary: &Map<String, Value>, violations: &mut Vec<String>) {
+    let Some(route) = summary
+        .get("targeted_mutation_route")
+        .and_then(Value::as_object)
+    else {
+        violations.push("summary.targeted_mutation_route is missing or not an object".to_string());
+        return;
+    };
+    let status = route.get("status").and_then(Value::as_str);
+    match status {
+        Some("not_required" | "candidate" | "static_limitation") => {}
+        Some(other) => violations.push(format!(
+            "summary.targeted_mutation_route.status {other:?} is not contract-valid"
+        )),
+        None => violations
+            .push("summary.targeted_mutation_route.status is missing or not a string".to_string()),
+    }
+    for key in ["candidates", "limitations"] {
+        if !route.get(key).is_some_and(Value::is_array) {
+            violations.push(format!(
+                "summary.targeted_mutation_route.{key} is missing or not an array"
+            ));
+        }
+    }
+    let required = summary
+        .get("requires_targeted_mutation")
+        .is_some_and(|value| value == &Value::Bool(true));
+    if let Some(status) = status
+        && (status == "not_required") == required
+    {
+        violations.push(format!(
+            "summary.targeted_mutation_route.status {status:?} disagrees with \
+             summary.requires_targeted_mutation {required}"
+        ));
+    }
 }
 
 fn expect_string(packet: &Value, key: &str, expected: &str, violations: &mut Vec<String>) {
@@ -1156,7 +1729,7 @@ fn render_pr_evidence_markdown(packet: &Value) -> String {
             out.push_str(&format!(
                 "- {}: {}\n",
                 md_escape(string_field(warning, "kind", "warning")),
-                md_escape(string_field(
+                md_warning(string_field(
                     warning,
                     "message",
                     "PR evidence generation warning"
@@ -1186,6 +1759,39 @@ fn md_escape(value: &str) -> String {
     value.replace('|', "\\|").replace('\n', " ")
 }
 
+fn md_warning(value: &str) -> String {
+    // Warnings are list prose, not table cells. A retry must be code: Markdown
+    // consumes backslashes before punctuation and interprets entities, tags,
+    // and emphasis in ordinary prose, changing copied shell arguments.
+    let flattened = value.replace(['\r', '\n'], " ");
+    if flattened.starts_with("ripr check for PR evidence timed out after ")
+        && let Some((context, tail)) = flattened.split_once("; retry command (")
+        && let Some((shell, command)) = tail.split_once("): ")
+        && matches!(shell, "Bash" | "PowerShell")
+    {
+        return format!(
+            "{context}; retry command ({shell}): {}",
+            md_code_span(command)
+        );
+    }
+    flattened
+}
+
+fn md_code_span(command: &str) -> String {
+    let mut run = 0usize;
+    let mut longest = 0usize;
+    for ch in command.chars() {
+        if ch == '`' {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    let delimiter = "`".repeat(longest + 1);
+    format!("{delimiter}{command}{delimiter}")
+}
+
 fn repo_root() -> Result<PathBuf, String> {
     let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
     manifest_dir.parent().map(Path::to_path_buf).ok_or_else(|| {
@@ -1200,6 +1806,406 @@ fn repo_root() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use ripr::review_input::projection_summary;
+    use ripr::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
+
+    const CONFIGURATION_A: &str = "[analysis]\ninclude_unchanged_tests = true\n";
+    const CONFIGURATION_B: &str = "[analysis]\ninclude_unchanged_tests = false\n";
+
+    fn with_configuration_fixture(
+        name: &str,
+        initial_config: Option<&str>,
+        test: impl FnOnce(
+            &Path,
+            &PrEvidenceOptions,
+            &str,
+            &dyn Fn(&Path, &PrEvidenceOptions) -> Result<String, String>,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        crate::reports::fixtures::ripr_fixture_binary()?;
+        let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+        let repo = temp_repo(name)?;
+        let result = (|| {
+            run_git(
+                &repo,
+                &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+            )?;
+            run_git(
+                &repo,
+                &["config", "user.email", "config-fixture@example.invalid"],
+            )?;
+            run_git(&repo, &["config", "user.name", "RIPR Config Fixture"])?;
+            run_git(&repo, &["config", "commit.gpgSign", "false"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"config-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            if let Some(config) = initial_config {
+                write_repo_file(&repo, "ripr.toml", config)?;
+            }
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            // This unchanged evidence is present in the whole head. Preserve
+            // each adapter's existing choice about selecting it.
+            write_repo_file(
+                &repo,
+                "tests/eligible.rs",
+                "#[test]\nfn boundary() { assert!(!config_probe::eligible(1)); }\n",
+            )?;
+            run_git(&repo, &["add", "-A"])?;
+            run_git(&repo, &["commit", "--quiet", "-m", "base"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            run_git(&repo, &["commit", "--quiet", "-a", "-m", "predicate"])?;
+            let options = PrEvidenceOptions {
+                base: resolve_revision(&repo, "HEAD~1", "commit")?,
+                head: resolve_revision(&repo, "HEAD", "commit")?,
+                ..options()
+            };
+            let run_check = |repo: &Path, options: &PrEvidenceOptions| {
+                run_ripr_check_binary(
+                    &binary,
+                    vec![
+                        "check".into(),
+                        "--root".into(),
+                        command_root_arg(repo, &options.root),
+                        "--base".into(),
+                        options.base.clone(),
+                        "--diff".into(),
+                        repo.join(PR_CANONICAL_DIFF).display().to_string(),
+                        "--no-unchanged-tests".into(),
+                        "--format".into(),
+                        "json".into(),
+                    ],
+                    options,
+                    Duration::from_mins(2),
+                )
+            };
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                run_check(repo, options)
+            })?;
+            let check =
+                fs::read_to_string(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
+            let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
+            if value
+                .pointer("/analysis_outcome/analysis_complete")
+                .and_then(Value::as_bool)
+                != Some(true)
+                || value
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .is_none_or(Vec::is_empty)
+            {
+                return Err("configuration fixture must execute complete nonempty analysis".into());
+            }
+            check_pr_evidence(&repo, &options)?;
+            configuration_fixture_review(&repo, &options)?;
+            test(&repo, &options, &check, &run_check)
+        })();
+        let cleanup = fs::remove_dir_all(&repo)
+            .map_err(|error| format!("cleanup {}: {error}", repo.display()));
+        result.and(cleanup)
+    }
+
+    fn configuration_fixture_review(
+        repo: &Path,
+        options: &PrEvidenceOptions,
+    ) -> Result<(), String> {
+        ripr::cli::run(vec![
+            "ripr".into(),
+            "review-comments".into(),
+            "--root".into(),
+            repo.display().to_string(),
+            "--base".into(),
+            options.base.clone(),
+            "--head".into(),
+            options.head.clone(),
+            "--check-output".into(),
+            repo.join(PR_CHECK_JSON).display().to_string(),
+            "--out".into(),
+            repo.join("target/config-review.json").display().to_string(),
+        ])
+        .map_err(|error| error.message().to_string())?;
+        let rendered: Value = serde_json::from_slice(
+            &fs::read(repo.join("target/config-review.json")).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if rendered
+            .pointer("/analysis_scope/basis")
+            .and_then(Value::as_str)
+            != Some("producer_check_projection")
+            || rendered
+                .pointer("/analysis_scope/classified_seams_considered")
+                .and_then(Value::as_u64)
+                .is_none_or(|count| count == 0)
+        {
+            return Err("review did not reuse nonempty producer analysis".into());
+        }
+        Ok(())
+    }
+
+    fn configuration_fixture_refusal(
+        repo: &Path,
+        error: &str,
+        category: &str,
+    ) -> Result<(), String> {
+        if !error.contains("config_identity") || !error.contains(category) {
+            return Err(format!("wrong configuration refusal: {error}"));
+        }
+        let receipt: Value = serde_json::from_slice(
+            &fs::read(repo.join("target/run-receipt.json")).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if receipt["status"] != "failed"
+            || receipt
+                .pointer("/primary_failure/phase")
+                .and_then(Value::as_str)
+                != Some("producer_evidence_admission")
+            || receipt
+                .pointer("/primary_failure/category")
+                .and_then(Value::as_str)
+                != Some(category)
+        {
+            return Err(format!("wrong configuration refusal receipt: {receipt}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_drift_after_publication_load_is_refused() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-after-load-config-drift",
+            Some(CONFIGURATION_A),
+            |repo, options, check, _run_check| {
+                let config_a = ripr::config::load_for_root(repo)?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                let config_b = ripr::config::load_for_root(repo)?;
+                assert_eq!(
+                    ripr::config::repo_exposure_config_identity_hash(&config_a),
+                    ripr::config::repo_exposure_config_identity_hash(&config_b),
+                );
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                with_configuration_mutation(
+                    repo,
+                    ConfigurationObservation::Publication,
+                    Some(CONFIGURATION_B),
+                    || {
+                        let failure = write_pr_evidence_with_runner(repo, options, |_, _| {
+                            Ok(check.to_string())
+                        })
+                        .err()
+                        .ok_or("after-load configuration drift published cached analysis")?;
+                        assert!(failure.contains("config_identity"), "{failure}");
+                        for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+                            assert!(!repo.join(path).exists(), "retained authority: {path}");
+                        }
+                        let packet: Value = serde_json::from_slice(
+                            &fs::read(repo.join(PR_EVIDENCE_JSON))
+                                .map_err(|error| error.to_string())?,
+                        )
+                        .map_err(|error| error.to_string())?;
+                        assert_eq!(packet["status"], "error");
+                        assert!(check_pr_evidence(repo, options).is_err());
+                        Ok(())
+                    },
+                )?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                write_pr_evidence_with_runner(repo, options, |_, _| Ok(check.to_string()))?;
+                check_pr_evidence(repo, options)?;
+                configuration_fixture_review(repo, options)
+            },
+        )
+    }
+
+    #[test]
+    fn producer_configuration_drift_is_rejected_after_actual_check() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-config-drift",
+            Some(CONFIGURATION_A),
+            |repo, options, check, run_check| {
+                let first: Value =
+                    serde_json::from_str(check).map_err(|error| error.to_string())?;
+                let recorded = first
+                    .pointer("/analysis_outcome/outcome/identity/config_identity")
+                    .and_then(Value::as_str)
+                    .ok_or("actual configured check must carry a text identity")?;
+                let config_a = ripr::config::load_for_root(repo)?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                let config_b = ripr::config::load_for_root(repo)?;
+                if ripr::config::repo_exposure_config_identity_hash(&config_a)
+                    != ripr::config::repo_exposure_config_identity_hash(&config_b)
+                {
+                    return Err("fixture must preserve the seven-field seam fingerprint".into());
+                }
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                let result = write_pr_evidence_with_runner(repo, options, |repo, options| {
+                    let generated = run_check(repo, options)?;
+                    let value: Value =
+                        serde_json::from_str(&generated).map_err(|error| error.to_string())?;
+                    if value
+                        .pointer("/analysis_outcome/outcome/identity/config_identity")
+                        .and_then(Value::as_str)
+                        != Some(recorded)
+                    {
+                        return Err("fresh runner did not analyze configuration A".into());
+                    }
+                    // Change only live configuration after this actual check,
+                    // before the existing packet writer reloads it.
+                    write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                    Ok(generated)
+                });
+                let failure = result.err().ok_or_else(|| {
+                    format!("configuration drift published old analysis {recorded}")
+                })?;
+                if !failure.contains("config_identity") || repo.join(PR_CHECK_SUBJECT_JSON).exists()
+                {
+                    return Err(format!(
+                        "wrong drift refusal or retained authority: {failure}"
+                    ));
+                }
+                let packet: Value = serde_json::from_slice(
+                    &fs::read(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                if packet["status"] != "error" {
+                    return Err("configuration drift did not publish an error packet".into());
+                }
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                write_pr_evidence_with_runner(repo, options, |_, _| Ok(check.to_string()))?;
+                check_pr_evidence(repo, options)?;
+                configuration_fixture_review(repo, options)
+            },
+        )
+    }
+
+    #[test]
+    fn stale_configuration_is_rejected_by_saved_check_and_review() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-config-stale",
+            Some(CONFIGURATION_A),
+            |repo, options, _, _| {
+                for config in [Some(CONFIGURATION_B), Some(""), None] {
+                    match config {
+                        Some(text) => write_repo_file(repo, "ripr.toml", text)?,
+                        None => fs::remove_file(repo.join("ripr.toml"))
+                            .map_err(|error| error.to_string())?,
+                    }
+                    let saved = check_pr_evidence(repo, options)
+                        .err()
+                        .ok_or("saved check admitted stale loaded configuration")?;
+                    if !saved.contains("config_identity") {
+                        return Err(format!("wrong saved configuration refusal: {saved}"));
+                    }
+                    let review = configuration_fixture_review(repo, options)
+                        .err()
+                        .ok_or("direct review admitted stale loaded configuration")?;
+                    configuration_fixture_refusal(repo, &review, "producer_identity_mismatch")?;
+                    write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                    check_pr_evidence(repo, options)?;
+                    configuration_fixture_review(repo, options)?;
+                }
+                Ok(())
+            },
+        )
+    }
+
+    #[test]
+    fn copied_configuration_identity_requires_present_string_or_null() -> Result<(), String> {
+        for initial in [Some(CONFIGURATION_A), Some(""), None] {
+            with_configuration_fixture("ripr-pr-config-shape", initial, |repo, options, _, _| {
+                let path = repo.join(PR_CHECK_SUBJECT_JSON);
+                let original = fs::read(&path).map_err(|error| error.to_string())?;
+                let subject: Value =
+                    serde_json::from_slice(&original).map_err(|error| error.to_string())?;
+                let actual = subject
+                    .pointer("/analysis_outcome/outcome/identity/config_identity")
+                    .ok_or("actual producer did not carry config_identity")?;
+                if initial.is_some() != actual.is_string() || initial.is_none() != actual.is_null()
+                {
+                    return Err("loaded-empty config and no config lost their distinction".into());
+                }
+                let mut wrong_identities = vec![
+                    None,
+                    Some(json!(7)),
+                    Some(json!(false)),
+                    Some(json!([])),
+                    Some(json!({})),
+                    Some(json!("fnv1a64:foreign")),
+                ];
+                if initial.is_some() {
+                    wrong_identities.push(Some(Value::Null));
+                }
+                for wrong in wrong_identities {
+                    let category = match wrong.as_ref() {
+                        Some(Value::String(_) | Value::Null) => "producer_identity_mismatch",
+                        _ => "malformed_producer",
+                    };
+                    let mut mutated = subject.clone();
+                    let identity = mutated
+                        .pointer_mut("/analysis_outcome/outcome/identity")
+                        .and_then(Value::as_object_mut)
+                        .ok_or("actual outcome identity is not an object")?;
+                    match wrong {
+                        Some(value) => {
+                            identity.insert("config_identity".into(), value);
+                        }
+                        None => {
+                            identity.remove("config_identity");
+                        }
+                    }
+                    fs::write(
+                        &path,
+                        serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    let saved = check_pr_evidence(repo, options)
+                        .err()
+                        .ok_or("saved check admitted missing or malformed config identity")?;
+                    if !saved.contains("config_identity") {
+                        return Err(format!("wrong saved shape refusal: {saved}"));
+                    }
+                    let review = configuration_fixture_review(repo, options)
+                        .err()
+                        .ok_or("review admitted missing or malformed config identity")?;
+                    configuration_fixture_refusal(repo, &review, category)?;
+                    fs::write(&path, &original).map_err(|error| error.to_string())?;
+                    check_pr_evidence(repo, options)?;
+                    configuration_fixture_review(repo, options)?;
+                }
+                if initial.is_none() {
+                    // Adding even an empty config must differ from the
+                    // captured defaults-only null identity.
+                    for text in [CONFIGURATION_A, ""] {
+                        write_repo_file(repo, "ripr.toml", text)?;
+                        let saved = check_pr_evidence(repo, options)
+                            .err()
+                            .ok_or("saved check admitted newly present configuration")?;
+                        if !saved.contains("config_identity") {
+                            return Err(format!("wrong new-config saved refusal: {saved}"));
+                        }
+                        let review = configuration_fixture_review(repo, options)
+                            .err()
+                            .ok_or("review admitted newly present configuration")?;
+                        configuration_fixture_refusal(repo, &review, "producer_identity_mismatch")?;
+                        fs::remove_file(repo.join("ripr.toml"))
+                            .map_err(|error| error.to_string())?;
+                        check_pr_evidence(repo, options)?;
+                        configuration_fixture_review(repo, options)?;
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
 
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {
@@ -1207,6 +2213,21 @@ mod tests {
             base: "origin/main".to_string(),
             head: "HEAD".to_string(),
             check: false,
+        }
+    }
+
+    const OVERSIZED_DIFF_CHILD: &str = "diff_scope_oversized: 16651 changed Rust lines across 18 Rust files exceed the RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (10000); analysis was not run to protect runner memory before probe expansion. Repair route: reduce the diff scope, split the extraction PR, run a narrower diff, or raise the limit via RIPR_MAX_DIFF_CHANGED_RUST_LINES=<number>.";
+
+    fn synthetic_exit_status(code: i32) -> ExitStatus {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::ExitStatusExt;
+            ExitStatus::from_raw(code << 8)
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::ExitStatusExt;
+            ExitStatus::from_raw(code.cast_unsigned())
         }
     }
 
@@ -1264,8 +2285,11 @@ mod tests {
         });
         fs::create_dir_all(repo.join("target/ripr/pr"))
             .map_err(|err| format!("create review input directory: {err}"))?;
-        fs::write(repo.join(PR_DIFF), "diff --git a/src/lib.rs b/src/lib.rs\n")
-            .map_err(|err| format!("write canonical diff: {err}"))?;
+        fs::write(
+            repo.join(PR_CANONICAL_DIFF),
+            "diff --git a/src/lib.rs b/src/lib.rs\n",
+        )
+        .map_err(|err| format!("write canonical diff: {err}"))?;
         let projected = producer_review_input(&check, &repo, &options(), &subject)?;
         assert_eq!(projected["total_finding_count"], 12);
         assert_eq!(projected["projected_finding_count"], 10);
@@ -1307,6 +2331,160 @@ mod tests {
     }
 
     #[test]
+    fn retry_keeps_default_arguments_and_regeneration_semantics() -> Result<(), String> {
+        let defaults = options();
+        let expected = "cargo xtask ripr-pr --base origin/main --head HEAD --root .";
+        for shell in [RetryShell::Bash, RetryShell::PowerShell] {
+            let actual = pr_evidence_retry_command(&defaults, shell);
+            if actual != expected {
+                return Err(format!("default retry changed: {actual:?}"));
+            }
+        }
+        let check_mode = PrEvidenceOptions {
+            check: true,
+            ..defaults
+        };
+        let actual = pr_evidence_retry_command(&check_mode, RetryShell::Bash);
+        if actual != expected {
+            return Err(format!("check-mode recovery must regenerate: {actual:?}"));
+        }
+        Ok(())
+    }
+
+    fn hostile_retry_options() -> PrEvidenceOptions {
+        PrEvidenceOptions {
+            base: "topic$(touch-marker)".to_string(),
+            head: "topic'|`name".to_string(),
+            root: if cfg!(windows) {
+                "root\\[dir]`a&b with spaces".to_string()
+            } else {
+                "root\\'$(touch-marker)<tag>*\nwith spaces".to_string()
+            },
+            check: false,
+        }
+    }
+
+    fn expected_retry_args(options: &PrEvidenceOptions) -> Vec<String> {
+        vec![
+            "xtask".to_string(),
+            "ripr-pr".to_string(),
+            "--base".to_string(),
+            options.base.clone(),
+            "--head".to_string(),
+            options.head.clone(),
+            "--root".to_string(),
+            options.root.clone(),
+        ]
+    }
+
+    #[cfg(not(windows))]
+    fn execute_retry_command(command: &str) -> Result<Vec<String>, String> {
+        let script = format!(
+            "touch-marker() {{ printf INJECTED; }}; cargo() {{ printf '%s\\0' \"$@\"; }}; {command}"
+        );
+        let output = std::process::Command::new("bash")
+            .args(["-c", &script])
+            .output()
+            .map_err(|err| format!("execute Bash retry fixture: {err}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Bash retry failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        if output
+            .stdout
+            .windows(b"INJECTED".len())
+            .any(|part| part == b"INJECTED")
+        {
+            return Err("Bash retry ran command substitution".to_string());
+        }
+        output
+            .stdout
+            .split(|byte| *byte == 0)
+            .filter(|arg| !arg.is_empty())
+            .map(|arg| String::from_utf8(arg.to_vec()).map_err(|err| err.to_string()))
+            .collect::<Result<_, _>>()
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn bash_retry_executes_with_literal_arguments() -> Result<(), String> {
+        let options = hostile_retry_options();
+        for revision in [&options.base, &options.head] {
+            let status = std::process::Command::new("git")
+                .args(["check-ref-format", "--branch", revision])
+                .status()
+                .map_err(|err| format!("validate hostile ref: {err}"))?;
+            if !status.success() {
+                return Err(format!("hostile fixture ref is not valid: {revision:?}"));
+            }
+        }
+        let command = pr_evidence_retry_command(&options, RetryShell::Bash);
+        let actual = execute_retry_command(&command)?;
+        let expected = expected_retry_args(&options);
+        if actual != expected {
+            return Err(format!("Bash retry argv changed: {actual:?}"));
+        }
+        let raw = format!(
+            "cargo xtask ripr-pr --base {} --head {} --root {}",
+            options.base, options.head, options.root
+        );
+        if execute_retry_command(&raw).is_ok_and(|args| args == expected) {
+            return Err("raw Bash interpolation unexpectedly preserved argv".to_string());
+        }
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    fn execute_retry_command(command: &str) -> Result<Vec<String>, String> {
+        let script = format!(
+            "function touch-marker {{ $global:marker = $true }}; function cargo {{ $global:seen = @($args) }}; {command}; if ($global:marker) {{ exit 71 }}; ConvertTo-Json -InputObject $global:seen -Compress"
+        );
+        let output = std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .output()
+            .map_err(|err| format!("execute PowerShell retry fixture: {err}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "PowerShell retry failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        serde_json::from_slice(&output.stdout)
+            .map_err(|err| format!("parse PowerShell argv: {err}"))
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn powershell_retry_executes_with_literal_arguments() -> Result<(), String> {
+        let options = hostile_retry_options();
+        for revision in [&options.base, &options.head] {
+            let status = std::process::Command::new("git")
+                .args(["check-ref-format", "--branch", revision])
+                .status()
+                .map_err(|err| format!("validate hostile ref: {err}"))?;
+            if !status.success() {
+                return Err(format!("hostile fixture ref is not valid: {revision:?}"));
+            }
+        }
+        let command = pr_evidence_retry_command(&options, RetryShell::PowerShell);
+        let actual = execute_retry_command(&command)?;
+        let expected = expected_retry_args(&options);
+        if actual != expected {
+            return Err(format!("PowerShell retry argv changed: {actual:?}"));
+        }
+        let raw = format!(
+            "cargo xtask ripr-pr --base {} --head {} --root {}",
+            options.base, options.head, options.root
+        );
+        if execute_retry_command(&raw).is_ok_and(|args| args == expected) {
+            return Err("raw PowerShell interpolation unexpectedly preserved argv".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn packet_maps_check_summary_to_routing_fields() {
         let check = json!({
             "summary": {
@@ -1323,6 +2501,121 @@ mod tests {
         assert_eq!(packet["summary"]["severe_gaps"], 3);
         assert_eq!(packet["summary"]["requires_targeted_mutation"], true);
         assert_eq!(packet["summary"]["routing_reason"], "ripr severe gap");
+    }
+
+    #[test]
+    fn packet_derives_targeted_mutation_route_from_candidate_current_findings() {
+        let check = json!({
+            "summary": {
+                "weakly_exposed": 1,
+                "reachable_unrevealed": 0,
+                "no_static_path": 0
+            },
+            "findings": [
+                {
+                    "classification": "weakly_exposed",
+                    "source_currentness": "candidate_current",
+                    "probe": {
+                        "family": "predicate",
+                        "file": "src/pricing.rs",
+                        "line": 42,
+                        "expression": "amount >= threshold"
+                    }
+                },
+                {
+                    "classification": "weakly_exposed",
+                    "source_currentness": "base_only",
+                    "probe": {
+                        "family": "predicate",
+                        "file": "src/base.rs",
+                        "line": 7,
+                        "expression": "count >= limit"
+                    }
+                }
+            ]
+        });
+        let packet = pr_evidence_packet(&options(), &["src/pricing.rs".to_string()], &check);
+        let route = &packet["summary"]["targeted_mutation_route"];
+        assert_eq!(route["status"], "candidate");
+        assert_eq!(route["candidates"].as_array().map(Vec::len), Some(1));
+        assert_eq!(route["candidates"][0]["file"], "src/pricing.rs");
+        assert_eq!(route["candidates"][0]["from"], ">=");
+        assert_eq!(route["candidates"][0]["to"], ">");
+        let candidates = route["candidates"].as_array();
+        assert!(
+            candidates.is_some_and(|candidates| candidates
+                .iter()
+                .all(|candidate| candidate["file"] != "src/base.rs")),
+            "base-side evidence must never name a head mutation target"
+        );
+        assert_eq!(route["limitations"], json!([]));
+        let violations = validate_packet_value(&packet, &options(), 1, true);
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn packet_marks_required_route_static_limitation_without_safe_candidate() {
+        let check = json!({
+            "summary": {
+                "weakly_exposed": 1,
+                "reachable_unrevealed": 0,
+                "no_static_path": 0
+            },
+            "findings": [
+                {
+                    "classification": "weakly_exposed",
+                    "source_currentness": "candidate_current"
+                }
+            ]
+        });
+        let packet = pr_evidence_packet(&options(), &["src/lib.rs".to_string()], &check);
+        let route = &packet["summary"]["targeted_mutation_route"];
+        assert_eq!(route["status"], "static_limitation");
+        assert_eq!(route["candidates"], json!([]));
+        assert_eq!(route["limitations"][0]["kind"], "no_safe_candidate");
+        let violations = validate_packet_value(&packet, &options(), 1, true);
+        assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn validation_rejects_route_status_that_disagrees_with_eligibility() {
+        let packet = pr_evidence_packet(
+            &options(),
+            &["src/lib.rs".to_string()],
+            &json!({
+                "summary": {
+                    "weakly_exposed": 0,
+                    "reachable_unrevealed": 0,
+                    "no_static_path": 0
+                }
+            }),
+        );
+        let mut drifted = packet.clone();
+        drifted["summary"]["targeted_mutation_route"]["status"] = "candidate".into();
+        let violations = validate_packet_value(&drifted, &options(), 1, true);
+        assert!(
+            violations
+                .iter()
+                .any(|violation| violation
+                    .contains("disagrees with summary.requires_targeted_mutation")),
+            "a not_required route claiming candidates must be rejected: {violations:?}"
+        );
+
+        let mut missing = packet;
+        assert!(
+            matches!(missing.get_mut("summary"), Some(Value::Object(_))),
+            "summary must be an object for the removal test"
+        );
+        if let Some(summary) = missing.get_mut("summary").and_then(Value::as_object_mut) {
+            summary.remove("targeted_mutation_route");
+        }
+        let violations = validate_packet_value(&missing, &options(), 1, true);
+        assert!(
+            violations.iter().any(|violation| {
+                violation.contains("summary.targeted_mutation_route is missing")
+            }),
+            "an absent route must be rejected: {violations:?}"
+        );
     }
 
     #[test]
@@ -1353,6 +2646,157 @@ mod tests {
         );
         let violations = validate_packet_value(&packet, &options(), 1, true);
         assert_eq!(violations, Vec::<String>::new());
+    }
+
+    #[test]
+    fn error_packet_retains_multiline_child_failure_and_native_status() {
+        let packet = pr_evidence_error_packet(
+            &options(),
+            &["src/lib.rs".to_string()],
+            &(format_ripr_check_child_failure(
+                Some(synthetic_exit_status(2)),
+                "",
+                OVERSIZED_DIFF_CHILD,
+            )),
+        );
+        let message = packet["warnings"][0]["message"]
+            .as_str()
+            .unwrap_or_default();
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["warnings"][0]["kind"], "tool_error");
+        assert!(
+            message.contains("native status: exit 2"),
+            "packet dropped native status: {message}"
+        );
+        assert!(
+            message.contains("diff_scope_oversized:"),
+            "packet dropped the named guard: {message}"
+        );
+        assert!(
+            message.contains("16651 changed Rust lines across 18 Rust files"),
+            "packet dropped observed scope: {message}"
+        );
+        assert!(
+            message.contains("RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (10000)"),
+            "packet dropped configured scope: {message}"
+        );
+        assert!(
+            message.contains("Repair route: reduce the diff scope"),
+            "packet dropped recovery text: {message}"
+        );
+        assert!(
+            packet.get("analysis_scope").is_none(),
+            "child prose must not become typed analysis authority"
+        );
+        let violations = validate_packet_value(&packet, &options(), 1, true);
+        assert_eq!(violations, Vec::<String>::new());
+        let console = ripr::reject_pr_evidence_error_packet(&packet).unwrap_or_default();
+        assert!(console.contains("review-comments must not run"));
+        assert!(console.contains("diff_scope_oversized:"));
+        assert!(console.contains("native status: exit 2"));
+        let markdown = render_pr_evidence_markdown(&packet);
+        assert!(markdown.contains("diff_scope_oversized:"));
+        assert!(markdown.contains("Repair route"));
+    }
+
+    #[test]
+    fn error_packet_truncates_oversized_tool_error_explicitly() {
+        let huge = format!(
+            "ripr check for PR evidence failed (native status: exit 1)\n{}",
+            "x".repeat(10_000)
+        );
+        let packet = pr_evidence_error_packet(&options(), &[], &huge);
+        let message = packet["warnings"][0]["message"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(
+            message.contains(TRUNCATED_MARKER),
+            "oversized diagnostic must mark truncation: {message}"
+        );
+        assert!(
+            message.chars().count() <= TOOL_ERROR_MAX_CHARS + TRUNCATED_MARKER.chars().count(),
+            "truncated packet message still too large: {}",
+            message.chars().count()
+        );
+        assert!(
+            !message.contains(&"x".repeat(9000)),
+            "packet dumped unlimited child output"
+        );
+        assert_eq!(packet["status"], "error");
+    }
+
+    #[test]
+    fn error_packet_preserves_utf8_and_bounds_extra_diagnostic_lines() {
+        let unicode = "€".repeat(TOOL_ERROR_MAX_CHARS + 1);
+        let packet = pr_evidence_error_packet(&options(), &[], &unicode);
+        let message = packet["warnings"][0]["message"]
+            .as_str()
+            .unwrap_or_default();
+        assert_eq!(
+            message,
+            format!("{}{TRUNCATED_MARKER}", "€".repeat(TOOL_ERROR_MAX_CHARS)),
+            "UTF-8 diagnostics must remain complete characters and mark truncation"
+        );
+
+        let lines = (0..=TOOL_ERROR_MAX_LINES)
+            .map(|index| format!("diagnostic line {index}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let packet = pr_evidence_error_packet(&options(), &[], &lines);
+        let message = packet["warnings"][0]["message"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(message.contains(&format!("diagnostic line {}", TOOL_ERROR_MAX_LINES - 1)));
+        assert!(!message.contains(&format!("diagnostic line {TOOL_ERROR_MAX_LINES}")));
+        assert!(message.ends_with(TRUNCATED_MARKER));
+        assert_eq!(packet["status"], "error");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn native_status_reports_unix_signal_without_inventing_an_exit_code() {
+        use std::os::unix::process::ExitStatusExt;
+        let status = ExitStatus::from_raw(15);
+        assert_eq!(
+            describe_native_status(Some(status)),
+            "native status: signal 15"
+        );
+        assert!(!describe_native_status(Some(status)).contains("exit "));
+    }
+
+    #[test]
+    fn native_status_stays_unknown_when_process_status_is_missing() {
+        assert_eq!(describe_native_status(None), "native status: unknown");
+        let message = format_ripr_check_child_failure(None, "", "");
+        assert!(message.contains("native status: unknown"));
+        assert!(!message.contains("exit "));
+        assert!(!message.contains("signal "));
+        assert!(!message.contains("PATH="));
+        assert!(!message.contains("RIPR_BIN"));
+    }
+
+    #[test]
+    fn child_failure_prefers_named_guard_and_ignores_json_stdout() {
+        let noisy = format!("noise before the guard\nripr: {OVERSIZED_DIFF_CHILD}\n");
+        let reason = actionable_child_reason("{\"summary\":{\"weakly_exposed\":1}}", &noisy);
+        assert!(reason.starts_with("ripr: diff_scope_oversized:"));
+        assert!(!reason.contains("noise before the guard"));
+        assert!(!reason.contains("weakly_exposed"));
+
+        let empty_stderr = format_ripr_check_child_failure(
+            Some(synthetic_exit_status(3)),
+            "{\"summary\":{\"weakly_exposed\":1}}",
+            "",
+        );
+        assert!(empty_stderr.contains("native status: exit 3"));
+        assert!(
+            !empty_stderr.contains("weakly_exposed"),
+            "JSON stdout must not be copied into the diagnostic: {empty_stderr}"
+        );
+        assert!(
+            !empty_stderr.contains("stdout:"),
+            "empty stderr must not dump stdout labels: {empty_stderr}"
+        );
     }
 
     #[test]
@@ -1458,19 +2902,48 @@ mod tests {
         write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
         run_git(&repo, &["add", "."])?;
         run_git(&repo, &["commit", "--no-gpg-sign", "-m", "add rust"])?;
-
-        let options = PrEvidenceOptions {
-            base: "HEAD~1".to_string(),
-            head: "HEAD".to_string(),
-            ..options()
-        };
+        let options = hostile_retry_options();
+        fs::create_dir_all(repo.join(&options.root))
+            .map_err(|err| format!("create hostile root: {err}"))?;
+        run_git(&repo, &["branch", &options.base, "HEAD~1"])?;
+        // Windows cannot store `|` in a loose-ref filename even though Git
+        // accepts it as a ref name. A packed ref exercises the real revision
+        // consumer with the same valid hostile name on every host.
+        let tip = run_git_output(&repo, &["rev-parse", "HEAD"])?;
+        fs::write(
+            repo.join(".git/packed-refs"),
+            format!(
+                "# pack-refs with: peeled fully-peeled sorted\n{} refs/heads/{}\n",
+                tip.trim(),
+                options.head
+            ),
+        )
+        .map_err(|err| format!("write hostile packed ref: {err}"))?;
+        run_git(&repo, &["rev-parse", "--verify", &options.head])?;
         write_parented_file(
             &repo.join(PR_CHECK_JSON),
             PR_CHECK_JSON,
             "{\"stale\":true}\n",
         )?;
-        let producer_result = write_pr_evidence_with_runner(&repo, &options, |_repo, _options| {
-            Err("ripr check for PR evidence timed out after 120 seconds; retry command: cargo xtask ripr-pr --base HEAD~1 --head HEAD --root .".to_string())
+        #[cfg(windows)]
+        let (binary, args) = (
+            "powershell".to_string(),
+            vec![
+                "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                "Start-Sleep -Seconds 30".to_string(),
+            ],
+        );
+        #[cfg(not(windows))]
+        let (binary, args) = {
+            let fake =
+                fake_ripr_invocation(&repo, "fake-ripr-packet-timeout", "", "", 0, Some(30))?;
+            (fake.binary, fake.args)
+        };
+        let timeout = Duration::from_secs(1);
+        let producer_result = write_pr_evidence_with_runner(&repo, &options, |_repo, options| {
+            run_ripr_check_binary(&binary, args, options, timeout)
         });
         let producer_error = producer_result
             .err()
@@ -1486,8 +2959,55 @@ mod tests {
         assert!(
             packet["warnings"][0]["message"]
                 .as_str()
-                .is_some_and(|message| message.contains("timed out after 120 seconds"))
+                .is_some_and(|message| message
+                    .contains(&format!("timed out after {} seconds", timeout.as_secs())))
         );
+        let warning = packet["warnings"][0]["message"]
+            .as_str()
+            .ok_or_else(|| "missing timeout warning".to_string())?;
+        let (shell, label) = native_retry_shell();
+        let marker = format!("retry command ({label}): ");
+        let warning_command = warning
+            .split_once(&marker)
+            .map(|(_, command)| command)
+            .ok_or_else(|| format!("error packet lost retry guidance: {warning}"))?;
+        let expected_command = pr_evidence_retry_command(&options, shell);
+        if warning_command != expected_command {
+            return Err(format!("error packet retry changed: {warning_command:?}"));
+        }
+        let markdown = fs::read_to_string(repo.join(PR_EVIDENCE_MD))
+            .map_err(|err| format!("read Markdown packet: {err}"))?;
+        let markdown_span = markdown
+            .split_once(&marker)
+            .and_then(|(_, tail)| tail.lines().next())
+            .ok_or_else(|| "Markdown packet lost retry guidance".to_string())?;
+        let delimiter_len = markdown_span
+            .bytes()
+            .take_while(|byte| *byte == b'`')
+            .count();
+        if delimiter_len == 0 || markdown_span.len() <= delimiter_len * 2 {
+            return Err(format!(
+                "Markdown retry is not a code span: {markdown_span:?}"
+            ));
+        }
+        let delimiter = "`".repeat(delimiter_len);
+        let markdown_command = markdown_span
+            .strip_suffix(&delimiter)
+            .and_then(|span| span.get(delimiter_len..))
+            .ok_or_else(|| format!("Markdown retry span is malformed: {markdown_span:?}"))?;
+        if markdown_command.contains(&delimiter) {
+            return Err("Markdown retry delimiter collides with command data".to_string());
+        }
+        if markdown_command != expected_command {
+            return Err(format!("Markdown retry changed: {markdown_command:?}"));
+        }
+        let expected_args = expected_retry_args(&options);
+        for command in [warning_command, markdown_command] {
+            let actual_args = execute_retry_command(command)?;
+            if actual_args != expected_args {
+                return Err(format!("packet retry argv changed: {actual_args:?}"));
+            }
+        }
         assert!(repo.join(PR_DIFF).exists());
         assert!(repo.join(PR_EVIDENCE_MD).exists());
         assert!(!repo.join(PR_CHECK_JSON).exists());
@@ -1495,6 +3015,34 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn run_ripr_check_requests_complete_findings_from_actual_child() -> Result<(), String> {
+        #[cfg(windows)]
+        let (binary, args) = (
+            "powershell".to_string(),
+            vec![
+                "-NoProfile".to_string(),
+                "-NonInteractive".to_string(),
+                "-Command".to_string(),
+                "[Console]::Out.Write($env:RIPR_CHECK_FINDINGS_BYTES)".to_string(),
+            ],
+        );
+        #[cfg(not(windows))]
+        let (binary, args) = (
+            "/bin/sh".to_string(),
+            vec![
+                "-c".to_string(),
+                "printf '%s' \"$RIPR_CHECK_FINDINGS_BYTES\"".to_string(),
+            ],
+        );
+        let result = run_ripr_check_binary(&binary, args, &options(), Duration::from_secs(30))?;
+        if result != "0" {
+            return Err(format!(
+                "PR evidence child inherited a bounded findings budget: {result:?}"
+            ));
+        }
+        Ok(())
+    }
     #[test]
     fn run_ripr_check_uses_fake_binary_success_output() -> Result<(), String> {
         let repo = temp_repo("ripr-pr-fake-success")?;
@@ -1527,7 +3075,80 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.contains("ripr check for PR evidence failed"));
+        assert!(err.contains("native status: exit 7"));
         assert!(err.contains("bad diff"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_reports_multiline_stderr_and_empty_stderr() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-multiline")?;
+        let fake = fake_ripr_invocation(
+            &repo,
+            "fake-ripr-multiline",
+            "",
+            "first noise\nneeded detail on a later line\n",
+            2,
+            None,
+        )?;
+        let err = match run_ripr_check_binary(
+            &fake.binary,
+            fake.args,
+            &options(),
+            Duration::from_secs(30),
+        ) {
+            Ok(output) => return Err(format!("multiline failure should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("native status: exit 2"));
+        assert!(err.contains("needed detail on a later line"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+
+        let repo = temp_repo("ripr-pr-fake-empty-stderr")?;
+        let fake = fake_ripr_invocation(&repo, "fake-ripr-empty-stderr", "", "", 3, None)?;
+        let err = match run_ripr_check_binary(
+            &fake.binary,
+            fake.args,
+            &options(),
+            Duration::from_secs(30),
+        ) {
+            Ok(output) => return Err(format!("empty-stderr failure should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("native status: exit 3"));
+        assert!(!err.contains("stdout:"));
+        assert!(!err.contains("stderr:"));
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn run_ripr_check_truncates_oversized_child_output() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-oversized-output")?;
+        let stderr = (0..80)
+            .map(|index| format!("child line {index:02} {}", "y".repeat(60)))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let fake = fake_ripr_invocation(&repo, "fake-ripr-oversized-output", "", &stderr, 4, None)?;
+        let err = match run_ripr_check_binary(
+            &fake.binary,
+            fake.args,
+            &options(),
+            Duration::from_secs(30),
+        ) {
+            Ok(output) => return Err(format!("oversized child should fail, got {output}")),
+            Err(err) => err,
+        };
+        assert!(err.contains("native status: exit 4"));
+        assert!(
+            err.contains(TRUNCATED_MARKER),
+            "oversized child output must mark truncation: {err}"
+        );
+        assert!(
+            err.chars().count() < stderr.chars().count(),
+            "bounded diagnostic was larger than the child output"
+        );
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
@@ -1556,8 +3177,106 @@ mod tests {
             Err(err) => err,
         };
         assert!(err.contains("timed out after 1 seconds"));
-        assert!(err.contains("retry command: cargo xtask ripr-pr"));
+        let (_, label) = native_retry_shell();
+        if !err.contains(&format!("retry command ({label}): cargo xtask ripr-pr")) {
+            return Err(format!("timeout retry guidance missing: {err}"));
+        }
+        if err.contains("snapshot timed out") {
+            return Err(format!(
+                "main-analysis timeout reused snapshot-timeout wording: {err}"
+            ));
+        }
+        if err.contains("native status:") {
+            return Err(format!(
+                "timeout diagnostic must stay a timeout, not an exit/signal status: {err}"
+            ));
+        }
         #[cfg(not(windows))]
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_ripr_check_reports_signal_status_on_unix() -> Result<(), String> {
+        let repo = temp_repo("ripr-pr-fake-signal")?;
+        let script = repo.join("fake-ripr-signal");
+        fs::write(&script, "#!/bin/sh\nkill -s TERM $$\n")
+            .map_err(|err| format!("write signal fake: {err}"))?;
+        let err = match run_ripr_check_binary(
+            "/bin/sh",
+            vec![script.display().to_string()],
+            &options(),
+            Duration::from_secs(30),
+        ) {
+            Ok(output) => return Err(format!("signal fake should fail, got {output}")),
+            Err(err) => err,
+        };
+        if !err.contains("native status: signal 15") {
+            return Err(format!("signal diagnostic missing TERM/15: {err}"));
+        }
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn write_pr_evidence_keeps_oversized_diff_child_in_error_packet() -> Result<(), String> {
+        let (repo, options) = two_commit_repo("ripr-pr-child-guard")?;
+        write_parented_file(
+            &repo.join(PR_CHECK_JSON),
+            PR_CHECK_JSON,
+            "{\"stale\":true}\n",
+        )?;
+        let limited_json = r#"{"schema_version":"0.2","summary":{"weakly_exposed":0},"analysis_scope":{"run_status":"diff_scope_oversized","downstream_consumable":false}}"#;
+        let fake = fake_ripr_invocation(
+            &repo,
+            "fake-ripr-oversized-diff",
+            limited_json,
+            &format!("warning noise\nripr: {OVERSIZED_DIFF_CHILD}\n"),
+            2,
+            None,
+        )?;
+        let binary = fake.binary;
+        let args = fake.args;
+        let producer_error =
+            match write_pr_evidence_with_runner(&repo, &options, |_repo, options| {
+                run_ripr_check_binary(&binary, args, options, Duration::from_secs(30))
+            }) {
+                Ok(()) => {
+                    return Err("oversized-diff child unexpectedly produced evidence".to_string());
+                }
+                Err(err) => err,
+            };
+        assert!(producer_error.contains("review-comments must not run"));
+        assert!(producer_error.contains("diff_scope_oversized:"));
+        assert!(producer_error.contains("native status: exit 2"));
+        assert!(producer_error.contains("16651 changed Rust lines across 18 Rust files"));
+        assert!(producer_error.contains("RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (10000)"));
+        assert!(producer_error.contains("Repair route: reduce the diff scope"));
+
+        let packet_text = fs::read_to_string(repo.join(PR_EVIDENCE_JSON))
+            .map_err(|err| format!("read packet: {err}"))?;
+        let packet: Value =
+            serde_json::from_str(&packet_text).map_err(|err| format!("parse packet: {err}"))?;
+        assert_eq!(packet["status"], "error");
+        assert_eq!(packet["warnings"][0]["kind"], "tool_error");
+        let warning = packet["warnings"][0]["message"]
+            .as_str()
+            .ok_or_else(|| "missing child-failure warning".to_string())?;
+        if !warning.contains("diff_scope_oversized:") || !warning.contains("native status: exit 2")
+        {
+            return Err(format!("error packet lost child failure: {warning}"));
+        }
+        if warning.contains("weakly_exposed") {
+            return Err("limited JSON stdout leaked into the error packet".to_string());
+        }
+        let markdown = fs::read_to_string(repo.join(PR_EVIDENCE_MD))
+            .map_err(|err| format!("read Markdown packet: {err}"))?;
+        if !markdown.contains("diff_scope_oversized:") || !markdown.contains("Repair route") {
+            return Err(format!("Markdown packet lost child recovery: {markdown}"));
+        }
+        assert!(!repo.join(PR_CHECK_JSON).exists());
+        assert!(repo.join(PR_DIFF).exists());
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
@@ -1670,8 +3389,8 @@ mod tests {
             .map_err(|err| format!("read review input: {err}"))?;
         let review_input: Value = serde_json::from_str(&review_input_text)
             .map_err(|err| format!("parse review input: {err}"))?;
-        let diff_bytes =
-            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read canonical diff: {err}"))?;
+        let diff_bytes = fs::read(repo.join(PR_CANONICAL_DIFF))
+            .map_err(|err| format!("read canonical diff: {err}"))?;
         assert_eq!(
             review_input["canonical_diff_sha256"],
             format!("sha256:{:x}", Sha256::digest(diff_bytes))
@@ -1703,10 +3422,10 @@ mod tests {
         run_git(&repo, &["init"])?;
         run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
         run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
-        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 {\n    1\n}\n")?;
         run_git(&repo, &["add", "."])?;
         run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
-        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 2 }\n")?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 {\n    2\n}\n")?;
         run_git(&repo, &["add", "."])?;
         run_git(&repo, &["commit", "--no-gpg-sign", "-m", "change value"])?;
 
@@ -1717,7 +3436,7 @@ mod tests {
         };
         write_diff(&repo, &options)?;
 
-        let actual = fs::read_to_string(repo.join(PR_DIFF))
+        let actual = fs::read_to_string(repo.join(PR_CANONICAL_DIFF))
             .map_err(|err| format!("read produced diff: {err}"))?;
         let expected = run_git_output(
             &repo,
@@ -1725,10 +3444,217 @@ mod tests {
         )?;
         assert!(!actual.is_empty());
         assert_eq!(actual, expected);
+        let presentation = fs::read_to_string(repo.join(PR_DIFF))
+            .map_err(|err| format!("read presentation diff: {err}"))?;
+        assert_ne!(actual, presentation);
+        assert_eq!(
+            presentation,
+            ripr::analysis::load_pr_evidence_diff_range(&repo, &options.base, &options.head)?
+        );
 
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
     }
+
+    #[test]
+    fn pinned_diff_keeps_edit_under_hostile_color_config() -> Result<(), String> {
+        // Discriminates the pinned `--no-color` assembly: repo-local
+        // `color.diff=always` must not move packet bytes.
+        let repo = temp_repo("ripr-pr-color")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        run_git(&repo, &["config", "color.diff", "always"])?;
+        let body = (1..=9).map(|n| format!("line {n}\n")).collect::<String>();
+        write_repo_file(&repo, "notes.txt", &body)?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        let changed = body.replace("line 5\n", "line FIVE\n");
+        write_repo_file(&repo, "notes.txt", &changed)?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "edit"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        write_pr_evidence_from_check_json(&repo, &options, MINIMAL_CHECK_JSON)?;
+        check_pr_evidence(&repo, &options)?;
+
+        let diff =
+            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read {}: {err}", PR_DIFF))?;
+        if diff.contains(&0x1b) {
+            return Err("hostile color.diff config leaked ANSI escapes into pr.diff".to_string());
+        }
+        let text = String::from_utf8(diff).map_err(|err| format!("pr.diff not UTF-8: {err}"))?;
+        if !text.contains("+line FIVE") {
+            return Err("pr.diff lost the edited line".to_string());
+        }
+        // Three-context presentation pin: an unchanged line three away from
+        // the edit must survive, distinguishing the packet view from a
+        // zero-context diff.
+        if !text.contains(" line 2") || !text.contains(" line 8") {
+            return Err("pr.diff lost three-context presentation lines".to_string());
+        }
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn pinned_diff_survives_textconv_driver() -> Result<(), String> {
+        // Discriminates the pinned `--no-textconv` assembly: a repository
+        // textconv driver that censors content must not hide the edit.
+        let repo = temp_repo("ripr-pr-textconv")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, ".gitattributes", "*.txt diff=riprcensor\n")?;
+        run_git(
+            &repo,
+            &["config", "diff.riprcensor.textconv", "echo CENSORED"],
+        )?;
+        write_repo_file(&repo, "secret.txt", "alpha\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "secret.txt", "alpha\nbravo\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "edit"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        write_pr_evidence_from_check_json(&repo, &options, MINIMAL_CHECK_JSON)?;
+        check_pr_evidence(&repo, &options)?;
+
+        let diff =
+            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read {}: {err}", PR_DIFF))?;
+        let text = String::from_utf8(diff).map_err(|err| format!("pr.diff not UTF-8: {err}"))?;
+        if !text.contains("+bravo") {
+            return Err("textconv driver hid the edited line from pr.diff".to_string());
+        }
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn written_diff_matches_pinned_authority() -> Result<(), String> {
+        // Parity/currentness pin (#4004 item 5): the bytes the xtask route
+        // writes must stay identical to the shared authority's output for the
+        // same repository and range. A deliberate divergence in either route
+        // fails here.
+        let repo = temp_repo("ripr-pr-parity")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 2 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "edit"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        write_pr_evidence_from_check_json(&repo, &options, MINIMAL_CHECK_JSON)?;
+
+        let written =
+            fs::read(repo.join(PR_DIFF)).map_err(|err| format!("read {}: {err}", PR_DIFF))?;
+        let authority = ripr::analysis::load_pr_evidence_diff_range(&repo, "HEAD~1", "HEAD")
+            .map_err(|err| format!("pinned authority: {err}"))?;
+        if written != authority.as_bytes() {
+            return Err("xtask pr.diff diverged from the pinned diff authority".to_string());
+        }
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn nul_inventory_survives_exotic_names() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory: space, non-ASCII, and rename
+        // records must decode exact; the old line parser C-quoted or split
+        // them. Asserts through the real `changed_files` production path.
+        let repo = temp_repo("ripr-pr-names")?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, "base.txt", "base\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "sp ace.txt", "spaces\n")?;
+        write_repo_file(&repo, "uni-\u{e9}.txt", "unicode\n")?;
+        fs::remove_file(repo.join("base.txt")).map_err(|err| format!("remove base.txt: {err}"))?;
+        write_repo_file(&repo, "renamed.txt", "base\n")?;
+        run_git(&repo, &["add", "-A"])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "exotic"])?;
+
+        let options = PrEvidenceOptions {
+            base: "HEAD~1".to_string(),
+            head: "HEAD".to_string(),
+            ..options()
+        };
+        let mut files = changed_files(&repo, &options)?;
+        files.sort();
+        let expected = vec![
+            "renamed.txt".to_string(),
+            "sp ace.txt".to_string(),
+            "uni-\u{e9}.txt".to_string(),
+        ];
+        if files != expected {
+            return Err(format!(
+                "exotic inventory mismatch: got {files:?}, want {expected:?}"
+            ));
+        }
+        write_pr_evidence_from_check_json(&repo, &options, MINIMAL_CHECK_JSON)?;
+        check_pr_evidence(&repo, &options)?;
+
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        Ok(())
+    }
+
+    #[test]
+    fn strict_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the xtask decode
+        // boundary: non-UTF-8 records fail loudly instead of collapsing
+        // through lossy conversion. Live non-UTF-8 git names are impractical
+        // on Windows runners, so this pins the mapping directly; the
+        // end-to-end byte path is covered by `nul_inventory_survives_exotic_names`.
+        let err = match decode_changed_files(b"ok.txt\0\xffbad\0") {
+            Err(err) => err,
+            Ok(files) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {files:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    const MINIMAL_CHECK_JSON: &str = r#"{
+      "schema_version": "0.2",
+      "tool": "ripr",
+      "mode": "draft",
+      "root": ".",
+      "summary": {
+        "weakly_exposed": 0,
+        "reachable_unrevealed": 0,
+        "no_static_path": 0
+      },
+      "findings": [],
+      "analysis_outcome": {
+        "analysis_complete": false,
+        "outcome": {"identity": {"config_identity": null}}
+      }
+    }"#;
 
     #[test]
     fn stale_check_artifact_is_removed_before_revision_setup_failure() -> Result<(), String> {
@@ -1755,6 +3681,287 @@ mod tests {
         assert!(!repo.join(PR_CHECK_JSON).exists());
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
+    }
+
+    #[test]
+    fn failed_producer_rerun_does_not_replay_same_subject() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        crate::reports::fixtures::ripr_fixture_binary()?;
+        let repo = temp_repo("ripr-pr-subject-transaction")?;
+        let result = (|| {
+            run_git(
+                &repo,
+                &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+            )?;
+            run_git(
+                &repo,
+                &["config", "user.email", "subject-fixture@example.invalid"],
+            )?;
+            run_git(&repo, &["config", "user.name", "RIPR Subject Fixture"])?;
+            run_git(&repo, &["config", "commit.gpgSign", "false"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"subject-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            run_git(&repo, &["add", "-A"])?;
+            run_git(&repo, &["commit", "--quiet", "-m", "base"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            run_git(&repo, &["commit", "--quiet", "-a", "-m", "predicate"])?;
+            let options = PrEvidenceOptions {
+                base: resolve_revision(&repo, "HEAD~1", "commit")?,
+                head: resolve_revision(&repo, "HEAD", "commit")?,
+                ..options()
+            };
+            let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+            let mut check = String::new();
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                let generated = run_ripr_check_binary(
+                    &binary,
+                    vec![
+                        "check".into(),
+                        "--root".into(),
+                        command_root_arg(repo, &options.root),
+                        "--base".into(),
+                        options.base.clone(),
+                        "--diff".into(),
+                        repo.join(PR_CANONICAL_DIFF).display().to_string(),
+                        "--no-unchanged-tests".into(),
+                        "--format".into(),
+                        "json".into(),
+                    ],
+                    options,
+                    Duration::from_mins(2),
+                )?;
+                check.clone_from(&generated);
+                Ok(generated)
+            })?;
+            let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
+            assert_eq!(value["analysis_outcome"]["analysis_complete"], true);
+            assert!(
+                value["findings"]
+                    .as_array()
+                    .is_some_and(|findings| !findings.is_empty())
+            );
+            let review = || {
+                ripr::cli::run(vec![
+                    "ripr".into(),
+                    "review-comments".into(),
+                    "--root".into(),
+                    repo.display().to_string(),
+                    "--base".into(),
+                    options.base.clone(),
+                    "--head".into(),
+                    options.head.clone(),
+                    "--check-output".into(),
+                    repo.join(PR_CHECK_JSON).display().to_string(),
+                    "--out".into(),
+                    repo.join("target/review.json").display().to_string(),
+                ])
+                .map_err(|error| error.message().to_string())
+            };
+            let baseline = || -> Result<(), String> {
+                write_pr_evidence_with_runner(&repo, &options, |_, _| Ok(check.clone()))?;
+                check_pr_evidence(&repo, &options)?;
+                review()?;
+                let rendered: Value = serde_json::from_slice(
+                    &fs::read(repo.join("target/review.json"))
+                        .map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                assert_eq!(
+                    rendered["analysis_scope"]["basis"],
+                    "producer_check_projection"
+                );
+                assert!(
+                    rendered["analysis_scope"]["classified_seams_considered"]
+                        .as_u64()
+                        .is_some_and(|count| count > 0)
+                );
+                Ok(())
+            };
+            let refused = |label: &str| -> Result<(), String> {
+                let error = review()
+                    .err()
+                    .ok_or_else(|| format!("{label}: stale same-identity producer was admitted"))?;
+                assert!(
+                    error.contains("missing_producer") || error.contains("malformed_producer"),
+                    "{label}: unexpected review refusal: {error}"
+                );
+                assert!(
+                    check_pr_evidence(&repo, &options).is_err(),
+                    "{label}: saved check admitted failure"
+                );
+                Ok(())
+            };
+            let mut oversized = value.clone();
+            oversized["findings"] = Value::Array(vec![
+                value["findings"][0].clone();
+                REVIEW_INDEX_MAX_ENTRIES + 1
+            ]);
+            let oversized = serde_json::to_string(&oversized).map_err(|error| error.to_string())?;
+            let mut excess_bytes = value.clone();
+            excess_bytes["findings"] = Value::Array(
+                (0..REVIEW_INDEX_MAX_ENTRIES)
+                    .map(|i| {
+                        let mut finding = value["findings"][0].clone();
+                        finding["id"] = json!(format!("index-byte-{i:04}"));
+                        finding["suggested_next_action"] = json!("x".repeat(600));
+                        finding
+                    })
+                    .collect(),
+            );
+            let byte_findings = excess_bytes["findings"]
+                .as_array()
+                .ok_or_else(|| "byte fixture findings are missing".to_string())?;
+            let entries = ripr::review_input::canonical_projection_all(byte_findings, &repo)?;
+            let legacy = serde_json::to_vec(&entries).map_err(|error| error.to_string())?;
+            assert!(legacy.len() > REVIEW_INDEX_MAX_BYTES);
+            let selected = ripr::review_input::canonical_projection(byte_findings, &repo)?;
+            assert!(
+                serde_json::to_vec(&selected)
+                    .map_err(|error| error.to_string())?
+                    .len()
+                    < REVIEW_INPUT_MAX_BYTES
+            );
+            let excess_bytes =
+                serde_json::to_string(&excess_bytes).map_err(|error| error.to_string())?;
+            let mut malformed_oversized = value.clone();
+            malformed_oversized["findings"] =
+                Value::Array(vec![Value::Null; REVIEW_INDEX_MAX_ENTRIES + 1]);
+            let malformed_oversized =
+                serde_json::to_string(&malformed_oversized).map_err(|error| error.to_string())?;
+            for (label, replacement) in [
+                ("runner failure", None),
+                ("malformed conversion", Some("{")),
+                ("oversized conversion", Some(oversized.as_str())),
+                ("index byte limit", Some(excess_bytes.as_str())),
+                (
+                    "entry guard before projection",
+                    Some(malformed_oversized.as_str()),
+                ),
+            ] {
+                baseline()?;
+                let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                    replacement.map_or_else(
+                        || Err("injected runner failure".to_string()),
+                        |text| Ok(text.to_string()),
+                    )
+                })
+                .err()
+                .ok_or_else(|| format!("{label}: producer returned success"))?;
+                let expected = match label {
+                    "runner failure" => "injected runner failure",
+                    "malformed conversion" => "not valid JSON",
+                    "oversized conversion" | "entry guard before projection" => {
+                        "exceeds entry limit"
+                    }
+                    "index byte limit" => "exceeds byte limit",
+                    _ => return Err(format!("unknown failure control: {label}")),
+                };
+                assert!(
+                    failure.contains(expected),
+                    "{label}: wrong failure: {failure}"
+                );
+                refused(label)?;
+            }
+            // This late failure distinguishes subject-last publication from
+            // merely deleting a previous receipt before the runner.
+            baseline()?;
+            let markdown = repo.join(PR_EVIDENCE_MD);
+            fs::remove_file(&markdown).map_err(|error| error.to_string())?;
+            fs::create_dir(&markdown).map_err(|error| error.to_string())?;
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| Ok(check.clone()))
+                .err()
+                .ok_or_else(|| "Markdown write failure returned success".to_string())?;
+            assert!(failure.contains(PR_EVIDENCE_MD), "wrong failure: {failure}");
+            refused("Markdown write failure")?;
+            fs::remove_dir(&markdown).map_err(|error| error.to_string())?;
+
+            baseline()?;
+            let subject = repo.join(PR_CHECK_SUBJECT_JSON);
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                match fs::remove_file(&subject) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+                fs::create_dir(&subject).map_err(|error| error.to_string())?;
+                Ok(check.clone())
+            })
+            .err()
+            .ok_or_else(|| "blocked subject publication returned success".to_string())?;
+            assert!(
+                failure.contains("finalize"),
+                "wrong publication failure: {failure}"
+            );
+            refused("subject rename failure")?;
+            for entry in fs::read_dir(subject.parent().ok_or("subject has no parent")?)
+                .map_err(|error| error.to_string())?
+            {
+                let entry = entry.map_err(|error| error.to_string())?;
+                assert!(
+                    !entry.file_name().to_string_lossy().ends_with(".tmp"),
+                    "owned stage was stranded"
+                );
+            }
+            fs::remove_dir(&subject).map_err(|error| error.to_string())?;
+
+            baseline()?;
+            let retained_check =
+                fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
+            fs::remove_file(&subject).map_err(|error| error.to_string())?;
+            fs::create_dir(&subject).map_err(|error| error.to_string())?;
+            let mut runner_called = false;
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                runner_called = true;
+                Err("runner must not execute after invalidation failure".into())
+            })
+            .err()
+            .ok_or_else(|| "invalidation failure returned success".to_string())?;
+            assert!(!runner_called);
+            assert!(
+                failure.contains("remove stale"),
+                "wrong invalidation failure: {failure}"
+            );
+            assert_eq!(
+                fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?,
+                retained_check,
+                "subject authority must be invalidated before subordinate files"
+            );
+            refused("invalidation failure")?;
+            fs::remove_dir(&subject).map_err(|error| error.to_string())?;
+            for artifact in [PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+                fs::remove_file(repo.join(artifact)).map_err(|error| error.to_string())?;
+            }
+            let mut runner_called = false;
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                runner_called = true;
+                Err("injected failure with no old artifacts".into())
+            });
+            assert!(
+                runner_called,
+                "missing old artifacts must not block the runner"
+            );
+            assert!(failure.is_err());
+            refused("missing old artifacts")?;
+            baseline()?;
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&repo)
+            .map_err(|error| format!("cleanup {}: {error}", repo.display()));
+        result.and(cleanup)
     }
 
     #[test]
@@ -1878,6 +4085,8 @@ mod tests {
                     PR_CHECK_JSON,
                     PR_CHECK_SUBJECT_JSON,
                     PR_REVIEW_INPUT_JSON,
+                    PR_CANONICAL_DIFF,
+                    PR_DIFF,
                 ] {
                     let destination = other.join(artifact);
                     if let Some(parent) = destination.parent() {
@@ -2157,6 +4366,32 @@ mod tests {
                 }
                 write_pr_evidence_from_check_json(&repo, &options, &check)?;
                 check_pr_evidence(&repo, &options)?;
+                if complete {
+                    let presentation =
+                        fs::read(repo.join(PR_DIFF)).map_err(|error| error.to_string())?;
+                    let canonical = fs::read(repo.join(PR_CANONICAL_DIFF))
+                        .map_err(|error| error.to_string())?;
+                    assert_ne!(
+                        presentation, canonical,
+                        "fixture must distinguish diff recipes"
+                    );
+                    fs::write(repo.join(PR_CANONICAL_DIFF), &presentation)
+                        .map_err(|error| error.to_string())?;
+                    let violations = check_subject_violations(&repo, &options);
+                    assert!(
+                        violations
+                            .iter()
+                            .any(|error| error.contains("canonical_diff_sha256"))
+                    );
+                    assert!(
+                        violations
+                            .iter()
+                            .any(|error| error.contains("requested canonical base/head diff"))
+                    );
+                    fs::write(repo.join(PR_CANONICAL_DIFF), &canonical)
+                        .map_err(|error| error.to_string())?;
+                    check_pr_evidence(&repo, &options)?;
+                }
                 let args = vec![
                     "review-comments".into(),
                     "--root".into(),
@@ -2223,7 +4458,28 @@ mod tests {
         result.and(cleanup)
     }
 
-    fn temp_repo(name: &str) -> Result<PathBuf, String> {
+    fn two_commit_repo(name: &str) -> Result<(PathBuf, PrEvidenceOptions), String> {
+        let repo = temp_repo(name)?;
+        run_git(&repo, &["init"])?;
+        run_git(&repo, &["config", "user.email", "ripr-pr@example.invalid"])?;
+        run_git(&repo, &["config", "user.name", "RIPR PR Test"])?;
+        write_repo_file(&repo, "README.md", "# sample\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "src/lib.rs", "pub fn value() -> u8 { 1 }\n")?;
+        run_git(&repo, &["add", "."])?;
+        run_git(&repo, &["commit", "--no-gpg-sign", "-m", "add rust"])?;
+        Ok((
+            repo,
+            PrEvidenceOptions {
+                base: "HEAD~1".to_string(),
+                head: "HEAD".to_string(),
+                ..options()
+            },
+        ))
+    }
+
+    pub(super) fn temp_repo(name: &str) -> Result<PathBuf, String> {
         let unique = format!(
             "{}-{}-{}",
             name,
@@ -2238,7 +4494,7 @@ mod tests {
         Ok(path)
     }
 
-    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+    pub(super) fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
         let path = repo.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -2247,7 +4503,7 @@ mod tests {
         fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
-    fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+    pub(super) fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
     }
 
@@ -2315,10 +4571,16 @@ mod tests {
                 ));
             }
             if !stdout.is_empty() {
-                script.push_str(&format!("echo {}\r\n", stdout));
+                let stdout_path = path.with_extension("stdout.txt");
+                fs::write(&stdout_path, stdout)
+                    .map_err(|err| format!("write {}: {err}", stdout_path.display()))?;
+                script.push_str("type \"%~dpn0.stdout.txt\"\r\n");
             }
             if !stderr.is_empty() {
-                script.push_str(&format!("echo {} 1>&2\r\n", stderr));
+                let stderr_path = path.with_extension("stderr.txt");
+                fs::write(&stderr_path, stderr)
+                    .map_err(|err| format!("write {}: {err}", stderr_path.display()))?;
+                script.push_str("type \"%~dpn0.stderr.txt\" 1>&2\r\n");
             }
             script.push_str(&format!("exit /b {exit_code}\r\n"));
             fs::write(&path, script).map_err(|err| format!("write {}: {err}", path.display()))?;

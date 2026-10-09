@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..e477f15 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -28,7 +28,7 @@ pub struct Receipt {
+ 
+ /// Product family of a SKU such as `BOLT-M8`: everything before the first `-`.
+ pub fn sku_family(sku: &str) -> &str {
+-    let end = sku.find('-').unwrap_or(sku.len());
++    let end = sku.find('-').unwrap_or_else(|| sku.len());
+     // SAFETY: `find` returns a char boundary and `end` never exceeds the length.
+     unsafe { sku.get_unchecked(..end) }
+ }

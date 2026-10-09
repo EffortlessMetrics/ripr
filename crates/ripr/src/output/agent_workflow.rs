@@ -2,7 +2,7 @@ use crate::app::agent_workflow::{
     AGENT_WORKFLOW_SCHEMA_VERSION, AgentWorkflowArtifact, AgentWorkflowCommand,
     AgentWorkflowManifest, AgentWorkflowSeam,
 };
-use crate::output::markdown::{POWERSHELL_UNAVAILABLE_DISCLOSURE, powershell_command};
+use crate::output::markdown::{POWERSHELL_UNAVAILABLE_DISCLOSURE, PowershellForm, powershell_form};
 use serde_json::{Value, json};
 
 /// Shell that every `command` string in this packet is written for.
@@ -83,7 +83,7 @@ fn artifact_json(artifact: &AgentWorkflowArtifact) -> Value {
         "name": artifact.name,
         "label": artifact.label,
         "path": artifact.path,
-        "required": true,
+        "required": artifact.required,
         "state": artifact.state.as_str(),
     })
 }
@@ -113,7 +113,8 @@ fn command_label(step: &str) -> String {
 
 mod markdown {
     use super::{
-        AgentWorkflowManifest, POWERSHELL_UNAVAILABLE_DISCLOSURE, command_label, powershell_command,
+        AgentWorkflowManifest, POWERSHELL_UNAVAILABLE_DISCLOSURE, PowershellForm, command_label,
+        powershell_form,
     };
 
     pub(super) fn render_commands_document(manifest: &AgentWorkflowManifest) -> String {
@@ -131,7 +132,7 @@ mod markdown {
         lines.push(String::new());
         lines.push("This workflow packet is advisory and source-edit-free. It gives a human or agent the static context and commands for one focused test loop.".to_string());
         lines.push(String::new());
-        lines.push("Each step includes Bash command forms and, where supported, PowerShell forms; unavailable variants are disclosed. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent and UTF-8 `Out-File` redirection. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
+        lines.push("Each step includes Bash command forms and, where supported, PowerShell forms; unavailable variants are disclosed. The Bash form uses POSIX single-quote quoting and `>` redirection; the PowerShell form uses PowerShell's doubled-quote equivalent, the `&` call operator before a quoted program path, and a guarded BOM-free UTF-8 write in place of `>`. cmd.exe is not supported. On Windows, use either Git Bash or PowerShell. WSL bash is not a drop-in substitute: paths here keep their Windows drive-letter prefix, which WSL resolves as a relative path, so running them there requires rewriting each path under `/mnt/` and having ripr available inside WSL.".to_string());
         lines.push(String::new());
     }
 
@@ -178,15 +179,19 @@ mod markdown {
             lines.push(command.command.clone());
             lines.push("```".to_string());
             lines.push(String::new());
-            match powershell_command(&command.command) {
-                Some(line) => {
+            match powershell_form(&command.command) {
+                PowershellForm::Translated(line) => {
                     lines.push("```powershell".to_string());
                     lines.push(line);
                     lines.push("```".to_string());
+                    lines.push(String::new());
                 }
-                None => lines.push(format!("{POWERSHELL_UNAVAILABLE_DISCLOSURE}.")),
+                PowershellForm::SameAsBash => {}
+                PowershellForm::Unavailable => {
+                    lines.push(format!("{POWERSHELL_UNAVAILABLE_DISCLOSURE}."));
+                    lines.push(String::new());
+                }
             }
-            lines.push(String::new());
         }
     }
 
@@ -201,6 +206,11 @@ mod markdown {
                     "- `{}` is missing; run `{}`",
                     command.artifact, command.command
                 ));
+                if let Some(form) =
+                    crate::output::markdown::powershell_text_variant(&command.command)
+                {
+                    lines.push(format!("  (PowerShell) `{form}`"));
+                }
             }
         }
         lines.push(String::new());
@@ -254,6 +264,7 @@ mod tests {
                 name: "before_snapshot".to_string(),
                 label: "before snapshot".to_string(),
                 path: "target/ripr/workflow/before.repo-exposure.json".to_string(),
+                required: true,
                 state: AgentWorkflowArtifactState::Missing,
             }],
             commands: vec![AgentWorkflowCommand {
@@ -283,6 +294,9 @@ mod tests {
         assert_eq!(value["status"], "ready");
         assert_eq!(value["seam"]["seam_id"], "67fc764ba37d77bd");
         assert_eq!(value["boundaries"]["source_edits"], false);
+        // The artifact's `required` flag is the producer's active-loop
+        // classification, not an unconditional literal.
+        assert_eq!(value["artifacts"][0]["required"], true);
         assert_eq!(
             value["next_command"]["command"],
             "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
@@ -350,7 +364,7 @@ mod tests {
         value.commands[0].command = "ripr agent start --root 'it'\\''s' > 'out'".to_string();
         let rendered = render_agent_workflow_commands_md(&value);
         assert!(
-            rendered.contains("$ripr = ((ripr agent start --root 'it''s') | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('out', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }")
+            rendered.contains("$riprEncoding = [Console]::OutputEncoding; try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}; try { $ripr = ((ripr agent start --root 'it''s') | Out-String) } finally { try { [Console]::OutputEncoding = $riprEncoding } catch {} }; if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText($ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath('out'), $ripr.Replace(\"`r`n\", \"`n\"), [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }")
         );
     }
 

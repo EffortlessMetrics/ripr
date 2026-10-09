@@ -34,8 +34,10 @@ Downstream PR/CI, editor, policy, and adoption lanes consume this evidence.
 They should render canonical items and policy overlays; they should not infer
 actionability from raw analyzer classes.
 
-This rail does not update `.ripr/goals/active.toml` unless the repo-wide
-operator sequence explicitly makes it active.
+This rail does not replace the repo-wide execution state, which is governed by
+GitHub issues, PRs, and worktree state per
+[Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+`.ripr/goals/active.toml` manifest was retired in #1701).
 
 ## Current Baseline
 

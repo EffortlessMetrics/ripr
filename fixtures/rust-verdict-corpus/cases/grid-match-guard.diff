@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 37775de..902192c 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -43,7 +43,7 @@ pub fn priority(label: &str) -> u8 {
+ 
+ pub fn sign(n: i64) -> i8 {
+     match n {
+-        n if n < 0 => -1,
++        n if 0 > n => -1,
+         0 => 0,
+         _ => 1,
+     }

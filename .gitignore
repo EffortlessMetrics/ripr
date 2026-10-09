@@ -1,6 +1,11 @@
 /target
 /a.out
 fixtures/**/target/
+# Exception: the report-packet-index corpus ships real packet trees whose
+# layout is the one `ripr reports index` documents, so the goldens show the
+# paths a user actually sees. A negation must name the excluded directory
+# itself; git cannot re-include a file under an excluded directory.
+!fixtures/boundary_gap/expected/report-packet-index/*/packet/target/
 /xtask/target/
 .ripr/release/
 *.profraw
@@ -14,6 +19,8 @@ editors/vscode/node_modules/
 editors/vscode/out/
 editors/vscode/dist/
 editors/vscode/.vscode-test/
+packaging/npm/**/node_modules/
+packaging/npm/**/*.tgz
 .claude/
 .zcode/
 crates/ripr/examples/**/target/
@@ -21,3 +28,9 @@ crates/ripr/examples/**/target/
 # Test-run residue: ripr tests spawn the binary with cwd=crates/ripr,
 # which writes target/ under that directory (see #2157).
 crates/ripr/target/
+# Editor test/build artifacts (mirrors the root target/ ignore).
+editors/vscode/target/
+
+# Python bytecode from stdlib py_compile / local consumer runs.
+__pycache__/
+*.pyc

@@ -37,6 +37,11 @@ ripr check \
 The Python preview adapter emits a named static limitation using
 `decorator_indirection` evidence with a `dynamic_route_registration` reason.
 
+The test file shares the owner file stem, but the test never references the
+`checkout` owner (the route path is a string), so it is not a related test
+(RIPR-SPEC-0028): reach reads `no` with 0 related tests, and the class stays
+`static_unknown` under the static limit.
+
 ## Must Not
 
 - Execute `route_path()`.

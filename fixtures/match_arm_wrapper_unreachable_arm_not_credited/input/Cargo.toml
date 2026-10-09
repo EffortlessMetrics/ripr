@@ -1,0 +1,4 @@
+[package]
+name = "match_arm_wrapper_unreachable_arm_not_credited_fixture"
+version = "0.0.0"
+edition = "2024"

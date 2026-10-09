@@ -13,7 +13,7 @@ Static evidence already improved.
 - The supplied receipt records improved or resolved static movement.
 - No additional focused-test action should outrank the receipt.
 
-## Receipt
+## Receipt After Verify
 
 `ripr agent receipt --root fixtures/boundary_gap/input --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json`
 

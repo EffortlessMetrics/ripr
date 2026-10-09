@@ -4,6 +4,19 @@ use crate::output::preview_actionability::{
     is_preview_actionability_evidence_line, is_preview_actionability_missing_summary,
 };
 
+/// #4320: the human evidence window shows at most this many related tests per
+/// finding (`--format json` carries more plus `related_tests_total`). Number of
+/// reaching tests is core exposure evidence, so a window that does not say it
+/// is a window reads as the whole evidence.
+const MAX_RELATED_TESTS_SHOWN: usize = 5;
+
+/// #4320: the human evidence window shows at most this many observed values
+/// per finding (`--format json` keeps its own ranked 32-value window and
+/// discloses the pre-cap count as `observed_values_total`). Observed values
+/// are the raw material for writing the missing-discriminator test, so an
+/// unmarked cap can hide the one boundary value the reader needs.
+const MAX_OBSERVED_VALUES_SHOWN: usize = 8;
+
 pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
     let mut lines = vec![
         format!(
@@ -26,11 +39,7 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
             finding.ripr.reveal.observe.state.as_str(),
             finding.ripr.reveal.observe.summary
         ),
-        format!(
-            "discriminator {}: {}",
-            finding.ripr.reveal.discriminate.state.as_str(),
-            finding.ripr.reveal.discriminate.summary
-        ),
+        crate::output::discriminator_line::discriminator_evidence_line(finding),
     ];
 
     for sink in &finding.flow_sinks {
@@ -42,7 +51,31 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
         ));
     }
 
-    for test in finding.related_tests.iter().take(5) {
+    for test in finding.related_tests.iter().take(MAX_RELATED_TESTS_SHOWN) {
+        let why = crate::output::related_test_miss::related_test_miss_reason(
+            test,
+            &finding.activation.missing_discriminators,
+        );
+        if let Some(why) = why.as_deref().filter(|_| test.is_unmatched()) {
+            // #5344: an examined test with no matched oracle says why it
+            // misses, then shows the assertion it was judged by, so the
+            // claim can be checked in the source.
+            let mut line = format!(
+                "related test {}:{} {} {}: {why}",
+                display_path(&test.file),
+                test.line,
+                test.name,
+                crate::output::related_test_miss::related_test_miss_label(test),
+            );
+            if let Some(oracle) = &test.oracle {
+                line.push_str(&format!(
+                    "; checked `{}`",
+                    crate::output::related_test_miss::checked_assertion_text(oracle)
+                ));
+            }
+            lines.push(line);
+            continue;
+        }
         let oracle_kind = display_label(test.oracle_kind.as_str());
         let mut line = format!(
             "related test {}:{} {} uses {} {} oracle",
@@ -55,14 +88,55 @@ pub(super) fn evidence_path_lines(finding: &Finding) -> Vec<String> {
         if let Some(oracle) = &test.oracle {
             line.push_str(&format!(": {oracle}"));
         }
+        // A matched row keeps its oracle projection and adds the reason it
+        // still misses, so the oracle kind and strength stay readable.
+        if let Some(why) = why {
+            let kept = line.trim_end_matches(';').len();
+            line.truncate(kept);
+            line.push_str(&format!(
+                "; {}: {why}",
+                crate::output::related_test_miss::related_test_miss_label(test)
+            ));
+        }
         lines.push(line);
     }
-
-    for value in finding.activation.observed_values.iter().take(8) {
-        let context = display_label(value.context.as_str());
+    let related_tests_total = finding.related_tests_total();
+    let related_tests_shown = finding.related_tests.len().min(MAX_RELATED_TESTS_SHOWN);
+    if related_tests_total > related_tests_shown {
+        let json_pointer = if finding.related_tests.len() > related_tests_shown {
+            "; more in --format json"
+        } else {
+            ""
+        };
         lines.push(format!(
-            "observed {} value {} at line {}",
-            context, value.value, value.line
+            "related tests (showing {related_tests_shown} of {related_tests_total}{json_pointer})"
+        ));
+    }
+
+    let observed_values_total = finding.activation.observed_values.len();
+    for value in finding
+        .activation
+        .observed_values
+        .iter()
+        .take(MAX_OBSERVED_VALUES_SHOWN)
+    {
+        lines.push(crate::output::observed_values::source_value_evidence_line(
+            value,
+        ));
+    }
+    if observed_values_total > MAX_OBSERVED_VALUES_SHOWN {
+        // #4320 review: the pointer must not promise more than the target
+        // carries. `--format json` holds every value only up to its own
+        // ranked cap of 32; beyond that, both formats are windows and the
+        // wording says so instead of claiming a full list.
+        let json_cap = crate::output::observed_values::MAX_OBSERVED_VALUES_PER_FINDING;
+        let json_window = if observed_values_total > json_cap {
+            format!("--format json keeps a ranked {json_cap}")
+        } else {
+            "full list in --format json".to_string()
+        };
+        lines.push(format!(
+            "source values (showing {MAX_OBSERVED_VALUES_SHOWN} of {observed_values_total}; {json_window})"
         ));
     }
 

@@ -59,3 +59,15 @@ Command:
 Updated:
 - `expected/check.json`
 - `expected/human.txt`
+
+## Pending — rust_binding_status_wrong_owner_observer (6)
+
+Reason:
+RIPR-SPEC-0108: Three subjects retained; nearby ArtifactRecord/status assertions lose unsupported owner observation/discrimination credit. Comparison remains unresolved, not repair ready. Independent control: Constant-true owner passes all existing smoke/unrelated assertions; added exact status-mismatch refusal assertion fails.
+
+Command:
+`cargo xtask goldens bless rust_binding_status_wrong_owner_observer --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

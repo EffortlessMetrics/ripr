@@ -232,7 +232,8 @@ public static class RiprProbeJob {
 export async function probeStandardLspCompatibility(
   command: string,
   useShell = false,
-  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS
+  timeoutMs = DEFAULT_PROBE_TIMEOUT_MS,
+  onInitializeCapabilities?: (capabilities: Readonly<Record<string, unknown>>) => void
 ): Promise<LspCompatibilityResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -317,6 +318,16 @@ export async function probeStandardLspCompatibility(
         if (checked.status === 'incompatible') {
           finish(checked);
           return;
+        }
+        // The editor e2e fixture observes the real server advertisement here,
+        // after validation, instead of maintaining a second capability literal.
+        if (onInitializeCapabilities && isObject(response.result) && isObject(response.result.capabilities)) {
+          try {
+            onInitializeCapabilities(response.result.capabilities);
+          } catch (error) {
+            fail('process_failure', `LSP initialize capability observer failed: ${String(error)}`);
+            return;
+          }
         }
         evidence = checked;
         phase = 'shutdown';
@@ -413,7 +424,8 @@ function validateInitializeResult(result: unknown): Omit<LspCompatibilityEvidenc
   }
   const capabilities = result.capabilities;
   const missing: string[] = [];
-  if (!supportedTextDocumentSync(capabilities.textDocumentSync)) missing.push('textDocumentSync');
+  const syncFailure = unsupportedTextDocumentSyncReason(capabilities.textDocumentSync);
+  if (syncFailure) missing.push(`textDocumentSync (${syncFailure})`);
   if (!providerEnabled(capabilities.hoverProvider)) missing.push('hoverProvider');
   if (!providerEnabled(capabilities.codeActionProvider)) missing.push('codeActionProvider');
   if (!providerEnabled(capabilities.diagnosticProvider)) missing.push('diagnosticProvider');
@@ -475,14 +487,39 @@ function validateInitializeResult(result: unknown): Omit<LspCompatibilityEvidenc
   };
 }
 
-function supportedTextDocumentSync(value: unknown): boolean {
+function unsupportedTextDocumentSyncReason(value: unknown): string | undefined {
   if (value === 1) {
-    return true;
+    return undefined;
   }
-  if (!isObject(value) || value.change !== 1) {
-    return false;
+  if (value === 2) {
+    return 'incremental sync requires options advertising openClose and save';
   }
-  return value.save === true || (isObject(value.save) && value.save.includeText !== false);
+  if (!isObject(value)) {
+    return 'requires full or incremental change notifications';
+  }
+  if (value.openClose !== true) {
+    return 'openClose must be true';
+  }
+  if (value.change !== 1 && value.change !== 2) {
+    return 'requires full or incremental change notifications';
+  }
+  if (value.willSave === true) {
+    return 'willSave is unsupported';
+  }
+  if (value.willSaveWaitUntil === true) {
+    return 'willSaveWaitUntil is unsupported';
+  }
+  // `save: { includeText: false }` keeps didSave opted in without the client
+  // resending the whole document; the server compares its retained buffer.
+  // Only an explicit `save: false` (or an omitted save) stays unsupported,
+  // because saved content is what ripr analyzes.
+  if (value.save !== true && !isObject(value.save)) {
+    return 'save must be enabled';
+  }
+  if (isObject(value.save) && value.save.includeText === true) {
+    return 'save.includeText is unsupported';
+  }
+  return undefined;
 }
 
 type CheckedJsonRpcResponse =

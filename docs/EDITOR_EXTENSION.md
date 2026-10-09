@@ -1,6 +1,78 @@
 # Editor Extension
 
-The VS Code extension is a separate artifact from the Rust crate.
+Use the RIPR extension in VS Code to inspect saved-workspace changes, understand
+one focused test gap or named limitation, and copy a bounded next action. The
+extension presents static evidence; it does not edit source, generate tests, run
+mutation testing, execute project verification, or make merge decisions.
+
+## Install
+
+For an ordinary editor install, use either public extension registry:
+
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr): install `EffortlessMetrics.ripr`.
+- [Open VSX](https://open-vsx.org/extension/EffortlessMetrics/ripr): install `EffortlessMetrics.ripr`.
+
+The released extension normally resolves a matching server without a separate
+`cargo install ripr` step. A local VSIX can be built and installed for
+source-development smoke testing; offline, pinned, and controlled server paths
+remain available under [Package and server details](#package-and-server-details).
+
+## First Useful Editor Path
+
+1. Install the extension and open the repository workspace.
+2. Save the files you want RIPR to analyze. The current model analyzes saved
+   workspace state, not unsaved editor buffers.
+3. Run `ripr: Show Status`. It names the selected workspace root, server source,
+   analysis state, enabled languages, and the next safe action.
+4. Let analysis refresh, or run `ripr: Refresh Diagnostics`. Use
+   `ripr: Restart Server` after changing server or startup settings.
+5. Open Problems and hover a RIPR diagnostic to inspect the changed behavior,
+   related test, missing discriminator, or static limitation.
+6. Use the bounded action that is actually offered: open the best related test,
+   copy a targeted-test brief or repair packet, copy verification/receipt
+   guidance, or refresh/diagnose setup when no repair is safe.
+7. Make the focused test or fixture edit yourself, run the repository's normal
+   verification outside the extension, and retain any RIPR before/after receipt
+   separately from the project test result.
+
+The useful result is not always a repair command. Status may report:
+
+- one current actionable gap;
+- no focused test gap found under the available evidence;
+- stale analysis because a relevant buffer has unsaved edits;
+- a limited or preview-language result with a named static boundary;
+- an unavailable or failed server/analysis state with a recovery action; or
+- a wrong-root, malformed, or stale artifact that was refused.
+
+An empty Problems panel is not proof that testing is complete. Read
+`ripr: Show Status` before interpreting absence as a clean result.
+
+### Trust Boundary
+
+Editor diagnostics and actions are advisory, saved-workspace static evidence.
+They do not grant source-edit authority, execute a copied command, run mutants,
+establish runtime test adequacy, choose a gate result, or approve a merge.
+TypeScript, JavaScript, and Python remain preview surfaces within their
+published limits; an installed adapter does not imply Rust parity.
+
+For the shortest install-to-first-PR walkthrough, see
+[Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
+install-to-receipt loop, see
+[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
+the local actionable queue, current repair packet, and repo map, see
+[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
+the handoff from receipt to `start-here` packet, see
+[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
+the diagnostic-to-gap-state repair loop, see
+[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
+saved-workspace seam walkthrough, see
+[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
+to internal vocabulary bridge, see [Terminology](TERMINOLOGY.md). For
+preview-language static-limit labels, see [Static limits](STATIC_LIMITS.md).
+
+## Package and Server Details
+
+The VS Code extension is a separate artifact from the Rust crate:
 
 ```text
 Rust crate:
@@ -13,8 +85,13 @@ Open VSX extension:
   EffortlessMetrics.ripr
 ```
 
-The extension is a universal VSIX preview client. It resolves the
-server in this order:
+The extension is a universal VSIX preview client. It does not yet publish
+platform-specific VSIXs with bundled native binaries.
+
+### Server Resolution
+
+On activation, the extension resolves the server in this order and records the
+selected source in the `ripr` output channel:
 
 ```text
 1. ripr.server.path
@@ -25,9 +102,20 @@ server in this order:
 6. actionable error
 ```
 
-It does not yet publish platform-specific VSIXs with bundled native binaries.
+Normal Marketplace and Open VSX installs should not require Cargo. For offline,
+pinned, or controlled environments, manual installation remains available:
 
-## Location
+```bash
+cargo install ripr
+```
+
+Set `ripr.server.path` when the server should come from an explicit executable.
+A source-built extension needs a compatible source-built or explicitly pinned
+server; do not assume an unreleased matching server is publicly downloadable.
+
+### Source Location and Local VSIX
+
+The extension source lives at:
 
 ```text
 editors/vscode/
@@ -36,29 +124,14 @@ editors/vscode/
 This directory is intentionally outside the Cargo workspace. It is a Node/VS
 Code extension package, not a Rust package.
 
-## Requirements
+For a local VSIX smoke, `cd editors/vscode` and run `npm ci` and
+`npm run compile` before `npm run package`, then install
+`editors/vscode/dist/ripr-VERSION.vsix`, replacing `VERSION` with the package
+version. `npm run package` does not compile the extension; in a fresh
+checkout it stops with `Extension entrypoint(s) missing` until
+`npm run compile` has built `out/`.
 
-The extension can provision the matching server automatically. Manual install is
-still supported for offline or controlled environments:
-
-```bash
-cargo install ripr
-```
-
-## Install Paths
-
-Normal editor installs should not require a separate `cargo install ripr` step.
-Use one of these surfaces:
-
-- VS Code Marketplace: install `EffortlessMetrics.ripr`.
-- Open VSX: install `EffortlessMetrics.ripr`.
-- Local VSIX smoke: run `npm run package`, then install
-  `editors/vscode/dist/ripr-VERSION.vsix` (replace `VERSION` with the release version).
-
-On activation, the extension resolves a configured, bundled, cached,
-downloaded, or PATH server and writes the selected source to the `ripr` output
-channel. `cargo install ripr` remains the manual fallback for offline, pinned,
-or controlled environments.
+### Managed Download Integrity
 
 Managed downloads are admitted to the cache only after a unique sibling
 staging directory has passed manifest-version, archive-digest, executable
@@ -71,47 +144,6 @@ version does not disturb an already completed prior version.
 The receipt records local installation integrity; it is not a release
 provenance attestation. Producer-owned provenance verification remains a
 separate supply-chain boundary.
-
-## First Use
-
-The editor path should not require report-format knowledge:
-
-1. Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX.
-2. Open a Rust/Cargo workspace, or a workspace with explicitly enabled
-   TypeScript, JavaScript, or Python preview languages.
-3. Check the `ripr` status bar item for server state, workspace state,
-   analysis progress, stale analysis, analysis failure, recommended next
-   action, or "no focused test gap found." (Internal status IDs such as
-   `no-actionable-seam` and `first-useful-action` remain stable in the JSON
-   contract.)
-4. Let the saved-workspace analysis refresh or run `ripr: Restart Server`.
-5. Open the Problems panel and hover a ripr-flagged change to inspect evidence.
-6. Use `Copy Current Repair Packet`, `Copy Repo Gap Map`,
-   `Copy Targeted Test Brief`, the agent copy commands, or
-   `Open Best Related Test`.
-7. Add one focused test and verify with the copied command chain or the CI
-   artifact packet.
-
-The extension owns normal first-run server provisioning. A separate
-`cargo install ripr` remains a fallback for offline, pinned, or controlled
-environments.
-
-For the shortest install-to-first-pr walkthrough, see
-[Editor install to first PR](EDITOR_INSTALL_TO_FIRST_PR.md). For the local
-install-to-receipt loop, see
-[Editor first run to first receipt](EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md). For
-the local actionable queue, current repair packet, and repo map, see
-[Editor actionable gap queue](EDITOR_ACTIONABLE_GAP_QUEUE.md). For
-the handoff from receipt to `start-here` packet, see
-[Editor first-pr bridge workflow](EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md). For
-the local repair loop from diagnostic to gap state, bounded action, verify,
-receipt, and refresh, see
-[Editor gap cockpit workflow](EDITOR_GAP_COCKPIT_WORKFLOW.md). For the older
-saved-workspace seam walkthrough, see
-[Editor evidence workflow](EDITOR_EVIDENCE_WORKFLOW.md). For the plain-language
-to internal vocabulary bridge (seam, discriminator, grip, canonical gap, etc.),
-see [Terminology](TERMINOLOGY.md). For preview-language static-limit labels,
-see [Static limits](STATIC_LIMITS.md).
 
 ## Settings
 
@@ -131,12 +163,29 @@ see [Static limits](STATIC_LIMITS.md).
   context commands. Defaults to `draft`.
 - `ripr.baseRef`: Git base ref used by LSP diagnostics and context commands.
   Defaults to `origin/main`.
+- `ripr.includeUnchangedTests`: include unchanged tests as static evidence.
+  Defaults to `true`.
+- `ripr.seamDiagnostics`: publish repository seam diagnostics in addition to
+  diff-derived findings. Defaults to `true`.
+- `ripr.diagnosticProfile`: `actionable` (default) publishes only
+  producer-backed bounded routes; `full` keeps audit and debug visibility.
+- `ripr.gitTimeoutMs`: deadline for each git invocation in the server's refresh
+  path. Defaults to `30000`.
+- `ripr.refreshDeadlineMs`: deadline for one whole refresh attempt; an attempt
+  that exceeds it is dropped fail-closed. Defaults to `600000`.
 - `ripr.trace.server`: language-server trace setting.
 
-The extension passes `ripr.check.mode` and `ripr.baseRef` to the language server
-as initialization options. Changing enabled, server, check, base-ref, or trace
-settings restarts the client so the next diagnostic refresh uses the new
-configuration.
+The extension passes `ripr.baseRef`, `ripr.check.mode`,
+`ripr.includeUnchangedTests`, `ripr.seamDiagnostics`, and
+`ripr.diagnosticProfile` to the language server as initialization options, and
+serves those five plus `ripr.gitTimeoutMs` and `ripr.refreshDeadlineMs` through
+`workspace/configuration`. `ripr.seamDiagnostics` and `ripr.diagnosticProfile` are
+forwarded only when a user, workspace or folder setting sets them, so
+`ripr.toml` `[lsp]` values apply when they are unset. Changing
+`ripr.enabled`, `ripr.server.*`, `ripr.check.mode`, or `ripr.baseRef` restarts
+the client so the next diagnostic refresh uses the new configuration.
+`ripr.trace.server` applies live. The server re-reads the other keys without a
+restart.
 
 ## Status and Staleness
 
@@ -241,14 +290,18 @@ quieter.
 ## Commands
 
 - `ripr: Restart Server`
-- `ripr: Show Status`
+- `ripr: Refresh Diagnostics`
+- `ripr: Select Workspace Root`
 - `ripr: Show Output`
+- `ripr: Show Status`
+- `ripr: Diagnose Setup`
 - `ripr: Start Current Repair`
 - `ripr: Copy Current Repair Packet`
 - `ripr: Copy Repo Gap Map`
 - `ripr: First PR - Open Packet`
 - `ripr: First PR - Copy Summary`
 - `ripr: First PR - Copy Repair Packet`
+- `ripr: Copy Repair Packet at Cursor`
 - `ripr: First PR - Copy Verify Command`
 - `ripr: First PR - Copy Receipt Command`
 - `ripr: First PR - Copy Regeneration Guidance`
@@ -262,6 +315,15 @@ quieter.
 - `ripr: Review Result - Copy Receipt Command`
 - `ripr: Write Targeted Test - Open Best Related Test`
 - `ripr: Open Settings`
+- `ripr: Copy Top Repair Packet`
+- `ripr: Copy Verify Command (Top Repair Packet)`
+- `ripr: Copy Receipt Command (Top Repair Packet)`
+- `ripr: Open Report`
+- `ripr: Show Top Limitation`
+- `ripr: Show Receipt Status`
+- `ripr: Copy Receipt Command`
+- `ripr: Open Attempt Ledger`
+- `ripr: Show Route Quality`
 
 ### Inspect Test Gap - Copy Context
 
@@ -325,6 +387,10 @@ server can provide seam-aware code actions:
   for the selected test gap through `ripr.collectContext`.
 - `Write targeted test: copy brief`: copies a plain-language work order for
   adding one focused test from the same seam packet guidance.
+- `Start repair: copy repair command`: copies
+  `ripr agent repair --root . --seam-id <id> --phase before` through
+  `ripr.copyAgentRepairCommand`, the start of a retained repair attempt for
+  the selected seam. It leads the agent-loop actions.
 - `Agent handoff: copy packet command`: copies the `ripr agent packet` command
   for the selected seam.
 - `Agent handoff: copy brief command`: copies the `ripr agent brief --seam-id`
@@ -344,7 +410,15 @@ server can provide seam-aware code actions:
 - `Refresh Analysis - Saved Workspace Check`: asks the LSP server to refresh
   diagnostics with `ripr.refresh`.
 
-The targeted-test, assertion, and related-test actions are conditional.
+The repair-start, targeted-test, assertion, and related-test actions are
+conditional. `Start repair: copy repair command` is shown only when
+`ripr agent repair` would accept the seam: it passes the fail-closed
+repair-packet flip (RIPR-SPEC-0087 §8) and its recommended test file is a test
+surface. Any other seam (for example, one whose oracle path is cross-language
+unresolved, or one whose only related test is an inline `#[cfg(test)]` module
+in the source file) gets no repair start in the action list, hover, or
+evidence-context packet, and the remaining handoff, verify, and receipt
+actions stay as they were.
 `Write targeted test: copy brief` is shown only when the seam has related-test
 context or a concrete assertion suggestion.
 `Write targeted test: copy suggested assertion` is shown only when the seam has
@@ -420,12 +494,16 @@ static-limit bounded, and not Rust-level confidence.
 If no usable server can be resolved, the extension shows:
 
 ```text
-ripr server is not available. Enable automatic download, install with `cargo install ripr`, or set `ripr.server.path`.
+ripr server is not available: <cause>. Install with cargo install ripr or set ripr.server.path (ripr.server.downloadBaseUrl for a mirror).
 ```
+
+With `ripr.server.autoDownload` set to `false`, the remedy instead reads
+`Enable ripr.server.autoDownload, install with cargo install ripr, or set ripr.server.path.`
 
 Actions:
 
 - Open Settings
+- Copy Diagnostic
 - Copy Install Command
 - Retry
 

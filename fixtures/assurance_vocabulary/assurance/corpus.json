@@ -47,12 +47,12 @@
     },
     {
       "id": "unavailable",
-      "description": "A missing runner is disclosed rather than treated as pass.",
+      "description": "A missing runner is disclosed rather than treated as pass; the recorded comparison is not current evidence.",
       "record": {
         "schema_version": "1",
         "kind": "repair_assurance",
         "implementation_state": "design_only",
-        "static_movement": {"state":"static_movement_evaluated","result":"not_comparable","canonical_gap_id":null,"seam_id":null,"root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"unavailable"},
+        "static_movement": {"state":"static_movement_evaluated","result":"not_comparable","canonical_gap_id":null,"seam_id":null,"root_identity":"root:fixture","before_artifact_identity":"artifact:before","after_artifact_identity":"artifact:after","currentness":"historical_noncurrent"},
         "verification": {"state":"verification_unavailable","command_spec":null,"result":null},
         "receipt_state": "receipt_rejected",
         "runtime_mutation": null,

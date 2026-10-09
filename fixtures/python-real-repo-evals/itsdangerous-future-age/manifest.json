@@ -1,0 +1,128 @@
+{
+  "kind": "retained_native_python_case",
+  "schema_version": "0.1",
+  "repository": "https://github.com/pallets/itsdangerous",
+  "fixed": "c30678d19e37011890e2374cca04f7789e101793",
+  "broken": "1a9b8d1f9968eb248bda69f39d373a6330b692ba",
+  "fixed_production_blob": "656bc1656e06a425541f9e9ad522f506e34d9924",
+  "broken_production_blob": "2ae026195fdad135d8c4b828b64dd39cba8523e6",
+  "license": "BSD-3-Clause",
+  "analyzer_execution": "not_established",
+  "files": [
+    {
+      "path": "evidence/native.json",
+      "bytes": 61417,
+      "sha256": "580a49c09b7af9142a022c31ac450e8224b13722d362bc2989aa8a604ebd1c29"
+    },
+    {
+      "path": "input/LICENSE.rst",
+      "bytes": 1475,
+      "sha256": "63af09891b6be8ad1a4252ed43af0f4efba7fc948e228367bed7f3c5ae0b09d7"
+    },
+    {
+      "path": "input/setup.cfg",
+      "bytes": 1642,
+      "sha256": "9c6460ca0171595eb3c2743a605acdf2b7495719978b5561038927859e70a7a5"
+    },
+    {
+      "path": "input/setup.py",
+      "bytes": 57,
+      "sha256": "8aa2813abd149d4452ece61db88878318dc440e5e7a9b6313d1a2d126b998a4d"
+    },
+    {
+      "path": "input/src/itsdangerous/__init__.py",
+      "bytes": 712,
+      "sha256": "09dca301d34d47df8b258f4fbbced55430ae43ca0858e7e4a23c438572a64b28"
+    },
+    {
+      "path": "input/src/itsdangerous/_json.py",
+      "bytes": 423,
+      "sha256": "5943004fb3d2c84be305a36946b1bfb371b60c6380d13ceb037655813a792bd2"
+    },
+    {
+      "path": "input/src/itsdangerous/encoding.py",
+      "bytes": 1185,
+      "sha256": "3c6192ed5dd7731c8f84665ff7ccee2124f1e504d5481167155d5a7489106ac8"
+    },
+    {
+      "path": "input/src/itsdangerous/exc.py",
+      "bytes": 2829,
+      "sha256": "25307d061d4fdc5856c25b86c0be7f4a6cafd79f944f8f78c7ba0b3f372cdc95"
+    },
+    {
+      "path": "input/src/itsdangerous/jws.py",
+      "bytes": 7776,
+      "sha256": "03ade0da2f0447c31875c7771548b6a5d3d3d58bed74bc0652dbd860c91be22a"
+    },
+    {
+      "path": "input/src/itsdangerous/serializer.py",
+      "bytes": 8624,
+      "sha256": "5549cda3779af4f6b0e1ece42975cba13006d83813d27b86781415d156b5c63a"
+    },
+    {
+      "path": "input/src/itsdangerous/signer.py",
+      "bytes": 6300,
+      "sha256": "3ef671ac4f78263a537c6c2ff804e00c82a37514b635420d38a2964b10890c62"
+    },
+    {
+      "path": "input/src/itsdangerous/timed.py",
+      "bytes": 6222,
+      "sha256": "13ef04d25944516cdf406c09e4d6fe52ccc5cb44b4edf6e9c8d2023d8908d52b"
+    },
+    {
+      "path": "input/src/itsdangerous/url_safe.py",
+      "bytes": 2219,
+      "sha256": "8b478133d0d4e12767aad41a63a2867a49a74fa5a0254a3bec3a9cce456190a3"
+    },
+    {
+      "path": "input/tests/test_itsdangerous/__init__.py",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "input/tests/test_itsdangerous/test_serializer.py",
+      "bytes": 6195,
+      "sha256": "665fcc96606fc69c3279bcbd604beb3856d357507fb3dc1c5ae750f5832be888"
+    },
+    {
+      "path": "input/tests/test_itsdangerous/test_signer.py",
+      "bytes": 3141,
+      "sha256": "c13a752b11e6f4f90d281f32d57d335ae4ef2ed7141820277460cddbbb934d89"
+    },
+    {
+      "path": "input/tests/test_itsdangerous/test_timed.py",
+      "bytes": 3029,
+      "sha256": "610f8e8747f8943f9d52c8f79c2a02e76c35857a93f072aeb18411980060254a"
+    },
+    {
+      "path": "input/tox.ini",
+      "bytes": 439,
+      "sha256": "6478cdb3b1910b331ae8f8c7b06ea9c1a20f4271a85d30d352cf486a61fcad62"
+    },
+    {
+      "path": "oracle.json",
+      "bytes": 874,
+      "sha256": "92ed60c165e32fb16a5f3b6e8a1b0ca77e37a3b6358414db5adc0e25dd2d103d"
+    },
+    {
+      "path": "replay.py",
+      "bytes": 8777,
+      "sha256": "22d7ea1cec5f680d336a1bd51abd4a3d0adfa7777bca5024ff3a728ba77db3ff"
+    },
+    {
+      "path": "requirements.lock",
+      "bytes": 942,
+      "sha256": "cabc3a33df0af6c40b5c34db8ad2cb7767108d1eab9af46b61a3d95c6ddac27e"
+    },
+    {
+      "path": "retained-files.json",
+      "bytes": 5856,
+      "sha256": "cec8d62a87b58b621e71734deb7bc485a14ef26296413502a05466107188cc14"
+    },
+    {
+      "path": "upstream/broken-timed.py",
+      "bytes": 5977,
+      "sha256": "f0be07c03a26203279dec588d965f6af7a00013afa3ebeb223568990a3c67290"
+    }
+  ]
+}

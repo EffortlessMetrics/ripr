@@ -58,9 +58,10 @@ input artifact status
 ```
 
 The command consumes only explicit inputs. The current operations report is the
-primary input. The history input, when supplied, is append-only JSONL maintained
-outside this command. Missing history is allowed and yields a single-snapshot
-report with unknown trend fields.
+primary input. The history input, when supplied, is append-only JSONL. Missing
+history is allowed and yields a single-snapshot report with unknown trend
+fields. An adopting consumer produces that JSONL with `ripr policy history
+--out-jsonl PATH` or by supplying the documented snapshot schema externally.
 
 The command may read:
 
@@ -71,9 +72,11 @@ optional commit and PR metadata supplied by flags
 -> policy history report
 ```
 
-It must not append to `.ripr/policy-history.jsonl`. It may include an example
-append record so a maintainer or later explicit writer can review what would be
-recorded.
+The default write path and generated CI must not append to
+`.ripr/policy-history.jsonl`. An explicit `--out-jsonl` flag is the opt-in
+producer: it appends one compact `example_append_record` snapshot line and
+must not rewrite prior lines. The report still includes `example_append_record`
+so a maintainer can review what would be recorded.
 
 ## Required Evidence
 
@@ -106,7 +109,8 @@ ripr policy history \
   --commit HEAD \
   --pr-number 123 \
   --out target/ripr/reports/policy-history.json \
-  --out-md target/ripr/reports/policy-history.md
+  --out-md target/ripr/reports/policy-history.md \
+  --out-jsonl .ripr/policy-history.jsonl
 ```
 
 Input artifacts:
@@ -125,7 +129,9 @@ The optional durable history input path is:
 ```
 
 That file is append-only by convention but not required by this spec. The
-history command reads it when supplied and never writes it.
+history command reads it when supplied. It writes it only when `--out-jsonl`
+names the path. Generated CI never passes `--out-jsonl` and never auto-commits
+the ledger.
 
 ## Outputs
 
@@ -230,7 +236,7 @@ The JSON report uses schema version `0.1`:
       "status": "missing"
     }
   ],
-  "limits_note": "Read-only advisory policy history report. It reads explicit history inputs and never appends, mutates policy, or changes gate authority."
+  "limits_note": "Read-only advisory policy history report. It reads explicit history inputs and does not mutate policy or change gate authority. Default execution and generated CI do not append history; `--out-jsonl` is the opt-in producer."
 }
 ```
 
@@ -392,7 +398,8 @@ Malformed history:
 - A supplied JSONL line is malformed.
 - The report keeps usable lines, records the malformed line as a warning, and
   marks the history input as `malformed` if no useful history can be read.
-- The command still does not write or repair the history file.
+- The command still does not rewrite or repair existing history lines.
+  `--out-jsonl` may append a new snapshot line without editing prior records.
 
 ## Test Mapping
 
@@ -407,7 +414,10 @@ Current implementation coverage includes:
 - Unit tests proving missing history is an unknown, not a failure.
 - Unit tests proving malformed history is a warning/config problem and never
   causes automatic repair.
-- Unit tests proving no writer path appends to `.ripr/policy-history.jsonl`.
+- Unit tests proving the default write path and generated CI do not append to
+  `.ripr/policy-history.jsonl`.
+- Unit tests proving `--out-jsonl` appends one snapshot line, preserves prior
+  records, and can be read back as `--history` to populate trend fields.
 
 ## Implementation Mapping
 

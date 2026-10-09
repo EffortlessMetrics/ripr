@@ -1,0 +1,49 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/ts_parse_depth_budget/input
+
+Summary: 3 probe(s), 0 exposed, 0 weakly_exposed, 0 reachable_unrevealed, 2 no_static_path, 0 infection_unknown, 0 propagation_unknown, 1 static_unknown; 3 of 3 finding(s) unsuppressed
+
+Changed file(s) by language: typescript: 3.
+
+Analysis outcome: limitations below (analysis incomplete; partial_with_limitations).
+  The 3 finding(s) below cover only the analyzed scope; behavior outside it has no finding.
+  Limitation: some changed files were not analyzed during language analysis (language_scope_unsupported at language_adapter); file: src/deep_over_budget.ts; affected items: 1; recovery: retry — Fix the TypeScript or JavaScript parse error, then re-run the analysis.
+
+Start here:
+  State: preview language, advisory only (preview_limited)
+  Safe next action: this TypeScript preview finding's repair packet is not ready (no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route); `ripr pilot`, `ripr agent repair` and `ripr first-pr` will not route it; add a test that calls it by hand, then rerun `ripr check`.
+  File: src/deep_under_budget.ts:2
+  Language: typescript
+  Language status: preview
+  Static exposure: no path (no_static_path, warning, confidence 0.40)
+  Why no path: no related test was found that reaches this change
+  Changed behavior: const r = ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((…
+  Missing discriminator: No test references `deepUnderBudget(` — add a test that calls the changed owner.
+  Next step: TypeScript preview advisory: no test references the changed owner; add a test that
+    calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair
+    packet is emitted.
+  Evidence: reach no · infection unknown · propagation unknown · observation no · discriminator no
+    - reach no: 0 related test(s) found for owner `deepUnderBudget`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 8 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/ts_parse_depth_budget/input --diff fixtures/ts_parse_depth_budget/diff.patch --mode fast probe:src_deep_under_budget.ts:typescript_preview:85293064
+  ripr context --root fixtures/ts_parse_depth_budget/input --diff fixtures/ts_parse_depth_budget/diff.patch --mode fast --at probe:src_deep_under_budget.ts:typescript_preview:85293064
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output (TypeScript preview: 2).
+    - src/deep_over_budget.ts:2 (static_unknown)
+    - src/ok.ts:2 (no_static_path)
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 3 changed expression(s) in this diff. Scope
+  analyzed: 3 changed expression(s) and 0 statically linked related test(s). This is not a coverage
+  assessment. A test may already exercise these changes through macros, helper-call chains, or
+  integration tests that ripr's static model does not yet trace; if none does, add co-located tests
+  that observe the changed behavior.
+
+Note: 3 TypeScript files analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

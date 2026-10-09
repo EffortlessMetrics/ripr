@@ -73,6 +73,8 @@ pub(crate) struct DogfoodGateRun {
 pub(crate) struct DogfoodFirstActionScenario {
     pub(crate) name: &'static str,
     pub(crate) expected_dir: &'static str,
+    /// Artifacts `ripr first-action` renders this case from.
+    pub(crate) inputs: Vec<ArtifactRouterInput>,
     pub(crate) expected_status: &'static str,
     pub(crate) expected_action_kind: &'static str,
     pub(crate) expected_audience: &'static str,
@@ -83,6 +85,8 @@ pub(crate) struct DogfoodFirstActionScenario {
 #[derive(Debug)]
 pub(crate) struct DogfoodFirstActionRun {
     pub(crate) name: String,
+    /// Whether `ripr first-action` produced this case's output.
+    pub(crate) rendered: bool,
     pub(crate) expected_dir: PathBuf,
     pub(crate) json_path: PathBuf,
     pub(crate) markdown_path: PathBuf,
@@ -141,6 +145,10 @@ pub(crate) struct DogfoodFirstPrMetrics {
 #[derive(Debug)]
 pub(crate) struct DogfoodFrontPanelScenario {
     pub(crate) name: String,
+    /// `--root` label the case renders with.
+    pub(crate) root: String,
+    /// Artifacts taken from the corpus `inputs`.
+    pub(crate) inputs: Vec<ArtifactRouterInput>,
     pub(crate) report_path: PathBuf,
     pub(crate) markdown_path: PathBuf,
     pub(crate) expected_status: String,
@@ -159,6 +167,8 @@ pub(crate) struct DogfoodFrontPanelScenario {
 #[derive(Debug)]
 pub(crate) struct DogfoodFrontPanelRun {
     pub(crate) name: String,
+    /// Whether `ripr pr-review front-panel` produced this case's output.
+    pub(crate) rendered: bool,
     pub(crate) report_path: PathBuf,
     pub(crate) markdown_path: PathBuf,
     pub(crate) status: String,
@@ -189,6 +199,8 @@ pub(crate) struct DogfoodFrontPanelRun {
 pub(crate) struct DogfoodReportPacketIndexScenario {
     pub(crate) name: String,
     pub(crate) scenario: String,
+    pub(crate) packet_root: PathBuf,
+    pub(crate) canonical_command: String,
     pub(crate) expected_report: PathBuf,
     pub(crate) expected_markdown: PathBuf,
     pub(crate) expected_status: String,
@@ -204,6 +216,9 @@ pub(crate) struct DogfoodReportPacketIndexScenario {
 #[derive(Debug)]
 pub(crate) struct DogfoodReportPacketIndexRun {
     pub(crate) name: String,
+    pub(crate) packet_root: PathBuf,
+    pub(crate) render_command: String,
+    pub(crate) rendered: bool,
     pub(crate) actual_dir: PathBuf,
     pub(crate) json_path: PathBuf,
     pub(crate) markdown_path: PathBuf,
@@ -1269,99 +1284,24 @@ pub(crate) fn dogfood_impl() -> Result<(), String> {
     write_report("dogfood.md", &dogfood_report_markdown(&report_inputs))?;
     write_report("dogfood.json", &dogfood_report_json(&report_inputs))?;
 
-    // Aggregate scenario outcomes into the gate exit code (#2411).
-    // Previously the gate returned Ok(()) as long as the report file wrote,
-    // regardless of whether scenarios recorded errors. Now we scan all run
-    // families for non-empty errors vectors and return Err if any failed.
-    let mut failed: Vec<String> = Vec::new();
-    for run in runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
+    // Aggregate scenario outcomes into the gate exit code (#2411). The
+    // report status and the exit code share one family list (#4309); two
+    // hand-kept lists drifted and let a `warn` report exit 0.
+    dogfood_gate_result(&report_inputs)
+}
+
+/// The command exit for a written report: `Err` exactly when the report
+/// status is `warn`, naming every failing run or summary.
+pub(crate) fn dogfood_gate_result(inputs: &DogfoodReportInputs<'_>) -> Result<(), String> {
+    let failed = dogfood_failed_families(inputs);
+    if failed.is_empty() {
+        return Ok(());
     }
-    for run in gate_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in first_action_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in first_pr_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in front_panel_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in report_packet_index_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in finding_alignment_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in surface_projection_alignment_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in real_repair_attempt_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in python_real_repo_eval_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in python_static_limit_eval_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in python_no_action_eval_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in typescript_preview_repair_loop_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in bun_ub_cross_language_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in user_surface_projection_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    for run in pr_inline_comment_runs {
-        if !run.errors.is_empty() {
-            failed.push(format!("{}: {} error(s)", run.name, run.errors.len()));
-        }
-    }
-    if !failed.is_empty() {
-        return Err(format!(
-            "dogfood: {} scenario family/families recorded errors: {}",
-            failed.len(),
-            failed.join("; ")
-        ));
-    }
-    Ok(())
+    Err(format!(
+        "dogfood: {} scenario family/families recorded errors: {}",
+        failed.len(),
+        failed.join("; ")
+    ))
 }
 
 pub(crate) fn dogfood_scenarios() -> Vec<DogfoodScenario> {
@@ -1673,6 +1613,7 @@ pub(crate) fn dogfood_gate_adoption_run_with_binary(
             scenario.expected_advisory, advisory
         ));
     }
+    pin_gate_subject_analyzer_version(&json_path, &mut errors);
     let expected_dir = Path::new(scenario.expected_dir);
     compare_expected_text(
         &json_path,
@@ -1706,6 +1647,53 @@ pub(crate) fn dogfood_gate_adoption_run_with_binary(
         expected_exit_success: scenario.expected_exit_success,
         errors,
     })
+}
+
+/// #5263: the gate-decision `subject.analyzer_version` stamps the writing
+/// binary's build identity, which differs per checkout, so the committed
+/// golden carries a pinned value. Replace the observed value in the actual
+/// output after checking its shape: a render that stopped stamping its own
+/// build would re-pin against itself and fail the shape check.
+fn pin_gate_subject_analyzer_version(json_path: &Path, errors: &mut Vec<String>) {
+    const PINNED: &str = "0.0.0+pinned-golden-analyzer-version";
+    let text = match fs::read_to_string(json_path) {
+        Ok(text) => text,
+        Err(_) => return, // a missing or unreadable output is already an error
+    };
+    let observed = match serde_json::from_str::<Value>(&text) {
+        Ok(value) => value
+            .pointer("/subject/analyzer_version")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        Err(_) => None,
+    };
+    let Some(observed) = observed else {
+        return; // schema/shape failures surface elsewhere
+    };
+    if observed == PINNED {
+        errors.push(format!(
+            "rendered subject.analyzer_version is the pinned golden value, so the render did not stamp its own build identity: {}",
+            normalize_path(json_path)
+        ));
+        return;
+    }
+    if !observed.contains('+') {
+        errors.push(format!(
+            "rendered subject.analyzer_version must be a build identity (version+commit), got `{observed}`: {}",
+            normalize_path(json_path)
+        ));
+        return;
+    }
+    let pinned = text.replace(
+        &format!("\"analyzer_version\": \"{observed}\""),
+        &format!("\"analyzer_version\": \"{PINNED}\""),
+    );
+    if let Err(err) = fs::write(json_path, pinned) {
+        errors.push(format!(
+            "failed to pin subject.analyzer_version in {}: {err}",
+            normalize_path(json_path)
+        ));
+    }
 }
 
 pub(crate) fn dogfood_gate_adoption_args(
@@ -1751,6 +1739,20 @@ pub(crate) fn dogfood_first_action_scenarios() -> Vec<DogfoodFirstActionScenario
         DogfoodFirstActionScenario {
             name: "actionable",
             expected_dir: "fixtures/boundary_gap/expected/first-useful-action/actionable",
+            inputs: vec![
+                ArtifactRouterInput::at(
+                    "pr-guidance",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+                ),
+                ArtifactRouterInput::at(
+                    "assistant-proof",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/test-oracle-assistant-proof.json",
+                ),
+                ArtifactRouterInput::at(
+                    "ledger",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+                ),
+            ],
             expected_status: "actionable",
             expected_action_kind: "write_focused_test",
             expected_audience: "developer",
@@ -1760,6 +1762,18 @@ pub(crate) fn dogfood_first_action_scenarios() -> Vec<DogfoodFirstActionScenario
         DogfoodFirstActionScenario {
             name: "baseline-only",
             expected_dir: "fixtures/boundary_gap/expected/first-useful-action/baseline-only",
+            inputs: vec![
+                ArtifactRouterInput::from(
+                    "ledger",
+                    "target/ripr/reports/pr-evidence-ledger.json",
+                    "fixtures/boundary_gap/expected/first-useful-action/baseline-only/inputs/pr-evidence-ledger.json",
+                ),
+                ArtifactRouterInput::from(
+                    "baseline-delta",
+                    "target/ripr/reports/baseline-debt-delta.json",
+                    "fixtures/boundary_gap/expected/first-useful-action/baseline-only/inputs/baseline-debt-delta.json",
+                ),
+            ],
             expected_status: "baseline_only",
             expected_action_kind: "acknowledge_baseline",
             expected_audience: "reviewer",
@@ -1769,6 +1783,17 @@ pub(crate) fn dogfood_first_action_scenarios() -> Vec<DogfoodFirstActionScenario
         DogfoodFirstActionScenario {
             name: "stale",
             expected_dir: "fixtures/boundary_gap/expected/first-useful-action/stale",
+            inputs: vec![
+                ArtifactRouterInput::at(
+                    "pr-guidance",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+                ),
+                ArtifactRouterInput::from(
+                    "editor-context",
+                    "target/ripr/workflow/evidence-context.json",
+                    "fixtures/boundary_gap/expected/first-useful-action/stale/inputs/evidence-context.json",
+                ),
+            ],
             expected_status: "stale",
             expected_action_kind: "refresh_evidence",
             expected_audience: "developer",
@@ -1778,6 +1803,16 @@ pub(crate) fn dogfood_first_action_scenarios() -> Vec<DogfoodFirstActionScenario
         DogfoodFirstActionScenario {
             name: "missing-required-artifact",
             expected_dir: "fixtures/boundary_gap/expected/first-useful-action/missing-required-artifact",
+            inputs: vec![
+                ArtifactRouterInput::at(
+                    "pr-guidance",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+                ),
+                ArtifactRouterInput::at(
+                    "ledger",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+                ),
+            ],
             expected_status: "missing_required_artifact",
             expected_action_kind: "generate_missing_artifact",
             expected_audience: "agent",
@@ -1787,15 +1822,45 @@ pub(crate) fn dogfood_first_action_scenarios() -> Vec<DogfoodFirstActionScenario
         DogfoodFirstActionScenario {
             name: "unchanged-after-attempt",
             expected_dir: "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt",
-            expected_status: "unchanged_after_attempt",
-            expected_action_kind: "revise_focused_test",
+            inputs: vec![
+                ArtifactRouterInput::at(
+                    "pr-guidance",
+                    "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+                ),
+                ArtifactRouterInput::at(
+                    "assistant-proof",
+                    "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/assistant-proof.json",
+                ),
+                ArtifactRouterInput::at(
+                    "receipt",
+                    "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json",
+                ),
+            ],
+            // The committed receipt is portable-normalized (no complete
+            // analysis outcome), so the router fails closed before it can
+            // route `unchanged` movement; `first_useful_action_matches_
+            // unchanged_after_attempt_fixture` pins the same outcome.
+            expected_status: "missing_required_artifact",
+            expected_action_kind: "generate_missing_artifact",
             expected_audience: "agent",
-            expected_selected: true,
-            expected_static_movement: "unchanged",
+            expected_selected: false,
+            expected_static_movement: "unknown",
         },
         DogfoodFirstActionScenario {
             name: "no-actionable-seam",
             expected_dir: "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam",
+            inputs: vec![
+                ArtifactRouterInput::from(
+                    "pr-guidance",
+                    "target/ripr/review/comments.json",
+                    "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/inputs/comments.json",
+                ),
+                ArtifactRouterInput::from(
+                    "ledger",
+                    "target/ripr/reports/pr-evidence-ledger.json",
+                    "fixtures/boundary_gap/expected/first-useful-action/no-actionable-seam/inputs/pr-evidence-ledger.json",
+                ),
+            ],
             expected_status: "no_actionable_seam",
             expected_action_kind: "no_action",
             expected_audience: "developer",
@@ -1805,6 +1870,15 @@ pub(crate) fn dogfood_first_action_scenarios() -> Vec<DogfoodFirstActionScenario
     ]
 }
 
+/// Renders one first-action case through the shipped `ripr first-action`
+/// route and checks what the router produced.
+///
+/// Before this run rendered, it read the committed
+/// `first-useful-action.{json,md}` and compared them to the declarations
+/// below, so no router change could fail the family (the #3972 class). The
+/// case now renders from its committed inputs, the produced report is held
+/// to the declared route, and the produced JSON and Markdown are compared
+/// byte for byte to the goldens.
 pub(crate) fn dogfood_first_action_run(
     scenario: &DogfoodFirstActionScenario,
 ) -> DogfoodFirstActionRun {
@@ -1818,73 +1892,83 @@ pub(crate) fn dogfood_first_action_run(
     let mut selected = false;
     let mut static_movement = "unknown".to_string();
 
-    match fs::read_to_string(&json_path) {
-        Ok(text) => match serde_json::from_str::<Value>(&text) {
-            Ok(value) => {
-                status = value
-                    .get("status")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                action_kind = value
-                    .get("action_kind")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                audience = value
-                    .get("audience")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                selected = value.get("selected").is_some_and(|value| !value.is_null());
-                static_movement = value
-                    .get("evidence")
-                    .and_then(|evidence| evidence.get("static_movement"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
-                if !value
-                    .get("limits")
-                    .and_then(Value::as_array)
-                    .is_some_and(|limits| {
-                        limits
-                            .iter()
-                            .any(|limit| limit.as_str() == Some("Static evidence only."))
-                    })
-                {
-                    errors.push("missing static-evidence limit".to_string());
-                }
-            }
-            Err(err) => errors.push(format!(
-                "failed to parse first useful action JSON {}: {err}",
-                normalize_path(&json_path)
-            )),
-        },
-        Err(err) => errors.push(format!(
-            "failed to read first useful action JSON {}: {err}",
-            normalize_path(&json_path)
-        )),
-    }
+    let rendered = match render_artifact_router_case(&ArtifactRouterCase {
+        family: "first-useful-action",
+        case: scenario.name,
+        subcommand: &["first-action"],
+        root: "fixtures/boundary_gap/input",
+        inputs: &scenario.inputs,
+        markdown_golden: &markdown_path,
+    }) {
+        Ok(rendered) => Some(rendered),
+        Err(err) => {
+            errors.push(err);
+            None
+        }
+    };
 
-    match fs::read_to_string(&markdown_path) {
-        Ok(markdown) => {
-            if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
-                errors.push(format!(
-                    "Markdown should pin status {}",
-                    scenario.expected_status
-                ));
-            }
-            if !markdown.contains(&format!("Action: {}", scenario.expected_action_kind)) {
-                errors.push(format!(
-                    "Markdown should pin action {}",
-                    scenario.expected_action_kind
-                ));
+    if let Some(rendered) = rendered.as_ref() {
+        if let Some(value) = check_artifact_router_json(
+            &mut errors,
+            rendered,
+            &json_path,
+            ARTIFACT_ROUTER_PINNED_GENERATED_AT,
+        ) {
+            status = value
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            action_kind = value
+                .get("action_kind")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            audience = value
+                .get("audience")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            selected = value.get("selected").is_some_and(|value| !value.is_null());
+            static_movement = value
+                .get("evidence")
+                .and_then(|evidence| evidence.get("static_movement"))
+                .and_then(Value::as_str)
+                .unwrap_or("unknown")
+                .to_string();
+            if !value
+                .get("limits")
+                .and_then(Value::as_array)
+                .is_some_and(|limits| {
+                    limits
+                        .iter()
+                        .any(|limit| limit.as_str() == Some("Static evidence only."))
+                })
+            {
+                errors.push("missing static-evidence limit".to_string());
             }
         }
-        Err(err) => errors.push(format!(
-            "failed to read first useful action Markdown {}: {err}",
-            normalize_path(&markdown_path)
-        )),
+
+        let markdown = &rendered.markdown;
+        if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
+            errors.push(format!(
+                "Markdown should pin status {}",
+                scenario.expected_status
+            ));
+        }
+        if !markdown.contains(&format!("Action: {}", scenario.expected_action_kind)) {
+            errors.push(format!(
+                "Markdown should pin action {}",
+                scenario.expected_action_kind
+            ));
+        }
+        compare_rendered_golden(
+            &mut errors,
+            "Markdown",
+            markdown,
+            &markdown_path,
+            &rendered.regenerate_hint(),
+        );
     }
 
     if status != scenario.expected_status {
@@ -1920,6 +2004,7 @@ pub(crate) fn dogfood_first_action_run(
 
     DogfoodFirstActionRun {
         name: scenario.name.to_string(),
+        rendered: rendered.is_some(),
         expected_dir,
         json_path,
         markdown_path,
@@ -2101,6 +2186,44 @@ pub(crate) fn dogfood_first_pr_run(scenario: &DogfoodFirstPrScenario) -> Dogfood
     }
 }
 
+/// The `--root` label and input flags for one front-panel corpus case.
+///
+/// The corpus `inputs` object is the same one
+/// `pr_review_front_panel_matches_fixture_corpus` builds its in-process input
+/// from, including its root rule: an explicit `root`, else the boundary-gap
+/// input when a first-action or assistant-health artifact is attached, else
+/// `.`. The root label is echoed into the report, so a drift between the two
+/// rules fails the byte comparison instead of passing quietly.
+pub(crate) fn front_panel_case_inputs(case: &Value) -> (String, Vec<ArtifactRouterInput>) {
+    let Some(inputs) = case.get("inputs").and_then(Value::as_object) else {
+        return (".".to_string(), Vec::new());
+    };
+    let flags = inputs
+        .iter()
+        .filter(|(key, _)| key.as_str() != "root")
+        .filter_map(|(key, value)| {
+            value
+                .as_str()
+                .map(|path| ArtifactRouterInput::at(&key.replace('_', "-"), path))
+        })
+        .collect::<Vec<_>>();
+    let root = inputs
+        .get("root")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if flags
+                .iter()
+                .any(|input| input.flag == "first-action" || input.flag == "assistant-health")
+            {
+                "fixtures/boundary_gap/input".to_string()
+            } else {
+                ".".to_string()
+            }
+        });
+    (root, flags)
+}
+
 pub(crate) fn dogfood_pr_review_front_panel_scenarios() -> Vec<DogfoodFrontPanelScenario> {
     let corpus_path = Path::new("fixtures/boundary_gap/expected/pr-review-front-panel/corpus.json");
     let corpus = match read_json_value(corpus_path) {
@@ -2108,6 +2231,8 @@ pub(crate) fn dogfood_pr_review_front_panel_scenarios() -> Vec<DogfoodFrontPanel
         Err(err) => {
             return vec![DogfoodFrontPanelScenario {
                 name: "corpus".to_string(),
+                root: String::new(),
+                inputs: Vec::new(),
                 report_path: corpus_path.to_path_buf(),
                 markdown_path: corpus_path.to_path_buf(),
                 expected_status: "missing".to_string(),
@@ -2128,6 +2253,8 @@ pub(crate) fn dogfood_pr_review_front_panel_scenarios() -> Vec<DogfoodFrontPanel
     let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
         return vec![DogfoodFrontPanelScenario {
             name: "corpus".to_string(),
+            root: String::new(),
+            inputs: Vec::new(),
             report_path: corpus_path.to_path_buf(),
             markdown_path: corpus_path.to_path_buf(),
             expected_status: "missing".to_string(),
@@ -2148,8 +2275,11 @@ pub(crate) fn dogfood_pr_review_front_panel_scenarios() -> Vec<DogfoodFrontPanel
         .iter()
         .map(|case| {
             let expected = case.get("expected").unwrap_or(&Value::Null);
+            let (root, inputs) = front_panel_case_inputs(case);
             DogfoodFrontPanelScenario {
                 name: json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string()),
+                root,
+                inputs,
                 report_path: json_string_field(case, "expected_report")
                     .map(PathBuf::from)
                     .unwrap_or_else(|| corpus_path.to_path_buf()),
@@ -2183,10 +2313,32 @@ pub(crate) fn dogfood_pr_review_front_panel_scenarios() -> Vec<DogfoodFrontPanel
         .collect()
 }
 
+/// Renders one front-panel corpus case through the shipped
+/// `ripr pr-review front-panel` route and checks what the renderer produced.
+///
+/// Before this run rendered, it read the committed `expected_report` and
+/// compared it to the corpus declaration, so no renderer change could fail
+/// the family (the #3972 class). The case now renders from its corpus
+/// `inputs`, the produced report is held to the corpus contract, and the
+/// produced JSON and Markdown are compared byte for byte to the goldens.
 pub(crate) fn dogfood_pr_review_front_panel_run(
     scenario: &DogfoodFrontPanelScenario,
 ) -> DogfoodFrontPanelRun {
     let mut errors = Vec::new();
+    let rendered = match render_artifact_router_case(&ArtifactRouterCase {
+        family: "pr-review-front-panel",
+        case: &scenario.name,
+        subcommand: &["pr-review", "front-panel"],
+        root: &scenario.root,
+        inputs: &scenario.inputs,
+        markdown_golden: &scenario.markdown_path,
+    }) {
+        Ok(rendered) => Some(rendered),
+        Err(err) => {
+            errors.push(err);
+            None
+        }
+    };
     let mut status = "missing".to_string();
     let mut top_issue_state = "missing".to_string();
     let mut policy_state = "missing".to_string();
@@ -2198,61 +2350,68 @@ pub(crate) fn dogfood_pr_review_front_panel_run(
     let mut blocking_candidates = 0usize;
     let mut warnings = 0usize;
 
-    match read_json_value(&scenario.report_path) {
-        Ok(report) => {
-            if json_string_field(&report, "kind").as_deref() != Some("pr_review_front_panel") {
-                errors.push("report kind must be pr_review_front_panel".to_string());
-            }
-            status = json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
-            if let Some(summary) = report.get("summary") {
-                top_issue_state = json_string_field(summary, "top_issue_state")
-                    .unwrap_or_else(|| "missing".to_string());
-                policy_state = json_string_field(summary, "policy_state")
-                    .unwrap_or_else(|| "missing".to_string());
-                placement = json_string_field(summary, "placement")
-                    .unwrap_or_else(|| "missing".to_string());
-                movement_state = json_string_field(summary, "movement_state")
-                    .unwrap_or_else(|| "missing".to_string());
-                coverage_grip_state = json_string_field(summary, "coverage_grip_state")
-                    .unwrap_or_else(|| "missing".to_string());
-                new_policy_eligible = json_usize_field(summary, "new_policy_eligible").unwrap_or(0);
-                baseline_resolved = json_usize_field(summary, "baseline_resolved").unwrap_or(0);
-                blocking_candidates = json_usize_field(summary, "blocking_candidates").unwrap_or(0);
-                warnings = json_usize_field(summary, "warnings").unwrap_or(0);
-            } else {
-                errors.push("report summary is missing".to_string());
-            }
-            if !report
-                .get("limits")
-                .and_then(Value::as_array)
-                .is_some_and(|limits| {
-                    limits
-                        .iter()
-                        .any(|limit| limit.as_str() == Some("Static RIPR evidence only."))
-                })
-            {
-                errors.push("report is missing static-evidence limit".to_string());
-            }
+    let report = rendered.as_ref().and_then(|rendered| {
+        check_artifact_router_json(
+            &mut errors,
+            rendered,
+            &scenario.report_path,
+            ARTIFACT_ROUTER_PINNED_GENERATED_AT,
+        )
+    });
+    if let Some(report) = report {
+        if json_string_field(&report, "kind").as_deref() != Some("pr_review_front_panel") {
+            errors.push("report kind must be pr_review_front_panel".to_string());
         }
-        Err(err) => errors.push(err),
+        status = json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
+        if let Some(summary) = report.get("summary") {
+            top_issue_state = json_string_field(summary, "top_issue_state")
+                .unwrap_or_else(|| "missing".to_string());
+            policy_state =
+                json_string_field(summary, "policy_state").unwrap_or_else(|| "missing".to_string());
+            placement =
+                json_string_field(summary, "placement").unwrap_or_else(|| "missing".to_string());
+            movement_state = json_string_field(summary, "movement_state")
+                .unwrap_or_else(|| "missing".to_string());
+            coverage_grip_state = json_string_field(summary, "coverage_grip_state")
+                .unwrap_or_else(|| "missing".to_string());
+            new_policy_eligible = json_usize_field(summary, "new_policy_eligible").unwrap_or(0);
+            baseline_resolved = json_usize_field(summary, "baseline_resolved").unwrap_or(0);
+            blocking_candidates = json_usize_field(summary, "blocking_candidates").unwrap_or(0);
+            warnings = json_usize_field(summary, "warnings").unwrap_or(0);
+        } else {
+            errors.push("report summary is missing".to_string());
+        }
+        if !report
+            .get("limits")
+            .and_then(Value::as_array)
+            .is_some_and(|limits| {
+                limits
+                    .iter()
+                    .any(|limit| limit.as_str() == Some("Static RIPR evidence only."))
+            })
+        {
+            errors.push("report is missing static-evidence limit".to_string());
+        }
     }
 
-    match fs::read_to_string(&scenario.markdown_path) {
-        Ok(markdown) => {
-            if !markdown.contains("# RIPR PR Review") {
-                errors.push("Markdown must use the PR review heading".to_string());
-            }
-            if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
-                errors.push(format!(
-                    "Markdown should pin status {}",
-                    scenario.expected_status
-                ));
-            }
+    if let Some(rendered) = rendered.as_ref() {
+        let markdown = &rendered.markdown;
+        if !markdown.contains("# RIPR PR Review") {
+            errors.push("Markdown must use the PR review heading".to_string());
         }
-        Err(err) => errors.push(format!(
-            "failed to read front-panel Markdown {}: {err}",
-            normalize_path(&scenario.markdown_path)
-        )),
+        if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
+            errors.push(format!(
+                "Markdown should pin status {}",
+                scenario.expected_status
+            ));
+        }
+        compare_rendered_golden(
+            &mut errors,
+            "Markdown",
+            markdown,
+            &scenario.markdown_path,
+            &rendered.regenerate_hint(),
+        );
     }
 
     if status != scenario.expected_status {
@@ -2318,6 +2477,7 @@ pub(crate) fn dogfood_pr_review_front_panel_run(
 
     DogfoodFrontPanelRun {
         name: scenario.name.clone(),
+        rendered: rendered.is_some(),
         report_path: scenario.report_path.clone(),
         markdown_path: scenario.markdown_path.clone(),
         status,
@@ -2351,6 +2511,8 @@ pub(crate) fn dogfood_report_packet_index_scenarios() -> Vec<DogfoodReportPacket
         vec![DogfoodReportPacketIndexScenario {
             name: "corpus".to_string(),
             scenario: reason.clone(),
+            packet_root: corpus_path.to_path_buf(),
+            canonical_command: String::new(),
             expected_report: corpus_path.to_path_buf(),
             expected_markdown: corpus_path.to_path_buf(),
             expected_status: "missing".to_string(),
@@ -2372,6 +2534,11 @@ pub(crate) fn dogfood_report_packet_index_scenarios() -> Vec<DogfoodReportPacket
     let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
         return fallback("report-packet-index corpus is missing cases array".to_string());
     };
+    // The corpus publishes one `canonical_command` for every case, and the
+    // render parses it rather than restating it, so the command this gate
+    // proves is the command the corpus and the generated CI cockpit tell a
+    // user to run.
+    let canonical_command = json_string_field(&corpus, "canonical_command").unwrap_or_default();
 
     cases
         .iter()
@@ -2385,6 +2552,10 @@ pub(crate) fn dogfood_report_packet_index_scenarios() -> Vec<DogfoodReportPacket
                 name,
                 scenario: json_string_field(case, "scenario")
                     .unwrap_or_else(|| "missing scenario".to_string()),
+                packet_root: json_string_field(case, "packet_root")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| corpus_path.to_path_buf()),
+                canonical_command: canonical_command.clone(),
                 expected_report,
                 expected_markdown: json_string_field(case, "expected_markdown")
                     .map(PathBuf::from)
@@ -2449,30 +2620,607 @@ pub(crate) fn json_string_values_from_array(
     sorted_unique_strings(values)
 }
 
+/// Scratch root for report-packet-index renders.
+///
+/// `ripr reports index` writes its output under the directory it runs in, so
+/// each case renders in a copy of its committed packet tree instead of in the
+/// fixture itself. That keeps the checked-in inputs byte-stable while the
+/// render still resolves `--reports-dir` and its siblings the way a user's
+/// repository does.
+pub(crate) const REPORT_PACKET_INDEX_RENDER_ROOT: &str = "target/ripr/dogfood/report-packet-index";
+
+/// Pinned `generated_at` value in the committed report-packet-index goldens.
+pub(crate) const REPORT_PACKET_INDEX_PINNED_GENERATED_AT: &str = "unix_ms:0";
+
+/// The `ripr` binary the live dogfood renders drive, built once per process.
+///
+/// These gates prove the shipped route, so they run the real binary rather
+/// than calling a renderer in-process: the report builders and renderers are
+/// `pub(crate)` to `ripr` and are not reachable from `xtask` at all.
+fn dogfood_ripr_binary() -> Result<PathBuf, String> {
+    static BINARY: std::sync::OnceLock<Result<PathBuf, String>> = std::sync::OnceLock::new();
+    BINARY
+        .get_or_init(|| {
+            let args = ["build", "-p", "ripr", "--quiet"]
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>();
+            run_output_owned_with_timeout(
+                "cargo",
+                &args,
+                tool_build_timeout()?,
+                "report-packet-index dogfood build of ripr",
+            )?;
+            // `cargo build` writes under CARGO_TARGET_DIR when it is set (routed
+            // CI and isolated worktrees set it), so the binary must be looked up
+            // there too; a hardcoded `target/debug` fails every case (#2176).
+            let binary = ripr_debug_binary();
+            if !binary.exists() {
+                return Err(format!(
+                    "report-packet-index dogfood build reported success but {} is absent",
+                    normalize_path(&binary)
+                ));
+            }
+            // The render runs with the packet copy as its working directory,
+            // so a relative program path would resolve against that copy.
+            binary
+                .canonicalize()
+                .map_err(|err| format!("failed to resolve {}: {err}", normalize_path(&binary)))
+        })
+        .clone()
+}
+
+/// Names a case id that cannot be used as a scratch directory component.
+///
+/// The render clears `target/ripr/dogfood/report-packet-index/<id>` with
+/// `remove_dir_all` before copying, so an id carrying a separator or `..`
+/// would delete a directory the corpus never named. Corpus ids are committed
+/// rather than typed by a user, which is a reason to check cheaply here, not a
+/// reason to assume.
+pub(crate) fn report_packet_index_case_id_violation(name: &str) -> Option<String> {
+    dogfood_case_id_violation("report-packet-index", name)
+}
+
+/// Names a `family` case id that cannot be used as a scratch directory
+/// component under `target/ripr/dogfood/<family>/`.
+pub(crate) fn dogfood_case_id_violation(family: &str, name: &str) -> Option<String> {
+    if !name.is_empty() && Path::new(name).file_name() == Some(std::ffi::OsStr::new(name)) {
+        return None;
+    }
+    Some(format!(
+        "{family} case id must name one directory component, got `{name}`"
+    ))
+}
+
+/// Copies a committed packet tree into the scratch render root.
+///
+/// Anything that is neither a plain file nor a directory is a hard error: a
+/// symlink in a committed fixture would let the render read outside the packet
+/// and quietly change what the gate is measuring.
+fn copy_report_packet_index_tree(source: &Path, destination: &Path) -> Result<(), String> {
+    fs::create_dir_all(destination)
+        .map_err(|err| format!("failed to create {}: {err}", normalize_path(destination)))?;
+    let entries = fs::read_dir(source)
+        .map_err(|err| format!("failed to read {}: {err}", normalize_path(source)))?;
+    for entry in entries {
+        let entry =
+            entry.map_err(|err| format!("failed to read {}: {err}", normalize_path(source)))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|err| format!("failed to inspect {}: {err}", normalize_path(&path)))?;
+        let target = destination.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_report_packet_index_tree(&path, &target)?;
+        } else if file_type.is_file() {
+            fs::copy(&path, &target)
+                .map_err(|err| format!("failed to copy into {}: {err}", normalize_path(&target)))?;
+        } else {
+            return Err(format!(
+                "report-packet-index packet entry is neither a file nor a directory: {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The argument vector and the two output paths named by the corpus
+/// `canonical_command`.
+///
+/// Parsing the documented command instead of restating it keeps the render and
+/// the published regeneration instruction from drifting apart: a corpus that
+/// moves `--out` renders to the new path or fails by name.
+pub(crate) fn report_packet_index_render_plan(
+    canonical_command: &str,
+) -> Result<(Vec<String>, PathBuf, PathBuf), String> {
+    let mut tokens = canonical_command.split_whitespace();
+    match tokens.next() {
+        Some("ripr") => {}
+        Some(other) => {
+            return Err(format!(
+                "report-packet-index canonical_command must start with `ripr`, got `{other}`"
+            ));
+        }
+        None => return Err("report-packet-index canonical_command is empty".to_string()),
+    }
+    let args = tokens.map(str::to_string).collect::<Vec<_>>();
+    let value_of = |flag: &str| -> Result<PathBuf, String> {
+        args.iter()
+            .position(|arg| arg == flag)
+            .and_then(|index| args.get(index + 1))
+            .map(PathBuf::from)
+            .ok_or_else(|| {
+                format!("report-packet-index canonical_command is missing `{flag} <path>`")
+            })
+    };
+    let json = value_of("--out")?;
+    let markdown = value_of("--out-md")?;
+    Ok((args, json, markdown))
+}
+
+/// What one production render of a corpus case produced.
+pub(crate) struct RenderedReportPacketIndex {
+    pub(crate) command: String,
+    pub(crate) render_root: PathBuf,
+    pub(crate) json_path: PathBuf,
+    pub(crate) markdown_path: PathBuf,
+    pub(crate) json: String,
+    pub(crate) markdown: String,
+}
+
+fn render_report_packet_index_case(
+    scenario: &DogfoodReportPacketIndexScenario,
+) -> Result<RenderedReportPacketIndex, String> {
+    if let Some(violation) = report_packet_index_case_id_violation(&scenario.name) {
+        return Err(violation);
+    }
+    if !scenario.packet_root.is_dir() {
+        return Err(format!(
+            "report-packet-index packet tree is missing: {}",
+            normalize_path(&scenario.packet_root)
+        ));
+    }
+    let (args, relative_json, relative_markdown) =
+        report_packet_index_render_plan(&scenario.canonical_command)?;
+    let binary = dogfood_ripr_binary()?;
+    let render_root = Path::new(REPORT_PACKET_INDEX_RENDER_ROOT).join(&scenario.name);
+    if render_root.exists() {
+        fs::remove_dir_all(&render_root)
+            .map_err(|err| format!("failed to clear {}: {err}", normalize_path(&render_root)))?;
+    }
+    copy_report_packet_index_tree(&scenario.packet_root, &render_root)?;
+
+    let command = format!("ripr {}", args.join(" "));
+    run_output_owned_in(&binary.to_string_lossy(), &args, &render_root)
+        .map_err(|err| format!("`{command}` failed in the rendered packet: {err}"))?;
+
+    let json_path = render_root.join(&relative_json);
+    let markdown_path = render_root.join(&relative_markdown);
+    let json = fs::read_to_string(&json_path).map_err(|err| {
+        format!(
+            "`{command}` did not produce {}: {err}",
+            normalize_path(&json_path)
+        )
+    })?;
+    let markdown = fs::read_to_string(&markdown_path).map_err(|err| {
+        format!(
+            "`{command}` did not produce {}: {err}",
+            normalize_path(&markdown_path)
+        )
+    })?;
+    Ok(RenderedReportPacketIndex {
+        command,
+        render_root,
+        json_path,
+        markdown_path,
+        json,
+        markdown,
+    })
+}
+
+/// Names a `generated_at` that is not the wall-clock stamp this renderer emits.
+///
+/// The golden comparison substitutes the observed stamp, so without this check
+/// a renderer that stopped emitting `unix_ms:<millis>` would be reported only
+/// as a whole-document mismatch. Naming the stamp keeps the cause separate
+/// from ordinary content drift.
+pub(crate) fn report_packet_index_generated_at_violation(observed: &str) -> Option<String> {
+    unix_ms_generated_at_violation(observed, REPORT_PACKET_INDEX_PINNED_GENERATED_AT)
+}
+
+/// Names a rendered `generated_at` that is not a live `unix_ms:<millis>`
+/// stamp, or that equals the golden's pinned value (so the render did not
+/// stamp its own clock).
+pub(crate) fn unix_ms_generated_at_violation(observed: &str, pinned: &str) -> Option<String> {
+    // An absent prefix is the loudest case, not a pass: a renderer that
+    // switched to an ISO stamp would leave the pin a no-op, and reporting
+    // nothing here would push the whole document into ordinary content drift.
+    let Some(millis) = observed.strip_prefix("unix_ms:") else {
+        return Some(format!(
+            "rendered generated_at must be `unix_ms:<millis>`, got `{observed}`"
+        ));
+    };
+    if millis.is_empty() || !millis.chars().all(|value| value.is_ascii_digit()) {
+        return Some(format!(
+            "rendered generated_at must be `unix_ms:<millis>`, got `{observed}`"
+        ));
+    }
+    if observed == pinned {
+        return Some(
+            "rendered generated_at is the pinned golden value, so the render did not stamp its own clock"
+                .to_string(),
+        );
+    }
+    None
+}
+
+/// The rendered report with its wall-clock stamp replaced by the pinned golden
+/// value.
+///
+/// `generated_at` is `unix_ms:<millis>` taken from the run's own clock, so it
+/// can never equal a committed golden. Substituting the exact observed value —
+/// after checking its shape separately — leaves every other byte under
+/// comparison, so a renderer change still has to re-bless the golden.
+pub(crate) fn pin_report_packet_index_generated_at(json: &str, observed: &str) -> String {
+    json.replace(
+        &format!("\"generated_at\": \"{observed}\""),
+        &format!("\"generated_at\": \"{REPORT_PACKET_INDEX_PINNED_GENERATED_AT}\""),
+    )
+}
+
+/// Reports the first line on which two rendered documents diverge.
+fn first_text_divergence(produced: &str, golden: &str) -> Option<String> {
+    let mut produced_lines = produced.lines();
+    let mut golden_lines = golden.lines();
+    let mut line = 0usize;
+    loop {
+        line += 1;
+        match (produced_lines.next(), golden_lines.next()) {
+            (None, None) => return None,
+            (Some(produced_line), Some(golden_line)) if produced_line == golden_line => {}
+            (produced_line, golden_line) => {
+                return Some(format!(
+                    "line {line}: produced {:?}, golden {:?}",
+                    produced_line.unwrap_or("<end of file>"),
+                    golden_line.unwrap_or("<end of file>")
+                ));
+            }
+        }
+    }
+}
+
+fn compare_report_packet_index_golden(
+    errors: &mut Vec<String>,
+    label: &str,
+    produced: &str,
+    golden_path: &Path,
+) {
+    compare_rendered_golden(
+        errors,
+        label,
+        produced,
+        golden_path,
+        "regenerate the golden with the corpus canonical_command",
+    );
+}
+
+/// Compares one produced document to its committed golden, naming the first
+/// divergent line and how to regenerate the golden.
+fn compare_rendered_golden(
+    errors: &mut Vec<String>,
+    label: &str,
+    produced: &str,
+    golden_path: &Path,
+    regenerate: &str,
+) {
+    let golden = match fs::read_to_string(golden_path) {
+        Ok(golden) => golden,
+        Err(err) => {
+            errors.push(format!(
+                "failed to read {label} golden {}: {err}",
+                normalize_path(golden_path)
+            ));
+            return;
+        }
+    };
+    if produced == golden {
+        return;
+    }
+    let divergence = first_text_divergence(produced, &golden)
+        .unwrap_or_else(|| "trailing content differs".to_string());
+    errors.push(format!(
+        "rendered {label} does not match {} ({divergence}); {regenerate}",
+        normalize_path(golden_path)
+    ));
+}
+
+/// Scratch root for the live artifact-router renders.
+///
+/// Each case renders in `target/ripr/dogfood/<family>/<case>/`, holding a copy
+/// of its committed inputs at their repo-relative paths. The render then
+/// resolves the same relative paths a repository-root run does, and embeds
+/// the same paths in its output, without writing beside the goldens.
+pub(crate) const ARTIFACT_ROUTER_RENDER_ROOT: &str = "target/ripr/dogfood";
+
+/// Where a case writes its JSON report inside its scratch render root.
+const ARTIFACT_ROUTER_JSON_OUT: &str = "out/report.json";
+
+/// Pinned `generated_at` value in the first-action and front-panel goldens.
+pub(crate) const ARTIFACT_ROUTER_PINNED_GENERATED_AT: &str = "2026-05-09T12:00:00Z";
+
+/// The prefix the goldens carry where a render embeds its own working
+/// directory (issue #3872 anchors redirect targets at the resolved root).
+const ARTIFACT_ROUTER_CWD_PLACEHOLDER: &str = "<cwd>/";
+
+/// One corpus case for a shipped artifact-router command
+/// (`ripr first-action`, `ripr pr-review front-panel`).
+pub(crate) struct ArtifactRouterCase<'a> {
+    pub(crate) family: &'a str,
+    pub(crate) case: &'a str,
+    pub(crate) subcommand: &'a [&'a str],
+    /// `--root` label; the router only echoes it, it does not analyze there.
+    pub(crate) root: &'a str,
+    pub(crate) inputs: &'a [ArtifactRouterInput],
+    /// Repo-relative Markdown golden, passed as `--out-md` because the
+    /// router embeds its own Markdown path in the report.
+    pub(crate) markdown_golden: &'a Path,
+}
+
+/// One artifact passed to an artifact-router command.
+#[derive(Clone, Debug)]
+pub(crate) struct ArtifactRouterInput {
+    /// Flag name without the leading `--`.
+    pub(crate) flag: String,
+    /// Repo-relative path passed on the command line; the router echoes it.
+    pub(crate) path: String,
+    /// Committed file copied to `path` in the render root. `None` copies
+    /// `path` itself when the checkout has it, and otherwise passes the flag
+    /// with nothing behind it, which is how a case pins an absent artifact.
+    pub(crate) source: Option<String>,
+}
+
+impl ArtifactRouterInput {
+    /// An input read from the same repo-relative path it is passed as.
+    pub(crate) fn at(flag: &str, path: &str) -> Self {
+        Self {
+            flag: flag.to_string(),
+            path: path.to_string(),
+            source: None,
+        }
+    }
+
+    /// An input passed as `path` (typically a `target/ripr/...` location a
+    /// user's run would write) whose bytes come from a committed `source`.
+    pub(crate) fn from(flag: &str, path: &str, source: &str) -> Self {
+        Self {
+            flag: flag.to_string(),
+            path: path.to_string(),
+            source: Some(source.to_string()),
+        }
+    }
+
+    /// The checkout file this input's bytes are copied from, if any.
+    ///
+    /// A source-less `target/...` path names build output, so it is never
+    /// read from the checkout: a file left there by an earlier run would turn
+    /// an input the case declares absent (front-panel `missing_proof`) into a
+    /// present one. Such an input is passed as a flag with nothing behind it.
+    pub(crate) fn copy_source(&self) -> Option<&Path> {
+        match &self.source {
+            Some(source) => Some(Path::new(source)),
+            None if Path::new(&self.path).starts_with("target") => None,
+            None => Some(Path::new(&self.path)),
+        }
+    }
+}
+
+/// What one production render of an artifact-router case produced, with the
+/// render's working directory already projected to `<cwd>/`.
+pub(crate) struct ArtifactRouterRender {
+    pub(crate) command: String,
+    pub(crate) render_root: PathBuf,
+    pub(crate) json: String,
+    pub(crate) markdown: String,
+}
+
+impl ArtifactRouterRender {
+    /// How to see or adopt the produced bytes when a golden comparison fails.
+    pub(crate) fn regenerate_hint(&self) -> String {
+        format!(
+            "the produced files are under {}; if the renderer change is intended, re-bless the golden from them",
+            normalize_path(&self.render_root)
+        )
+    }
+}
+
+/// Names a corpus path that could escape the scratch render root.
+pub(crate) fn artifact_router_path_violation(family: &str, path: &str) -> Option<String> {
+    let relative = Path::new(path);
+    let plain = !path.is_empty()
+        && relative
+            .components()
+            .all(|component| matches!(component, std::path::Component::Normal(_)));
+    (!plain)
+        .then(|| format!("{family} corpus path must be repo-relative without `..`, got `{path}`"))
+}
+
+/// Renders one case with the built `ripr` binary.
+///
+/// Inputs present in the checkout are copied into the render root at their
+/// repo-relative paths. An input the corpus names but the checkout lacks is
+/// still passed, because some cases (`missing_proof`) pin how the router
+/// reports an absent artifact.
+pub(crate) fn render_artifact_router_case(
+    case: &ArtifactRouterCase<'_>,
+) -> Result<ArtifactRouterRender, String> {
+    if let Some(violation) = dogfood_case_id_violation(case.family, case.case) {
+        return Err(violation);
+    }
+    let markdown_golden = normalize_path(case.markdown_golden);
+    for path in case
+        .inputs
+        .iter()
+        .map(|input| input.path.as_str())
+        .chain([markdown_golden.as_str()])
+    {
+        if let Some(violation) = artifact_router_path_violation(case.family, path) {
+            return Err(violation);
+        }
+    }
+    let binary = dogfood_ripr_binary()?;
+    let render_root = Path::new(ARTIFACT_ROUTER_RENDER_ROOT)
+        .join(case.family)
+        .join(case.case);
+    if render_root.exists() {
+        fs::remove_dir_all(&render_root)
+            .map_err(|err| format!("failed to clear {}: {err}", normalize_path(&render_root)))?;
+    }
+    fs::create_dir_all(&render_root)
+        .map_err(|err| format!("failed to create {}: {err}", normalize_path(&render_root)))?;
+
+    let mut args = case
+        .subcommand
+        .iter()
+        .map(|value| (*value).to_string())
+        .collect::<Vec<_>>();
+    args.extend(["--root".to_string(), case.root.to_string()]);
+    for input in case.inputs {
+        if let Some(source) = input.copy_source() {
+            if !source.is_file() {
+                return Err(format!(
+                    "{} input source is missing or not a plain file: {}",
+                    case.family,
+                    normalize_path(source)
+                ));
+            }
+            let target = render_root.join(&input.path);
+            if let Some(parent) = target.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|err| format!("failed to create {}: {err}", normalize_path(parent)))?;
+            }
+            fs::copy(source, &target)
+                .map_err(|err| format!("failed to copy into {}: {err}", normalize_path(&target)))?;
+        }
+        args.extend([format!("--{}", input.flag), input.path.clone()]);
+    }
+    args.extend([
+        "--out".to_string(),
+        ARTIFACT_ROUTER_JSON_OUT.to_string(),
+        "--out-md".to_string(),
+        markdown_golden.clone(),
+    ]);
+
+    let command = format!("ripr {}", args.join(" "));
+    run_output_owned_in(&binary.to_string_lossy(), &args, &render_root).map_err(|err| {
+        format!(
+            "`{command}` failed for {} case {}: {err}",
+            case.family, case.case
+        )
+    })?;
+
+    let read = |relative: &str| {
+        let path = render_root.join(relative);
+        fs::read_to_string(&path).map_err(|err| {
+            format!(
+                "`{command}` did not produce {}: {err}",
+                normalize_path(&path)
+            )
+        })
+    };
+    let json = read(ARTIFACT_ROUTER_JSON_OUT)?;
+    let markdown = read(&markdown_golden)?;
+    // The child's working directory is the render root joined onto this
+    // process's own (already resolved) working directory. `canonicalize`
+    // would be wrong on Windows, where it returns a `\\?\` verbatim path
+    // the child never prints.
+    let cwd = std::env::current_dir()
+        .map_err(|err| format!("failed to read the working directory: {err}"))?
+        .join(&render_root);
+    let cwd_prefix = format!("{}/", normalize_path(&cwd));
+    Ok(ArtifactRouterRender {
+        command,
+        render_root,
+        json: json.replace(&cwd_prefix, ARTIFACT_ROUTER_CWD_PLACEHOLDER),
+        markdown: markdown.replace(&cwd_prefix, ARTIFACT_ROUTER_CWD_PLACEHOLDER),
+    })
+}
+
+/// Parses the rendered report, checks its wall-clock stamp, and compares it
+/// byte for byte to the golden with only that stamp pinned.
+///
+/// Returns the parsed report so the family can hold it to its corpus
+/// contract; the fields it checks then come from the renderer, not the golden.
+pub(crate) fn check_artifact_router_json(
+    errors: &mut Vec<String>,
+    rendered: &ArtifactRouterRender,
+    golden_path: &Path,
+    pinned_generated_at: &str,
+) -> Option<Value> {
+    let report = match serde_json::from_str::<Value>(&rendered.json) {
+        Ok(report) => report,
+        Err(err) => {
+            errors.push(format!(
+                "`{}` rendered JSON that does not parse: {err}",
+                rendered.command
+            ));
+            return None;
+        }
+    };
+    let observed =
+        json_string_field(&report, "generated_at").unwrap_or_else(|| "missing".to_string());
+    if let Some(violation) = unix_ms_generated_at_violation(&observed, pinned_generated_at) {
+        errors.push(violation);
+    }
+    let pinned = rendered.json.replace(
+        &format!("\"generated_at\": \"{observed}\""),
+        &format!("\"generated_at\": \"{pinned_generated_at}\""),
+    );
+    // The CLI writes the JSON without a final newline; the goldens end in one.
+    compare_rendered_golden(
+        errors,
+        "report",
+        &format!("{}\n", pinned.trim_end()),
+        golden_path,
+        &rendered.regenerate_hint(),
+    );
+    Some(report)
+}
+
+/// Renders one report-packet-index corpus case through the shipped
+/// `ripr reports index` route and checks what the renderer produced.
+///
+/// Before #3972 this read the committed `expected_report` and compared it to
+/// the corpus declaration, so neither side of the comparison came from the
+/// renderer and no renderer change could fail the gate. The run now builds the
+/// binary, renders the case's committed packet tree, checks the produced
+/// report against the corpus contract, and compares the produced JSON and
+/// Markdown to the goldens.
 pub(crate) fn dogfood_report_packet_index_run(
     scenario: &DogfoodReportPacketIndexScenario,
 ) -> Result<DogfoodReportPacketIndexRun, String> {
-    let actual_dir = scenario
-        .expected_report
-        .parent()
-        .map(Path::to_path_buf)
-        .unwrap_or_else(|| PathBuf::from("."));
-    let json_path = scenario.expected_report.clone();
-    let markdown_path = scenario.expected_markdown.clone();
     let mut errors = Vec::new();
 
     if !scenario.expected_report.exists() {
         errors.push(format!(
-            "expected report fixture is missing: {}",
+            "expected report golden is missing: {}",
             normalize_path(&scenario.expected_report)
         ));
     }
     if !scenario.expected_markdown.exists() {
         errors.push(format!(
-            "expected Markdown fixture is missing: {}",
+            "expected Markdown golden is missing: {}",
             normalize_path(&scenario.expected_markdown)
         ));
     }
+
+    let rendered = match render_report_packet_index_case(scenario) {
+        Ok(rendered) => Some(rendered),
+        Err(err) => {
+            errors.push(err);
+            None
+        }
+    };
 
     let mut status = "missing".to_string();
     let mut missing_expected = 0usize;
@@ -2482,64 +3230,84 @@ pub(crate) fn dogfood_report_packet_index_run(
     let mut gate_authority_present = false;
     let mut groups = Vec::<String>::new();
 
-    match read_json_value(&json_path) {
-        Ok(report) => {
-            if json_string_field(&report, "kind").as_deref() != Some("report_packet_index") {
-                errors.push("report kind must be report_packet_index".to_string());
-            }
-            status = json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
-            if let Some(summary) = report.get("summary") {
-                missing_expected = json_usize_field(summary, "missing_expected").unwrap_or(0);
-                failures = json_usize_field(summary, "failures").unwrap_or(0);
-                warnings = json_usize_field(summary, "warnings").unwrap_or(0);
-                start_here_available = json_string_field(summary, "start_here")
-                    .is_some_and(|value| !value.trim().is_empty());
-                gate_authority_present = json_string_field(summary, "gate_authority")
-                    .is_some_and(|value| !value.trim().is_empty());
-            } else {
-                errors.push("report summary is missing".to_string());
-            }
-            groups = report
-                .get("groups")
-                .and_then(Value::as_array)
-                .map(|items| {
-                    items
-                        .iter()
-                        .filter_map(|item| json_string_field(item, "group"))
-                        .collect::<Vec<_>>()
-                })
-                .unwrap_or_default();
-            let limits = report
-                .get("limits")
-                .and_then(Value::as_array)
-                .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
-                .unwrap_or_default();
-            if !limits.contains(&"Advisory report-packet index only.") {
-                errors.push("report is missing advisory report-packet index limit".to_string());
-            }
-            if !limits.contains(&"Gate decision remains pass/fail authority when configured.") {
-                errors.push("report is missing gate-authority limit".to_string());
-            }
-        }
-        Err(err) => errors.push(err),
-    }
+    if let Some(rendered) = rendered.as_ref() {
+        match serde_json::from_str::<Value>(&rendered.json) {
+            Ok(report) => {
+                if json_string_field(&report, "kind").as_deref() != Some("report_packet_index") {
+                    errors.push("report kind must be report_packet_index".to_string());
+                }
+                status =
+                    json_string_field(&report, "status").unwrap_or_else(|| "missing".to_string());
+                if let Some(summary) = report.get("summary") {
+                    missing_expected = json_usize_field(summary, "missing_expected").unwrap_or(0);
+                    failures = json_usize_field(summary, "failures").unwrap_or(0);
+                    warnings = json_usize_field(summary, "warnings").unwrap_or(0);
+                    start_here_available = json_string_field(summary, "start_here")
+                        .is_some_and(|value| !value.trim().is_empty());
+                    gate_authority_present = json_string_field(summary, "gate_authority")
+                        .is_some_and(|value| !value.trim().is_empty());
+                } else {
+                    errors.push("report summary is missing".to_string());
+                }
+                groups = report
+                    .get("groups")
+                    .and_then(Value::as_array)
+                    .map(|items| {
+                        items
+                            .iter()
+                            .filter_map(|item| json_string_field(item, "group"))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                let limits = report
+                    .get("limits")
+                    .and_then(Value::as_array)
+                    .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>())
+                    .unwrap_or_default();
+                if !limits.contains(&"Advisory report-packet index only.") {
+                    errors.push("report is missing advisory report-packet index limit".to_string());
+                }
+                if !limits.contains(&"Gate decision remains pass/fail authority when configured.") {
+                    errors.push("report is missing gate-authority limit".to_string());
+                }
 
-    match fs::read_to_string(&markdown_path) {
-        Ok(markdown) => {
-            if !markdown.contains("# RIPR Report Packet Index") {
-                errors.push("Markdown must use the report-packet index heading".to_string());
+                let observed_generated_at = json_string_field(&report, "generated_at")
+                    .unwrap_or_else(|| "missing".to_string());
+                if let Some(violation) =
+                    report_packet_index_generated_at_violation(&observed_generated_at)
+                {
+                    errors.push(violation);
+                }
+                let pinned =
+                    pin_report_packet_index_generated_at(&rendered.json, &observed_generated_at);
+                compare_report_packet_index_golden(
+                    &mut errors,
+                    "report",
+                    &pinned,
+                    &scenario.expected_report,
+                );
             }
-            if !markdown.contains(&format!("Status: {}", scenario.expected_status)) {
-                errors.push(format!(
-                    "Markdown should pin status {}",
-                    scenario.expected_status
-                ));
-            }
+            Err(err) => errors.push(format!("rendered report is not valid JSON: {err}")),
         }
-        Err(err) => errors.push(format!(
-            "failed to read report-packet index Markdown {}: {err}",
-            normalize_path(&markdown_path)
-        )),
+
+        if !rendered.markdown.contains("# RIPR Report Packet Index") {
+            errors.push("Markdown must use the report-packet index heading".to_string());
+        }
+        if !rendered
+            .markdown
+            .contains(&format!("Status: {}", scenario.expected_status))
+        {
+            errors.push(format!(
+                "Markdown should pin status {}",
+                scenario.expected_status
+            ));
+        }
+        compare_report_packet_index_golden(
+            &mut errors,
+            "Markdown",
+            &rendered.markdown,
+            &scenario.expected_markdown,
+        );
     }
 
     if status != scenario.expected_status {
@@ -2584,8 +3352,28 @@ pub(crate) fn dogfood_report_packet_index_run(
         }
     }
 
+    let render_command = rendered
+        .as_ref()
+        .map(|rendered| rendered.command.clone())
+        .unwrap_or_else(|| scenario.canonical_command.clone());
+    let actual_dir = rendered
+        .as_ref()
+        .map(|rendered| rendered.render_root.clone())
+        .unwrap_or_else(|| PathBuf::from(REPORT_PACKET_INDEX_RENDER_ROOT));
+    let json_path = rendered
+        .as_ref()
+        .map(|rendered| rendered.json_path.clone())
+        .unwrap_or_else(|| scenario.expected_report.clone());
+    let markdown_path = rendered
+        .as_ref()
+        .map(|rendered| rendered.markdown_path.clone())
+        .unwrap_or_else(|| scenario.expected_markdown.clone());
+
     Ok(DogfoodReportPacketIndexRun {
         name: scenario.name.clone(),
+        packet_root: scenario.packet_root.clone(),
+        render_command,
+        rendered: rendered.is_some(),
         actual_dir,
         json_path,
         markdown_path,
@@ -2615,46 +3403,110 @@ pub(crate) fn dogfood_report_packet_index_run(
 }
 
 pub(crate) const GENERATED_CI_FIRST_ACTION_REPAIR: &str = "Safe next action: run `ripr first-action --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/first-useful-action.json --out-md target/ripr/reports/first-useful-action.md` after attaching at least one explicit input.";
-pub(crate) const GENERATED_CI_FIRST_PR_REPAIR: &str = "ripr first-pr --root . --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports";
+pub(crate) const GENERATED_CI_FIRST_PR_REPAIR: &str = "ripr first-pr --root . --base origin/main --head HEAD --gap-ledger target/ripr/reports/gap-decision-ledger.json --first-action target/ripr/reports/first-useful-action.json --review-comments target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-packet.json --gate-decision target/ripr/reports/gate-decision.json --receipts-dir target/ripr/receipts --out-dir target/ripr/reports";
 pub(crate) const GENERATED_CI_FRONT_PANEL_REPAIR: &str = "Safe next action: run `ripr pr-review front-panel --root . --pr-guidance target/ripr/review/comments.json --out target/ripr/reports/pr-review-front-panel.json --out-md target/ripr/reports/pr-review-front-panel.md` after attaching at least one explicit input.";
 pub(crate) const GENERATED_CI_PACKET_INDEX_REPAIR: &str = "Regenerate command: `ripr reports index --root . --reports-dir target/ripr/reports --review-dir target/ripr/review --receipts-dir target/ripr/receipts --workflow-dir target/ripr/workflow --agent-dir target/ripr/agent --pilot-dir target/ripr/pilot --ci-dir target/ci --out target/ripr/reports/index.json --out-md target/ripr/reports/index.md`.";
 
 pub(crate) fn dogfood_generated_ci_cockpit_run() -> Result<DogfoodGeneratedCiCockpitRun, String> {
-    let args = [
-        "run",
-        "--quiet",
-        "-p",
-        "ripr",
-        "--",
-        "init",
-        "--ci",
-        "github",
-        "--dry-run",
-    ]
-    .iter()
-    .map(|value| (*value).to_string())
-    .collect::<Vec<_>>();
-    let command = format!("cargo {}", args.join(" "));
     let started = Instant::now();
-    let workflow = run_output_owned("cargo", &args)?;
-    Ok(dogfood_generated_ci_cockpit_run_from_workflow(
+    let binary = dogfood_ripr_binary()?;
+    let root = Path::new("target/ripr/dogfood/generated-ci-cockpit");
+    if root.exists() {
+        fs::remove_dir_all(root).map_err(|err| err.to_string())?;
+    }
+    fs::create_dir_all(root.join("target/ripr/review")).map_err(|err| err.to_string())?;
+    // A local config prevents parent-repository preview settings from leaking
+    // into the Rust-only control through config discovery.
+    fs::write(
+        root.join("ripr.toml"),
+        "[languages]\nenabled = [\"rust\"]\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let generated_workflow = run_output_owned_in(
+        &binary.to_string_lossy(),
+        &["init", "--ci", "github", "--dry-run"].map(str::to_string),
+        root,
+    )?;
+    if !generated_workflow.contains("          version=0.10.0\n")
+        || !generated_workflow.contains("name: Verify installed RIPR compatibility")
+        || generated_workflow.contains("ripr reports ci-packet --root .")
+        || generated_workflow.contains("ripr reports ci-summary --root .")
+    {
+        return Err(
+            "generated adopter workflow does not match its installed 0.10.0 command surface"
+                .to_string(),
+        );
+    }
+    // The compact renderer/packet commands remain development capabilities.
+    // Keep their original wiring oracle separate from the actual default
+    // adopter workflow; a current-CLI renderer pass is not release proof.
+    let workflow =
+        include_str!("../../crates/ripr/tests/fixtures/development_ci_workflow.yml").to_string();
+    // Both configurations see the same explicit packet. Rust-only must not
+    // present preview groups merely because preview artifacts exist.
+    fs::write(root.join("target/ripr/review/comments.json"), serde_json::json!({
+        "comments": [
+            {"language": "typescript", "language_status": "preview", "classification": "weakly_exposed",
+             "preview_actionability": {"gap_state": "actionable", "actionability_category": "test_gap", "repair_packet_ready": true}},
+            {"language": "typescript", "classification": "weakly_exposed", "static_limit_kind": "unsupported",
+             "preview_actionability": {"gap_state": "actionable", "actionability_category": "test_gap", "repair_packet_ready": false}},
+            {"language": "javascript", "language_status": "preview", "classification": "static_unknown", "static_limit_kind": "unknown",
+             "preview_actionability": {"gap_state": "static_limited", "actionability_category": "unsupported", "repair_packet_ready": false}}
+        ]
+    }).to_string()).map_err(|err| err.to_string())?;
+    let args = ["reports", "ci-summary", "--root", ".", "--base-ref", "main"].map(str::to_string);
+    let rust_summary = run_output_owned_in(&binary.to_string_lossy(), &args, root)?;
+    fs::write(
+        root.join("ripr.toml"),
+        "[languages]\nenabled = [\"rust\", \"typescript\"]\n",
+    )
+    .map_err(|err| err.to_string())?;
+    let preview_summary = run_output_owned_in(&binary.to_string_lossy(), &args, root)?;
+    for (name, content) in [
+        ("generated-release-workflow.txt", &generated_workflow),
+        ("workflow.txt", &workflow),
+        ("rust-summary.md", &rust_summary),
+        ("preview-summary.md", &preview_summary),
+    ] {
+        fs::write(root.join(name), content).map_err(|err| err.to_string())?;
+    }
+    Ok(dogfood_generated_ci_cockpit_run_from_surfaces(
         "generated-pr-ci-review-workflow",
-        &command,
+        "ripr init --ci github --dry-run (released command contract); development wiring fixture + ripr reports ci-summary --root . --base-ref main (Rust-only and configured TypeScript; identical explicit preview packet, not installed-release proof)",
         started.elapsed().as_millis(),
         &workflow,
+        &rust_summary,
+        &preview_summary,
     ))
 }
 
-pub(crate) fn dogfood_generated_ci_cockpit_run_from_workflow(
+pub(crate) fn dogfood_generated_ci_cockpit_run_from_surfaces(
     name: &str,
     command: &str,
     duration_ms: u128,
     workflow: &str,
+    rust_summary: &str,
+    preview_summary: &str,
 ) -> DogfoodGeneratedCiCockpitRun {
-    let start_here = workflow.contains("### Start here")
-        && workflow.contains("Open `target/ripr/reports/start-here.md` first")
-        && workflow.contains("name: Render RIPR first-pr start-here")
-        && workflow.contains("cat target/ripr/reports/start-here.md");
+    // Check the invocation in its run block, not a commented or unrelated
+    // token elsewhere in the workflow. The Markdown belongs to the renderer.
+    let summary_step = workflow
+        .split("      - name: Add RIPR advisory summary\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n      - ").next())
+        .unwrap_or_default();
+    let summary_run = summary_step
+        .split("        run: |\n")
+        .nth(1)
+        .unwrap_or_default();
+    let summary_wired = summary_step.contains("        if: always()\n")
+        && summary_step.contains("        continue-on-error: true\n")
+        && summary_run.lines().any(|line| {
+            line == "          ripr reports ci-summary --root . >> \"$GITHUB_STEP_SUMMARY\""
+        });
+    let start_here = summary_wired
+        && rust_summary.contains("### Start here")
+        && rust_summary.contains("Open `target/ripr/reports/start-here.md` first");
     let repair_commands = [
         GENERATED_CI_FIRST_ACTION_REPAIR,
         GENERATED_CI_FIRST_PR_REPAIR,
@@ -2662,28 +3514,34 @@ pub(crate) fn dogfood_generated_ci_cockpit_run_from_workflow(
         GENERATED_CI_PACKET_INDEX_REPAIR,
     ]
     .iter()
-    .filter(|command| workflow.contains(**command))
+    .filter(|command| summary_wired && rust_summary.contains(**command))
     .count();
     let expected_repair_commands = 4usize;
-    let gate_authority_boundary =
-        workflow.contains("ripr gate evaluate") && workflow.contains("Gate authority:");
+    let producer_step = workflow
+        .split("      - name: Run RIPR\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n      - ").next())
+        .unwrap_or_default();
+    let producer_wired = producer_step
+        .lines()
+        .any(|line| line == "        run: ripr reports ci-packet --root .");
+    let gate_authority_boundary = summary_wired
+        && producer_wired
+        && rust_summary.contains("ripr gate evaluate")
+        && rust_summary.contains("Gate authority:");
     let default_advisory = workflow.contains(
         "continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}",
-    ) && workflow.contains("RIPR is advisory static evidence");
+    ) && summary_wired && rust_summary.contains("RIPR is advisory static evidence");
     let artifact_upload =
         workflow.contains("actions/upload-artifact@v7") && workflow.contains("target/ripr/reports");
-    let language_grouping_checked = workflow.contains("if [ -n \"$preview_languages\" ]; then")
-        && workflow.contains("### Language preview grouping")
-        && workflow.contains("Grouped preview evidence languages")
-        && workflow.contains("grouped_preview_languages=\"$grouped_preview_languages javascript\"")
-        && workflow.contains("preview-language groups are advisory presentation only")
-        && workflow.contains("ripr gate evaluate")
-        && workflow.contains("missing_preview_status")
-        && workflow.contains("static_limit_kinds")
-        && workflow.contains("actionability_states")
-        && workflow.contains("actionability_categories")
-        && workflow.contains("repair_packet_ready_entries")
-        && workflow.contains("gate_impact=\\`none\\`");
+    let language_grouping_checked = summary_wired
+        && !rust_summary.contains("### Language preview grouping")
+        && preview_summary.contains("### Language preview grouping")
+        && preview_summary.contains("Grouped preview evidence languages: `javascript typescript`")
+        && preview_summary.contains("preview-language groups are advisory presentation only")
+        && preview_summary.contains("ripr gate evaluate")
+        && preview_summary.contains("- `typescript`: artifact_entries=`2`, preview_entries=`1`, missing_preview_status=`1`, static_limit_entries=`1`, classifications=`weakly_exposed=2`, static_limit_kinds=`unsupported`, actionability_states=`actionable=2`, actionability_categories=`test_gap=2`, repair_packet_ready=`1`, gate_impact=`none`")
+        && preview_summary.contains("- `javascript`: artifact_entries=`1`, preview_entries=`1`, missing_preview_status=`0`, static_limit_entries=`1`, classifications=`static_unknown=1`, static_limit_kinds=`unknown`, actionability_states=`static_limited=1`, actionability_categories=`unsupported=1`, repair_packet_ready=`0`, gate_impact=`none`");
     let language_grouping_status = if language_grouping_checked {
         "checked"
     } else {
@@ -2740,7 +3598,9 @@ pub(crate) fn dogfood_language_preview_scenarios() -> Vec<DogfoodLanguagePreview
             1usize,
             0usize,
             1usize,
-            vec!["exposed"],
+            // #4103: the vi.mock'd owner module holds the finding at
+            // weakly_exposed with the mocked_module limit disclosed.
+            vec!["weakly_exposed"],
             vec!["mocked_module"],
             true,
             "TypeScript preview finding keeps preview metadata and mocked-module static limit.",
@@ -2752,7 +3612,9 @@ pub(crate) fn dogfood_language_preview_scenarios() -> Vec<DogfoodLanguagePreview
             1usize,
             0usize,
             1usize,
-            vec!["exposed"],
+            // #4103: the unanchored bare-call relation holds at
+            // weakly_exposed with the missing anchor disclosed.
+            vec!["weakly_exposed"],
             Vec::new(),
             true,
             "JavaScript preview finding keeps separate JavaScript preview metadata through the TypeScript-family adapter.",
@@ -4678,9 +5540,7 @@ pub(crate) fn dogfood_python_real_repo_eval_run(
             errors.push("agent_packet_stop_if entries must be concrete".to_string());
         }
     }
-    if !scenario.verify_command.starts_with("pytest ")
-        && !scenario.verify_command.starts_with("python -m unittest ")
-    {
+    if !python_eval_verify_command_is_pytest_or_unittest(&scenario.verify_command) {
         errors.push(format!(
             "verify_command must be a pytest or unittest command, got {}",
             scenario.verify_command
@@ -5445,8 +6305,7 @@ pub(crate) fn dogfood_python_eval_top_1_actionable_usable(
 }
 
 pub(crate) fn dogfood_python_eval_verify_command_valid(run: &DogfoodPythonRealRepoEvalRun) -> bool {
-    (run.verify_command.starts_with("pytest ")
-        || run.verify_command.starts_with("python -m unittest "))
+    python_eval_verify_command_is_pytest_or_unittest(&run.verify_command)
         && run.verify_result == "pass"
 }
 
@@ -5611,8 +6470,16 @@ pub(crate) fn dogfood_python_ranked_finding_actionable_usable(
 pub(crate) fn dogfood_python_ranked_finding_verify_command_valid(
     finding: &DogfoodPythonRankedFinding,
 ) -> bool {
-    finding.verify_command.starts_with("pytest ")
-        || finding.verify_command.starts_with("python -m unittest ")
+    python_eval_verify_command_is_pytest_or_unittest(&finding.verify_command)
+}
+
+/// A Python verify command ripr generates (`python -m pytest ...`,
+/// `python -m unittest ...`) or the bare `pytest ...` form recorded evals
+/// captured before the module form.
+fn python_eval_verify_command_is_pytest_or_unittest(command: &str) -> bool {
+    ["python -m pytest ", "pytest ", "python -m unittest "]
+        .iter()
+        .any(|prefix| command.starts_with(prefix))
 }
 
 pub(crate) fn dogfood_python_ranked_finding_has_concrete_discriminator(
@@ -10119,6 +10986,13 @@ pub(crate) fn dogfood_typescript_preview_repair_loop_run(
                 .to_string(),
         );
     }
+    if scenario.outcome == "unanchored_relation_holds_advisory" && scenario.gap_state != "advisory"
+    {
+        errors.push(
+            "unanchored_relation_holds_advisory requires gap_state advisory: the #4103 anchor gate withholds exposure credit, so the case must not claim already_observed"
+                .to_string(),
+        );
+    }
     if scenario.outcome == "resolved" {
         dogfood_typescript_preview_repair_loop_check_closed_receipt(scenario, &mut errors);
     }
@@ -10490,6 +11364,7 @@ pub(crate) fn typescript_preview_repair_loop_allowed_outcomes() -> &'static [&'s
         "weak_oracle_downgraded",
         "static_limitation_recorded",
         "already_observed_unchanged",
+        "unanchored_relation_holds_advisory",
         "intentionally_skipped",
         "resolved",
     ]
@@ -12179,6 +13054,16 @@ pub(crate) fn json_number_after(text: &str, needle: &str) -> Option<usize> {
 }
 
 pub(crate) fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'static str {
+    if dogfood_failed_families(inputs).is_empty() {
+        "pass"
+    } else {
+        "warn"
+    }
+}
+
+/// Every scenario run or summary that failed, one entry per failing run.
+/// The single owner of both the report `status` and the command exit code.
+pub(crate) fn dogfood_failed_families(inputs: &DogfoodReportInputs<'_>) -> Vec<String> {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
     let first_action_runs = inputs.first_action_runs;
@@ -12204,66 +13089,89 @@ pub(crate) fn dogfood_report_status(inputs: &DogfoodReportInputs<'_>) -> &'stati
     let user_surface_projection_runs = inputs.user_surface_projection_runs;
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
 
-    if runs.iter().any(|run| !run.errors.is_empty())
-        || gate_runs.iter().any(|run| !run.errors.is_empty())
-        || first_action_runs.iter().any(|run| !run.errors.is_empty())
-        || first_pr_runs.iter().any(|run| !run.errors.is_empty())
-        || front_panel_runs.iter().any(|run| !run.errors.is_empty())
-        || report_packet_index_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || preview_projection_runs
-            .generated_ci_cockpit
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || preview_projection_runs
-            .language_preview
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || preview_projection_runs
-            .editor_gap_cockpit
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || preview_projection_runs
-            .editor_first_pr_bridge
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || finding_alignment_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || surface_projection_alignment_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || real_repair_attempt_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || python_real_repo_eval_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || python_static_limit_eval_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || python_no_action_eval_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || python_repair_quality.gate_status != "pass"
-        || typescript_false_actionable_audit.gate_status != "pass"
-        || typescript_preview_repair_loop_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || bun_ub_cross_language_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || user_surface_projection_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-        || pr_inline_comment_runs
-            .iter()
-            .any(|run| !run.errors.is_empty())
-    {
-        "warn"
-    } else {
-        "pass"
+    let preview = preview_projection_runs;
+    let mut failed = Vec::new();
+    push_failed_runs(&mut failed, runs, |run| (&run.name, run.errors.len()));
+    push_failed_runs(&mut failed, gate_runs, |run| (&run.name, run.errors.len()));
+    push_failed_runs(&mut failed, first_action_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, first_pr_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, front_panel_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, report_packet_index_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, preview.generated_ci_cockpit, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, preview.language_preview, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, preview.editor_gap_cockpit, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, preview.editor_first_pr_bridge, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, finding_alignment_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, surface_projection_alignment_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, real_repair_attempt_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, python_real_repo_eval_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, python_static_limit_eval_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, python_no_action_eval_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    if python_repair_quality.gate_status != "pass" {
+        failed.push(format!(
+            "python repair routing quality: gate_status {}",
+            python_repair_quality.gate_status
+        ));
+    }
+    if typescript_false_actionable_audit.gate_status != "pass" {
+        failed.push(format!(
+            "typescript false-actionable audit: gate_status {}",
+            typescript_false_actionable_audit.gate_status
+        ));
+    }
+    push_failed_runs(&mut failed, typescript_preview_repair_loop_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, bun_ub_cross_language_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, user_surface_projection_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    push_failed_runs(&mut failed, pr_inline_comment_runs, |run| {
+        (&run.name, run.errors.len())
+    });
+    failed
+}
+
+fn push_failed_runs<T>(
+    failed: &mut Vec<String>,
+    runs: &[T],
+    name_and_errors: impl Fn(&T) -> (&String, usize),
+) {
+    for run in runs {
+        let (name, errors) = name_and_errors(run);
+        if errors > 0 {
+            failed.push(format!("{name}: {errors} error(s)"));
+        }
     }
 }
 
@@ -12294,6 +13202,15 @@ pub(crate) fn dogfood_first_pr_metrics(
     metrics
 }
 
+// The first-PR and editor-gap-cockpit families still compare committed
+// fixtures with committed declarations; no producer runs, so no renderer
+// change can fail them (#4267). Their receipts say so rather than reading as
+// producer evidence.
+const DECLARATION_ONLY_EVIDENCE_JSON: &str =
+    "    \"evidence_source\": \"committed_declarations\",\n    \"rendered_cases\": 0,\n";
+const FIRST_PR_EVIDENCE_SOURCE_LINE: &str = "- Evidence source: committed declarations only; no producer runs in this family (#4267). The in-process renderer is compared to these fixtures by the crate test `first_successful_pr_fixture_corpus_matches_expected_outputs`.\n";
+const EDITOR_GAP_EVIDENCE_SOURCE_LINE: &str = "- Evidence source: committed declarations only; no LSP or VS Code producer runs in this family, and no test produces these fixtures (#4267).\n";
+
 pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> String {
     let runs = inputs.runs;
     let gate_runs = inputs.gate_runs;
@@ -12312,7 +13229,7 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
     let pr_inline_comment_runs = inputs.pr_inline_comment_runs;
     let first_pr_metrics = dogfood_first_pr_metrics(first_pr_runs);
     let mut body = format!(
-        "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review without making dogfood a blocking gate yet.\n\n## Summary\n\n",
+        "# ripr dogfood report\n\nStatus: {}\n\nMode: advisory\n\nThis report runs `ripr check --mode fast` against stable in-repo fixture diffs. It records current product output for review. The findings stay advisory, but the command exits non-zero whenever this status is `warn`.\n\n## Summary\n\n",
         dogfood_report_status(inputs)
     );
     for run in runs {
@@ -12347,8 +13264,13 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
         }
     }
     body.push_str("## First Useful Action Receipts\n\n");
-    body.push_str("These receipts validate checked `first-useful-action.{json,md}` fixture outputs for the documented Campaign 22 routes. They are advisory projections over existing artifacts; they do not rerun hidden analysis, edit source, generate tests, call providers, run mutation testing, invent policy, or change CI blocking.\n\n");
+    body.push_str("Each case renders through `ripr first-action` from committed inputs and compares the produced `first-useful-action.{json,md}` to the checked goldens for the documented Campaign 22 routes. They are advisory projections over existing artifacts; they do not rerun hidden analysis, edit source, generate tests, call providers, run mutation testing, invent policy, or change CI blocking.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(&format!(
+        "- Rendered cases: {}/{}\n",
+        first_action_runs.iter().filter(|run| run.rendered).count(),
+        first_action_runs.len()
+    ));
     body.push_str(
         "- Receipt outputs: `fixtures/boundary_gap/expected/first-useful-action/<case>/first-useful-action.{json,md}`\n\n",
     );
@@ -12424,6 +13346,7 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
     body.push_str("## First Successful PR Receipts\n\n");
     body.push_str("These receipts validate checked `start-here.{json,md}` fixture outputs for the first successful PR path. They record that the first screen selects a repairable Rust gap or a clear no-action/blocked state while preserving advisory limits and gate-authority separation.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(FIRST_PR_EVIDENCE_SOURCE_LINE);
     body.push_str(
         "- Receipt outputs: `fixtures/first_successful_pr/<case>/expected/start-here.{json,md}`\n\n",
     );
@@ -12530,8 +13453,13 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
         }
     }
     body.push_str("## PR Review Front Panel Receipts\n\n");
-    body.push_str("These receipts validate checked `pr-review-front-panel.{json,md}` fixture outputs for the documented Campaign 24 reviewer routes. They are advisory projections over explicit existing artifacts; they do not rerun hidden analysis, edit source, generate tests, call providers, run mutation testing, invent policy, publish inline comments, or change CI blocking.\n\n");
+    body.push_str("Each case renders through `ripr pr-review front-panel` from its corpus inputs and compares the produced `pr-review-front-panel.{json,md}` to the checked goldens for the documented Campaign 24 reviewer routes. They are advisory projections over explicit existing artifacts; they do not rerun hidden analysis, edit source, generate tests, call providers, run mutation testing, invent policy, publish inline comments, or change CI blocking.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(&format!(
+        "- Rendered cases: {}/{}\n",
+        front_panel_runs.iter().filter(|run| run.rendered).count(),
+        front_panel_runs.len()
+    ));
     body.push_str(
         "- Receipt outputs: `fixtures/boundary_gap/expected/pr-review-front-panel/<case>/pr-review-front-panel.{json,md}`\n\n",
     );
@@ -12632,10 +13560,21 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
         }
     }
     body.push_str("## Report Packet Index Receipts\n\n");
-    body.push_str("These receipts validate checked `report-packet-index` fixture outputs for the documented Campaign 25 packet-index routes. They verify reviewer-first grouping, missing-surface counts, start-here discovery, gate-authority visibility, and advisory limits without rerunning hidden analysis or changing pass/fail authority.\n\n");
+    body.push_str("These receipts render each `report-packet-index` corpus case through the shipped `ripr reports index` route and check what the renderer produced. They verify reviewer-first grouping, missing-surface counts, start-here discovery, gate-authority visibility, and advisory limits, and compare the rendered JSON and Markdown to the committed goldens, without rerunning hidden analysis or changing pass/fail authority.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(&format!(
+        "- Rendered cases: {} of {}\n",
+        report_packet_index_runs
+            .iter()
+            .filter(|run| run.rendered)
+            .count(),
+        report_packet_index_runs.len()
+    ));
     body.push_str(
-        "- Receipt outputs: `fixtures/boundary_gap/expected/report-packet-index/<case>/index.{json,md}`\n\n",
+        "- Packet inputs: `fixtures/boundary_gap/expected/report-packet-index/<case>/packet`\n",
+    );
+    body.push_str(
+        "- Compared goldens: `fixtures/boundary_gap/expected/report-packet-index/<case>/index.{json,md}`\n\n",
     );
     body.push_str("| Case | Status | Missing | Warnings | Failures | Start here | Gate authority | Groups |\n");
     body.push_str("| --- | --- | ---: | ---: | ---: | --- | --- | --- |\n");
@@ -12663,6 +13602,15 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
     body.push('\n');
     for run in report_packet_index_runs {
         body.push_str(&format!("### Report Packet Index `{}`\n\n", run.name));
+        body.push_str(&format!("- Rendered: {}\n", run.rendered));
+        body.push_str(&format!(
+            "- Packet input: `{}`\n",
+            normalize_path(&run.packet_root)
+        ));
+        body.push_str(&format!(
+            "- Render command: `{}`\n",
+            markdown_cell(&run.render_command)
+        ));
         body.push_str(&format!("- Status: `{}`\n", markdown_cell(&run.status)));
         body.push_str(&format!(
             "- Expected status: `{}`\n",
@@ -13190,6 +14138,7 @@ pub(crate) fn dogfood_report_markdown(inputs: &DogfoodReportInputs<'_>) -> Strin
     body.push_str("## Editor Gap Cockpit Receipts\n\n");
     body.push_str("These receipts validate checked `fixtures/editor_gap_cockpit` projections for the local repair cockpit. They verify actionable Rust repair routing, preview static-limit ordering, disabled-language no-diagnostic state, wrong-root and stale fail-closed behavior, and no-action refresh-only behavior without changing analyzer truth, source files, generated tests, provider calls, mutation execution, policy, gates, or PR comments.\n\n");
     body.push_str("- Default CI blocking: no\n");
+    body.push_str(EDITOR_GAP_EVIDENCE_SOURCE_LINE);
     body.push_str("- Editor behavior: saved-workspace and projection-only\n");
     body.push_str("- Receipt outputs: `fixtures/editor_gap_cockpit/<case>/expected/*`\n\n");
     body.push_str(
@@ -14527,6 +15476,11 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n  ],\n  \"first_useful_action\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(&format!(
+        "    \"rendered_cases\": {},\n    \"total_cases\": {},\n",
+        first_action_runs.iter().filter(|run| run.rendered).count(),
+        first_action_runs.len()
+    ));
     body.push_str(
         "    \"receipt_dir\": \"fixtures/boundary_gap/expected/first-useful-action\",\n    \"cases\": [\n",
     );
@@ -14594,6 +15548,7 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"first_successful_pr\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(DECLARATION_ONLY_EVIDENCE_JSON);
     body.push_str("    \"receipt_dir\": \"fixtures/first_successful_pr\",\n");
     body.push_str("    \"metrics\": {\n");
     body.push_str(&format!(
@@ -14692,6 +15647,11 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"pr_review_front_panel\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(&format!(
+        "    \"rendered_cases\": {},\n    \"total_cases\": {},\n",
+        front_panel_runs.iter().filter(|run| run.rendered).count(),
+        front_panel_runs.len()
+    ));
     body.push_str(
         "    \"receipt_dir\": \"fixtures/boundary_gap/expected/pr-review-front-panel\",\n    \"cases\": [\n",
     );
@@ -14799,6 +15759,14 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"report_packet_index\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(&format!(
+        "    \"rendered_cases\": {},\n    \"total_cases\": {},\n",
+        report_packet_index_runs
+            .iter()
+            .filter(|run| run.rendered)
+            .count(),
+        report_packet_index_runs.len()
+    ));
     body.push_str(
         "    \"receipt_dir\": \"fixtures/boundary_gap/expected/report-packet-index\",\n    \"cases\": [\n",
     );
@@ -14810,6 +15778,15 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
         body.push_str(&format!(
             "        \"name\": \"{}\",\n",
             json_escape(&run.name)
+        ));
+        body.push_str(&format!("        \"rendered\": {},\n", run.rendered));
+        body.push_str(&format!(
+            "        \"packet_root\": \"{}\",\n",
+            json_escape(&normalize_path(&run.packet_root))
+        ));
+        body.push_str(&format!(
+            "        \"render_command\": \"{}\",\n",
+            json_escape(&run.render_command)
         ));
         body.push_str(&format!(
             "        \"actual_dir\": \"{}\",\n",
@@ -15495,6 +16472,7 @@ pub(crate) fn dogfood_report_json(inputs: &DogfoodReportInputs<'_>) -> String {
     }
     body.push_str("\n    ]\n  },\n  \"editor_gap_cockpit\": {\n");
     body.push_str("    \"default_ci_blocking\": false,\n");
+    body.push_str(DECLARATION_ONLY_EVIDENCE_JSON);
     body.push_str("    \"editor_behavior\": \"saved-workspace projection-only\",\n");
     body.push_str("    \"receipt_dir\": \"fixtures/editor_gap_cockpit\",\n    \"cases\": [\n");
     for (index, run) in preview_projection_runs

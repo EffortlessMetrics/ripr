@@ -1,0 +1,52 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "warning",
+  "root": ".",
+  "seam": {
+    "seam_id": "67fc764ba37d77bd",
+    "source": "agent_receipt"
+  },
+  "artifacts": [],
+  "repair_attempts": [
+    {
+      "attempt_id": "repair-attempt-0ccc3333cccc3333cccc3333cccc3333cccc3333",
+      "seam_id": "67fc764ba37d77bd",
+      "state": "ready_to_finish",
+      "head_current": false,
+      "disposition": "finished",
+      "manifest": "target/ripr/repair-attempts/repair-attempt-0ccc3333cccc3333cccc3333cccc3333cccc3333/attempt.json",
+      "command": null,
+      "receipt": null,
+      "last_after_refusal": null
+    },
+    {
+      "attempt_id": "repair-attempt-0aaa1111aaaa1111aaaa1111aaaa1111aaaa1111",
+      "seam_id": "67fc764ba37d77bd",
+      "state": "awaiting_edit",
+      "head_current": true,
+      "disposition": "resumable",
+      "manifest": "target/ripr/repair-attempts/repair-attempt-0aaa1111aaaa1111aaaa1111aaaa1111aaaa1111/attempt.json",
+      "command": "ripr agent repair --root . --attempt repair-attempt-0aaa1111aaaa1111aaaa1111aaaa1111aaaa1111 --phase after",
+      "receipt": null,
+      "last_after_refusal": null
+    },
+    {
+      "attempt_id": "repair-attempt-0bbb2222bbbb2222bbbb2222bbbb2222bbbb2222",
+      "seam_id": "8badf00d8badf00d",
+      "state": "awaiting_edit",
+      "head_current": true,
+      "disposition": "resumable",
+      "manifest": "target/ripr/repair-attempts/repair-attempt-0bbb2222bbbb2222bbbb2222bbbb2222bbbb2222/attempt.json",
+      "command": "ripr agent repair --root . --attempt repair-attempt-0bbb2222bbbb2222bbbb2222bbbb2222bbbb2222 --phase after",
+      "receipt": null,
+      "last_after_refusal": null
+    }
+  ],
+  "missing_commands": [],
+  "next_command": null,
+  "test_run": null,
+  "warnings": [
+    "ambiguous_repair_attempts"
+  ]
+}

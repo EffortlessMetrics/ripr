@@ -1,0 +1,61 @@
+{
+  "schema_version": "ripr_analysis_receipt.v1",
+  "request": {
+    "schema_version": "ripr_analysis_request.v1",
+    "request_id": "bench-request-1",
+    "capability": "test_grip_summary",
+    "repository": {
+      "repository_id": "EffortlessMetrics/ripr-swarm",
+      "snapshot_id": "git-tree:0123456789abcdef0123456789abcdef01234567",
+      "source_view": "git_tree",
+      "source_digest": "sha256:a0ea7c116d4ed114740a21f4a4a5967e1e6e31755bb8c8896829278d75d55636"
+    },
+    "subject": {
+      "requirement_id": "BENCH-1",
+      "evidence_purpose": "benchmark discriminator",
+      "seam_id": "bench-seam-1",
+      "subject_id": "bench-subject-1",
+      "subject_body_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "analysis_mode": "ready",
+    "profile": "rust",
+    "config_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "analyzer_generation": "ripr-analyzer.v1",
+    "output_root": "target/ripr-provider",
+    "requested_claim": "static test-grip evidence"
+  },
+  "provider_version": "0.11.0",
+  "binary_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "analyzer_generation": "ripr-analyzer.v1",
+  "result_class": "completed",
+  "native_status": "exposed",
+  "analysis_complete": true,
+  "truncated": false,
+  "summary": {
+    "seam_id": "bench-seam-1",
+    "analyzed_subject_count": 1,
+    "related_tests": [
+      {
+        "test_name": "grips_bench_boundary",
+        "file": "crates/ripr/tests/agentic_bench_provider.rs",
+        "line": 1,
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "relation_reason": "direct_owner_call",
+        "has_test_target": true
+      }
+    ],
+    "missing_discriminator_count": 0,
+    "strongest_oracle": "strong",
+    "fingerprint": "bench:exact_value:strong:direct_owner_call"
+  },
+  "diagnostics": [],
+  "limitations": [],
+  "claim_boundary": "Static RIPR evidence for one exact source snapshot and selected seam; no runtime test execution, mutation adequacy, semantic correctness, or merge-readiness claim.",
+  "excluded_claims": [
+    "runtime_test_execution",
+    "mutation_adequacy",
+    "semantic_correctness",
+    "merge_readiness"
+  ]
+}

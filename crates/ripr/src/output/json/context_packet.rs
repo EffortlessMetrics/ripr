@@ -9,8 +9,24 @@ use crate::output::next_step::reconcile_next_step;
 const CONTEXT_PACKET_VERSION_CONTRACT: &str = "1.0";
 
 pub fn render_context_packet(finding: &Finding, max_related_tests: usize) -> String {
+    render_context_packet_with_explain_command(finding, max_related_tests, None)
+}
+
+/// Render the packet with the witness's `explain_command` replaced by one
+/// that replays the caller's input identity (#3952). The domain witness only
+/// knows the finding, so its command drops `--base`, `--diff` and `--from`,
+/// and `ripr explain` would then re-analyze a different diff than the one
+/// that produced the finding.
+pub(crate) fn render_context_packet_with_explain_command(
+    finding: &Finding,
+    max_related_tests: usize,
+    explain_command: Option<String>,
+) -> String {
     let stop_reasons = stop_reason_values(finding);
     let mut packet = ContextPacket::from_finding(finding, max_related_tests, stop_reasons);
+    if let (Some(witness), Some(command)) = (packet.witness.as_mut(), explain_command) {
+        witness.explain_command = command;
+    }
     // Reconcile the next step so the context packet does not diverge from the
     // human/JSON/SARIF surfaces. See #2597: every renderer MUST call
     // reconcile_next_step.
@@ -77,7 +93,7 @@ pub(crate) fn render_context_packet_dto(packet: &ContextPacket) -> String {
     let related_test_count = packet.related_tests.len();
     out.push_str("  \"related_tests\": [\n");
     for (idx, test) in packet.related_tests.iter().enumerate() {
-        related_test_json(&mut out, test, 2);
+        related_test_json(&mut out, test, &packet.missing_discriminators, 2);
         if idx + 1 != related_test_count {
             out.push(',');
         }
@@ -254,6 +270,7 @@ mod tests {
             flow_sinks: vec![],
             activation: ActivationEvidence::default(),
             stop_reasons: vec![],
+            related_tests_matched_total: None,
             related_tests: vec![],
             recommended_next_step: None,
             language: None,
@@ -278,6 +295,7 @@ mod tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }
     }
 

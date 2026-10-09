@@ -13,13 +13,13 @@ Packet summary:
 - Failures: 1
 
 PR review story:
-- first useful action: target/ripr/reports/first-useful-action.md
+- First useful action: target/ripr/reports/first-useful-action.md
 
 Repair and agent handoff:
-- assistant proof: target/ripr/reports/test-oracle-assistant-proof.md
+- Assistant proof: target/ripr/reports/test-oracle-assistant-proof.md
 
 Policy and gates:
-- gate decision: target/ripr/reports/gate-decision.md
+- Gate decision: target/ripr/reports/gate-decision.md
 - authority: gate decision controls configured pass/fail, not this index
 
 Limits:

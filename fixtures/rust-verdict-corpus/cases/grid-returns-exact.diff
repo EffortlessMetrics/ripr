@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 08239b9..0f48b04 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Return values, one function per test style.
+ 
+ pub fn greeting(name: &str) -> String {
+-    format!("Hello, {name}!")
++    ["Hello, ", name, "!"].concat()
+ }
+ 
+ pub fn first_word(text: &str) -> Option<&str> {

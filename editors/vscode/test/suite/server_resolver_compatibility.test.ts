@@ -8,6 +8,7 @@ import { currentRiprPlatform } from '../../src/platform';
 import { ManagedServerInstallation } from '../../src/managedServerInstall';
 import {
   managedManifestPlacementDetail,
+  missingServerRemedy,
   resolveServer,
   ServerResolverRuntime
 } from '../../src/serverResolver';
@@ -183,6 +184,12 @@ suite('Server resolver compatibility fallback', () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test('missing-server remedy only suggests enabling download when it is off', () => {
+    assert.ok(!missingServerRemedy(true).includes('autoDownload'), missingServerRemedy(true));
+    assert.ok(missingServerRemedy(true).includes('cargo install ripr'));
+    assert.ok(missingServerRemedy(false).includes('Enable ripr.server.autoDownload'));
   });
 });
 

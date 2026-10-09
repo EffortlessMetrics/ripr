@@ -1,0 +1,13 @@
+diff --git a/serde_core/src/ser/impls.rs b/serde_core/src/ser/impls.rs
+index a7a175d..bb828ff 100644
+--- a/serde_core/src/ser/impls.rs
++++ b/serde_core/src/ser/impls.rs
+@@ -767,7 +767,7 @@ const DEC_DIGITS_LUT: &[u8] = b"\
+ #[cfg(any(feature = "std", not(no_core_net)))]
+ #[inline]
+ fn format_u8(mut n: u8, out: &mut [u8]) -> usize {
+-    if n >= 100 {
++    if n > 99 {
+         let d1 = ((n % 100) << 1) as usize;
+         n /= 100;
+         out[0] = b'0' + n;

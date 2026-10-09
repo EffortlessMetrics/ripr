@@ -1,6 +1,6 @@
 # RIPR Report Packet Index
 
-Status: pass
+Status: warn
 
 Start here:
 - PR review front panel: target/ripr/reports/pr-review-front-panel.md
@@ -13,28 +13,28 @@ Packet summary:
 - Failures: 0
 
 PR review story:
-- first useful action: target/ripr/reports/first-useful-action.md
-- review comments: target/ripr/review/comments.md
+- First useful action: target/ripr/reports/first-useful-action.md
+- Review guidance: target/ripr/review/comments.md
 
 Repair and agent handoff:
-- assistant proof: target/ripr/reports/test-oracle-assistant-proof.md
-- assistant loop health: target/ripr/reports/assistant-loop-health.md
+- Assistant proof: target/ripr/reports/test-oracle-assistant-proof.md
+- Assistant loop health: target/ripr/reports/assistant-loop-health.md
 
 Evidence movement:
 - PR evidence ledger: target/ripr/reports/pr-evidence-ledger.md
-- baseline debt delta: target/ripr/reports/baseline-debt-delta.md
+- Baseline debt delta: target/ripr/reports/baseline-debt-delta.md
 
 Policy and gates:
-- gate decision: target/ripr/reports/gate-decision.md
+- Gate decision: target/ripr/reports/gate-decision.md
 - authority: gate decision controls configured pass/fail, not this index
 
 Calibration:
-- recommendation calibration: target/ripr/reports/recommendation-calibration.md
-- coverage/grip frontier: target/ripr/reports/coverage-grip-frontier.md
+- Recommendation calibration: target/ripr/reports/recommendation-calibration.md
+- Coverage/grip frontier: target/ripr/reports/coverage-grip-frontier.md
 
 Validation receipts:
-- agent receipt: target/ripr/reports/agent-receipt.json
-- check PR: target/ripr/reports/check-pr.md
+- Agent receipt: target/ripr/reports/agent-receipt.json
+- Check PR: target/ripr/reports/check-pr.md
 
 SARIF and badges:
 - SARIF output: target/ripr/reports/ripr.sarif.json

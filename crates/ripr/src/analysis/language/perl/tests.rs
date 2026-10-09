@@ -5,6 +5,7 @@
 //! only the production (cfg-test-gated) adapter code.
 
 use super::*;
+use crate::domain::RelatedTestMiss;
 
 fn complete_perl_actionability_context() -> PerlActionabilityContext {
     PerlActionabilityContext {
@@ -57,6 +58,7 @@ fn packet_test_options() -> crate::analysis::AnalysisOptions {
         diff_file: None,
         mode: AnalysisMode::Draft,
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
         include_unchanged_tests: false,
         resolve_tsconfig_paths: false,
         perl_facts_path: None,
@@ -4031,4 +4033,456 @@ fn perl_packet_contract_migration_corpus_pins_real_producer_dispositions() -> Re
     );
 
     Ok(())
+}
+
+/// The streamed file digest equals the in-memory digest of the same bytes,
+/// so the packet staleness check keeps its exact meaning without buffering
+/// the source file.
+#[test]
+fn streamed_file_digest_matches_in_memory_digest() -> Result<(), String> {
+    let dir = std::env::temp_dir().join(format!("ripr-perl-digest-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).map_err(|err| format!("create dir: {err}"))?;
+    for (name, contents) in [
+        ("empty.pl", Vec::new()),
+        ("small.pl", b"sub f { return 1 }\n".to_vec()),
+        ("large.pl", "é\n".repeat(200_000).into_bytes()),
+    ] {
+        let path = dir.join(name);
+        std::fs::write(&path, &contents).map_err(|err| format!("write {name}: {err}"))?;
+        let streamed =
+            super::hex_sha256_file(&path).map_err(|err| format!("hash {name}: {err}"))?;
+        assert_eq!(streamed, super::hex_sha256(&contents), "{name}");
+    }
+    Ok(())
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// #5498 — current-v1 Perl related-test misses (RIPR-SPEC-0224).
+//
+// On a weakly exposed finding from a complete, unblocked packet (with or
+// without a concrete discriminator), only a row whose own direct, strong
+// exact, owner-targeted oracle earned the weak exposure, with no established sink alignment, says
+// observation is unconfirmed. Every other row keeps no miss.
+// ──────────────────────────────────────────────────────────────────────
+
+/// The class and per-row misses of the first finding a packet projects.
+fn first_finding_misses(
+    text: &str,
+) -> Result<(crate::domain::ExposureClass, Vec<Option<RelatedTestMiss>>), String> {
+    let findings = findings_from_packet(text)?;
+    let finding = findings
+        .first()
+        .ok_or_else(|| "expected one finding".to_string())?;
+    Ok((
+        finding.class.clone(),
+        finding.related_tests.iter().map(|test| test.miss).collect(),
+    ))
+}
+
+fn with_sinks(changed_observable: &str, observed_sink: Option<&str>) -> String {
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"changed_text_digest\": \"sha256:return\",",
+        &format!(
+            "\"changed_text_digest\": \"sha256:return\",\n      \"changed_observable\": \"{changed_observable}\","
+        ),
+    );
+    match observed_sink {
+        Some(sink) => packet.replace(
+            "\"expression\": \"is($got, 10, 'discount threshold')\",",
+            &format!(
+                "\"expression\": \"is($got, 10, 'discount threshold')\",\n      \"observed_sink\": \"{sink}\","
+            ),
+        ),
+        None => packet,
+    }
+}
+
+#[test]
+fn perl_direct_strong_row_without_sink_alignment_is_observation_unconfirmed() -> Result<(), String>
+{
+    use crate::domain::ExposureClass;
+    let unconfirmed = vec![Some(RelatedTestMiss::ObservationUnconfirmed)];
+
+    // Aligned sinks, exact or through the `return` normalization: exposed,
+    // no miss.
+    for packet in [
+        with_sinks("$amount / 2", Some("$amount / 2")),
+        with_sinks("return $amount / 2", Some("$amount / 2")),
+    ] {
+        assert_eq!(
+            first_finding_misses(&packet)?,
+            (ExposureClass::Exposed, vec![None])
+        );
+    }
+    // No observed sink (also the shape of an older packet) and textually
+    // different sinks are unconfirmed, never `assertion_not_observing`.
+    for packet in [
+        EXACT_RETURN_PACKET.to_string(),
+        with_sinks("$amount / 2", None),
+        with_sinks("$rate * 0.9", Some("$amount / 2")),
+    ] {
+        assert_eq!(
+            first_finding_misses(&packet)?,
+            (ExposureClass::WeaklyExposed, unconfirmed.clone())
+        );
+    }
+    // A finding-wide discriminator is not lent to the row as an input or
+    // exact-assertion miss.
+    let with_discriminator = EXACT_RETURN_PACKET.replace(
+        "\"changed_text_digest\": \"sha256:return\"",
+        "\"changed_text_digest\": \"discriminator:$amount == 100\"",
+    );
+    let findings = findings_from_packet(&with_discriminator)?;
+    let finding = findings.first().ok_or("expected one finding")?;
+    assert!(!finding.activation.missing_discriminators.is_empty());
+    assert_eq!(
+        finding
+            .related_tests
+            .iter()
+            .map(|test| test.miss)
+            .collect::<Vec<_>>(),
+        unconfirmed
+    );
+    Ok(())
+}
+
+#[test]
+fn perl_rows_without_an_established_defect_keep_no_miss() -> Result<(), String> {
+    use crate::domain::ExposureClass;
+    // Advisory relation with a strong oracle: capped class, no miss.
+    let (class, misses) = first_finding_misses(
+        &EXACT_RETURN_PACKET.replace("\"direct_owner_call\"", "\"file_proximity\""),
+    )?;
+    assert_ne!(class, ExposureClass::Exposed);
+    assert_eq!(misses, vec![None]);
+    // Direct relation with a weak oracle: no miss.
+    let (class, misses) =
+        first_finding_misses(&EXACT_RETURN_PACKET.replace("\"strong_exact\"", "\"weak_broad\""))?;
+    assert_eq!(class, ExposureClass::ReachableUnrevealed);
+    assert_eq!(misses, vec![None]);
+    // A partial packet keeps its class but explains no row.
+    let (class, misses) = first_finding_misses(&EXACT_RETURN_PACKET.replace(
+        "\"packet_status\": \"complete\"",
+        "\"packet_status\": \"partial\"",
+    ))?;
+    assert_eq!(class, ExposureClass::WeaklyExposed);
+    assert_eq!(misses, vec![None]);
+    Ok(())
+}
+
+/// Two rows on one finding: only the direct strong-exact row is explained;
+/// the advisory row beside it borrows nothing.
+#[test]
+fn perl_unconfirmed_observation_stays_on_its_own_row() -> Result<(), String> {
+    let fixture = include_str!(
+        "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+    );
+    let advisory = r#""relations": [
+    {
+      "relation_id": "relation:return:helper-proximity",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "oracle_id": null,
+      "relation_kind": "file_proximity",
+      "reachability_hint": "weakly_reachable",
+      "confidence": "low",
+      "provenance_refs": [
+        "prov:relation:return"
+      ]
+    },"#;
+    let packet = fixture.replacen("\"relations\": [", advisory, 1);
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.probe.family == crate::domain::ProbeFamily::ReturnValue)
+        .ok_or("the return change should project a finding")?;
+    assert_eq!(finding.class, crate::domain::ExposureClass::WeaklyExposed);
+    let mut rows = finding
+        .related_tests
+        .iter()
+        .map(|test| (test.name.as_str(), test.miss))
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(name, _)| *name);
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "discount_smoke",
+                Some(RelatedTestMiss::ObservationUnconfirmed)
+            ),
+            ("helper_indirection", None),
+        ]
+    );
+    Ok(())
+}
+
+/// An advisory row is never explained, even when its relation is reachable
+/// and links a strong exact oracle on the changed owner in its own test.
+#[test]
+fn perl_advisory_row_with_strong_oracle_keeps_no_miss() -> Result<(), String> {
+    let fixture = include_str!(
+        "../../../../../../fixtures/perl_lsp_facts_exporter/expected/ripr-perl-source-test-oracle-facts-v1.json"
+    );
+    let strong_helper_oracle = r#""oracles": [
+    {
+      "oracle_id": "oracle:t/app_helper.t:8:is",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "kind": "exact_return_assertion",
+      "strength": "strong_exact",
+      "target_owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "expression": "is(My::App::discount(100), 10, 'helper discount')",
+      "range": {"start_line": 8, "start_column": 1, "end_line": 8, "end_column": 52},
+      "confidence": "medium",
+      "provenance_refs": ["prov:relation:return"]
+    },"#;
+    let reachable_proximity = r#""relations": [
+    {
+      "relation_id": "relation:return:helper-proximity",
+      "change_id": "change:lib/My/App.pm:8:return",
+      "owner_id": "perl:lib/My/App.pm::My::App::discount",
+      "test_id": "test:t/app_helper.t:helper_indirection",
+      "oracle_id": "oracle:t/app_helper.t:8:is",
+      "relation_kind": "file_proximity",
+      "reachability_hint": "reachable",
+      "confidence": "medium",
+      "provenance_refs": [
+        "prov:relation:return"
+      ]
+    },"#;
+    let packet = fixture
+        .replacen("\"oracles\": [", strong_helper_oracle, 1)
+        .replacen("\"relations\": [", reachable_proximity, 1);
+    let findings = findings_from_packet(&packet)?;
+    let finding = findings
+        .iter()
+        .find(|finding| finding.probe.family == crate::domain::ProbeFamily::ReturnValue)
+        .ok_or("the return change should project a finding")?;
+    assert_eq!(finding.class, crate::domain::ExposureClass::WeaklyExposed);
+    let mut rows = finding
+        .related_tests
+        .iter()
+        .map(|test| (test.name.as_str(), test.miss))
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(name, _)| *name);
+    assert_eq!(
+        rows,
+        vec![
+            (
+                "discount_smoke",
+                Some(RelatedTestMiss::ObservationUnconfirmed)
+            ),
+            ("helper_indirection", None),
+        ]
+    );
+    Ok(())
+}
+
+/// A limitation that blocks actionability but not the class keeps the
+/// finding weakly exposed and explains no row.
+#[test]
+fn perl_actionability_blocked_packet_explains_no_row() -> Result<(), String> {
+    use crate::domain::ExposureClass;
+    let packet = EXACT_RETURN_PACKET.replace(
+        "\"limitations\": [],",
+        r#""limitations": [
+    {
+      "limitation_id": "limitation:missing-runner",
+      "kind": "missing_test_runner",
+      "message": "no test runner was found",
+      "evidence_refs": []
+    }
+  ],"#,
+    );
+    assert_ne!(packet, EXACT_RETURN_PACKET);
+    assert_eq!(
+        first_finding_misses(&packet)?,
+        (ExposureClass::WeaklyExposed, vec![None])
+    );
+    Ok(())
+}
+
+/// #5421: the Perl adapter reads only the packet the caller supplied, so a
+/// packet declared partial qualifies the run even when the diff touches no
+/// Perl file and the packet yields no finding. The preview gate that drops an
+/// unrelated workspace scan's refusal must not drop this one.
+#[test]
+fn supplied_partial_packet_is_disclosed_on_a_rust_only_diff() -> Result<(), String> {
+    let limitations = partial_packet_outcome_limitations(
+        "rust-only",
+        "diff --git a/src/lib.rs b/src/lib.rs\n--- /dev/null\n+++ b/src/lib.rs\n@@ -0,0 +1 @@\n+pub fn discount(amount: u32) -> u32 {\n",
+    )?;
+    assert!(
+        limitations
+            .iter()
+            .any(|(_, detail)| detail.contains("packet partial")),
+        "a supplied partial Perl packet must stay disclosed on a Rust-only diff: {limitations:?}"
+    );
+    Ok(())
+}
+
+/// #5421 review: the kept packet limitation says nothing about the diff, so a
+/// non-empty diff with no parseable change is still reported as malformed.
+#[test]
+fn supplied_partial_packet_does_not_hide_a_malformed_diff() -> Result<(), String> {
+    let limitations =
+        partial_packet_outcome_limitations("malformed", "this is not a unified diff\n")?;
+    let kinds: Vec<&str> = limitations.iter().map(|(kind, _)| kind.as_str()).collect();
+    assert!(kinds.contains(&"malformed_diff"), "{limitations:?}");
+    assert!(
+        limitations
+            .iter()
+            .any(|(_, detail)| detail.contains("packet partial")),
+        "{limitations:?}"
+    );
+    Ok(())
+}
+
+/// #6703: a supplied partial packet that does produce a finding takes the
+/// pipeline's finding-producing branch. Its packet limitation is still
+/// supplied evidence, so a non-empty diff with no parseable change must still
+/// be reported as malformed rather than hidden behind the Perl finding.
+#[test]
+fn supplied_partial_packet_with_findings_does_not_hide_a_malformed_diff() -> Result<(), String> {
+    let packet = EXACT_RETURN_PACKET.replacen(
+        r#""packet_status": "complete""#,
+        r#""packet_status": "partial""#,
+        1,
+    );
+    assert_ne!(packet, EXACT_RETURN_PACKET);
+    let (limitations, finding_count) = partial_packet_outcome(
+        "malformed-with-findings",
+        "this is not a unified diff for lib/My/App.pm\n",
+        &packet,
+    )?;
+    assert!(
+        finding_count > 0,
+        "the partial packet must project a `.pm` finding so the finding-producing branch runs"
+    );
+    let kinds: Vec<&str> = limitations.iter().map(|(kind, _)| kind.as_str()).collect();
+    assert!(kinds.contains(&"malformed_diff"), "{limitations:?}");
+    assert!(
+        limitations
+            .iter()
+            .any(|(_, detail)| detail.contains("packet partial")),
+        "{limitations:?}"
+    );
+    Ok(())
+}
+
+/// A partial, finding-free Perl fact packet: it changes and tests nothing.
+const PARTIAL_EMPTY_PACKET: &str = r#"{
+  "schema_version": "ripr-perl-facts-v1",
+  "packet_id": "perl-facts:repo:partial-empty",
+  "packet_status": "partial",
+  "packet_fingerprint": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "producer": {"name": "perl-lsp", "version": "0.0.0", "capabilities": ["syntax"]},
+  "root": {"repo_relative": ".", "vcs_head": "abc", "path_style": "repo_relative"},
+  "input": {"base": "origin/main", "head": "HEAD", "diff_id": null, "requested_fact_classes": []},
+  "files": [], "owners": [], "changes": [], "tests": [], "oracles": [],
+  "relations": [], "dynamic_boundaries": [], "verify_commands": [],
+  "limitations": [], "provenance": []
+}"#;
+
+/// Runs `check` with Perl enabled and a supplied, finding-free partial packet
+/// over `diff_text`; returns each outcome limitation as `(kind, detail)`.
+fn partial_packet_outcome_limitations(
+    name: &str,
+    diff_text: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let (limitations, finding_count) =
+        partial_packet_outcome(name, diff_text, PARTIAL_EMPTY_PACKET)?;
+    if finding_count != 0 {
+        return Err(format!(
+            "the empty partial packet projected {finding_count} Perl findings"
+        ));
+    }
+    Ok(limitations)
+}
+
+/// Runs `check` with Perl enabled and the supplied `packet` over `diff_text`;
+/// returns each outcome limitation as `(kind, detail)` and the count of
+/// findings at a `.pm` path (the packet's own findings).
+fn partial_packet_outcome(
+    name: &str,
+    diff_text: &str,
+    packet: &str,
+) -> Result<(Vec<(String, String)>, usize), String> {
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("system time: {error}"))?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!(
+        "ripr-perl-partial-{name}-{}-{stamp}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
+    let proof = (|| -> Result<(Vec<(String, String)>, usize), String> {
+        let write = |path: &std::path::Path, text: &str| {
+            std::fs::write(path, text).map_err(|error| format!("write {}: {error}", path.display()))
+        };
+        write(
+            &root.join("src/lib.rs"),
+            "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
+        )?;
+        let facts = root.join("facts.json");
+        write(&facts, &bless_fingerprint(packet))?;
+        let diff = root.join("change.diff");
+        write(&diff, diff_text)?;
+        let config =
+            crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"perl\"]\n")?;
+        let output = crate::app::check_workspace_with_config(
+            crate::CheckInput {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff),
+                mode: crate::Mode::Draft,
+                format: crate::OutputFormat::Json,
+                include_unchanged_tests: false,
+                perl_facts_path: Some(facts),
+                suppression_policy: None,
+                git_timeout: None,
+                git_candidate: None,
+            },
+            &config,
+        )?;
+        let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+        let value: serde_json::Value =
+            serde_json::from_str(&json).map_err(|error| format!("parse: {error}"))?;
+        let limitations = value
+            .pointer("/analysis_outcome/outcome/limitations")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| format!("missing limitations: {json}"))?;
+        let finding_count = output
+            .findings
+            .iter()
+            .filter(|finding| {
+                finding
+                    .probe
+                    .location
+                    .file
+                    .extension()
+                    .is_some_and(|ext| ext == "pm")
+            })
+            .count();
+        let limitations = limitations
+            .iter()
+            .map(|entry| {
+                let text = |key: &str| {
+                    entry
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_owned()
+                };
+                (text("kind"), text("bounded_detail"))
+            })
+            .collect();
+        Ok((limitations, finding_count))
+    })();
+    let cleanup = std::fs::remove_dir_all(&root)
+        .map_err(|error| format!("remove {}: {error}", root.display()));
+    let limitations = proof?;
+    cleanup?;
+    Ok(limitations)
 }

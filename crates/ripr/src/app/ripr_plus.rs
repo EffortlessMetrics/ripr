@@ -1,7 +1,7 @@
 //! `ripr plus` — binary-first RIPR+ repo receipt (composition-only).
 //!
 //! Ports `cargo xtask ripr-plus` into the `ripr` binary so downstream
-//! consumers can produce the repo-wide RIPR+ quality-gate receipt without
+//! consumers can compose an informational RIPR+ receipt without
 //! compiling their own xtask.
 //!
 //! # Binary-first scope
@@ -25,8 +25,13 @@
 //! in `ripr check --format repo-exposure-summary-json`, not inside a
 //! receipt-composition subcommand.
 //!
-//! Output: `target/ripr/reports/ripr-plus.{json,md}`.
+//! Output: `target/ripr/reports/ripr-plus.{json,md}`. A run whose named
+//! artifact cannot be read or composed, and that would replace a receipt whose
+//! status is not `indeterminate`, first copies it to
+//! `target/ripr/reports/ripr-plus.last-good.{json,md}`; that copy describes an
+//! earlier run and is never current evidence.
 
+use crate::cli::unknown_argument;
 use crate::config::RiprConfig;
 use crate::output;
 use serde_json::{Value, json};
@@ -36,11 +41,23 @@ use std::path::{Path, PathBuf};
 
 const RIPR_PLUS_JSON: &str = "target/ripr/reports/ripr-plus.json";
 const RIPR_PLUS_MD: &str = "target/ripr/reports/ripr-plus.md";
+const RIPR_PLUS_LAST_GOOD_JSON: &str = "target/ripr/reports/ripr-plus.last-good.json";
+const RIPR_PLUS_LAST_GOOD_MD: &str = "target/ripr/reports/ripr-plus.last-good.md";
+/// The authority limit the error text attaches to a kept copy; help repeats
+/// the same wording.
+const LAST_GOOD_IS_STALE: &str =
+    "it describes an earlier run, may be stale for the current HEAD, and is not current evidence.";
+/// The same limit as a standalone sentence, for messages that name no copy
+/// before it.
+const LAST_GOOD_IS_STALE_SENTENCE: &str = "A kept copy describes an earlier run, may be stale for the current HEAD, and is not current evidence.";
+const NO_COPY_KEPT_SENTENCE: &str =
+    "Any last-good copy still on disk is from an earlier run and is not current evidence.";
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct RiprPlusOptions {
     repo_exposure_summary: Option<PathBuf>,
     gap_ledger: Option<PathBuf>,
+    check: bool,
 }
 
 /// Entry point for `ripr plus`. Composes a RIPR+ repo receipt from a
@@ -54,11 +71,131 @@ pub(crate) fn run_ripr_plus(args: &[String]) -> Result<(), String> {
     let options = parse_options(args)?;
     let repo = repo_root()?;
     let head = git_head(&repo);
-    match ripr_plus_receipt_from_options(&options, &head) {
-        Ok(receipt) => write_receipt(&repo, &receipt),
+    compose_and_write_receipt(&repo, &options, &head)
+}
+
+/// Writes the receipt for `options`. When the named artifact cannot be read
+/// or composed, the `indeterminate` receipt is still written so CI keeps a
+/// record, and the error is returned so the command exits 2 (could not
+/// complete) rather than 0 (#4727).
+fn compose_and_write_receipt(
+    repo: &Path,
+    options: &RiprPlusOptions,
+    head: &str,
+) -> Result<(), String> {
+    match ripr_plus_receipt_from_options(options, head).and_then(qualify_legacy_receipt) {
+        Ok(receipt) => {
+            write_receipt(repo, &receipt)?;
+            if options.check && receipt["zero_unresolved_established"] != true {
+                return Err("RIPR+ zero is not established; inspect the receipt's incomplete-evidence warnings".to_string());
+            }
+            Ok(())
+        }
         Err(err) => {
-            let receipt = error_ripr_plus_receipt(&head, &err);
-            write_receipt(&repo, &receipt)
+            let kept = keep_last_good_receipt(repo);
+            let receipt = error_ripr_plus_receipt(head, &err);
+            write_receipt(repo, &receipt)?;
+            Err(format!("{err}{kept}"))
+        }
+    }
+}
+
+/// Before an `indeterminate` receipt replaces the receipt on disk, sets aside
+/// the previous one when it was a real result, so a mistyped path does not
+/// cost the last good receipt. The canonical path still carries the
+/// `indeterminate` record, so no reader mistakes a failed run for a pass.
+/// Returns a sentence for the error message, empty when nothing was kept.
+fn keep_last_good_receipt(repo: &Path) -> String {
+    let json_path = repo.join(RIPR_PLUS_JSON);
+    let Ok(previous) = fs::read_to_string(&json_path) else {
+        return String::new();
+    };
+    let previous_value = serde_json::from_str::<Value>(&previous).ok();
+    let status = previous_value
+        .as_ref()
+        .and_then(|value| value["status"].as_str().map(str::to_string));
+    // A completed source composition deliberately remains informational:
+    // preserving its bytes cannot establish zero or current-candidate binding.
+    let completed_informational = previous_value.as_ref().is_some_and(|value| {
+        value["status"] == "indeterminate"
+            && value["machine_readable_cause"] == "quality_evidence_incomplete"
+            && value["candidate_binding"] == "not_established"
+            && value["zero_unresolved_established"] == false
+            && value["known_actionable_unresolved"].as_u64().is_some()
+            && value["basis"]
+                .as_str()
+                .is_some_and(ripr_plus_accepts_badge_basis)
+    });
+    match status.as_deref() {
+        None => String::new(),
+        Some("indeterminate") if !completed_informational => String::new(),
+        Some(status) => {
+            // The shared guarded writer: regular-file destinations only, replaced
+            // atomically, so a planted link cannot redirect the copy.
+            let json_result = write_parented_file(
+                &repo.join(RIPR_PLUS_LAST_GOOD_JSON),
+                RIPR_PLUS_LAST_GOOD_JSON,
+                previous,
+            );
+            // `Ok(true)` when the Markdown was kept beside the JSON.
+            let markdown_result = match fs::read(repo.join(RIPR_PLUS_MD)) {
+                Ok(markdown) => write_parented_file(
+                    &repo.join(RIPR_PLUS_LAST_GOOD_MD),
+                    RIPR_PLUS_LAST_GOOD_MD,
+                    markdown,
+                )
+                .map(|()| true),
+                // No canonical Markdown: drop any saved one so the pair never
+                // describes two different runs.
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+                    match fs::remove_file(repo.join(RIPR_PLUS_LAST_GOOD_MD)) {
+                        Err(err) if err.kind() != std::io::ErrorKind::NotFound => Err(format!(
+                            "failed to remove stale {RIPR_PLUS_LAST_GOOD_MD}: {err}"
+                        )),
+                        _ => Ok(false),
+                    }
+                }
+                Err(err) => Err(format!("failed to read {RIPR_PLUS_MD}: {err}")),
+            };
+            match (json_result, markdown_result) {
+                (Ok(()), Ok(markdown_kept)) => {
+                    let kept_at = if markdown_kept {
+                        format!("{RIPR_PLUS_LAST_GOOD_JSON} and {RIPR_PLUS_LAST_GOOD_MD}")
+                    } else {
+                        RIPR_PLUS_LAST_GOOD_JSON.to_string()
+                    };
+                    format!(
+                        " The previous receipt (status `{status}`) is kept at {kept_at}; {LAST_GOOD_IS_STALE} {RIPR_PLUS_JSON} now records this failed run as indeterminate."
+                    )
+                }
+                (json, markdown) => {
+                    let mut kept = Vec::new();
+                    let mut failures = Vec::new();
+                    match json {
+                        Ok(()) => kept.push(RIPR_PLUS_LAST_GOOD_JSON),
+                        Err(err) => failures.push(err),
+                    }
+                    match markdown {
+                        Ok(true) => kept.push(RIPR_PLUS_LAST_GOOD_MD),
+                        Ok(false) => {}
+                        Err(err) => failures.push(err),
+                    }
+                    let failures = failures.join("; ");
+                    if kept.is_empty() {
+                        // Nothing was copied, so no copy is named as kept; a
+                        // file left from an even earlier run is still no
+                        // evidence for this one.
+                        format!(
+                            " The previous receipt (status `{status}`) could not be kept ({failures}). {NO_COPY_KEPT_SENTENCE} {RIPR_PLUS_JSON} now records this failed run as indeterminate."
+                        )
+                    } else {
+                        format!(
+                            " The previous receipt (status `{status}`) was only partly kept ({failures}). Kept: {}. {LAST_GOOD_IS_STALE_SENTENCE} {RIPR_PLUS_JSON} now records this failed run as indeterminate.",
+                            kept.join(" and ")
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -68,7 +205,7 @@ fn parse_options(args: &[String]) -> Result<RiprPlusOptions, String> {
     let mut index = 0usize;
     while index < args.len() {
         match args[index].as_str() {
-            "--check" => {}
+            "--check" => options.check = true,
             "--gap-ledger" => {
                 index += 1;
                 options.gap_ledger =
@@ -82,7 +219,7 @@ fn parse_options(args: &[String]) -> Result<RiprPlusOptions, String> {
                     "--repo-exposure-summary",
                 )?));
             }
-            other => return Err(format!("unknown plus argument `{other}`")),
+            other => return Err(unknown_argument("plus", other)),
         }
         index += 1;
     }
@@ -115,25 +252,92 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]");
-    println!();
-    println!("Options:");
-    println!(
-        "  --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition)."
+    println!("{PLUS_HELP}");
+}
+
+/// Help body for `ripr plus`. Also the flag source for unknown-argument
+/// suggestions; keep accepted flags on option-list lines.
+pub(crate) const PLUS_HELP: &str = "\
+Compose the repo-wide RIPR+ receipt from an existing report artifact.
+
+Usage: ripr plus --repo-exposure-summary <path> | --gap-ledger <path> [--check]
+
+Options:
+  --repo-exposure-summary <path>  Compose the receipt from a repo-exposure-summary-json artifact (pure composition).
+  --gap-ledger <path>             Compose the receipt from a gap decision ledger (ledger-only composition; no repo scan).
+  --check                         Require established zero; incomplete evidence exits 2.
+
+Exit status: 0 when the receipt was composed; 2 when the named artifact
+cannot be read or composed, or --check cannot establish zero (an
+`indeterminate` receipt is still written).
+
+Outputs:
+  target/ripr/reports/ripr-plus.json
+  target/ripr/reports/ripr-plus.md
+  target/ripr/reports/ripr-plus.last-good.json  (only after a read or compose failure)
+  target/ripr/reports/ripr-plus.last-good.md    (only after a read or compose failure)
+
+When the named artifact cannot be read or composed, the run still writes an
+`indeterminate` receipt to ripr-plus.json. If the receipt it replaces has a
+status other than `indeterminate`, that receipt and its Markdown, when present,
+are first copied to ripr-plus.last-good.{json,md}. A --check failure on a
+composed receipt writes that receipt and keeps no last-good copy.
+The copy describes an earlier run, may be stale for the current HEAD, and is
+not current evidence.
+
+Current inputs contain exposure or ledger evidence only. They do not establish
+complete test-efficiency measurement or bind that evidence to current candidate
+bytes. Known actionable counts remain informational; complete unresolved debt
+and candidate authority remain indeterminate, so --check cannot pass from these
+inputs. This command does not scan a repository or turn raw seams into debt.
+";
+
+/// The supported legacy inputs have no complete test-quality/current-candidate
+/// contract. A zero exposure counter cannot cross that missing proof boundary.
+pub(crate) fn qualify_legacy_receipt(mut receipt: Value) -> Result<Value, String> {
+    let fields = receipt
+        .as_object_mut()
+        .ok_or_else(|| "RIPR+ receipt must be an object".to_string())?;
+    let known = fields
+        .get("known_actionable_unresolved")
+        .or_else(|| fields.get("unresolved"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let observed_head = fields
+        .get("observed_repository_head")
+        .or_else(|| fields.get("head"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    fields.insert("known_actionable_unresolved".to_string(), known);
+    fields.insert("observed_repository_head".to_string(), observed_head);
+    fields.insert("unresolved".to_string(), Value::Null);
+    fields.insert("head".to_string(), Value::Null);
+    fields.insert("status".to_string(), json!("indeterminate"));
+    fields.insert("zero_unresolved_established".to_string(), json!(false));
+    fields.insert("candidate_binding".to_string(), json!("not_established"));
+    fields.insert(
+        "machine_readable_cause".to_string(),
+        json!("quality_evidence_incomplete"),
     );
-    println!(
-        "  --gap-ledger <path>             Compose the receipt from a gap decision ledger (ledger-only composition; no repo scan)."
+    fields.insert(
+        "incomplete_evidence".to_string(),
+        json!([
+            "complete_test_efficiency_measurement",
+            "current_candidate_binding",
+            "blocked_and_unsupported_scope_disposition"
+        ]),
     );
-    println!("  --check                         Accepted for xtask parity (no-op).");
-    println!();
-    println!("Outputs:");
-    println!("  {RIPR_PLUS_JSON}");
-    println!("  {RIPR_PLUS_MD}");
-    println!();
-    println!("This receipt is the repo-wide RIPR+ quality-gate input. It uses the");
-    println!("public canonical actionable gap basis and does not count raw seam");
-    println!("inventory as unresolved debt. The binary-first `ripr plus` is");
-    println!("artifact-composition-only: it does not run an in-process full-repo scan.");
+    let warnings = fields.entry("warnings").or_insert_with(|| json!([]));
+    let warnings = warnings
+        .as_array_mut()
+        .ok_or_else(|| "RIPR+ receipt warnings must be an array".to_string())?;
+    let warning = json!(
+        "Exposure/ledger counts alone do not establish complete RIPR+ zero. Test-efficiency measurement, current-candidate binding and blocked/unsupported scope disposition are not established; inspect the source evidence and do not use this receipt as a zero gate."
+    );
+    if !warnings.contains(&warning) {
+        warnings.push(warning);
+    }
+    Ok(receipt)
 }
 
 fn ripr_plus_receipt_from_options(options: &RiprPlusOptions, head: &str) -> Result<Value, String> {
@@ -175,7 +379,14 @@ fn render_gap_ledger_repo_badge_json(gap_ledger: &Path) -> Result<String, String
         &text,
         output::badge::BadgeKind::Ripr,
         policy,
-    )?;
+    )
+    .map_err(|err| {
+        format!(
+            "plus --gap-ledger {} is not a gap decision ledger: {err}. \
+             Pass the ledger written by `ripr gap-ledger` (default target/ripr/reports/gap-decision-ledger.json).",
+            gap_ledger.display()
+        )
+    })?;
     output::badge::attach_public_projection(&mut summary, &gap_ledger.display().to_string());
     Ok(output::badge::render_native_json(&summary))
 }
@@ -381,7 +592,10 @@ fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
         "unresolved": null,
         "top_files": [],
         "suppressed": null,
-        "head": head,
+        "head": null,
+        "observed_repository_head": head,
+        "candidate_binding": "not_established",
+        "zero_unresolved_established": false,
         "counts": {},
         "reason_counts": {},
         "machine_readable_cause": machine_readable_cause,
@@ -403,7 +617,7 @@ fn error_ripr_plus_receipt(head: &str, err: &str) -> Value {
 
 fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
     let mut body = String::from("# ripr+ Repo Receipt\n\n");
-    body.push_str("This report is the repo-wide RIPR+ quality-gate input. It uses the public canonical actionable gap basis and does not count raw seam inventory as unresolved debt.\n\n");
+    body.push_str("This is an informational projection of supplied exposure/ledger evidence. It does not establish complete test-quality measurement or a current-candidate zero result. Raw seams are not actionable debt.\n\n");
     body.push_str("## Basis\n\n");
     body.push_str("| Field | Value |\n");
     body.push_str("| --- | --- |\n");
@@ -444,13 +658,21 @@ fn ripr_plus_receipt_markdown(receipt: &Value) -> String {
             .and_then(Value::as_u64)
             .unwrap_or(0)
     ));
+    if let Some(known) = receipt
+        .get("known_actionable_unresolved")
+        .and_then(Value::as_u64)
+    {
+        body.push_str(&format!(
+            "| Known actionable exposure items (unqualified) | {known} |\n"
+        ));
+    }
     body.push_str(&format!(
-        "| Head | `{}` |\n",
+        "| Qualified candidate head | `{}` |\n",
         markdown_cell(&json_string_field_value(receipt, "head"))
     ));
     if is_indeterminate || unresolved_is_null {
         body.push_str("\n## Evaluation Status\n\n");
-        body.push_str("> **Indeterminate** — the evaluation did not complete. No gap count is available from this run. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
+        body.push_str("> **Indeterminate** — a complete, current quality result is not established. Any known exposure count above is partial evidence, not the complete unresolved total. This receipt must not be treated as evidence of zero unresolved gaps.\n\n");
         if let Some(warnings) = receipt
             .get("warnings")
             .and_then(Value::as_array)
@@ -650,12 +872,18 @@ fn normalize_path(path: &Path) -> String {
         .to_string()
 }
 
+/// Cooperative deadline for the receipt HEAD stamp (#4363): a hung git
+/// records `unknown` instead of pinning `ripr plus`.
+const RIPR_PLUS_GIT_HEAD_DEADLINE: std::time::Duration = std::time::Duration::from_mins(1);
+
 fn git_head(repo: &Path) -> String {
-    std::process::Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(["rev-parse", "HEAD"])
-        .output()
+    git_head_within(repo, RIPR_PLUS_GIT_HEAD_DEADLINE)
+}
+
+/// [`git_head`] with the deadline as a parameter, so a test can prove the
+/// deadline reaches the shared git runner.
+fn git_head_within(repo: &Path, deadline: std::time::Duration) -> String {
+    crate::git::run_git_output_with_deadline(repo, &["rev-parse", "HEAD"], Some(deadline))
         .ok()
         .and_then(|output| {
             if output.status.success() {
@@ -678,7 +906,8 @@ fn write_parented_file(path: &Path, label: &str, contents: impl AsRef<[u8]>) -> 
         fs::create_dir_all(parent)
             .map_err(|err| format!("failed to create parent dir for {label}: {err}"))?;
     }
-    fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
+    crate::output::file_write::write(path, contents.as_ref())
+        .map_err(|err| format!("failed to write {label}: {err}"))
 }
 
 #[cfg(test)]
@@ -854,6 +1083,402 @@ mod tests {
         }
     }
 
+    /// #4727: a named `--gap-ledger` that cannot be read must not exit 0.
+    /// The indeterminate receipt is still written for CI, and the error is
+    /// returned so the process exits 2.
+    #[test]
+    fn unreadable_gap_ledger_writes_indeterminate_receipt_and_fails() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-unreadable-ledger-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(repo.join("nope.json")),
+            check: false,
+        };
+        let result = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        match result {
+            Err(msg) if msg.contains("failed to read gap ledger") => {}
+            other => return Err(format!("expected read failure, got {other:?}")),
+        }
+        let receipt: Value = serde_json::from_str(
+            &written.map_err(|err| format!("indeterminate receipt was not written: {err}"))?,
+        )
+        .map_err(|err| format!("receipt is not JSON: {err}"))?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert_eq!(receipt["machine_readable_cause"], "evaluation_error");
+        Ok(())
+    }
+
+    /// A readable file that is not a gap ledger must fail with the exit code,
+    /// the written receipt, and a message naming the file and the fix agreeing.
+    #[test]
+    fn unrecognized_gap_ledger_fails_and_receipt_is_indeterminate() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-foreign-ledger-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let ledger = repo.join("foreign.json");
+        fs::write(&ledger, r#"{"foo":1}"#).map_err(|err| format!("write ledger: {err}"))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(ledger),
+            check: false,
+        };
+        let result = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let written = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        match result {
+            Err(msg)
+                if msg.contains("foreign.json") && msg.contains("not a gap decision ledger") => {}
+            other => return Err(format!("expected unrecognized-ledger error, got {other:?}")),
+        }
+        let receipt: Value = serde_json::from_str(
+            &written.map_err(|err| format!("receipt was not written: {err}"))?,
+        )
+        .map_err(|err| format!("receipt is not JSON: {err}"))?;
+        assert_eq!(receipt["status"], "indeterminate");
+        assert_ne!(receipt["zero_unresolved_established"], true);
+        Ok(())
+    }
+
+    /// A failed run must not cost the last real receipt: it is set aside, and
+    /// the canonical path still says the run was indeterminate.
+    #[test]
+    fn failed_run_keeps_the_previous_real_receipt_beside_the_indeterminate_one()
+    -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-keep-last-good-{}-{nanos}",
+            std::process::id()
+        ));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_MD), "good receipt")
+            .map_err(|err| format!("seed md: {err}"))?;
+        let ledger = repo.join("foreign.json");
+        fs::write(&ledger, r#"{"foo":1}"#).map_err(|err| format!("write ledger: {err}"))?;
+        let options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(ledger),
+            check: false,
+        };
+
+        let first = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let canonical = fs::read_to_string(repo.join(RIPR_PLUS_JSON));
+        let kept_json = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON));
+        let kept_md = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_MD));
+        // A second failure must not replace the kept pass with the indeterminate one.
+        let second = compose_and_write_receipt(&repo, &options, "deadbeef");
+        let kept_again = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON));
+        let _ = fs::remove_dir_all(&repo);
+
+        let message = match first {
+            Err(message) => message,
+            Ok(()) => return Err("a bad ledger must fail".to_string()),
+        };
+        assert!(message.contains("previous receipt"), "{message}");
+        assert!(message.contains("ripr-plus.last-good.json"), "{message}");
+        assert!(message.contains("ripr-plus.last-good.md"), "{message}");
+        assert!(
+            message.contains("may be stale for the current HEAD"),
+            "{message}"
+        );
+        let canonical: Value = serde_json::from_str(&canonical.map_err(|err| err.to_string())?)
+            .map_err(|err| format!("canonical receipt is not JSON: {err}"))?;
+        assert_eq!(canonical["status"], "indeterminate");
+        assert_eq!(
+            kept_json.map_err(|err| err.to_string())?,
+            r#"{"status":"pass"}"#
+        );
+        assert_eq!(kept_md.map_err(|err| err.to_string())?, "good receipt");
+        if second.is_ok() {
+            return Err("a second bad-ledger run must fail".to_string());
+        }
+        assert_eq!(
+            kept_again.map_err(|err| err.to_string())?,
+            r#"{"status":"pass"}"#,
+            "an indeterminate receipt must never become the last good one"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn saved_markdown_is_dropped_when_the_previous_receipt_had_none() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo =
+            std::env::temp_dir().join(format!("ripr-plus-stale-md-{}-{nanos}", std::process::id()));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_LAST_GOOD_MD), "older run")
+            .map_err(|err| format!("seed stale md: {err}"))?;
+        let kept = keep_last_good_receipt(&repo);
+        let stale_md = repo.join(RIPR_PLUS_LAST_GOOD_MD).exists();
+        let json = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        assert!(kept.contains("is kept at"), "{kept}");
+        assert!(
+            !kept.contains("ripr-plus.last-good.md"),
+            "a dropped Markdown must not be named as kept: {kept}"
+        );
+        assert!(
+            !stale_md,
+            "a saved Markdown from an older run must not outlive its JSON"
+        );
+        assert_eq!(json.map_err(|err| err.to_string())?, r#"{"status":"pass"}"#);
+        Ok(())
+    }
+
+    #[test]
+    fn partial_preservation_is_reported_as_partial() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-partial-keep-{}-{nanos}",
+            std::process::id()
+        ));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_MD), "good receipt")
+            .map_err(|err| format!("seed md: {err}"))?;
+        // A directory where the saved Markdown belongs makes only that copy fail.
+        fs::create_dir_all(repo.join(RIPR_PLUS_LAST_GOOD_MD))
+            .map_err(|err| format!("block saved md: {err}"))?;
+        let kept = keep_last_good_receipt(&repo);
+        let json = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON));
+        let _ = fs::remove_dir_all(&repo);
+        assert!(kept.contains("only partly kept"), "{kept}");
+        assert!(kept.contains("ripr-plus.last-good.md"), "{kept}");
+        assert!(!kept.contains("ripr-plus.last-good.json:"), "{kept}");
+        // The surviving copy is named, with the same authority limit.
+        assert!(
+            kept.contains("Kept: target/ripr/reports/ripr-plus.last-good.json."),
+            "{kept}"
+        );
+        assert!(kept.contains("may be stale for the current HEAD"), "{kept}");
+        assert_eq!(json.map_err(|err| err.to_string())?, r#"{"status":"pass"}"#);
+        Ok(())
+    }
+
+    #[test]
+    fn no_surviving_copy_is_reported_as_not_kept() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-none-kept-{}-{nanos}",
+            std::process::id()
+        ));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_MD), "good receipt")
+            .map_err(|err| format!("seed md: {err}"))?;
+        // Directories where both saved copies belong make both copies fail.
+        for blocked in [RIPR_PLUS_LAST_GOOD_JSON, RIPR_PLUS_LAST_GOOD_MD] {
+            fs::create_dir_all(repo.join(blocked))
+                .map_err(|err| format!("block {blocked}: {err}"))?;
+        }
+        let kept = keep_last_good_receipt(&repo);
+        let _ = fs::remove_dir_all(&repo);
+        assert!(kept.contains("could not be kept"), "{kept}");
+        assert!(!kept.contains("partly kept"), "{kept}");
+        assert!(!kept.contains("Kept:"), "{kept}");
+        assert!(!kept.contains("A kept copy"), "{kept}");
+        assert!(kept.contains("is not current evidence"), "{kept}");
+        Ok(())
+    }
+
+    #[test]
+    fn surviving_markdown_copy_is_named_when_the_json_copy_fails() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-md-only-kept-{}-{nanos}",
+            std::process::id()
+        ));
+        let reports = repo.join("target/ripr/reports");
+        fs::create_dir_all(&reports)
+            .map_err(|err| format!("mkdir {}: {err}", reports.display()))?;
+        fs::write(repo.join(RIPR_PLUS_JSON), r#"{"status":"pass"}"#)
+            .map_err(|err| format!("seed json: {err}"))?;
+        fs::write(repo.join(RIPR_PLUS_MD), "good receipt")
+            .map_err(|err| format!("seed md: {err}"))?;
+        // A directory where the saved JSON belongs makes only that copy fail.
+        fs::create_dir_all(repo.join(RIPR_PLUS_LAST_GOOD_JSON))
+            .map_err(|err| format!("block saved json: {err}"))?;
+        let kept = keep_last_good_receipt(&repo);
+        let md = fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_MD));
+        let _ = fs::remove_dir_all(&repo);
+        assert!(kept.contains("only partly kept"), "{kept}");
+        assert!(
+            kept.contains("Kept: target/ripr/reports/ripr-plus.last-good.md."),
+            "{kept}"
+        );
+        assert!(kept.contains("may be stale for the current HEAD"), "{kept}");
+        assert_eq!(md.map_err(|err| err.to_string())?, "good receipt");
+        Ok(())
+    }
+
+    #[test]
+    fn failed_run_without_a_previous_receipt_keeps_nothing() -> Result<(), String> {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-no-previous-{}-{nanos}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&repo).map_err(|err| format!("mkdir {}: {err}", repo.display()))?;
+        let kept = keep_last_good_receipt(&repo);
+        let exists = repo.join(RIPR_PLUS_LAST_GOOD_JSON).exists();
+        let _ = fs::remove_dir_all(&repo);
+        assert_eq!(kept, "");
+        assert!(!exists);
+        Ok(())
+    }
+
+    /// Completed source-qualified evidence survives failures without
+    /// acquiring a complete-zero or current-candidate claim.
+    #[test]
+    fn failed_run_preserves_qualified_informational_receipt_without_zero_claim()
+    -> Result<(), String> {
+        struct OwnedRepo(PathBuf);
+        impl Drop for OwnedRepo {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|err| format!("clock failed: {err}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-qualified-last-good-{}-{nanos}",
+            std::process::id()
+        ));
+        // Atomic creation proves ownership before Drop removes this root.
+        fs::create_dir(&repo).map_err(|err| format!("create owned root: {err}"))?;
+        let _owned = OwnedRepo(repo.clone());
+        let summary_path = repo.join("summary.json");
+        let summary = json!({
+            "format": "repo-exposure-summary-json",
+            "basis": "canonical_actionable_gap",
+            "metrics": {"unsuppressed_exposure_gaps": 2},
+            "reason_breakdown": {"actionability": {}},
+            "top_files": [],
+            "limits": {"max_top_files": 25}
+        });
+        fs::write(&summary_path, summary.to_string())
+            .map_err(|err| format!("write valid summary: {err}"))?;
+        let good_options = RiprPlusOptions {
+            repo_exposure_summary: Some(summary_path),
+            gap_ledger: None,
+            check: false,
+        };
+        compose_and_write_receipt(&repo, &good_options, "deadbeef")?;
+        let before_json = fs::read_to_string(repo.join(RIPR_PLUS_JSON))
+            .map_err(|err| format!("read qualified JSON: {err}"))?;
+        let before_md = fs::read(repo.join(RIPR_PLUS_MD))
+            .map_err(|err| format!("read qualified Markdown: {err}"))?;
+        let before: Value = serde_json::from_str(&before_json)
+            .map_err(|err| format!("parse qualified JSON: {err}"))?;
+        assert_eq!(before["status"], "indeterminate");
+        assert_eq!(
+            before["machine_readable_cause"],
+            "quality_evidence_incomplete"
+        );
+        assert_eq!(before["known_actionable_unresolved"], 2);
+        assert_eq!(before["candidate_binding"], "not_established");
+        assert_eq!(before["zero_unresolved_established"], false);
+        let ledger = repo.join("foreign.json");
+        fs::write(&ledger, r#"{"foo":1}"#).map_err(|err| format!("write bad ledger: {err}"))?;
+        let bad_options = RiprPlusOptions {
+            repo_exposure_summary: None,
+            gap_ledger: Some(ledger),
+            check: false,
+        };
+        let failure = match compose_and_write_receipt(&repo, &bad_options, "deadbeef") {
+            Err(message) => message,
+            Ok(()) => return Err("a bad ledger must fail".to_string()),
+        };
+        assert!(failure.contains("ripr-plus.last-good.json"), "{failure}");
+        assert_eq!(
+            fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON))
+                .map_err(|err| format!("read kept qualified JSON: {err}"))?,
+            before_json,
+            "preserve exact qualified receipt bytes"
+        );
+        assert_eq!(
+            fs::read(repo.join(RIPR_PLUS_LAST_GOOD_MD))
+                .map_err(|err| format!("read kept qualified Markdown: {err}"))?,
+            before_md
+        );
+        let canonical: Value = serde_json::from_str(
+            &fs::read_to_string(repo.join(RIPR_PLUS_JSON))
+                .map_err(|err| format!("read failed canonical JSON: {err}"))?,
+        )
+        .map_err(|err| format!("parse failed canonical JSON: {err}"))?;
+        assert_eq!(canonical["status"], "indeterminate");
+        assert_eq!(canonical["machine_readable_cause"], "evaluation_error");
+        assert_eq!(canonical["zero_unresolved_established"], false);
+        match compose_and_write_receipt(&repo, &bad_options, "deadbeef") {
+            Err(_) => {}
+            Ok(()) => return Err("a second bad ledger must fail".to_string()),
+        }
+        assert_eq!(
+            fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON))
+                .map_err(|err| format!("read saved JSON after repeated failure: {err}"))?,
+            before_json
+        );
+        let timeout = error_ripr_plus_receipt("deadbeef", "scan timed out after 1000 ms");
+        write_receipt(&repo, &timeout)?;
+        assert_eq!(keep_last_good_receipt(&repo), "");
+        assert_eq!(
+            fs::read_to_string(repo.join(RIPR_PLUS_LAST_GOOD_JSON))
+                .map_err(|err| format!("read saved JSON after timeout: {err}"))?,
+            before_json,
+            "evaluation-timeout records must not replace completed evidence"
+        );
+        Ok(())
+    }
+
     #[test]
     fn error_receipt_is_indeterminate() -> Result<(), String> {
         let receipt = error_ripr_plus_receipt("unknown", "the scan timed out after 1000 ms");
@@ -907,5 +1532,51 @@ mod tests {
         assert!(markdown.contains("## Evaluation Status"));
         assert!(markdown.contains("Indeterminate"));
         assert!(markdown.contains("N/A"));
+    }
+
+    #[test]
+    fn git_head_forwards_its_deadline_to_git() -> Result<(), String> {
+        // #4363: a zero deadline is refused before spawn, so the stamp must
+        // fall back to `unknown` even where HEAD resolves; dropping the
+        // deadline would stamp the real commit.
+        use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-plus-git-head-deadline-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&repo).map_err(|err| err.to_string())?;
+        let result = (|| {
+            fixture_git_ok(&repo, &["init", "--quiet"])?;
+            fixture_git_ok(
+                &repo,
+                &[
+                    "-c",
+                    "user.email=ripr@example.invalid",
+                    "-c",
+                    "user.name=RIPR Test",
+                    "commit",
+                    "--quiet",
+                    "--allow-empty",
+                    "--no-gpg-sign",
+                    "-m",
+                    "init",
+                ],
+            )?;
+            let bounded = git_head_within(&repo, std::time::Duration::from_mins(1));
+            if bounded.len() != 40 {
+                return Err(format!("control: expected a commit id, got {bounded}"));
+            }
+            let refused = git_head_within(&repo, std::time::Duration::ZERO);
+            if refused != "unknown" {
+                return Err(format!("zero deadline must stamp unknown, got {refused}"));
+            }
+            Ok(())
+        })();
+        let _ = remove_fixture_tree(&repo);
+        result
     }
 }

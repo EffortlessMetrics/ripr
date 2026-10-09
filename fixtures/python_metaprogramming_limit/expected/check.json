@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_metaprogramming_limit/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:486da5b0b5f937d246643c5590c103be190bac8f7d610ff19ec393bfaa78e1b1","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:486da5b0b5f937d246643c5590c103be190bac8f7d610ff19ec393bfaa78e1b1","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -34,7 +33,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `build_model`", "infection unknown: Static limit `metaprogramming` prevents a safe Python infection claim.", "propagation unknown: Static limit `metaprogramming` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `metaprogramming` prevents a safe Python discriminator claim.", "related test tests/test_models.py:4 test_build_model_sets_name uses strong exact value oracle: assert build_model(\"Invoice\").__name__ == \"Invoice\""],
       "flow_sinks": [
       ],
-      "evidence": ["owner: build_model", "owner_kind: function", "static_limit metaprogramming: changed line uses metaprogramming syntax", "test_framework: pytest (test_build_model_sets_name)", "test_verify_command: pytest tests/test_models.py::test_build_model_sets_name (test_build_model_sets_name)", "related_test_relation: syntactic_call (test_build_model_sets_name)", "test_oracle: exact_value strong (test_build_model_sets_name)", "test_oracle_shape: field_assertion (test_build_model_sets_name)"],
+      "evidence": ["owner: build_model", "owner_kind: function", "static_limit metaprogramming: changed line uses metaprogramming syntax", "test_framework: pytest (test_build_model_sets_name)", "test_verify_command: python -m pytest tests/test_models.py::test_build_model_sets_name (test_build_model_sets_name)", "related_test_relation: syntactic_call (test_build_model_sets_name)", "test_oracle: exact_value strong (test_build_model_sets_name)", "test_oracle_shape: field_assertion (test_build_model_sets_name)"],
       "missing": ["Static limit `metaprogramming`: the Python preview adapter saw metaprogramming syntax and does not infer runtime-created behavior."],
       "assertion_texts": {
       },
@@ -84,5 +83,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/models.py","digest":"sha256:8ec0e1099fe22977454d6b49790017c1768d8ca06be83d4cfed3e5c414444ec7"}]}
 }

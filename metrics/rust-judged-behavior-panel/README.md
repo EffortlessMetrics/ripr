@@ -70,11 +70,90 @@ It retains byte-exact stdout/stderr plus typed source, build, binary, host,
 argv, config, diff, process, timeout, and analyzer-input identities below the
 ignored `target/` tree.
 
+The owned build removes inherited `CARGO_TARGET_DIR` and
+`CARGO_BUILD_BUILD_DIR`, then explicitly binds both final and intermediate
+artifacts to the same previously absent attempt-owned `build-target` directory.
+Its exact recorded command is:
+
+```text
+cargo build -p ripr --locked --offline --target-dir <absolute-target> --config <build.build-dir=TOML-quoted-absolute-target>
+```
+
+Cargo's [command-line configuration](https://doc.rust-lang.org/cargo/reference/config.html#command-line-overrides)
+takes precedence over inherited environment,
+workspace, ancestor, and Cargo-home `build.build-dir` settings. Only that key is
+overridden: ordinary caller builds, the workspace toolchain pin, existing
+`CARGO_HOME` registry cache, and unrelated legitimate configuration (including
+configured compiler-cache wrappers under the existing policy) remain intact.
+This is intermediate-directory isolation, not a hermetic-build or arbitrary
+malicious-configuration defense. It assumes the selected Cargo/compiler and
+configured wrappers are trustworthy and that the attempt is not concurrently
+modified. Neither a current application stamp, successful build, correct version
+nor a new binary hash alone establishes which dependency implementation linked.
+
+The override uses TOML serialization rather than shell interpolation, preserving
+quotes, backslashes, spaces, and Unicode. The pinned [Cargo 1.95 path-template
+parser](https://github.com/rust-lang/cargo/blob/rust-1.95.0/src/cargo/util/context/path.rs)
+interprets braces even in a quoted value and has no literal-brace escape.
+A checkout/output path containing `{` or `}`, or a non-UTF-8 path, therefore fails
+with actionable guidance before Cargo starts. Use a UTF-8 checkout/output path
+without braces. Native Windows execution is a separate qualification boundary;
+portable source and path-encoding tests do not claim native Windows runtime proof.
+
+Historical eight-argument host build receipts remain retained evidence of their
+original commands and bytes; their intermediate provenance is not established.
+The existing build-identity validator recognizes that exact historical recipe
+and rejects current admission and packet export with an explicit rebuild-required
+message. Re-run `cargo xtask rust-judged-panel replay --out <same-output-root>`
+from the intended clean source using this builder. A successful new generation
+records and validates the exact ten-argument recipe, then advances `current.json`
+under the existing transaction. Old runs are neither modified nor silently
+upgraded. A failed rebuild leaves the old pointer and evidence intact, but those
+historical receipts still cannot support new packet export. This does not assert
+that any historical receipt was actually contaminated; retained portable packets
+are not rewritten by this host-build change.
+
+The regressions at `host_run/build_tests.rs` invoke the real `build_fresh_binary`
+owner in isolated test subprocesses. Two dependency-free, version-valid
+workspaces have different same-name/version path-dependency implementations.
+Ordinary, inherited-environment, repository, ancestor, Cargo-home, and mixed
+precedence A → B → A sequences execute three distinct binaries apiece and require
+actual OLD → NEW → OLD dependency behavior. An unrelated configuration marker
+must survive and caller configuration bytes must remain unchanged. Source and
+binary hashes, raw build/behavior streams, and receipts are retained under
+`target/ripr/rust-judged-panel-host-tests/`. Failed attempts retain their evidence.
+Successful test fixtures are removed by default; deliberate qualification can
+retain the complete bytes with `RIPR_HOST_BUILD_KEEP_EVIDENCE=1`:
+
+```sh
+RIPR_HOST_BUILD_KEEP_EVIDENCE=1 cargo test -p xtask rust_judged_panel::host_run::build_tests::fresh_build_ -- --nocapture
+```
+
 Each attempt is staged under an exclusive lock. Only a validated three-case
 generation receives `run-index.json`, is moved into the immutable `runs/`
 namespace, and advances `current.json` last. A failed, partial, or concurrent
 attempt cannot become current. The build has no network fallback: an offline
 cache miss is a failed attempt.
+
+Build admission binds the command and executed binary to caller-owned context,
+not just to one another. Before publication the recorded absolute path must
+belong to the actual staging attempt. After publication the digest-checked
+current/index run ID and normalized output-relative path fix the logical suffix
+`<output>/.staging-<run-id>/build-target/debug/ripr` (or `ripr.exe`). The retained
+binary must use the matching `build-target/debug/` path, remain canonically
+confined to that generation, and match its recorded bytes and digest. Relative,
+traversing, other-output, other-run and differently retained paths are refused.
+Path roots use the native platform's absolute-path rules, including Windows
+drive and UNC roots; drive-relative paths are not absolute.
+
+Publication preserves the original staging path while moving its artifacts to
+`runs/<run-id>`. Moving the complete checkout to a new root also preserves
+admission and portable semantic identity: the historical absolute prefix is
+not compared with today's checkout root. An identical bound suffix under a
+different prefix remains valid. This is logical run membership, **not
+authentication of the historical checkout root or execution**. These unsigned
+receipts cannot distinguish that prefix change from legitimate relocation and
+do not gain such provenance from agreeing path strings or hashes.
 
 These files are host-bound run receipts. They do not by themselves select or
 bless findings, interpret quiet output, populate judgments, or support a
@@ -104,6 +183,155 @@ Publication stages and validates all three packets, publishes one immutable
 content-addressed generation, then advances `portable/current.json` last under
 an exclusive writer lock. A partial or concurrent attempt is non-authoritative.
 Judgment remains explicitly null and runtime calibration remains `not_run`.
+
+## Release-challenge selection
+
+`release-selection.json` is the frozen 0.11 release challenge
+([#3804](https://github.com/EffortlessMetrics/ripr-swarm/issues/3804)). It
+carries the source-side freeze (EffortlessMetrics/ripr#1675) plus the three
+real `should_limit` rows added under
+[#3805](https://github.com/EffortlessMetrics/ripr-swarm/issues/3805), with the
+committed diff captures under `diffs/release_*.diff`.
+`cargo xtask check-release-challenge-selection` (also run by precommit)
+validates it and reports the acceptance floors without lowering them.
+
+- Every selected repository has one `repository_scopes` record naming the exact
+  commit subjects, allowed read-only operations, network and retention policy,
+  bounds, actor, and expiry. `proposed_unauthorized` is the state until the
+  owner grants the scope; `authorized` requires an https link to that grant. Rows in an
+  unauthorized repository stay selected but are not runnable.
+- A `should_limit` row names a registered product `StaticLimitKind`, expects a
+  conservative class, routes no repair, credits no aligned observer, and states
+  the missing edge. Other directions carry no limit kind.
+- New rows are `selected_unjudged`: labels null and no judgment provenance.
+  Adjudication belongs to
+  [#3806](https://github.com/EffortlessMetrics/ripr-swarm/issues/3806).
+- `production_like_targets` names files the replay must opt in through
+  `[analysis] production_like_targets` because the default source-role policy
+  skips them (the `xtask/` cases). Each entry must be a file the frozen diff
+  changes.
+- The same behavior under two ids fails; row slices of one capture may share an
+  anchor only with different directions.
+
+## Release-challenge judgments
+
+`release-judgments.json` is the independent adjudication of every frozen row
+([#3806](https://github.com/EffortlessMetrics/ripr-swarm/issues/3806)).
+`cargo xtask check-release-challenge-judgments` (also run by precommit)
+validates it against the selection bytes it names.
+
+- `selection_sha256` binds the packet to the exact selection; a stale digest
+  rejects before any row is parsed or read.
+- Every selection row has exactly one judgment, and `expected_direction` is
+  copied, not re-decided. `terminal` is one of `confirmed_should_gap`,
+  `confirmed_should_stay_quiet`, `confirmed_should_limit`,
+  `inconclusive_missing_evidence`, `inconclusive_disagreement` or
+  `invalid_case_identity`; a confirmed terminal that differs from the expected
+  direction is a departure, not an error.
+- Limit rows, gap rows, departures and disputed rows need two independent
+  declared roles. A disagreement stays recorded; a confirmed terminal needs its
+  cited resolution, and a resolved disagreement cannot stay inconclusive.
+- Each review verdict (`discriminated`, `no_production_behavior`,
+  `weakly_discriminated`, `not_discriminated`, `limited`) supports one
+  direction. Reviews that support different directions, or not the confirmed
+  one, must carry a recorded disagreement.
+- `reference_outcome` labels compare with one named analyzer run, not the #1609
+  candidate. `false_actionable` and `false_exposed` are mutually exclusive,
+  `false_exposed` can be true only on a confirmed gap or limit row, and
+  `false_actionable` only on a confirmed quiet or limit row;
+  `under_credit` and `limitation_correct` are separate observations; `null`
+  means not established. Inconclusive rows carry no labels.
+- Judgments bind to the anchored behavior (file, line, expression). The
+  historical probe ids in the selection reasons are evidence of what was
+  selected, not identities the current analyzer reproduces.
+
+## Rolling production-quiet and actionability observation
+
+`rolling-observation.json` is the #4578 extension of this same panel. It does
+not replace the seed, the portable packets, or the frozen #3806 judgments.
+
+`cargo xtask rust-judged-panel check` (and the precommit alias) now also
+validates that rolling packet against the retained subjects:
+
+- Production quiet, gap, and limitation coverage is filled from the authorized
+  seed production subjects. The three #3806 test-only quiet controls remain
+  `test_only_quiet` and cannot occupy the production-quiet row.
+- Classification is observed from the check-JSON findings already projected
+  into the portable packets.
+- Canonical repair actionability is observed only from a non-blocked
+  `gap_decision_ledger`. A missing adapter, missing ledger, blocked ledger, or
+  governed-manifest expected label is `not_observed` with a precise cause. It
+  is not `no_action` and not `false_actionable=false`.
+- Unauthorized real-repository production-quiet replay stays named as an unmet
+  row rather than invented.
+
+The CLI accepts `check`, `replay`, `packet`, `calibrate`, and `feedback`. Bounded real
+ledger replay and live mutation campaigns remain outside the routine PR path.
+`calibrate --check` (and `rust-judged-panel check`) re-derives the retained
+scorecard from the #3806 judgments plus any exact receipts. Runtime results
+cannot rewrite structural judgment bytes.
+
+## Runtime calibration scorecard
+
+`calibration-scorecard.json` and `calibration-scorecard.md` are the #4795
+join of independently judged rows to exact runtime receipts.
+
+`cargo xtask rust-judged-panel calibrate` writes a fresh JSON/Markdown pair
+under `target/ripr/rust-judged-panel/calibration`. `--check` compares the
+retained files to that derivation.
+
+Every judged row has an explicit calibration eligibility and a terminal
+runtime disposition from:
+
+```text
+caught
+survived
+inconclusive
+equivalent_or_unusable
+not_run
+instrument_failure
+stale_or_wrong_subject
+```
+
+Current release-challenge repositories remain `proposed_unauthorized`, so the
+retained scorecard records `ineligible_unauthorized` / `not_run` rather than
+inventing caught or survived labels from the qualitative #3806 mutation
+reviews. Those reviews are not exact receipts (no runner hash, selector
+identity, or executed-subject counts). A later authorized receipt can join
+without rewriting the judgment packet.
+
+Rates always show numerator and denominator. No denominator is
+`not_measurable`, not a fake zero percent. Survived mutants stay visible
+without an automatic false-exposed conclusion. #3076 route-yield and #4578
+rolling-observation denominators are bound by identity and never merged.
+
+## Analyzer feedback ledger
+
+`feedback-ledger.json` is the #4796 sidecar over the same frozen #3806
+judgments. It does not replace the seed, packets, rolling observation, or
+independent judgments, and it does not absorb #4795 calibration.
+
+`cargo xtask rust-judged-panel check` also validates that ledger:
+
+- Every terminal judged case has one failure-direction disposition derived
+  from immutable labels. Human notes cannot strengthen inconclusive or
+  accepted-limitation rows.
+- Confirmed analyzer defects stay `replay_only` with a named
+  materialization/authorization boundary unless a producer-path fixture can
+  retain the exact mechanism. Fixture ids must not be the case id, and
+  `expected_class` shortcuts are rejected.
+- A merged repair without original-case replay remains
+  `repaired_pending_replay`. Wrong-target rows cannot close on a nearby
+  observer identity.
+- Runtime calibration is recorded as `not_run` while the landed #4795
+  receipts stay unauthorized (`proposed_unauthorized`). Those results cannot
+  set the static class.
+- Owner search receipts are recorded. The ledger does not create, assign,
+  close, or label GitHub objects.
+
+`cargo xtask rust-judged-panel feedback [--out] [--check]` derives JSON and
+Markdown from one DTO. There is still no accuracy `report` command and no
+overall analyzer score.
 
 ## Item contract
 
@@ -161,8 +389,8 @@ materialize exact replay repositories and analysis identities
 → record independent structural judgments
 → resolve disagreements visibly
 → add exact targeted mutation receipts where safe
-→ emit stratified confusion/agreement reports
-→ turn confirmed failure families into permanent analyzer fixtures
+→ emit stratified confusion/agreement reports   (#4795, this slice)
+→ turn confirmed failure families into permanent analyzer fixtures (#4796)
 ```
 
 ## Boundaries

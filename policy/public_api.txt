@@ -10,6 +10,7 @@
 # cargo test -p ripr --lib provider_contract, cargo xtask check-public-api.
 
 pub mod analysis;
+pub mod process_owner;
 pub mod app;
 pub mod cli;
 pub mod config;
@@ -17,8 +18,8 @@ pub mod domain;
 pub mod lsp;
 pub mod mcp;
 pub mod output;
-pub mod review_input;
 pub mod provider_contract;
+pub mod review_input;
 pub use analysis::LanguageRun;
 pub use analysis::LanguageRunStatus;
 pub use analysis::PartialDiffScope;
@@ -26,6 +27,7 @@ pub use analysis::PartialDiffStopReason;
 pub use analysis::PreviewLanguageAdvisory;
 pub use app::{
 pub use app::{Mode, OutputFormat};
+pub use domain::{
 pub use domain::{
 pub use domain::{LanguageFileCount, SourceCurrentness, Summary};
 pub use output::suppressions::CheckSuppressionOutcome;

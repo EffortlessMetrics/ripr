@@ -90,7 +90,7 @@ function producerManifest(overrides: Record<string, unknown> = {}): Buffer {
 }
 
 async function withManifestResponses(
-  responses: Array<{ status: number; body: Buffer }>,
+  responses: Array<{ status: number; body: Buffer; complete?: boolean }>,
   run: (requested: string[]) => Promise<void>
 ): Promise<void> {
   const original = https.get;
@@ -111,6 +111,9 @@ async function withManifestResponses(
       response.statusCode = selected.status;
       response.headers = {};
       callback(response);
+      // IncomingMessage only admits the received bytes after HTTP completion.
+      // The fake keeps an explicit incomplete case for the terminal control.
+      response.complete = selected.complete ?? true;
       stream.end(selected.body);
     });
     return request;
@@ -160,6 +163,21 @@ suite('Distribution manifest fallback', () => {
         /digest/i
       );
       assert.strictEqual(requested.length, 2);
+    });
+    // Matching typed manifest bytes do not authorize fallback or success when
+    // the preferred HTTP response is incomplete. Keep the production guard.
+    await withManifestResponses([
+      { status: 200, body: bytes, complete: false }
+    ], async (requested) => {
+      await assert.rejects(
+        fetchAdmittedManifestForDistribution('', distribution, '0.11.0', digest),
+        (error: unknown) => error instanceof ManifestFetchError
+          && error.message.includes('ended before completion')
+          && !isDirectManifestNotFound(error)
+      );
+      assert.deepStrictEqual(requested, [
+        'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0/ripr-server-manifest-v0.11.0.json'
+      ]);
     });
   });
 

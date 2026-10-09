@@ -38,6 +38,16 @@ with spec files, fixtures, code modules, output contracts, and metrics. The
 manifest is intentionally lightweight now and will become stricter as xtask
 traceability checks land.
 
+`cargo xtask check-traceability` checks registered behavior entries, coverage of
+spec files, fixture spec IDs, and the existence of files named by registered
+references. A pass does not mean every test is registered: the checker does not
+enumerate newly added test symbols. Keep tests that explain a meaningful
+behavior in the appropriate spec mapping during review; a helper or test that
+does not bear on an authored behavior need not receive a spurious entry.
+Registered `file::symbol` suffixes are currently advisory, not proof that the
+symbol exists, has a test role, ran, or establishes the behavior. Exact symbol
+and role verification belongs to #2345.
+
 ## Test Mapping
 
 Tests should make the behavior visible in names or comments.

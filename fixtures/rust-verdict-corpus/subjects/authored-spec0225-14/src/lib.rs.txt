@@ -1,0 +1,35 @@
+//! RIPR-SPEC-0225 acceptance example 14.
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Config {
+    pub retries: u32,
+    pub name: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum Wrapped {
+    One(Config),
+}
+
+impl PartialEq for Wrapped {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+pub fn wrap(n: u32) -> Wrapped {
+    Wrapped::One(Config {
+        retries: n + 1,
+        name: "x".into(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wraps_config() {
+        assert_eq!(wrap(3), Wrapped::One(Config { retries: 4, name: "x".into() }));
+    }
+}

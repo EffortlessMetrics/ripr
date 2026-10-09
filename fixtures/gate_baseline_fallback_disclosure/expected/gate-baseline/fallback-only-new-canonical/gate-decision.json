@@ -49,6 +49,7 @@
         "limitation": null,
         "missing_discriminator": "amount == discount_threshold",
         "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id newseam0000000002 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_command": null,
         "repair_target": {
           "file": "tests/pricing.rs",
           "kind": "related_test",
@@ -96,6 +97,17 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "baseline": {
+        "content_hash": "sha256:3d1842d01c1a3dd9bff718fd0facd781b1ab43b78ea38533ce43bd794a5b0073"
+      },
+      "pr_guidance": {
+        "content_hash": "sha256:ecc1438ee2a06ae8dfb5f00d930f90a7b3bc4c4868628edd9887685fab71ea19"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 1,

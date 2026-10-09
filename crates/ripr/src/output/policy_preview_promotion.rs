@@ -691,11 +691,8 @@ fn file_label(value: &str) -> String {
 }
 
 fn display_language(language: &str) -> String {
-    match language {
-        "typescript" => "TypeScript".to_string(),
-        "python" => "Python".to_string(),
-        other => other.to_string(),
-    }
+    crate::domain::LanguageId::display_name_for_wire(language)
+        .map_or_else(|| language.to_string(), str::to_string)
 }
 
 #[cfg(test)]

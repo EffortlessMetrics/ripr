@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_named_constant_boundary_repair_gap/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview language, advisory only (preview_limited)
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
+  File: src/pricing.py:5
+  Language: python
+  Language status: preview
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/pricing.py:discounted_total:predicate_boundary:predicate:amount>=discount_threshold
+  Changed behavior: if amount >= DISCOUNT_THRESHOLD:
+  Missing discriminator (1 of 2): A strong Python oracle reaches `discounted_total`, but static evidence does not place a related test input at the changed predicate boundary `amount == DISCOUNT_THRESHOLD`. No…
+  Related test (1 of 2): tests/test_pricing.py:8 test_discount_far_above_threshold
+  Suggested test file: tests/test_pricing.py
+  Suggested test: test_discount_far_above_threshold
+  Test node: tests/test_pricing.py::test_discount_far_above_threshold
+  Verify command: python -m pytest tests/test_pricing.py::test_discount_far_above_threshold (high)
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `amount == DISCOUNT_THRESHOLD`.
+  Evidence: reach yes · infection weak · propagation weak · observation yes · discriminator weak
+    - reach yes: 2 related Python test(s) found for owner `discounted_total`
+    - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
+    - 8 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_named_constant_boundary_repair_gap/input --diff fixtures/python_named_constant_boundary_repair_gap/diff.patch --mode fast probe:src_pricing.py:python_preview:e56dfcdf
+  ripr context --root fixtures/python_named_constant_boundary_repair_gap/input --diff fixtures/python_named_constant_boundary_repair_gap/diff.patch --mode fast --at probe:src_pricing.py:python_preview:e56dfcdf
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

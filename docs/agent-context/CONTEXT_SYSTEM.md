@@ -23,8 +23,10 @@ protection, `pull_request_target` defaults, or default CI blocking.
 
 `AGENTS.md` already tells agents to recover long-running work from
 repository artifacts rather than chat history, starting from the roadmap,
-implementation plan, campaigns, active goal manifest, capability matrix,
-specs, traceability, and learnings. That works, but the links between
+implementation plan, campaigns, live GitHub issues/PRs, PR-local slices
+under `.allow/spec-system/slices/` (scope after GitHub selects work; not a
+live selector), capability matrix, specs, traceability, and
+learnings. That works, but the links between
 those artifacts are still implicit prose — an agent has to *read* the
 campaign to find the spec, and *read* the spec to find the code paths.
 
@@ -49,8 +51,8 @@ typed manifests:
 | Orientation | What the repo is, where to start, what is risky. | `AGENTS.md`, `docs/agent-context/`. |
 | Product truth | What `ripr` must do (durable behavior contracts). | `docs/specs/`, `docs/OUTPUT_SCHEMA.md`, `docs/STATIC_EXPOSURE_MODEL.md`, `docs/CONFIGURATION.md`. |
 | Decision | Why a load-bearing decision was made and what it constrains. | `docs/adr/`. |
-| Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, GitHub issues and PRs, `.allow/spec-system/slices/`. |
-| Evidence | What actually happened, with provenance. | `target/ripr/reports/`, `target/ripr/receipts/`, `fixtures/`, `metrics/`, `.ripr/traceability.toml`, `docs/handoffs/`, `docs/LEARNINGS.md`. |
+| Execution | What the agent or operator should work on now. | `docs/ROADMAP.md`, `docs/IMPLEMENTATION_PLAN.md`, `docs/IMPLEMENTATION_CAMPAIGNS.md`, GitHub issues and PRs. `.allow/spec-system/slices/` is PR-local scope after that selection, not live work selection. |
+| Evidence | What actually happened, with provenance. | `target/ripr/reports/` (agent-loop receipts, `agent-receipt.json`), `target/ripr/receipts/` (per-gap receipts from `ripr receipt write`), `fixtures/`, `metrics/`, `.ripr/traceability.toml`, `docs/handoffs/`, `docs/LEARNINGS.md`. The two receipt directories are separate families with separate consumers; see the receipt map in [`AGENT_DISPATCH_WORKFLOW.md`](../AGENT_DISPATCH_WORKFLOW.md). |
 
 A doc lives in exactly one layer. A spec is not a plan; a plan is not a
 decision; an ADR is not a closeout. Layer separation is the discipline
@@ -70,7 +72,8 @@ translate it into the existing RIPR graph and the accepted
 | Spec | `docs/specs/RIPR-SPEC-*` |
 | ADR | `docs/adr/` |
 | Implementation plan | `docs/IMPLEMENTATION_PLAN.md` and `docs/IMPLEMENTATION_CAMPAIGNS.md` |
-| Active work items | GitHub issues, PRs, and `.allow/spec-system/slices/` |
+| Active work items | GitHub issues, PRs, checks, reviews, and the local worktree |
+| PR-local scope | `.allow/spec-system/slices/` (`ImplementationSliceV1`; no live execution state) |
 | Support tiers | `docs/status/SUPPORT_TIERS.md` |
 | Policy ledgers | `policy/*.toml`, `.ripr/traceability.toml`, `docs/CAPABILITY_MATRIX.md`, and `metrics/capabilities.toml` |
 | Closeout | `docs/handoffs/` |
@@ -216,7 +219,8 @@ proposal (docs/proposals/RIPR-PROP-NNNN-*.md)
   -> specs (docs/specs/RIPR-SPEC-NNNN-*.md)
   -> ADRs when a durable decision is needed (docs/adr/)
   -> campaign entry (docs/IMPLEMENTATION_CAMPAIGNS.md)
-  -> active work items (GitHub issues and .allow/spec-system/slices/)
+  -> active work items (GitHub issues and PRs)
+  -> PR-local scope (.allow/spec-system/slices/; ImplementationSliceV1, no live state)
   -> scoped PRs (one production delta + evidence package)
   -> receipts and reports (target/ripr/)
   -> closeout handoff (docs/handoffs/YYYY-MM-DD-<campaign>-closeout.md)

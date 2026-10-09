@@ -66,6 +66,10 @@ pub(crate) struct GateDecisionReport {
     pub(super) mode: GateMode,
     pub(super) root: String,
     pub(super) inputs: GateDecisionInputs,
+    /// Subject identity of the evaluation (#5263): which build produced the
+    /// decision and which input bytes it consumed, so a stale gate receipt is
+    /// distinguishable from a fresh one by the artifact itself.
+    pub(super) subject: GateSubject,
     pub(super) policy: GatePolicy,
     pub(super) summary: GateSummary,
     pub(super) new_unsuppressed: NewUnsuppressed,
@@ -116,6 +120,56 @@ pub(super) struct GateDecisionInputs {
     pub(super) exception_policy: Option<String>,
 }
 
+/// Subject identity of one gate evaluation (#5263). Every field is either
+/// measured here (build identity, input content hashes) or copied verbatim
+/// from the input document's own producer receipt — never inferred and never
+/// re-resolved, so the artifact records what this evaluation actually saw.
+///
+/// There is deliberately no timestamp: two identical evaluations stay
+/// byte-identical, and staleness is carried by the content hashes and the
+/// producer SHAs instead. There is deliberately no absolute checkout path:
+/// the caller-relative `root` field already names the evaluated root, and
+/// portable identity fields carry no machine-specific spelling.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateSubject {
+    /// Build identity of the writing binary (version plus commit or source
+    /// digest; `build_identity::cache_identity`), the same analyzer stamp
+    /// `check --write-artifact` records.
+    pub(super) analyzer_version: String,
+    /// One entry per consumed input, keyed by input name — every
+    /// CLI-supplied input that can change the decision, not only the
+    /// candidate sources (review round 1, #5263).
+    pub(super) inputs: BTreeMap<String, GateSubjectInput>,
+    /// `sha256` over the caller-supplied `--labels` strings (joined with NUL
+    /// separators), present only when labels were supplied on the command
+    /// line rather than through `--labels-json`.
+    pub(super) labels_sha256: Option<String>,
+}
+
+/// Identity of one consumed gate input document (#5263).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateSubjectInput {
+    /// `sha256:<hex>` of the exact bytes the evaluation consumed; `None` only
+    /// when the bytes could not be read for hashing (the read failure itself
+    /// already surfaces as a `config_error` or warning).
+    pub(super) content_hash: Option<String>,
+    /// The input document's own producer receipt, copied verbatim when the
+    /// producer recorded one (`run_receipt` on a review-comments guidance
+    /// document): the resolved base/head SHAs and root identity that producer
+    /// evaluated, so a `pr-ledger`'s asserted base/head can be cross-checked
+    /// against what the gate actually consumed.
+    pub(super) producer_subject: Option<GateProducerSubject>,
+}
+
+/// The producer identity carried by an input document's `run_receipt`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct GateProducerSubject {
+    pub(super) root_identity: Option<String>,
+    pub(super) base_sha: String,
+    pub(super) head_sha: String,
+    pub(super) reusable_cache_identity: Option<String>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct GatePolicy {
     pub(super) mode: GateMode,
@@ -158,6 +212,12 @@ pub(super) struct GateDecision {
     pub(super) policy: GateDecisionPolicy,
     pub(super) evidence: GateEvidence,
     pub(super) repair_route: GateRepairRoute,
+    /// `false` only for PR-guidance summary items the review producer could
+    /// not place on a changed line (`no_safe_changed_line_placement`): the
+    /// seam's own line and owner span sit outside the diff as far as the
+    /// producer knows. Markdown then names the owner and behavior without
+    /// calling them changed. Not serialized; JSON keeps its field names.
+    pub(super) changed_line_anchored: bool,
     /// Whether the candidate was absent from the baseline at decision time.
     /// Always `true` for diff-scoped modes (no baseline).
     /// Used when computing `new_unsuppressed.count` in baseline mode.
@@ -181,6 +241,12 @@ pub(super) struct GateRepairRoute {
     pub(super) missing_discriminator: Option<String>,
     pub(super) repair_target: Option<GateRepairTarget>,
     pub(super) test_intent: Option<String>,
+    /// The repair transaction's start (#3906). Present only when the
+    /// upstream card carries it, which it does only past the fail-closed
+    /// repair-packet flip; the gate never derives it.
+    pub(super) repair_command: Option<String>,
+    /// Optional producer-owned completeness step; never derived by the gate.
+    pub(super) analysis_outcome_command: Option<String>,
     pub(super) verify_command: Option<String>,
     pub(super) receipt_command: Option<String>,
     pub(super) inspection_command: Option<String>,
@@ -272,6 +338,10 @@ pub(super) struct GateCandidate {
     /// of an inline comment slot.  Closed vocabulary: `inline_comment_cap_reached`,
     /// `no_safe_changed_line_placement`, `navigation_only_cross_language_target`.
     pub(super) summary_reason: Option<String>,
+    /// Producer-owned reason a review card with `gap_state=static_limitation`
+    /// is not actionable (the card's `why_not_actionable`). `None` for any
+    /// other card and for gap-ledger records.
+    pub(super) why_not_actionable: Option<String>,
     pub(super) gap_ledger_gate_candidate: bool,
     pub(super) gap_ledger_gate_reason: Option<String>,
     pub(super) gap_ledger_safe_gate_predicate: bool,
@@ -288,6 +358,11 @@ pub(super) struct GateRouteFacts {
     pub(super) missing_discriminator: Option<String>,
     pub(super) repair_target: Option<GateRepairTarget>,
     pub(super) test_intent: Option<String>,
+    /// The repair transaction's start (#3906). Present only when the
+    /// upstream card carries it, which it does only past the fail-closed
+    /// repair-packet flip; the gate never derives it.
+    pub(super) repair_command: Option<String>,
+    pub(super) analysis_outcome_command: Option<String>,
     pub(super) verify_command: Option<String>,
     pub(super) receipt_command: Option<String>,
     pub(super) inspection_command: Option<String>,

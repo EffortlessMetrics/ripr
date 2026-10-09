@@ -40,7 +40,7 @@ fn semantic_panic_entry(
     receiver_fingerprint: Option<&str>,
     last_seen_line: Option<usize>,
 ) -> PanicAllowEntryVersioned {
-    PanicAllowEntryVersioned::V2(PanicAllowEntryV2 {
+    PanicAllowEntryVersioned::V2(Box::new(PanicAllowEntryV2 {
         id: Some(id.to_string()),
         path: "src/lib.rs".to_string(),
         family: "unwrap".to_string(),
@@ -61,7 +61,7 @@ fn semantic_panic_entry(
             column: Some(5),
         }),
         count: None,
-    })
+    }))
 }
 
 // ============================================================================
@@ -1410,6 +1410,59 @@ callee = "unwrap"
 }
 
 #[test]
+fn parse_no_panic_allowlist_toml_v2_rejects_duplicate_ids() -> Result<(), String> {
+    // #3799: schema 0.3 `id` is the stable identifier. Distinct selectors
+    // with the same id must fail parse; semantic-identity uniqueness is a
+    // different check and would accept these rows.
+    with_temp_cwd("duplicate_ids", |root| {
+        let toml_content = r#"schema_version = "0.3"
+
+[[allow]]
+id = "panic-0001"
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "test-infra"
+explanation = "First site"
+expires = "2027-03-31"
+
+[allow.selector]
+kind = "method_call"
+container = "first_helper"
+callee = "unwrap"
+
+[[allow]]
+id = "panic-0001"
+path = "src/lib.rs"
+family = "unwrap"
+classification = "test_only"
+owner = "test-infra"
+explanation = "Second site"
+expires = "2027-03-31"
+
+[allow.selector]
+kind = "method_call"
+container = "second_helper"
+callee = "unwrap"
+"#;
+        write(&root.join("allowlist.toml"), toml_content);
+        let toml_path = root
+            .join("allowlist.toml")
+            .to_str()
+            .ok_or("non-UTF-8 path")?
+            .to_string();
+        let result = parse_no_panic_allowlist_toml_v2(&toml_path);
+        let err = result
+            .err()
+            .ok_or("expected parse error for duplicate schema 0.3 ids")?;
+        if !err.contains("duplicate allowlist id `panic-0001`") {
+            return Err(format!("unexpected error message: {err}"));
+        }
+        Ok(())
+    })
+}
+
+#[test]
 fn v0_1_entries_still_match_by_line_and_column() -> Result<(), String> {
     with_temp_cwd("v01_in_v02_file", |root| {
         let toml_content = r#"schema_version = "0.2"
@@ -1560,7 +1613,7 @@ fn expired_entry_is_flagged_by_evaluation() {
     use super::{PanicAllowEntryV2, PanicAllowEntryVersioned, evaluate_semantic_no_panic_policy};
     // An entry expired in 2020 with no matching finding should produce
     // both a stale-entry violation AND an expiry violation.
-    let entry = PanicAllowEntryVersioned::V2(PanicAllowEntryV2 {
+    let entry = PanicAllowEntryVersioned::V2(Box::new(PanicAllowEntryV2 {
         id: Some("panic-test-0001".to_string()),
         path: "src/test.rs".to_string(),
         family: "unwrap".to_string(),
@@ -1571,7 +1624,7 @@ fn expired_entry_is_flagged_by_evaluation() {
         selector: None,
         last_seen: None,
         count: None,
-    });
+    }));
     let report = evaluate_semantic_no_panic_policy(&[], &[entry]);
     let has_expiry_violation = report
         .violations
@@ -1582,4 +1635,16 @@ fn expired_entry_is_flagged_by_evaluation() {
         "expired entry must produce an expiry violation, got: {:?}",
         report.violations
     );
+}
+
+#[test]
+fn iso_date_rejects_impossible_calendar_days() {
+    assert!(super::is_valid_iso_date("2027-03-31"));
+    assert!(super::is_valid_iso_date("2028-02-29"));
+    assert!(super::is_valid_iso_date("2000-02-29"));
+    assert!(!super::is_valid_iso_date("2027-02-29"));
+    assert!(!super::is_valid_iso_date("2027-02-31"));
+    assert!(!super::is_valid_iso_date("2027-04-31"));
+    assert!(!super::is_valid_iso_date("1900-02-29"));
+    assert!(!super::is_valid_iso_date("2026-13-45"));
 }

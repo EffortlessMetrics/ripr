@@ -65,7 +65,8 @@ language-adapter, or RIPR-SPEC-0027 PR or issue carrying this work in either
 
 Router and config:
 
-- `.ts`, `.tsx`, `.js`, and `.jsx` route to the TypeScript-family adapter.
+- `.ts`, `.tsx`, `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs` route to the
+  TypeScript-family adapter.
 - `[languages] enabled = ["rust"]` remains the default.
 - Adding `typescript` enables the preview adapter when the binary has the
   `lang-typescript` feature.
@@ -84,7 +85,7 @@ Adapter facts:
 - TypeScript/JavaScript findings project structural `probe.owner` metadata and
   `owner_kind` through human and JSON output.
 - Test files are detected by `.test` and `.spec` suffixes for `.ts`, `.tsx`,
-  `.js`, and `.jsx`.
+  `.mts`, `.cts`, `.js`, `.jsx`, `.mjs`, and `.cjs`.
 - Test extraction covers top-level and nested `test(...)` / `it(...)` calls,
   including array-form `test.each(...)` and `it.each(...)`.
 - Assertion extraction covers exact-value matchers, broad `toThrow`, async
@@ -98,8 +99,10 @@ Adapter facts:
   non-related.
 - Related-test matching also recognises same-stem file proximity,
   `describe(...)` owner-name proximity, and test-name owner-token proximity as
-  explicit uncertain links. Those links do not borrow assertion strength or
-  become complete repair guidance.
+  explicit uncertain links, but only for a test that references the owner
+  without a recognized call shape (RIPR-SPEC-0027). A test that never
+  references the owner is not related, however close its file or name. Those
+  links do not borrow assertion strength or become complete repair guidance.
 - Probe facts distinguish predicate, return value, error path, field/object
   construction, side-effect calls, mock interactions, and log/output text
   through the existing side-effect family.
@@ -176,10 +179,11 @@ Completed after the initial audit:
   false-match guards for unrelated imports, type-only imports, arbitrary object
   methods, strings, and comments.
 - Same-stem file proximity, `describe(...)` owner-name proximity, and test-name
-  owner-token proximity are fixture-backed by
-  `fixtures/typescript_related_test_name_proximity` as uncertain links that
-  stay weak/advisory and do not use assertions as proof. Partial owner tokens
-  remain non-related.
+  owner-token proximity never relate a test that does not reference the owner:
+  `fixtures/typescript_related_test_name_proximity` pins that name-only tests
+  leave the owner `no_static_path`, and `fixtures/ts_heuristic_relation` pins
+  the weak/advisory link for a test that references the owner as a value.
+  Partial owner tokens remain non-related.
 - Probe facts are fixture-backed by `fixtures/typescript_probe_facts` for
   `.ts`, `.tsx`, `.js`, and `.jsx`, including missing-discriminator candidates
   for specific weak findings and no invented discriminator for ambiguous const

@@ -19,7 +19,7 @@ use model::{
     ActionSelected, ActionTarget,
 };
 pub(crate) use model::{FirstUsefulActionInput, FirstUsefulActionReport};
-use parsing::{ParsedSources, parse_sources};
+use parsing::{ASSISTANT_PROOF_LABEL, ParsedSources, RECEIPT_LABEL, parse_sources};
 use selection::select_report;
 
 const SCHEMA_VERSION: &str = "0.1";
@@ -91,7 +91,10 @@ fn stale_report(
         ],
         None,
         ActionCommands {
-            status: Some(loop_commands::agent_status_command(&input.root, None)),
+            status: Some(loop_commands::agent_status_command(
+                &command_root(input),
+                None,
+            )),
             ..ActionCommands::default()
         },
         evidence(input, "unknown"),
@@ -117,13 +120,14 @@ fn read_error_report(
     inputs: &ActionInputs,
     generated_at: &str,
 ) -> Option<FirstUsefulActionReport> {
-    let (_label, path) = parsed.read_errors.first()?;
+    let (label, path) = parsed.read_errors.first()?;
     let mut warnings = Vec::new();
     warnings.push(format!("missing required artifact: {path}"));
     Some(missing_required_report(
         input,
         inputs,
         generated_at,
+        MissingRequired::for_input_label(label),
         path,
         warnings,
     ))
@@ -142,6 +146,7 @@ fn receipt_report(
             input,
             inputs,
             generated_at,
+            MissingRequired::CompleteReceipt,
             "receipt verify/artifact evidence",
             vec![format!(
                 "receipt movement `{movement}` is not promotable: {reason}"
@@ -703,9 +708,114 @@ fn missing_assistant_proof_report(
         input,
         inputs,
         generated_at,
+        MissingRequired::AssistantProof,
         DEFAULT_TEST_ORACLE_ASSISTANT_PROOF_OUT,
         warnings,
     ))
+}
+
+/// A fresh PR whose review card already carries the repair start (#3906).
+///
+/// Before any repair has run there is no assistant proof, and asking for one
+/// would request post-repair artifacts first. When the first review card
+/// (inline comments, then summary-only) that names
+/// `llm_guidance.repair_command` exists, lead with that command. The card
+/// emits it only past `repair_packet_eligibility(..).eligible()`; this report
+/// carries the string and every selected field from that same card, and never
+/// builds a repair command from a bare seam id. Without a carried command the
+/// existing missing-proof route stands.
+fn repair_start_report(
+    input: &FirstUsefulActionInput,
+    parsed: &ParsedSources,
+    inputs: &ActionInputs,
+    generated_at: &str,
+) -> Option<FirstUsefulActionReport> {
+    if parsed.assistant_proof.is_some() {
+        return None;
+    }
+    let (card, repair) = first_card_with_repair_command(parsed.pr_guidance.as_ref())?;
+    let selected = selected_from_guidance_item(input, Some(card), "pr_guidance")?;
+    let why = match (
+        string_path(card, &["seam", "expression"]),
+        selected.missing_discriminator.as_deref(),
+    ) {
+        (Some(_), Some(missing)) => {
+            // #4381: quote the shared missing-discriminator sentence and the
+            // canonical label instead of a per-surface "lacks a
+            // discriminator" phrasing; all surfaces must read the same. An
+            // ungripped seam has no related test that reaches the change —
+            // that absence is the class definition — so the reachability
+            // sentence would overclaim there; name the value neutrally.
+            let ungripped = string_path(card, &["grip_class"]).is_some_and(|grip| {
+                crate::output::gap_vocabulary::exposure_class_of(&grip) == Some("no_static_path")
+            });
+            if ungripped {
+                format!(
+                    "The review card identifies {} `{missing}` and names its repair start.",
+                    crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_LABEL,
+                )
+            } else {
+                format!(
+                    "The changed behavior — {}; {} `{missing}`. The review card names its repair start.",
+                    crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_SENTENCE,
+                    crate::output::gap_vocabulary::MISSING_DISCRIMINATOR_LABEL,
+                )
+            }
+        }
+        _ => {
+            "The review card names a repair start for this seam; no repair has run yet.".to_string()
+        }
+    };
+    Some(base_report(
+        input,
+        inputs,
+        generated_at,
+        "actionable",
+        "developer",
+        "write_focused_test",
+        Some(selected),
+        "Start the focused-test repair for this seam",
+        &why,
+        vec![
+            "The review card carries a repair start, so the seam passed the repair-packet check where the card was produced.",
+            "No assistant proof exists yet, so the repair has not started.",
+            "No waiver, acknowledgement, or suppression applies.",
+        ],
+        target_from_guidance_item(card),
+        ActionCommands {
+            repair: Some(repair),
+            analysis_outcome: string_path(card, &["llm_guidance", "analysis_outcome_command"]),
+            verify: string_path(card, &["llm_guidance", "verify_command"]),
+            receipt: string_path(card, &["receipt_command"])
+                .or_else(|| string_path(card, &["llm_guidance", "receipt_command"])),
+            ..ActionCommands::default()
+        },
+        evidence(input, "unknown"),
+        None,
+        Vec::new(),
+        vec![
+            "Static evidence only.",
+            "Carries the repair start from the review card; does not re-derive eligibility.",
+            "Does not run mutation testing.",
+            "Does not edit source or generate tests.",
+            "Does not make CI blocking by default.",
+        ],
+    ))
+}
+
+/// The first review card, inline comments before summary-only, that carries a
+/// non-empty `llm_guidance.repair_command`, with that command.
+fn first_card_with_repair_command(pr_guidance: Option<&Value>) -> Option<(&Value, String)> {
+    let guidance = pr_guidance?;
+    ["comments", "summary_only"]
+        .into_iter()
+        .filter_map(|bucket| guidance.get(bucket).and_then(Value::as_array))
+        .flatten()
+        .find_map(|card| {
+            string_path(card, &["llm_guidance", "repair_command"])
+                .filter(|command| !command.trim().is_empty())
+                .map(|command| (card, command))
+        })
 }
 
 fn actionable_report(
@@ -829,13 +939,83 @@ fn no_actionable_report(
     )
 }
 
+/// The artifact a fail-closed report asks for. The title, the reason and the
+/// offered command all come from this, so an agent is sent to regenerate the
+/// artifact that is actually missing rather than one it already has (#4268).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MissingRequired<'a> {
+    /// No joined assistant proof exists yet.
+    AssistantProof,
+    /// A receipt was supplied but carries no promotable verify evidence.
+    CompleteReceipt,
+    /// A supplied input could not be read or parsed.
+    UnreadableInput(&'a str),
+}
+
+impl<'a> MissingRequired<'a> {
+    /// Maps a `read_errors` label to the artifact the agent must regenerate.
+    /// The proof and receipt have producing commands; any other input is named
+    /// so it can be supplied again, with no command guessed for it.
+    fn for_input_label(label: &'a str) -> Self {
+        match label {
+            ASSISTANT_PROOF_LABEL => Self::AssistantProof,
+            RECEIPT_LABEL => Self::CompleteReceipt,
+            other => Self::UnreadableInput(other),
+        }
+    }
+}
+
 fn missing_required_report(
     input: &FirstUsefulActionInput,
     inputs: &ActionInputs,
     generated_at: &str,
+    required: MissingRequired<'_>,
     missing: &str,
     warnings: Vec<String>,
 ) -> FirstUsefulActionReport {
+    let (title, why, why_first, commands) = match required {
+        MissingRequired::AssistantProof => (
+            "Generate assistant proof before routing".to_string(),
+            "Required joined proof input is missing.",
+            vec![
+                "Required joined proof input is missing.",
+                "The report must not infer proof state from a raw artifact chain.",
+            ],
+            ActionCommands {
+                assistant_proof: Some(assistant_proof_command()),
+                ..ActionCommands::default()
+            },
+        ),
+        MissingRequired::CompleteReceipt => (
+            "Regenerate a complete agent receipt before routing".to_string(),
+            "The supplied receipt carries no promotable verify evidence.",
+            vec![
+                "Receipt movement routes only from a complete analysis outcome.",
+                "The report must not promote receipt movement it cannot validate.",
+            ],
+            // A complete receipt needs a persisted verify file and its sibling
+            // analysis outcome, and the seam may be unknown when the receipt
+            // is unreadable. `agent status` owns that sequence and names the
+            // command for each missing workflow artifact, so route there
+            // rather than offer a partial chain.
+            ActionCommands {
+                status: Some(loop_commands::agent_status_command(
+                    &command_root(input),
+                    None,
+                )),
+                ..ActionCommands::default()
+            },
+        ),
+        MissingRequired::UnreadableInput(label) => (
+            format!("Supply a readable {label} before routing"),
+            "A supplied input could not be read.",
+            vec![
+                "A supplied input could not be read.",
+                "The report must not route from a partial artifact set.",
+            ],
+            ActionCommands::default(),
+        ),
+    };
     base_report(
         input,
         inputs,
@@ -844,17 +1024,11 @@ fn missing_required_report(
         "agent",
         "generate_missing_artifact",
         None,
-        "Generate assistant proof before routing",
-        "Required joined proof input is missing.",
-        vec![
-            "Required joined proof input is missing.",
-            "The report must not infer proof state from a raw artifact chain.",
-        ],
+        &title,
+        why,
+        why_first,
         None,
-        ActionCommands {
-            assistant_proof: Some(assistant_proof_command()),
-            ..ActionCommands::default()
-        },
+        commands,
         evidence(input, "unknown"),
         Some(ActionFallback {
             kind: "missing_required_artifact".to_string(),
@@ -1011,6 +1185,13 @@ fn selected_from_gap_record(
             gap_id: string_path(record, &["gap_id"]),
             canonical_gap_id: string_path(record, &["canonical_gap_id"]),
             repair_route: string_path(repair_route?, &["route_kind"]),
+            changed_behavior: [
+                repair_route.and_then(|route| string_path(route, &["changed_behavior"])),
+                string_path(record, &["changed_behavior"]),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|expression| !expression.trim().is_empty()),
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1093,6 +1274,7 @@ fn selected_from_editor_context(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            changed_behavior: None,
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1118,6 +1300,7 @@ fn selected_from_assistant_proof(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            changed_behavior: None,
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1195,6 +1378,7 @@ fn selected_from_receipt_or_sources(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            changed_behavior: None,
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1209,6 +1393,14 @@ fn selected_from_guidance(
     let item = first_guidance_item(Some(guidance))
         .or_else(|| first_summary_only_item(Some(guidance)))
         .or_else(|| first_suppressed_item(Some(guidance)));
+    selected_from_guidance_item(input, item, source)
+}
+
+fn selected_from_guidance_item(
+    input: &FirstUsefulActionInput,
+    item: Option<&Value>,
+    source: &str,
+) -> Option<ActionSelected> {
     Some(
         ActionSelected {
             source: source.to_string(),
@@ -1238,6 +1430,15 @@ fn selected_from_guidance(
             gap_id: None,
             canonical_gap_id: None,
             repair_route: None,
+            // A blank seam expression names nothing; fall back to the card's
+            // own changed_behavior instead of stopping on the empty value.
+            changed_behavior: [
+                item.and_then(|item| string_path(item, &["seam", "expression"])),
+                item.and_then(|item| string_path(item, &["changed_behavior"])),
+            ]
+            .into_iter()
+            .flatten()
+            .find(|expression| !expression.trim().is_empty()),
         }
         .with_inferred_current_evidence_strength(),
     )
@@ -1319,6 +1520,7 @@ fn selected_from_delta_item(source: &str, source_artifact: String, item: &Value)
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
+        changed_behavior: None,
     }
     .with_inferred_current_evidence_strength()
 }
@@ -1344,6 +1546,7 @@ fn weakly_exposed_boundary_selected(
         gap_id: None,
         canonical_gap_id: None,
         repair_route: None,
+        changed_behavior: None,
     }
     .with_inferred_current_evidence_strength()
 }
@@ -1386,6 +1589,31 @@ fn target_from_sources(parsed: &ParsedSources) -> Option<ActionTarget> {
     })
 }
 
+fn target_from_guidance_item(card: &Value) -> Option<ActionTarget> {
+    let file = string_path(card, &["suggested_test", "recommended_file"])
+        .and_then(|text| text.split("::").next().map(ToOwned::to_owned));
+    let related_test = string_path(card, &["suggested_test", "near_test"]);
+    let suggested_test_name = string_path(card, &["suggested_test", "recommended_name"]);
+    let suggested_assertion = string_from_sources(&[
+        (Some(card), &["suggested_test", "assertion_shape"]),
+        (Some(card), &["suggested_test", "intent"]),
+    ])
+    .map(|text| normalize_suggested_assertion(&text));
+    if file.is_none()
+        && related_test.is_none()
+        && suggested_test_name.is_none()
+        && suggested_assertion.is_none()
+    {
+        return None;
+    }
+    Some(ActionTarget {
+        file,
+        related_test,
+        suggested_test_name,
+        suggested_assertion,
+    })
+}
+
 fn seam_commands(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> ActionCommands {
     let seam_id = selected_seam_id(parsed);
     let Some(seam_id) = seam_id else {
@@ -1394,49 +1622,66 @@ fn seam_commands(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> Acti
     ActionCommands {
         context_packet: Some(format!(
             "ripr agent packet --root {} --seam-id {} --json",
-            loop_commands::shell_arg(&input.root),
+            loop_commands::shell_arg(&command_root(input)),
             loop_commands::shell_arg(&seam_id)
         )),
         after_snapshot: Some(loop_commands::check_repo_exposure_command(
-            &input.root,
+            &command_root(input),
             "draft",
             loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
         )),
+        // #4304: every file the receipt reads is written by a command listed
+        // here. The verify output lands at the path `receipt --verify-json`
+        // names, and the analysis outcome lands beside it, where the receipt
+        // looks for it.
+        analysis_outcome: Some(loop_commands::check_analysis_outcome_command(
+            &command_root(input),
+            "draft",
+            loop_commands::WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+        )),
         verify: Some(loop_commands::agent_verify_command(
-            &input.root,
+            &command_root(input),
             loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
             loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-            None,
+            Some(loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
         )),
         receipt: Some(loop_commands::agent_receipt_command(
-            &input.root,
+            &command_root(input),
             loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
             &seam_id,
             None,
         )),
         command_specs: Some(ActionCommandSpecs {
             verify: Some(command_specs::agent_verify_command_spec(
-                &input.root,
+                &command_root(input),
                 loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
                 loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
-                None,
+                Some(loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT),
             )),
             receipt: Some(command_specs::agent_receipt_command_spec(
-                &input.root,
+                &command_root(input),
                 loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
                 &seam_id,
                 None,
             )),
         }),
+        repair: None,
         assistant_proof: None,
         status: None,
     }
 }
 
+/// The selected root bound once for product-generated commands (#4000): a
+/// relative `--root` resolves against the invocation working directory, the
+/// same directory the report inputs were resolved against.
+fn command_root(input: &FirstUsefulActionInput) -> String {
+    loop_commands::bound_root(&input.root)
+}
+
 fn receipt_command(input: &FirstUsefulActionInput, parsed: &ParsedSources) -> Option<String> {
     let seam_id = selected_seam_id(parsed)?;
     Some(loop_commands::agent_receipt_command(
-        &input.root,
+        &command_root(input),
         loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT,
         &seam_id,
         None,
@@ -1592,11 +1837,11 @@ fn normalize_suggested_assertion(value: &str) -> String {
 }
 
 fn classification_from_sources(sources: &[(Option<&Value>, &[&str])]) -> Option<String> {
-    string_from_sources(sources).map(|value| match value.as_str() {
-        "weakly_gripped" => "weakly_exposed".to_string(),
-        "strongly_gripped" => "exposed".to_string(),
-        other => other.to_string(),
-    })
+    // #4381: the grip-to-exposure presentation lives only in
+    // output::gap_vocabulary; this resolves mixed-domain inputs through the
+    // shared authority instead of a local translation table.
+    string_from_sources(sources)
+        .map(|value| crate::output::gap_vocabulary::present_exposure_class(&value))
 }
 
 fn current_evidence_strength_from_sources(sources: &[Option<&Value>]) -> Option<String> {

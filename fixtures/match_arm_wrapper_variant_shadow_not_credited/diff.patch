@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -20,6 +20,6 @@ impl FromStr for Unit {
+ pub fn seconds(u: Unit) -> u64 {
+     match u {
+         Unit::Week => 604_800,
+-        Unit::Fortnight => 1_296_000,
++        Unit::Fortnight => 1_209_600,
+     }
+ }

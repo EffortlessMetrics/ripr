@@ -19,8 +19,8 @@ Advisory: 2
   - Why it remains open: amount == surcharge_floor
   - Near test: `above_threshold_gets_discount` at `tests/pricing.rs:12`
   - Add: Write one focused Rust test for amount == surcharge_floor. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.
-  - Verify: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
-  - Receipt: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamdelta00000008 --json --out target/ripr/reports/agent-receipt.json`
+  - Verify after the test edit: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
+  - Receipt after verify: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamdelta00000008 --json --out target/ripr/reports/agent-receipt.json`
   - Inspect: `ripr agent brief --root . --seam-id seamdelta00000008 --json > target/ripr/workflow/agent-brief.json`
   - Boundary: `static_ripr_evidence_only`
 - src/pricing.rs:88 weakly_gripped — candidate identity is already present in the explicit baseline
@@ -33,8 +33,8 @@ Advisory: 2
   - Why it remains open: amount == discount_threshold
   - Near test: `above_threshold_gets_discount` at `tests/pricing.rs:12`
   - Add: Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.
-  - Verify: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
-  - Receipt: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamgamma00000007 --json --out target/ripr/reports/agent-receipt.json`
+  - Verify after the test edit: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
+  - Receipt after verify: `ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamgamma00000007 --json --out target/ripr/reports/agent-receipt.json`
   - Inspect: `ripr agent brief --root . --seam-id seamgamma00000007 --json > target/ripr/workflow/agent-brief.json`
   - Boundary: `static_ripr_evidence_only`
 

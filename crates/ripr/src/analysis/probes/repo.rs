@@ -1,21 +1,33 @@
 use super::super::rust_index::{RustIndex, find_owner_function};
+use super::SeededProbe;
 use super::expectations::{expected_sinks, required_oracles};
 use super::family::family_for_probe_shape;
 use super::ids::{normalize_expression, repo_probe_id};
+use crate::analysis::diagnostic_origin::ParserByteSpan;
 use crate::domain::{DeltaKind, Probe, SourceLocation};
 use std::collections::HashMap;
 use std::path::Path;
 
+#[cfg(test)]
 pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<Probe> {
+    probes_for_repo_file_seeded(root, path, index)
+        .into_iter()
+        .map(|seeded| seeded.probe)
+        .collect()
+}
+
+pub(crate) fn probes_for_repo_file_seeded(
+    root: &Path,
+    path: &Path,
+    index: &RustIndex,
+) -> Vec<SeededProbe> {
     let mut probes = Vec::new();
-    let Some(facts) = index.files.get(path) else {
+    let Some(facts) = index.files().get(path) else {
         return probes;
     };
 
     for shape in &facts.probe_shapes {
-        let Some(family) = family_for_probe_shape(&shape.kind) else {
-            continue;
-        };
+        let family = family_for_probe_shape(shape.kind);
 
         // #3284: harness-role functions never enter the production
         // subject inventory. A cfg(test)-module helper inside a
@@ -42,28 +54,32 @@ pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<
         let expected_sinks = expected_sinks(&shape.text, &family);
         let required_oracles = required_oracles(&shape.text, &family);
 
-        probes.push(Probe {
+        let probe = Probe {
             id,
             location: SourceLocation::new(root.join(path), shape.start_line, 1),
             owner,
             family,
             delta: DeltaKind::Unknown,
             before: None,
-            after: Some(shape.text.clone()),
-            expression: shape.text.clone(),
+            after: Some(shape.text.to_string()),
+            expression: shape.text.to_string(),
             expected_sinks,
             required_oracles,
-        });
+        };
+        let parser_span = (shape.start_line == shape.end_line)
+            .then(|| ParserByteSpan::same_line(&shape.text, shape.start_byte))
+            .flatten();
+        probes.push(SeededProbe::maybe_with_span(probe, parser_span));
     }
 
     // Post-hoc collision de-dup: if two probes got the same id, append .2, .3, …
     // to the 2nd+ occurrences.
     let mut seen: HashMap<String, u32> = HashMap::new();
-    for probe in probes.iter_mut() {
-        let count = seen.entry(probe.id.0.clone()).or_insert(0);
+    for seeded in probes.iter_mut() {
+        let count = seen.entry(seeded.probe.id.0.clone()).or_insert(0);
         *count += 1;
         if *count > 1 {
-            probe.id.0 = format!("{}.{}", probe.id.0, count);
+            seeded.probe.id.0 = format!("{}.{}", seeded.probe.id.0, count);
         }
     }
 
@@ -73,7 +89,7 @@ pub fn probes_for_repo_file(root: &Path, path: &Path, index: &RustIndex) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::super::super::rust_index::{
-        FileFacts, FunctionFact, PROBE_SHAPE_ERROR_PATH, ProbeShapeFact, RustIndex,
+        FileFacts, FunctionFact, ProbeShapeFact, ProbeShapeKind, RustIndex,
     };
     use super::*;
     use crate::analysis::facts::FunctionSourceRole;
@@ -84,7 +100,7 @@ mod tests {
     #[test]
     fn probes_for_repo_file_emits_known_shape_with_owner() {
         let path = PathBuf::from("src/lib.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 path.clone(),
                 FileFacts {
@@ -97,36 +113,33 @@ mod tests {
                         end_line: 6,
                         body:
                             "fn authenticate() -> Result<(), AuthError> { Err(AuthError::Revoked) }"
-                                .to_string(),
+                                .into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        impl_attrs: Vec::new(),
                         nested_fn_names: Vec::new(),
                         let_bindings: Vec::new(),
+                        item: Default::default(),
+                        impl_context: Default::default(),
                     }],
-                    probe_shapes: vec![
-                        ProbeShapeFact {
-                            start_line: 4,
-                            end_line: 4,
-                            start_byte: 48,
-                            kind: PROBE_SHAPE_ERROR_PATH.to_string(),
-                            text: "Err(AuthError::Revoked)".to_string(),
-                        },
-                        ProbeShapeFact {
-                            start_line: 5,
-                            end_line: 5,
-                            start_byte: 80,
-                            kind: "opaque_shape".to_string(),
-                            text: "opaque".to_string(),
-                        },
-                    ],
+                    // Unrecognized wire strings can no longer reach this
+                    // function: they fail at the decode boundary (see
+                    // probe_shape_kind_rejects_unknown_wire_strings_at_decode).
+                    probe_shapes: vec![ProbeShapeFact {
+                        start_line: 4,
+                        end_line: 4,
+                        start_byte: 48,
+                        kind: ProbeShapeKind::ErrorPath,
+                        text: "Err(AuthError::Revoked)".into(),
+                    }],
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_repo_file(Path::new("workspace"), &path, &index);
 
@@ -162,7 +175,7 @@ mod tests {
     #[test]
     fn probes_for_included_file_keep_fragment_location_and_parent_owner() {
         let fragment = PathBuf::from("src/parser_fragment.rs");
-        let index = RustIndex {
+        let index = RustIndex::from_owned(crate::analysis::facts::OwnedRustIndex {
             files: BTreeMap::from([(
                 fragment.clone(),
                 FileFacts {
@@ -173,27 +186,30 @@ mod tests {
                         file: fragment.clone(),
                         start_line: 1,
                         end_line: 4,
-                        body: "fn clamp(&self, value: i32) -> i32 { value }".to_string(),
+                        body: "fn clamp(&self, value: i32) -> i32 { value }".into(),
                         calls: vec![],
                         returns: vec![],
                         literals: vec![],
                         source_role: FunctionSourceRole::Production,
                         attrs: vec![],
+                        impl_attrs: Vec::new(),
                         nested_fn_names: Vec::new(),
                         let_bindings: Vec::new(),
+                        item: Default::default(),
+                        impl_context: Default::default(),
                     }],
                     probe_shapes: vec![ProbeShapeFact {
                         start_line: 2,
                         end_line: 2,
                         start_byte: 36,
-                        kind: PROBE_SHAPE_ERROR_PATH.to_string(),
-                        text: "value > self.limit".to_string(),
+                        kind: ProbeShapeKind::ErrorPath,
+                        text: "value > self.limit".into(),
                     }],
                     ..FileFacts::default()
                 },
             )]),
-            ..RustIndex::default()
-        };
+            ..Default::default()
+        });
 
         let probes = probes_for_repo_file(Path::new("workspace"), &fragment, &index);
 

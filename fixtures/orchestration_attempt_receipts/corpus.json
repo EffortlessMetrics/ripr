@@ -1,0 +1,1514 @@
+{
+  "schema_version": "orchestration_fixture_corpus.v1",
+  "scenarios": [
+    {
+      "id": "single_agent_preferred_narrow_task",
+      "expected": {
+        "countable": true,
+        "disposition": "completed",
+        "reason_contains": [],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-single-agent",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-single-agent",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-single-agent",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation",
+          "fan-out strategies were rejected for this narrow task; single-agent preference remains a first-class decision"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-single-agent",
+        "row_digest": "fb84f9f43fde178941c9d04ebebbd98826fd4cea28b6c8769e6649f58ad812d6"
+      }
+    },
+    {
+      "id": "read_only_fanout_bounded_overflow",
+      "expected": {
+        "countable": true,
+        "disposition": "completed",
+        "reason_contains": [],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-read-only-fanout",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "bounded_reconnaissance",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "two_scouts_plus_synthesizer"
+        },
+        "strategy": "read_only_fanout",
+        "disposition": "completed",
+        "planned_waves": 2,
+        "actual_waves": 2,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          },
+          {
+            "required": false,
+            "evidence": null
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-scout-a",
+            "role": "scout",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-scout-a",
+            "edit_cage": [],
+            "resources": [
+              "read:repo"
+            ]
+          },
+          {
+            "claim_id": "claim-scout-b",
+            "role": "scout",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-scout-b",
+            "edit_cage": [],
+            "resources": [
+              "read:repo"
+            ]
+          },
+          {
+            "claim_id": "claim-synthesizer",
+            "role": "synthesizer",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-synth",
+            "edit_cage": [],
+            "resources": [
+              "read:repo"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-read-only-fanout",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-read-only-fanout",
+        "row_digest": "14c00ffeaee930a1a401da02c7cf22d2f060a2d97ef7f226ad68e9ef869e44e0"
+      }
+    },
+    {
+      "id": "adversary_contradiction_blocks_dependent_result",
+      "expected": {
+        "countable": true,
+        "disposition": "contradicted",
+        "reason_contains": [
+          "contradiction"
+        ],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-adversary-contradiction",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "contested_claim",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "scouts_plus_adversary"
+        },
+        "strategy": "scouts_plus_adversary",
+        "disposition": "completed",
+        "planned_waves": 3,
+        "actual_waves": 3,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-builder",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-builder",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:2"
+            ]
+          },
+          {
+            "claim_id": "claim-adversary",
+            "role": "adversary",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-adversary",
+            "edit_cage": [],
+            "resources": [
+              "read:repo"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-adversary-contradiction",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [
+          "adversary: dependent result rests on a rejected scout finding"
+        ],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-adversary-contradiction",
+        "row_digest": "42151a9880ec55a159db17bdff25404bee231840509d751458aa1a1f475f82ee"
+      }
+    },
+    {
+      "id": "builder_claim_rejected_by_verifier",
+      "expected": {
+        "countable": true,
+        "disposition": "verification_failed",
+        "reason_contains": [
+          "rejected claim"
+        ],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-builder-rejected",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "builder_plus_verifier"
+        },
+        "strategy": "builder_plus_verifier",
+        "disposition": "completed",
+        "planned_waves": 2,
+        "actual_waves": 2,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-builder",
+            "role": "builder",
+            "state": "rejected",
+            "worktree_root": "/srv/orchestration/worktree-builder",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:2"
+            ]
+          },
+          {
+            "claim_id": "claim-verifier",
+            "role": "verifier",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-verifier",
+            "edit_cage": [],
+            "resources": [
+              "read:repo"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-builder-rejected",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "near_matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [
+          "claim-builder"
+        ],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-builder-rejected",
+        "row_digest": "0ddc85ab2ccd389d931a44fbacc14b6fc3a39aa24f75e1972a4c3086f7647610"
+      }
+    },
+    {
+      "id": "parallel_writers_semantic_conflict_disjoint_files",
+      "expected": {
+        "countable": true,
+        "disposition": "contradicted",
+        "reason_contains": [
+          "contradiction"
+        ],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-parallel-conflict",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "two_writers_plus_verifier"
+        },
+        "strategy": "validated_parallel_writers",
+        "disposition": "completed",
+        "planned_waves": 2,
+        "actual_waves": 2,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-writer-a",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-writer-a",
+            "edit_cage": [
+              "src/a.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          },
+          {
+            "claim_id": "claim-writer-b",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-writer-b",
+            "edit_cage": [
+              "src/b.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          },
+          {
+            "claim_id": "claim-verifier",
+            "role": "verifier",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-verifier",
+            "edit_cage": [],
+            "resources": [
+              "read:repo"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-parallel-conflict",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [
+          "verifier: writers disagree on one shared invariant across disjoint files"
+        ],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/a.rs",
+            "boundary_status": "within_cage"
+          },
+          {
+            "path": "src/b.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-parallel-conflict",
+        "row_digest": "971fa138a09229bd2d07aa6520e193110b57e08948a47e711ee7e11597c6514e"
+      }
+    },
+    {
+      "id": "stale_portfolio_base_result_identity",
+      "expected": {
+        "countable": true,
+        "disposition": "stale",
+        "reason_contains": [
+          "stale"
+        ],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-stale-identity",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-stale-identity",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-stale-identity",
+          "bound_base": "older-base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-stale-identity",
+        "row_digest": "07b805d3a53ab34f8058a07973ebc636450393be8b2aa8593da0adbbe4f9101d"
+      }
+    },
+    {
+      "id": "root_worktree_contamination_forbidden_path",
+      "expected": {
+        "countable": true,
+        "disposition": "boundary_violation",
+        "reason_contains": [
+          "forbidden path"
+        ],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-forbidden-path",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-forbidden-path",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-forbidden-path",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          },
+          {
+            "path": "Cargo.lock",
+            "boundary_status": "forbidden_path"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-forbidden-path",
+        "row_digest": "c4e40237ddf37aec107dedc48b2063dbed29f89a57f4df5b6aa4936eac98f1e9"
+      }
+    },
+    {
+      "id": "malformed_over_budget_result",
+      "expected": {
+        "countable": false,
+        "disposition": null,
+        "reason_contains": [
+          "over budget"
+        ],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-over-budget",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 1073741825
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-over-budget",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-over-budget",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-over-budget",
+        "row_digest": "5024342ffe0ad98aedf8927d86c110162af6faae88d3b664ee27a9ef8daf5b58"
+      }
+    },
+    {
+      "id": "interrupted_claim_worktree_cleanup_residue",
+      "expected": {
+        "countable": true,
+        "disposition": "partial",
+        "reason_contains": [],
+        "same_portable_identity_as": null
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-interrupted",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "builder_plus_verifier"
+        },
+        "strategy": "builder_plus_verifier",
+        "disposition": "partial",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-builder",
+            "role": "builder",
+            "state": "interrupted",
+            "worktree_root": "/srv/orchestration/worktree-builder",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:2"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": null,
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": false,
+          "residue": [
+            "worktree /srv/orchestration/worktree-builder not removed"
+          ]
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-interrupted",
+        "row_digest": "e706049f84f0c1df7b8cff788570253530008796770c53303a9d5e0448e79e48"
+      }
+    },
+    {
+      "id": "duplicate_observation_a",
+      "expected": {
+        "countable": true,
+        "disposition": "completed",
+        "reason_contains": [],
+        "same_portable_identity_as": "duplicate_observation_b"
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-duplicate",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-duplicate",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-duplicate",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-duplicate",
+        "row_digest": "40144806e95a584b7f3fdf53c626f423cf6a37a2d93df0fc2b177a9f2eaab719"
+      }
+    },
+    {
+      "id": "duplicate_observation_b",
+      "expected": {
+        "countable": true,
+        "disposition": "completed",
+        "reason_contains": [],
+        "same_portable_identity_as": "duplicate_observation_a"
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-duplicate",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-duplicate",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-duplicate",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-duplicate",
+        "row_digest": "40144806e95a584b7f3fdf53c626f423cf6a37a2d93df0fc2b177a9f2eaab719"
+      }
+    },
+    {
+      "id": "equivalent_root_a",
+      "expected": {
+        "countable": true,
+        "disposition": "completed",
+        "reason_contains": [],
+        "same_portable_identity_as": "equivalent_root_b"
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-equivalent-root",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-equivalent-root",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/srv/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-equivalent-root",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-equivalent-root",
+        "row_digest": "4e5f151c0d003cbc846179b6d08ad5c0fb55e883a0dcd5c05251e32e1d554a30"
+      }
+    },
+    {
+      "id": "equivalent_root_b",
+      "expected": {
+        "countable": true,
+        "disposition": "completed",
+        "reason_contains": [],
+        "same_portable_identity_as": "equivalent_root_a"
+      },
+      "attempt": {
+        "schema_version": "orchestration_attempt.v1",
+        "attempt_id": "attempt-equivalent-root",
+        "work": {
+          "repository": "https://example.invalid/operator/target",
+          "source": "source-sample",
+          "selected_work": "issue-sample",
+          "portfolio": "campaign-sample",
+          "base": "base-sha",
+          "head": "head-sha"
+        },
+        "task_family": "narrow_bug",
+        "accepted_contract": "accepted-contract-sample",
+        "client": {
+          "agent_client": "agent-cli-1.0",
+          "role_configuration": "single_builder"
+        },
+        "strategy": "single_agent",
+        "disposition": "completed",
+        "planned_waves": 1,
+        "actual_waves": 1,
+        "packet": {
+          "identity": "packet:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytes": 2048
+        },
+        "result": {
+          "identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "bytes": 4096
+        },
+        "synthesis": {
+          "identity": "synthesis:sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "bytes": 512
+        },
+        "overflow": [
+          {
+            "required": true,
+            "evidence": {
+              "identity": "overflow:sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+              "bytes": 256
+            }
+          }
+        ],
+        "claims": [
+          {
+            "claim_id": "claim-attempt-equivalent-root",
+            "role": "builder",
+            "state": "open",
+            "worktree_root": "/var/orchestration/worktree-sample",
+            "edit_cage": [
+              "src/lib.rs"
+            ],
+            "resources": [
+              "cpu:1"
+            ]
+          }
+        ],
+        "commands": [
+          {
+            "command": "cargo test -p sample",
+            "subject_count": 3,
+            "passed": true
+          }
+        ],
+        "independent_verification": {
+          "verification_id": "verification-attempt-equivalent-root",
+          "bound_base": "base-sha",
+          "bound_head": "head-sha",
+          "bound_result_identity": "result:sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "commands": [
+            {
+              "command": "cargo test -p sample",
+              "subject_count": 3,
+              "passed": true
+            }
+          ],
+          "independent_receipt": true,
+          "comparison": "matched"
+        },
+        "contradictions": [],
+        "rejected_claims": [],
+        "changed_paths": [
+          {
+            "path": "src/lib.rs",
+            "boundary_status": "within_cage"
+          }
+        ],
+        "delivery": null,
+        "cleanup": {
+          "cleaned": true,
+          "residue": []
+        },
+        "limitations": [
+          "sample limitation"
+        ],
+        "non_claims": [
+          "sample non-claim"
+        ],
+        "synthetic": true,
+        "observation_key": "observation-equivalent-root",
+        "row_digest": "dc645f3199e6f739749d9e901f27f100e3c78794393199a76517fd15b344d0dc"
+      }
+    }
+  ]
+}

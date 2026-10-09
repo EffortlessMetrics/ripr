@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_same_stem_test/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:a5ff8e97a7e5dc38b404cc974f3ff0e1cb27e7180667bbde64336cbadcbbc421","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:a5ff8e97a7e5dc38b404cc974f3ff0e1cb27e7180667bbde64336cbadcbbc421","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -43,11 +42,11 @@
         "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted Python oracle kind: `unknown` (rank 1)"},
         "discriminate": {"state":"weak","confidence":"low","summary":"Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape."}
        },
-      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `reconcile_total`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount - 2`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount - 2 (line 2)", "related test tests/test_reconcile.py:1 test_reconcile_fixture_contract uses unknown unknown oracle"],
+      "evidence_path": ["reach weak: 1 heuristic Python test link(s) found for owner `reconcile_total`; relation is uncertain", "infection yes: Changed Python return expression can alter the owner return value: `return amount - 2`", "propagation yes: Changed Python return value is already at the owner output boundary.", "observation weak: Strongest extracted Python oracle kind: `unknown` (rank 1)", "discriminator weak: Python preview adapter found no strong discriminator; typed repair guidance is unavailable for this shape.", "local flow reaches returned value: return amount - 2 (line 2)", "related test tests/test_reconcile.py:4 test_reconcile_fixture_contract uses unknown unknown oracle"],
       "flow_sinks": [
         {"kind":"return_value","text":"return amount - 2","line":2}
       ],
-      "evidence": ["owner: reconcile_total", "owner_kind: function", "test_framework: pytest (test_reconcile_fixture_contract)", "test_verify_command: pytest tests/test_reconcile.py::test_reconcile_fixture_contract (test_reconcile_fixture_contract)", "related_test_relation: same_stem (test_reconcile_fixture_contract)", "related_test_uncertain: same_stem (test_reconcile_fixture_contract)"],
+      "evidence": ["owner: reconcile_total", "owner_kind: function", "test_framework: pytest (test_reconcile_fixture_contract)", "test_verify_command: python -m pytest tests/test_reconcile.py::test_reconcile_fixture_contract (test_reconcile_fixture_contract)", "related_test_relation: same_stem (test_reconcile_fixture_contract)", "related_test_uncertain: same_stem (test_reconcile_fixture_contract)"],
       "missing": ["Only heuristic Python test links were found for `reconcile_total`; verify the suggested test location or add a direct pytest or unittest call with an exact-value assertion."],
       "assertion_texts": {
       },
@@ -66,7 +65,7 @@
         {
           "name": "test_reconcile_fixture_contract",
           "file": "tests/test_reconcile.py",
-          "line": 1,
+          "line": 4,
           "oracle_strength": "unknown",
           "oracle_kind": "unknown",
           "oracle": ""
@@ -96,5 +95,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/reconcile.py","digest":"sha256:21fa16e6840a4df64f04053ce75d991e7827e318b7efdad9b5e77d877f72f7eb"}]}
 }

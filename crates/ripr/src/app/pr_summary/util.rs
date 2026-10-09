@@ -1,3 +1,4 @@
+use crate::output::markdown::code_span;
 use serde_json::Value;
 
 /// Walk a JSON value along the given path segments.
@@ -10,12 +11,14 @@ pub(super) fn value_path<'a>(value: Option<&'a Value>, path: &[&str]) -> Option<
     Some(current)
 }
 
+/// The string at `key` as one code span, or `not_available`.
 pub(super) fn string_field(value: Option<&Value>, key: &str) -> String {
-    value
-        .and_then(|value| value.get(key))
-        .and_then(Value::as_str)
-        .map(md_escape)
-        .unwrap_or_else(|| "not_available".to_string())
+    code_span(
+        value
+            .and_then(|value| value.get(key))
+            .and_then(Value::as_str)
+            .unwrap_or("not_available"),
+    )
 }
 
 pub(super) fn summary_u64(value: Option<&Value>, key: &str) -> String {
@@ -32,17 +35,15 @@ pub(super) fn summary_bool(value: Option<&Value>, key: &str) -> String {
         .unwrap_or_else(|| "not_available".to_string())
 }
 
+/// The summary string at `key` as one code span; `none` when null.
 pub(super) fn summary_string_or_null(value: Option<&Value>, key: &str) -> String {
     let Some(value) = summary_field(value, key) else {
-        return "not_available".to_string();
+        return code_span("not_available");
     };
     if value.is_null() {
-        "none".to_string()
+        code_span("none")
     } else {
-        value
-            .as_str()
-            .map(md_escape)
-            .unwrap_or_else(|| "invalid".to_string())
+        code_span(value.as_str().unwrap_or("invalid"))
     }
 }
 
@@ -50,10 +51,6 @@ fn summary_field<'a>(value: Option<&'a Value>, key: &str) -> Option<&'a Value> {
     value
         .and_then(|value| value.get("summary"))
         .and_then(|summary| summary.get(key))
-}
-
-pub(super) fn md_escape(value: &str) -> String {
-    value.replace('|', "\\|").replace('\n', " ")
 }
 
 pub(super) fn first_line(value: &str) -> String {

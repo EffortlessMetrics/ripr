@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 9cc2aff..1d85ba7 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn count_adults(ages: &[u32]) -> usize {
+ }
+ 
+ pub fn any_overdue(days: &[i64]) -> bool {
+-    days.iter().any(|d| *d > 30)
++    days.iter().any(|&d| d > 30)
+ }
+ 
+ pub fn total_cents(prices: &[u64]) -> u64 {

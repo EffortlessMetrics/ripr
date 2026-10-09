@@ -1,0 +1,13 @@
+diff --git a/crates/atuin/src/logs/otel/enabled.rs b/crates/atuin/src/logs/otel/enabled.rs
+index 0930e8e8..451256dd 100644
+--- a/crates/atuin/src/logs/otel/enabled.rs
++++ b/crates/atuin/src/logs/otel/enabled.rs
+@@ -59,7 +59,7 @@ impl OtelCtx {
+             return Err(OtelCtxEnableError::NonHttpUrl);
+         }
+ 
+-        if !otel_url.path().ends_with("/v1/traces") {
++        if otel_url.path().ends_with("/v1/traces") == false {
+             otel_url
+                 .path_segments_mut()
+                 .expect("checked above that it's an http url")

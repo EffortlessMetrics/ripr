@@ -1,0 +1,8 @@
+[package]
+name = "agent_funnel_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "agent_funnel_fixture"
+path = "src/lib.rs"

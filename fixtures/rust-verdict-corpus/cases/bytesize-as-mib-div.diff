@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index fbfe305..8c33214 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -273,7 +273,7 @@ impl ByteSize {
+     /// Returns byte count as mebibytes.
+     #[inline(always)]
+     pub fn as_mib(&self) -> f64 {
+-        self.0 as f64 / MIB as f64
++        self.0 as f64 / (MIB as f64)
+     }
+ 
+     /// Returns byte count as gigabytes.

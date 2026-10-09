@@ -1,0 +1,13 @@
+diff --git a/src/store.rs b/src/store.rs
+index 8fdca68..edd1a8a 100644
+--- a/src/store.rs
++++ b/src/store.rs
+@@ -25,7 +25,7 @@ impl Store {
+ }
+ 
+ pub fn record(store: &mut Store, units: i64) {
+-    let _ = store.put(units * 9);
++    let _ = store.put(9 * units);
+ }
+ 
+ pub fn persist(store: &mut Store, units: i64) {

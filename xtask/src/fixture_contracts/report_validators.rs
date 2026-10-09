@@ -605,6 +605,16 @@ pub(crate) fn validate_report_packet_index_fixture_corpus_at(
     if json_string_field(&corpus, "spec").as_deref() != Some("RIPR-SPEC-0024") {
         violations.push("report-packet-index corpus spec must be RIPR-SPEC-0024".to_string());
     }
+    // The dogfood gate renders every case by parsing this command, so a corpus
+    // that drops or rewrites it stops proving the route it documents (#3972).
+    match json_string_field(&corpus, "canonical_command") {
+        Some(command) if command.starts_with("ripr reports index ") => {}
+        Some(command) => violations.push(format!(
+            "report-packet-index corpus canonical_command must run `ripr reports index`, got `{command}`"
+        )),
+        None => violations
+            .push("report-packet-index corpus is missing canonical_command".to_string()),
+    }
 
     let cases = match corpus.get("cases").and_then(Value::as_array) {
         Some(cases) => cases,
@@ -628,6 +638,18 @@ pub(crate) fn validate_report_packet_index_fixture_corpus_at(
     for case in cases {
         let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
         seen_cases.insert(case_id.clone());
+
+        // Without a real packet tree the case has no producer input, and the
+        // gate falls back to comparing two committed declarations (#3972).
+        match json_string_field(case, "packet_root") {
+            Some(packet_root) if Path::new(&packet_root).is_dir() => {}
+            Some(packet_root) => violations.push(format!(
+                "report-packet-index case {case_id} packet_root is not a directory: {packet_root}"
+            )),
+            None => violations.push(format!(
+                "report-packet-index case {case_id} is missing packet_root"
+            )),
+        }
 
         let expected = match case.get("expected") {
             Some(value) => value,

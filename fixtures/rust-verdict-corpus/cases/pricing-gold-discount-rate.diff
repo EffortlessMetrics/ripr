@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1282397..e89cfbe 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -30,7 +30,7 @@ pub fn discount_percent(tier: Tier) -> u64 {
+     match tier {
+         Tier::Standard => 0,
+         Tier::Silver => 5,
+-        Tier::Gold => 10,
++        Tier::Gold => 15,
+     }
+ }
+ 

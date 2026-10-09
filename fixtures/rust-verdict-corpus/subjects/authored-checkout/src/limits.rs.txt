@@ -1,0 +1,65 @@
+//! Limits against named constants and a split boundary test.
+
+pub mod config {
+    pub const DAILY_LIMIT: u32 = 10;
+}
+
+use config::DAILY_LIMIT;
+
+pub const MIN_ORDER: u32 = 5;
+
+pub fn over_daily_limit(count: u32) -> bool {
+    count >= DAILY_LIMIT
+}
+
+pub fn below_minimum(count: u32) -> bool {
+    count < MIN_ORDER
+}
+
+pub fn needs_review(total: u32) -> bool {
+    total >= 1000
+}
+
+#[cfg(test)]
+macro_rules! assert_flag {
+    ($actual:expr, $expected:expr) => {
+        assert_eq!($actual, $expected, "flag mismatch")
+    };
+}
+
+pub fn bulk(count: u32) -> bool {
+    count >= 100
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_daily_limit_is_inclusive() {
+        assert!(over_daily_limit(DAILY_LIMIT));
+        assert!(!over_daily_limit(DAILY_LIMIT - 1));
+    }
+
+    #[test]
+    fn the_minimum_is_exclusive() {
+        assert!(below_minimum(MIN_ORDER - 1));
+        assert!(!below_minimum(MIN_ORDER));
+    }
+
+    #[test]
+    fn review_runs_at_the_threshold() {
+        let _ = needs_review(1000);
+    }
+
+    #[test]
+    fn large_totals_need_review() {
+        assert!(needs_review(5000));
+    }
+
+    #[test]
+    fn bulk_starts_at_one_hundred() {
+        assert_flag!(bulk(100), true);
+        assert_flag!(bulk(99), false);
+    }
+}

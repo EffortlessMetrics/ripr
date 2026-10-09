@@ -19,7 +19,7 @@ run mutation testing, change gate policy, or make CI blocking by default.
 
 ## Start In GitHub
 
-In generated CI, start with the `First Useful Action` job-summary section when
+In generated CI, start with the `Recommended next test` job-summary section when
 it exists. It is meant to answer:
 
 - what action should happen next;

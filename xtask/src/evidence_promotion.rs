@@ -280,6 +280,13 @@ pub(crate) enum EvidencePromotionSemanticAssertion {
         kind: String,
         strength: String,
     },
+    ExpectedRelatedTest {
+        name: String,
+        file: String,
+        line: u64,
+        kind: String,
+        strength: String,
+    },
     ExpectedClass {
         class: String,
     },
@@ -348,9 +355,7 @@ fn run_evidence_promotion_pinned_external_cases(
         write_evidence_promotion_external_report(&runs, std::slice::from_ref(&err))?;
         return Ok(runs);
     }
-    let binary = PathBuf::from("target")
-        .join("debug")
-        .join(format!("ripr{}", std::env::consts::EXE_SUFFIX));
+    let binary = ripr_debug_binary();
     let mut runs = Vec::new();
     let mut all_violations = Vec::new();
     for case in &cases {
@@ -654,6 +659,30 @@ fn evidence_promotion_parse_assertion(
                 case_id, index, assertion, "strength",
             )?,
         }),
+        "expected_related_test" => {
+            let line =
+                evidence_promotion_required_assertion_u64(case_id, index, assertion, "line")?;
+            if line == 0 {
+                return Err(format!(
+                    "evidence promotion case `{case_id}` assertion {index}: expected_related_test.line must be positive"
+                ));
+            }
+            Ok(EvidencePromotionSemanticAssertion::ExpectedRelatedTest {
+                name: evidence_promotion_required_assertion_string(
+                    case_id, index, assertion, "name",
+                )?,
+                file: evidence_promotion_required_assertion_string(
+                    case_id, index, assertion, "file",
+                )?,
+                line,
+                kind: evidence_promotion_required_assertion_string(
+                    case_id, index, assertion, "kind",
+                )?,
+                strength: evidence_promotion_required_assertion_string(
+                    case_id, index, assertion, "strength",
+                )?,
+            })
+        }
         "expected_class" => {
             let class =
                 evidence_promotion_required_assertion_class(case_id, index, assertion, "class")?;
@@ -1226,13 +1255,53 @@ pub(crate) fn evidence_promotion_semantic_violations(
     human_text: Option<&str>,
     fixture_human_required: bool,
 ) -> Vec<String> {
+    evidence_promotion_semantic_violations_scoped(
+        case_id,
+        source_fixture,
+        assertions,
+        check_json,
+        human_text,
+        fixture_human_required,
+        None,
+    )
+}
+
+/// Same contract as [`evidence_promotion_semantic_violations`], with an
+/// optional case-level `probe_family` selector. When set, only findings whose
+/// `probe.family` matches are judged, so one fixture can carry both a
+/// refused-family control and a promoted-family positive control. A selector
+/// that matches no finding is a violation, never a vacuous pass.
+pub(crate) fn evidence_promotion_semantic_violations_scoped(
+    case_id: &str,
+    source_fixture: Option<&str>,
+    assertions: &[EvidencePromotionSemanticAssertion],
+    check_json: &Value,
+    human_text: Option<&str>,
+    fixture_human_required: bool,
+    probe_family: Option<&str>,
+) -> Vec<String> {
     let mut violations = Vec::new();
     let case_label = evidence_promotion_assertion_case_label(case_id, source_fixture);
-    let findings = check_json
+    let mut findings: Vec<Value> = check_json
         .get("findings")
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
+    if let Some(family) = probe_family {
+        findings.retain(|finding| {
+            finding
+                .get("probe")
+                .and_then(|probe| probe.get("family"))
+                .and_then(Value::as_str)
+                == Some(family)
+        });
+        if findings.is_empty() {
+            violations.push(format!(
+                "{case_label}: `probe_family` `{family}` matched no findings; \
+                 a scoped case must judge at least one finding"
+            ));
+        }
+    }
 
     for assertion in assertions {
         match assertion {
@@ -1275,7 +1344,9 @@ pub(crate) fn evidence_promotion_semantic_violations(
                 }
             }
             EvidencePromotionSemanticAssertion::MustDiscloseScope => {
-                let missing_scope = evidence_promotion_missing_scope_fields(check_json);
+                let diff_sourced = evidence_promotion_case_is_diff_sourced(source_fixture);
+                let missing_scope =
+                    evidence_promotion_missing_scope_fields(check_json, diff_sourced);
                 if !missing_scope.is_empty() {
                     violations.push(format!(
                         "{case_label}: `must_disclose_scope` requires report-level scope fields schema_version/tool/mode/root/base, but missing or empty field(s): {}",
@@ -1715,6 +1786,45 @@ pub(crate) fn evidence_promotion_semantic_violations(
                     violations.push(format!(
                         "{case_label}: `expected_finding_count` requires {count} finding(s), found {observed}"
                     ));
+                }
+            }
+            EvidencePromotionSemanticAssertion::ExpectedRelatedTest {
+                name,
+                file,
+                line,
+                kind,
+                strength,
+            } => {
+                if findings.is_empty() {
+                    violations.push(format!(
+                        "{case_label}: `expected_related_test` requires at least one finding"
+                    ));
+                }
+                for finding in &findings {
+                    let matched = finding
+                        .get("related_tests")
+                        .and_then(Value::as_array)
+                        .is_some_and(|tests| {
+                            tests.iter().any(|test| {
+                                test.get("name").and_then(Value::as_str) == Some(name.as_str())
+                                    && test.get("file").and_then(Value::as_str)
+                                        == Some(file.as_str())
+                                    && test.get("line").and_then(Value::as_u64) == Some(*line)
+                                    && test.get("oracle_kind").and_then(Value::as_str)
+                                        == Some(kind.as_str())
+                                    && test.get("oracle_strength").and_then(Value::as_str)
+                                        == Some(strength.as_str())
+                            })
+                        });
+                    if !matched {
+                        let finding_id = finding
+                            .get("id")
+                            .and_then(Value::as_str)
+                            .unwrap_or("<missing-id>");
+                        violations.push(format!(
+                            "{case_label}: `expected_related_test` requires `{file}:{line} {name}` with oracle `{kind}/{strength}` on finding `{finding_id}`"
+                        ));
+                    }
                 }
             }
             EvidencePromotionSemanticAssertion::MustDiscloseWitness => {
@@ -2671,6 +2781,31 @@ pub(crate) fn evidence_promotion_human_oracle_line_matches(
     let expected_strength = expected_strength.to_ascii_lowercase();
     let normalized = line.trim().to_ascii_lowercase();
 
+    if let Some(related_test) = normalized.strip_prefix("- related test ") {
+        let projection = format!(
+            "{expected_strength} {} oracle:",
+            expected_kind.replace('_', " ")
+        );
+        for (separator, _) in related_test.match_indices(" uses ") {
+            let Some((location, test_name)) = related_test[..separator].rsplit_once(' ') else {
+                continue;
+            };
+            let Some((path, line)) = location.rsplit_once(':') else {
+                continue;
+            };
+            if path.is_empty()
+                || line.is_empty()
+                || !line.bytes().all(|byte| byte.is_ascii_digit())
+                || test_name.is_empty()
+                || test_name.chars().any(char::is_whitespace)
+            {
+                continue;
+            }
+            return related_test[separator + " uses ".len()..].starts_with(projection.as_str());
+        }
+        return false;
+    }
+
     if evidence_promotion_human_line_field_value(&normalized, "oracle_kind").as_deref()
         == Some(expected_kind.as_str())
         && evidence_promotion_human_line_field_value(&normalized, "oracle_strength").as_deref()
@@ -2883,10 +3018,21 @@ fn evidence_promotion_finding_id(finding: &Value) -> &str {
         .unwrap_or("<no-id>")
 }
 
-fn evidence_promotion_missing_scope_fields(check_json: &Value) -> Vec<&'static str> {
+fn evidence_promotion_missing_scope_fields(
+    check_json: &Value,
+    diff_sourced: bool,
+) -> Vec<&'static str> {
+    // #3952: a diff-sourced report has no base by construction
+    // (`CheckOutput.base` is documented as "when applicable", and the diff
+    // file — not a revision — is the scope). Its machine-readable scope
+    // statement is tool/mode/root plus the harness-pinned `diff.patch`,
+    // so `base` is excused only there; every other report must carry it.
     ["schema_version", "tool", "mode", "root", "base"]
         .iter()
         .filter_map(|field| {
+            if diff_sourced && *field == "base" {
+                return None;
+            }
             let present = check_json
                 .get(*field)
                 .and_then(Value::as_str)
@@ -2894,6 +3040,13 @@ fn evidence_promotion_missing_scope_fields(check_json: &Value) -> Vec<&'static s
             (!present).then_some(*field)
         })
         .collect()
+}
+
+/// A scope case is diff-sourced when its fixture golden is produced from a
+/// pinned `diff.patch` (the fixture runner always passes `--diff`, so the
+/// envelope's scope is the diff file rather than a base revision).
+fn evidence_promotion_case_is_diff_sourced(source_fixture: Option<&str>) -> bool {
+    source_fixture.is_some_and(|fixture| Path::new(fixture).join("diff.patch").exists())
 }
 
 fn evidence_promotion_report_reads_clean(check_json: &Value, findings: &[Value]) -> bool {
@@ -4049,6 +4202,15 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
             continue;
         }
 
+        if let Some(family) = case.get("probe_family")
+            && family.as_str().map(str::is_empty).unwrap_or(true)
+        {
+            violations.push(format!(
+                "evidence promotion honesty case `{id}`: `probe_family` must be a \
+                 non-empty string naming one probe family"
+            ));
+        }
+
         let (source_artifact, check_json_path) = if source_fixture.is_empty() {
             let report_path = PathBuf::from(source_report);
             if !report_path.exists() {
@@ -4122,13 +4284,15 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
             }) {
                 control_languages.insert(language.to_string());
             }
-            violations.extend(evidence_promotion_semantic_violations(
+            let probe_family = case.get("probe_family").and_then(Value::as_str);
+            violations.extend(evidence_promotion_semantic_violations_scoped(
                 id,
                 Some(source_artifact),
                 &assertions,
                 &check_json,
                 source_human_text.as_deref(),
                 !source_fixture.is_empty(),
+                probe_family,
             ));
             continue;
         }
@@ -4163,22 +4327,23 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
         // report-level scope header to remain visible. This is a first-run
         // honesty guard: a known limitation case must not be re-blessed into an
         // artifact that still has findings but no machine-readable statement of
-        // which tool/mode/root/base produced them.
+        // which tool/mode/root/base produced them. Diff-sourced fixture
+        // goldens carry no base by construction (#3952); their scope
+        // statement is tool/mode/root plus the harness-pinned `diff.patch`.
         let must_disclose_scope = case
             .get("must_disclose_scope")
             .and_then(Value::as_bool)
             .unwrap_or(false);
         if must_disclose_scope {
-            let missing_scope_fields = ["schema_version", "tool", "mode", "root", "base"]
-                .iter()
-                .filter_map(|field| {
-                    let present = check_json
-                        .get(*field)
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| !value.trim().is_empty());
-                    (!present).then_some(*field)
-                })
-                .collect::<Vec<_>>();
+            let source_opt = if source_fixture.is_empty() {
+                None
+            } else {
+                Some(source_fixture)
+            };
+            let missing_scope_fields = evidence_promotion_missing_scope_fields(
+                &check_json,
+                evidence_promotion_case_is_diff_sourced(source_opt),
+            );
             if !missing_scope_fields.is_empty() {
                 violations.push(format!(
                     "evidence promotion honesty case `{id}` (fixture `{source_fixture}`): \
@@ -4373,6 +4538,53 @@ pub(crate) fn validate_evidence_promotion_honesty_corpus_at(
 }
 
 #[cfg(test)]
+mod related_test_assertion_tests {
+    use super::evidence_promotion_parse_assertion;
+
+    #[test]
+    fn requires_source_identity() -> Result<(), String> {
+        let original = serde_json::json!({
+            "type": "expected_related_test",
+            "name": "observes_score",
+            "file": "src/lib.rs",
+            "line": 8,
+            "kind": "relational_check",
+            "strength": "weak"
+        });
+        match evidence_promotion_parse_assertion("related_test_identity", 0, &original) {
+            Ok(_) => {}
+            Err(error) => {
+                return Err(format!(
+                    "valid related-test assertion was rejected: {error}"
+                ));
+            }
+        }
+        for field in ["name", "file", "line", "kind", "strength"] {
+            let mut missing = original.clone();
+            missing
+                .as_object_mut()
+                .ok_or("related-test assertion must be an object")?
+                .remove(field);
+            match evidence_promotion_parse_assertion("related_test_identity", 0, &missing) {
+                Err(_) => {}
+                Ok(_) => {
+                    return Err(format!("related-test assertion accepted missing `{field}`"));
+                }
+            }
+        }
+        let mut zero_line = original;
+        zero_line["line"] = serde_json::json!(0);
+        match evidence_promotion_parse_assertion("related_test_identity", 0, &zero_line) {
+            Err(_) => {}
+            Ok(_) => {
+                return Err("related-test assertion accepted source line zero".to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 mod harness_limitation_assertion_tests {
     use super::*;
     use serde_json::json;
@@ -4444,5 +4656,32 @@ mod harness_limitation_assertion_tests {
         assert!(!evidence_promotion_emits_any_harness_limitation(
             &check_json
         ));
+    }
+
+    #[test]
+    fn scope_fields_require_base_for_live_reports_but_not_diff_sourced_ones() {
+        // #3952: a diff-sourced envelope has no base by construction, so
+        // only tool/mode/root may be required; every other report must
+        // still carry base.
+        let scoped = json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "fast",
+            "root": "fixtures/example/input",
+            "base": "origin/main",
+        });
+        assert!(evidence_promotion_missing_scope_fields(&scoped, false).is_empty());
+        assert!(evidence_promotion_missing_scope_fields(&scoped, true).is_empty());
+        let diff_sourced = json!({
+            "schema_version": "0.2",
+            "tool": "ripr",
+            "mode": "fast",
+            "root": "fixtures/example/input",
+        });
+        assert_eq!(
+            evidence_promotion_missing_scope_fields(&diff_sourced, false),
+            vec!["base"]
+        );
+        assert!(evidence_promotion_missing_scope_fields(&diff_sourced, true).is_empty());
     }
 }

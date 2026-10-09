@@ -1,0 +1,25 @@
+pub struct Pulse {
+    pub count: u32,
+    pub label: String,
+}
+
+impl Pulse {
+    pub fn new() -> Self {
+        Pulse { count: 0, label: String::from("x") }
+    }
+
+    pub fn beat(&mut self) {
+        self.count += 1;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn beat_runs() {
+        let mut c = Pulse::new();
+        c.beat();
+    }
+}

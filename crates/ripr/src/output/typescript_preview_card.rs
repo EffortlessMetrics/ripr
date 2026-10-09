@@ -239,7 +239,7 @@ fn changed_behavior(finding: &Finding) -> String {
     format!(
         "{} changed at {}:{}: `{expression}`",
         finding.probe.family.as_str(),
-        finding.probe.location.file.display(),
+        crate::output::path::display_path(&finding.probe.location.file),
         finding.probe.location.line
     )
 }
@@ -247,7 +247,7 @@ fn changed_behavior(finding: &Finding) -> String {
 fn related_test_card(test: &RelatedTest) -> TypeScriptPreviewCardRelatedTest {
     TypeScriptPreviewCardRelatedTest {
         name: test.name.clone(),
-        file: test.file.display().to_string(),
+        file: crate::output::path::display_path(&test.file),
         line: test.line,
     }
 }
@@ -1746,6 +1746,7 @@ mod tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "discount smoke".to_string(),
                 file: PathBuf::from("tests/pricing.test.ts"),
@@ -1755,6 +1756,7 @@ mod tests {
                 oracle_strength,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: None,
             language: Some(LanguageId::TypeScript),

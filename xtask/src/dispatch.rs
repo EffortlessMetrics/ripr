@@ -39,9 +39,15 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::BranchInventory(args) => super::branch_inventory::run(&args),
         XtaskCommand::GhPrStatus(args) => super::reports::gh_pr_status(&args),
         XtaskCommand::CiBudget(args) => super::reports::ci_budget(&args),
+        XtaskCommand::MergeQueue(args) => super::reports::merge_queue(&args),
         XtaskCommand::PerlMigrationRefresh(args) => super::reports::perl_migration_refresh(&args),
+        XtaskCommand::FirstRun(args) => super::first_run::run(&args),
+        XtaskCommand::PublicProof(args) => super::public_proof::run(&args),
         XtaskCommand::ModuleHealth(args) => super::reports::module_health(&args),
         XtaskCommand::WindowsAdvisorySummary(args) => super::windows_advisory::run(&args),
+        XtaskCommand::WindowsAdvisoryIsolatedSummary(args) => {
+            super::windows_advisory::run_isolated(&args)
+        }
         XtaskCommand::EvalSweep(args) => super::reports::eval_sweep(&args),
         XtaskCommand::FirstHour(args) => super::reports::first_hour(&args),
         XtaskCommand::FirstHourControls(args) => super::reports::first_hour_controls(&args),
@@ -53,14 +59,33 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::Goldens(args) => super::reports::goldens(&args),
         XtaskCommand::Metrics => super::reports::metrics_report(),
         XtaskCommand::RustRepairTrustReport => super::reports::rust_repair_trust_report(),
+        XtaskCommand::RepairCardUsabilityReport => super::reports::repair_card_usability_report(),
+        XtaskCommand::BlindJourneyContract => super::reports::blind_journey_contract_report(),
+        XtaskCommand::BlindJourneyExecute => super::reports::blind_journey_execute_report(),
+        XtaskCommand::OrchestrationScorecard(args) => {
+            super::reports::orchestration_scorecard_report(&args)
+        }
+        XtaskCommand::IssueLifecycleScorecard(args) => {
+            super::reports::issue_lifecycle_scorecard_report(&args)
+        }
+        XtaskCommand::IssueLifecycleIntakeScorecard(args) => {
+            super::issue_lifecycle_intake::issue_lifecycle_intake_scorecard(&args)
+        }
+        XtaskCommand::IssueLifecycleContractPlanScorecard(args) => {
+            super::issue_lifecycle_contract_plan::issue_lifecycle_contract_plan_scorecard(&args)
+        }
         XtaskCommand::RustJudgedPanel(args) => super::rust_judged_panel::run(&args),
         XtaskCommand::CheckRustJudgedPanel => super::check_rust_judged_panel(),
         XtaskCommand::CheckReleaseChallengeSelection => {
             super::rust_judged_panel::check_release_selection()
         }
+        XtaskCommand::CheckReleaseChallengeJudgments => {
+            super::rust_judged_panel::check_release_judgments()
+        }
         XtaskCommand::PythonJudgedPanel(args) => super::python_judged_panel::run(&args),
         XtaskCommand::CheckPythonJudgedPanel => super::check_python_judged_panel(),
         XtaskCommand::PythonRepairTrust(args) => super::reports::python_repair_trust(&args),
+        XtaskCommand::VerdictCorpus(args) => super::reports::verdict_corpus(&args),
         XtaskCommand::TestOracleReport => super::reports::test_oracle_report(),
         XtaskCommand::TestEfficiencyReport => super::reports::test_efficiency_report(),
         XtaskCommand::BadgeArtifacts => super::reports::badge_artifacts(),
@@ -71,9 +96,20 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::RepoExposureReport => super::reports::repo_exposure_report(),
         XtaskCommand::RepoExposureSummaryReport => super::reports::repo_exposure_summary_report(),
         XtaskCommand::RepoExposureLatencyReport => super::reports::repo_exposure_latency_report(),
+        XtaskCommand::LspPerformanceReport => super::reports::lsp_performance_report(),
         XtaskCommand::TargetedRerunBenchmark(args) => {
             super::reports::targeted_rerun_benchmark(&args)
         }
+        XtaskCommand::AgenticBench(args) => super::reports::agentic_bench(&args),
+        XtaskCommand::SeamInventoryScalingBenchmark(args) => {
+            super::reports::seam_inventory_scaling_benchmark(&args)
+        }
+        XtaskCommand::MutationSpotCheck(args) => super::reports::mutation_spot_check(&args),
+        XtaskCommand::PilotRanking(args) => super::reports::pilot_ranking(&args),
+        XtaskCommand::DxScoreboard(args) => super::reports::dx_scoreboard(&args),
+        XtaskCommand::ScaleCliffBenchmark(args) => super::reports::scale_cliff_benchmark(&args),
+        XtaskCommand::RustCorpus(args) => super::reports::rust_corpus(&args),
+        XtaskCommand::BenchAgentSurfaces(args) => super::reports::bench_agent_surfaces(&args),
         XtaskCommand::RepoContractReport => super::repo_contract_report(),
         XtaskCommand::EvidenceHealth => super::reports::evidence_health_report(),
         XtaskCommand::Lane1EvidenceAudit => super::reports::lane1_evidence_audit_report(),
@@ -161,7 +197,14 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::recommendation_calibration(&args)
         }
         XtaskCommand::SarifPolicy(args) => super::reports::sarif_policy(&args),
-        XtaskCommand::ImpactedEvidence(args) => super::reports::impacted_evidence(&args),
+        XtaskCommand::ImpactedEvidence(args) => {
+            // Rooted at the xtask workspace, not the cwd, so the command works
+            // from any subdirectory like the rest of the xtask reports.
+            let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .ok_or_else(|| "xtask manifest must have a repository parent".to_string())?;
+            ripr::app::run_impacted_evidence_at(repo_root, &args)
+        }
         XtaskCommand::RiprPr(args) => super::reports::ripr_pr(&args),
         XtaskCommand::FirstPr(args) => super::reports::first_pr(&args),
         XtaskCommand::RiprReviewComments(args) => super::reports::ripr_review_comments(&args),
@@ -205,6 +248,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckSourceRoleAuthority => super::check_rust_source_role_authority(),
         XtaskCommand::CheckPublicApi => super::check_public_api(),
         XtaskCommand::CheckOutputContracts => super::check_output_contracts(),
+        XtaskCommand::CheckIdentityRegistry => super::identity_registry::check_identity_registry(),
         XtaskCommand::CheckDocArtifacts => super::check_doc_artifacts(),
         XtaskCommand::CheckSupportTiers => super::check_support_tiers(),
         XtaskCommand::CheckDocIndex => super::check_doc_index(),
@@ -218,6 +262,9 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckVerificationContracts(args) => {
             super::verification_contracts::check_verification_contracts(&args)
         }
+        XtaskCommand::SchemaProducerSweep(args) => {
+            super::schema_producer_sweep::schema_producer_sweep(&args)
+        }
         XtaskCommand::CheckDependencies => super::check_dependencies(),
         XtaskCommand::CheckSupplyChain => super::check_supply_chain(),
         XtaskCommand::CheckProcessPolicy => super::check_process_policy(),
@@ -229,6 +276,8 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CheckPositioningLanguage => super::check_positioning_language(),
         XtaskCommand::CheckDocRoles => super::check_doc_roles(),
         XtaskCommand::CheckReleaseTargets => super::check_release_targets(),
+        XtaskCommand::PackageQualificationGate(args) => super::package_qualification::run(&args),
+        XtaskCommand::QualifyPythonWheelhouse(args) => super::qualify_python_wheelhouse(&args),
         XtaskCommand::VscodeCompile => super::vscode_compile(),
         XtaskCommand::VscodePackage(args) => super::vscode_package(&args),
         XtaskCommand::VscodeTest => super::vscode_test(),

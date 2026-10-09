@@ -1,6 +1,7 @@
+use super::uri::{file_uri_for_path, file_uris_match};
 /// Advisory LSP codeLens for changed symbols.
 ///
-/// RIPR-SPEC-0099: emits one advisory `CodeLens` per `Finding` whose probe
+/// RIPR-SPEC-0100: emits one advisory `CodeLens` per `Finding` whose probe
 /// location maps to the requested document URI. The title cites the finding's
 /// `related_tests.len()` from the cached `AnalysisSnapshot` — the same source
 /// that feeds `finding.class` — so the count is never fabricated.
@@ -12,12 +13,12 @@
 /// - Static-language vocab only (approved RIPR exposure terms); no runtime
 ///   mutation-testing vocabulary in any title.
 /// - Preview-tier findings (TS / Python — `language_status == Some(Preview)`)
-///   are prefixed with `preview:` and softened so the count is not read as
+///   have advisory text prefixed with `preview:` and softened so the count is
+///   not read as
 ///   confirmed by a static discriminator.
 /// - N == 0 uses "no related tests found" + the class label, not the
 ///   forbidden unexercised-synonym that belongs to runtime mutation tooling.
-use super::state::AnalysisSnapshot;
-use super::uri::{file_uri_for_path, file_uris_match};
+use super::{REFRESH_COMMAND, state::AnalysisSnapshot};
 use crate::domain::{ExposureClass, Finding, LanguageStatus};
 use std::path::Path;
 use std::time::Duration;
@@ -121,6 +122,16 @@ pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>)
         return Vec::new();
     };
     let age = snapshot.refresh.age();
+    lens_findings(uri, snapshot)
+        .map(|finding| finding_to_code_lens(finding, age))
+        .collect()
+}
+
+/// The findings the code lens shows for `uri`, in snapshot order.
+fn lens_findings<'a>(
+    uri: &'a Uri,
+    snapshot: &'a AnalysisSnapshot,
+) -> impl Iterator<Item = &'a Finding> + 'a {
     snapshot
         .findings
         .iter()
@@ -130,30 +141,44 @@ pub(super) fn code_lens_response(uri: &Uri, snapshot: Option<&AnalysisSnapshot>)
         // new-side coordinate — not a candidate position to pin.
         .filter(|finding| finding.is_candidate_actionable())
         .filter(|finding| finding_matches_uri(finding, uri, &snapshot.root))
-        .map(|finding| finding_to_code_lens(finding, age))
+}
+
+/// The findings whose code lens sits on the zero-based `line` of `uri`, so
+/// hover can describe exactly what the lens on that line shows.
+pub(super) fn lens_findings_at_line<'a>(
+    uri: &'a Uri,
+    snapshot: &'a AnalysisSnapshot,
+    line: u32,
+) -> Vec<&'a Finding> {
+    lens_findings(uri, snapshot)
+        .filter(|finding| lens_line(finding) == line)
         .collect()
+}
+
+fn lens_line(finding: &Finding) -> u32 {
+    finding.probe.location.line.saturating_sub(1) as u32
 }
 
 /// Build one `CodeLens` for a single finding.
 ///
-/// The `command` field carries the advisory text as its `title`. Although the
-/// LSP spec allows a CodeLens with `command == null` for display-only lenses,
-/// many clients (including VS Code) only render the title when a `Command`
-/// object is present. We emit a `Command` with an empty no-op id so the title
-/// is displayed without triggering any action. `data` is `None` (no resolve
-/// round-trip needed; `resolve_provider` is `false`).
+/// The resolved command refreshes saved-workspace analysis through the existing
+/// registered server command. Its title keeps the cached advisory distinct from
+/// the explicit action. No arguments or resolve round-trip are needed.
 fn finding_to_code_lens(finding: &Finding, age: Option<Duration>) -> CodeLens {
-    let line = finding.probe.location.line.saturating_sub(1) as u32;
+    let line = lens_line(finding);
     let range = Range {
         start: Position { line, character: 0 },
         end: Position { line, character: 0 },
     };
-    let title = related_test_lens_title(finding, age);
+    let title = format!(
+        "Refresh saved-workspace analysis · {}",
+        related_test_lens_title(finding, age)
+    );
     CodeLens {
         range,
         command: Some(Command {
             title,
-            command: String::new(),
+            command: REFRESH_COMMAND.to_string(),
             arguments: None,
         }),
         data: None,
@@ -279,6 +304,7 @@ mod tests {
             oracle_strength: OracleStrength::Weak,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         }
     }
 
@@ -325,6 +351,7 @@ mod tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests,
             recommended_next_step: None,
             language: None,
@@ -377,6 +404,7 @@ mod tests {
         }
         AnalysisSnapshot {
             root: PathBuf::from(root),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: None,
             mode: Mode::Draft,
@@ -389,6 +417,7 @@ mod tests {
             gap_artifact_rejections: Vec::<GapArtifactRejection>::new(),
             harness_facts: super::super::state::HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
@@ -531,6 +560,60 @@ mod tests {
         );
         if lens_view_identity(&identified) == base {
             return Err("an input-identity change must change the lens-view identity".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn code_lens_wire_advertises_an_honest_registered_refresh() -> Result<(), String> {
+        let provider = super::super::capabilities::initialize_result()
+            .capabilities
+            .execute_command_provider
+            .ok_or("missing actual command advertisement")?;
+        for status in [None, Some(LanguageStatus::Preview)] {
+            let preview = status.is_some();
+            let finding = make_finding("src/lib.rs", 10, ExposureClass::Exposed, 2, status);
+            let snapshot = make_snapshot_with_findings("/workspace", vec![finding]);
+            let uri = parse_uri("file:///workspace/src/lib.rs")?;
+            let lenses = code_lens_response(&uri, Some(&snapshot));
+            if lenses.len() != 1 {
+                return Err(format!(
+                    "wire control must emit exactly one lens: {lenses:?}"
+                ));
+            }
+            let lens = lenses.first().ok_or("missing actual emitted lens")?;
+            let wire = serde_json::to_value(lens).map_err(|error| error.to_string())?;
+            let command = wire.get("command").ok_or("missing wire command")?;
+            let id = command
+                .get("command")
+                .and_then(serde_json::Value::as_str)
+                .ok_or("missing wire command identifier")?;
+            if id != "ripr.refresh" {
+                return Err(format!("lens must offer registered refresh, got {id:?}"));
+            }
+            if !provider.commands.iter().any(|advertised| advertised == id) {
+                return Err(format!("emitted command was not advertised: {id}"));
+            }
+            let title = command
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .ok_or("missing wire command title")?;
+            if !title.starts_with("Refresh saved-workspace analysis · ")
+                || !title.contains("2 related tests")
+                || !title.contains("exposed")
+                || !title.contains("static, cached")
+                || preview != title.contains("preview")
+            {
+                return Err(format!(
+                    "refresh action lost its honest cached summary: {title}"
+                ));
+            }
+            if command
+                .get("arguments")
+                .is_some_and(|arguments| !arguments.is_null())
+            {
+                return Err("lens refresh must not introduce command arguments".into());
+            }
         }
         Ok(())
     }

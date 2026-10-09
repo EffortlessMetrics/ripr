@@ -20,7 +20,8 @@ cargo xtask fixtures binding_predicate_scope_controls
 ## Then
 
 No retargeted predicate probe exists: every changed line keeps the
-generic static-unknown finding at its own line, and no
+generic `static_unknown` probe family at its own line (classified
+`no_static_path`, because no test reaches the owner), and no
 `binding_predicate_relation` evidence appears anywhere in the output.
 
 ## Must Not
@@ -28,4 +29,5 @@ generic static-unknown finding at its own line, and no
 - Relate a binding across functions, through a shadow, through a
   reassignment, from comment/string text, or from a destructuring
   declaration.
-- Promote any of these controls past static_unknown.
+- Promote any of these controls to a retargeted predicate probe, or credit
+  one as `exposed` or `weakly_exposed`.

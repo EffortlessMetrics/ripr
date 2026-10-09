@@ -33,12 +33,132 @@ use super::{array_field, escape, field, float_field, number_field};
 /// Mirrors `MAX_RELATED_TESTS_PER_SEAM_JSON` in `output/repo_exposure.rs`.
 const MAX_RELATED_TESTS_PER_FINDING_JSON: usize = 8;
 
-pub fn render(output: &CheckOutput) -> String {
-    render_with_config(output, &RiprConfig::default())
+/// Environment variable overriding the check-JSON findings-array byte budget
+/// (#5203). Set to `0` to remove the cap (unbounded); any positive integer
+/// sets the budget explicitly. When unset, `DEFAULT_CHECK_FINDINGS_BYTES`
+/// applies. Follows the `RIPR_REPO_EXPOSURE_SEAM_LIMIT` operator-guard shape:
+/// an unparseable value fails the run, never the opt-out.
+pub(crate) const CHECK_FINDINGS_BYTES_ENV: &str = "RIPR_CHECK_FINDINGS_BYTES";
+
+/// Default cap on rendered findings-array bytes in `check --format json`
+/// (#5203). Finding payloads dominate large diff-check documents (a 61-finding
+/// `HEAD~10` run measured ~0.8MB of array bytes at ~13KB median per finding);
+/// the budget keeps pathological diffs agent-consumable while leaving ordinary
+/// runs untouched (all fixture goldens sit below 120KB total). Operators can
+/// raise or remove the cap via `RIPR_CHECK_FINDINGS_BYTES`.
+pub(crate) const DEFAULT_CHECK_FINDINGS_BYTES: usize = 1_000_000;
+
+/// `run_status`/`category` carried by the `run_limitations[]` entry when the
+/// findings-array byte budget engages (#5203). Uses the `limited_*` family so
+/// vocabulary readers treat a bounded document as incomplete, never clean.
+pub(crate) const FINDINGS_BOUND_RUN_STATUS: &str = "limited_findings_bound";
+/// `basis` for the findings-bound limitation entry.
+pub(crate) const FINDINGS_BOUND_BASIS: &str = "check_findings_byte_budget";
+/// `repair_route` for the findings-bound limitation entry.
+pub(crate) const FINDINGS_BOUND_REPAIR_ROUTE: &str = "output/check-findings-budget";
+
+/// Whether the findings-array byte budget was the built-in default or
+/// explicitly configured via `RIPR_CHECK_FINDINGS_BYTES` (#5203). Mirrors
+/// `SeamLimitSource` without claiming a seam context.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum FindingsBudgetSource {
+    Default,
+    Configured,
 }
 
-pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> String {
-    let finding_alignment = finding_alignment::report_for_findings(&output.findings);
+/// Carries a findings-array byte-budget truncation so the JSON renderer can
+/// self-declare the rendered prefix (#5203). `rendered + omitted == total`
+/// always reconciles (#5091): `summary.findings` keeps the full analysis
+/// count while `findings[]` holds the `rendered` prefix.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FindingsBoundInfo {
+    pub(crate) rendered: usize,
+    pub(crate) total: usize,
+    pub(crate) budget: usize,
+    pub(crate) source: FindingsBudgetSource,
+}
+
+impl FindingsBoundInfo {
+    fn message(&self) -> String {
+        let setting = match self.source {
+            FindingsBudgetSource::Default => format!(
+                "default {}-byte budget; set {} to override, =0 for the full set",
+                self.budget, CHECK_FINDINGS_BYTES_ENV
+            ),
+            FindingsBudgetSource::Configured => format!(
+                "{}={}; raise it or set =0 for the full set",
+                CHECK_FINDINGS_BYTES_ENV, self.budget
+            ),
+        };
+        format!(
+            "rendered {} of {} findings within the findings-array byte budget ({setting})",
+            self.rendered, self.total
+        )
+    }
+}
+
+/// Effective findings-array byte budget: `None` is the unbounded opt-out.
+/// Fails closed on unparseable values (#4529).
+pub(crate) fn check_findings_byte_budget() -> Result<Option<(usize, FindingsBudgetSource)>, String>
+{
+    check_findings_byte_budget_from_env(
+        CHECK_FINDINGS_BYTES_ENV,
+        DEFAULT_CHECK_FINDINGS_BYTES,
+        std::env::var(CHECK_FINDINGS_BYTES_ENV),
+    )
+}
+
+pub(crate) fn check_findings_byte_budget_from_env(
+    env_name: &str,
+    default: usize,
+    value: Result<String, std::env::VarError>,
+) -> Result<Option<(usize, FindingsBudgetSource)>, String> {
+    match value {
+        Ok(raw) => parse_check_findings_bytes(env_name, &raw)
+            .map(|limit| limit.map(|n| (n, FindingsBudgetSource::Configured))),
+        Err(std::env::VarError::NotPresent) => Ok(Some((default, FindingsBudgetSource::Default))),
+        Err(std::env::VarError::NotUnicode(value)) => Err(format!(
+            "{env_name} is not valid UTF-8 (got {value:?}): set a positive byte budget, or 0 to \
+             remove the cap"
+        )),
+    }
+}
+
+fn parse_check_findings_bytes(env_name: &str, value: &str) -> Result<Option<usize>, String> {
+    let trimmed = value.trim();
+    let invalid = |value: &str| {
+        format!(
+            "{env_name} `{value}` is not a byte budget: set a positive integer, or 0 to remove \
+             the cap"
+        )
+    };
+    match trimmed.parse::<usize>() {
+        // Only the exact spelling `0` is the opt-out: `+0` and `00` also parse
+        // as zero, but the documented opt-out form is `0` (#4606 review).
+        Ok(0) if trimmed == "0" => Ok(None),
+        Ok(0) => Err(invalid(value)),
+        Ok(limit) => Ok(Some(limit)),
+        Err(_) => Err(invalid(value)),
+    }
+}
+
+pub fn render(output: &CheckOutput) -> String {
+    // Compatibility entry point: applies the default budget. The CLI resolves
+    // `RIPR_CHECK_FINDINGS_BYTES` before rendering (see the `Json` arm in
+    // `output::render`); direct callers needing another budget use
+    // `render_with_config`.
+    render_with_config(
+        output,
+        &RiprConfig::default(),
+        Some((DEFAULT_CHECK_FINDINGS_BYTES, FindingsBudgetSource::Default)),
+    )
+}
+
+pub(crate) fn render_with_config(
+    output: &CheckOutput,
+    config: &RiprConfig,
+    findings_budget: Option<(usize, FindingsBudgetSource)>,
+) -> String {
     let mut out = String::new();
     out.push_str("{\n");
     field(&mut out, 1, "schema_version", &output.schema_version, true);
@@ -75,6 +195,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push_str("\n  },\n");
     }
     out.push_str("  \"findings\": [\n");
+    let findings_array_start = out.len();
+    // Full-set group totals: `canonical_gap_group_size` describes the analyzed
+    // group (like `related_tests_total`), not the rendered prefix (#5203).
     let canonical_gap_counts = canonical_gap_counts(&output.findings);
     let suppressed_selectors: BTreeMap<&str, &str> = output
         .suppression
@@ -86,6 +209,15 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
                 .map(|entry| (entry.finding_id.as_str(), entry.selector.as_str()))
         })
         .collect();
+    // Streaming byte cutoff (#5203): findings render in the pipeline's
+    // deterministic `sort_findings` order; once the emitted array bytes
+    // (payloads plus separators) exceed the budget, the rest is disclosed
+    // rather than rendered. The first finding always renders so a nonempty
+    // analysis never yields an empty prefix; worst case is budget plus one
+    // finding. Unbounded (`None`) renders everything. The cutoff is evaluated
+    // after each finding so separators stay exactly as before when the
+    // budget does not engage.
+    let mut rendered_findings = 0usize;
     for (idx, finding) in output.findings.iter().enumerate() {
         finding_json_with_config_and_counts(
             &mut out,
@@ -95,12 +227,29 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             &canonical_gap_counts,
             suppressed_selectors.get(finding.id.as_str()).copied(),
         );
-        if idx + 1 != output.findings.len() {
+        rendered_findings += 1;
+        let last_analysis_finding = idx + 1 == output.findings.len();
+        let over_budget =
+            findings_budget.is_some_and(|(budget, _)| out.len() - findings_array_start > budget);
+        if !last_analysis_finding && !over_budget {
             out.push(',');
         }
         out.push('\n');
+        if over_budget {
+            break;
+        }
     }
     out.push_str("  ]");
+    let findings_bound = if rendered_findings < output.findings.len() {
+        findings_budget.map(|(budget, source)| FindingsBoundInfo {
+            rendered: rendered_findings,
+            total: output.findings.len(),
+            budget,
+            source,
+        })
+    } else {
+        None
+    };
     // Additive advisory field — emitted only when the caller passed
     // `--suppression-policy` (#1441). Absent otherwise, so existing goldens
     // and consumers without a policy see identical output.
@@ -235,7 +384,7 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             &mut out,
             2,
             "continuation",
-            crate::analysis::PartialDiffScope::CONTINUATION_DISCLOSURE,
+            &scope.continuation_disclosure(),
             false,
         );
         out.push_str("  }");
@@ -249,13 +398,27 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         out.push_str("    {\n");
         field(&mut out, 3, "scope_status", "no_scope_provided", true);
         field(&mut out, 3, "category", "no_scope_disclosure", true);
-        field(
-            &mut out,
-            3,
-            "why",
-            "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base origin/main or ripr check --root . --format repo-exposure-md",
-            false,
-        );
+        // #4012: on an established-but-empty range the why names the
+        // compared base instead of claiming no scope was provided.
+        if let Some(base) = output.base.as_deref() {
+            field(
+                &mut out,
+                3,
+                "why",
+                &format!(
+                    "empty range: {base}...HEAD contains no changed files; nothing was analyzed because nothing changed"
+                ),
+                false,
+            );
+        } else {
+            field(
+                &mut out,
+                3,
+                "why",
+                "no analysis scope provided; ripr check is diff-first; empty result does not mean changed behavior is covered; run ripr check --base BASE with BASE set to an existing ref or ripr check --root . --format repo-exposure-md",
+                false,
+            );
+        }
         out.push_str("    }\n");
         out.push_str("  ]");
     }
@@ -273,7 +436,6 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         let advisories = &output.preview_language_advisories;
         for (idx, adv) in advisories.iter().enumerate() {
             let analyzed = adv.analyzed(&output.language_runs);
-            let failed_run = adv.non_success_run(&output.language_runs);
             out.push_str("    {\n");
             field(&mut out, 3, "language", &adv.language, true);
             number_field(&mut out, 3, "file_count", adv.file_count, true);
@@ -286,20 +448,9 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
             let why_owned;
             let why: &str = if analyzed {
                 "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
-            } else if !adv.enabled {
-                why_owned = format!(
-                    "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
-                    adv.language
-                );
-                &why_owned
-            } else if let Some(run) = failed_run {
-                why_owned = format!(
-                    "preview adapter did not complete successfully ({}); files detected but not analyzed; empty result is not Rust-grade clean",
-                    run.status.as_str()
-                );
-                &why_owned
             } else {
-                "preview adapter enabled but no files were routed; files not analyzed; empty result is not Rust-grade clean"
+                why_owned = adv.unaudited_why(&output.language_runs);
+                &why_owned
             };
             field(&mut out, 3, "why", why, false);
             out.push_str("    }");
@@ -310,6 +461,35 @@ pub(crate) fn render_with_config(output: &CheckOutput, config: &RiprConfig) -> S
         }
         out.push_str("  ]");
     }
+    // Additive run-state block — emitted only when the findings-array byte
+    // budget engaged and the rendered findings are a strict prefix (#5203).
+    // Absent otherwise, so unbounded runs keep byte-identical output. Uses the
+    // `run_limitations[]` vocabulary (`limited_*` run status,
+    // `downstream_consumable: false`) so a bounded document never presents as
+    // complete; `rendered + omitted == total` always reconciles (#5091).
+    if let Some(bound) = findings_bound.as_ref() {
+        out.push_str(",\n  \"run_limitations\": [\n");
+        out.push_str("    {\n");
+        field(&mut out, 3, "category", FINDINGS_BOUND_RUN_STATUS, true);
+        field(&mut out, 3, "run_status", FINDINGS_BOUND_RUN_STATUS, true);
+        field(&mut out, 3, "basis", FINDINGS_BOUND_BASIS, true);
+        out.push_str("      \"downstream_consumable\": false,\n");
+        field(&mut out, 3, "message", &bound.message(), true);
+        field(
+            &mut out,
+            3,
+            "repair_route",
+            FINDINGS_BOUND_REPAIR_ROUTE,
+            false,
+        );
+        out.push_str("    }\n");
+        out.push_str("  ]");
+    }
+    // Alignment rows must resolve inside the document: compute over the
+    // rendered prefix so a bounded run never references omitted findings.
+    // Unbounded runs pass the full set, exactly as before.
+    let finding_alignment =
+        finding_alignment::report_for_findings(&output.findings[..rendered_findings]);
     if let Some(report) = finding_alignment.as_ref() {
         out.push_str(",\n");
         out.push_str("  \"finding_alignment\": ");
@@ -571,19 +751,27 @@ fn finding_json_with_config_and_counts(
     array_field(out, indent + 1, "evidence", &evidence, true);
     let missing = projected_preview_actionability_missing(finding);
     array_field(out, indent + 1, "missing", &missing, true);
-    assertion_texts_json(out, &finding.activation.observed_values, indent + 1);
+    // One bounded projection feeds `assertion_texts` and both observed-value
+    // arrays, so the map never names a line the arrays dropped.
+    let rendered_values = rendered_observed_values(finding);
+    assertion_texts_json(out, &rendered_values, indent + 1);
     out.push_str(",\n");
-    activation_json(out, finding, indent + 1);
+    activation_json(out, finding, &rendered_values, indent + 1);
     out.push_str(",\n");
-    let shared_text = shared_assertion_text_map(&finding.activation.observed_values);
+    let shared_text = shared_assertion_text_map(&rendered_values);
     value_facts_array_json(
         out,
         "observed_values",
-        &finding.activation.observed_values,
+        &rendered_values,
         indent + 1,
         &shared_text,
     );
     out.push_str(",\n");
+    if let Some(total) = crate::output::observed_values::elided_observed_values_total(
+        &finding.activation.observed_values,
+    ) {
+        number_field(out, indent + 1, "observed_values_total", total, true);
+    }
     missing_discriminators_array_json(
         out,
         "missing_discriminators",
@@ -591,8 +779,11 @@ fn finding_json_with_config_and_counts(
         indent + 1,
     );
     out.push_str(",\n");
-    let related_total = finding.related_tests.len();
-    let related_rendered = related_total.min(MAX_RELATED_TESTS_PER_FINDING_JSON);
+    let related_total = finding.related_tests_total();
+    let related_rendered = finding
+        .related_tests
+        .len()
+        .min(MAX_RELATED_TESTS_PER_FINDING_JSON);
     number_field(out, indent + 1, "related_tests_total", related_total, true);
     out.push_str(&format!(
         "{}\"related_tests\": [\n",
@@ -604,7 +795,12 @@ fn finding_json_with_config_and_counts(
         .take(related_rendered)
         .enumerate()
     {
-        related_test_json(out, test, indent + 2);
+        related_test_json(
+            out,
+            test,
+            &finding.activation.missing_discriminators,
+            indent + 2,
+        );
         if idx + 1 != related_rendered {
             out.push(',');
         }
@@ -839,11 +1035,7 @@ fn evidence_path_values(finding: &Finding) -> Vec<String> {
             finding.ripr.reveal.observe.state.as_str(),
             finding.ripr.reveal.observe.summary
         ),
-        format!(
-            "discriminator {}: {}",
-            finding.ripr.reveal.discriminate.state.as_str(),
-            finding.ripr.reveal.discriminate.summary
-        ),
+        crate::output::discriminator_line::discriminator_evidence_line(finding),
     ];
 
     values.extend(finding.flow_sinks.iter().map(|sink| {
@@ -859,7 +1051,7 @@ fn evidence_path_values(finding: &Finding) -> Vec<String> {
         let oracle_kind = display_label(test.oracle_kind.as_str());
         let mut value = format!(
             "related test {}:{} {} uses {} {} oracle",
-            test.file.display(),
+            crate::output::path::display_path(&test.file),
             test.line,
             test.name,
             test.oracle_strength.as_str(),
@@ -871,19 +1063,14 @@ fn evidence_path_values(finding: &Finding) -> Vec<String> {
         value
     }));
 
+    // Name only values the capped `observed_values` array also carries.
     values.extend(
-        finding
-            .activation
-            .observed_values
-            .iter()
-            .take(8)
-            .map(|fact| {
-                let context = display_label(fact.context.as_str());
-                format!(
-                    "observed {} value {} at line {}",
-                    context, fact.value, fact.line
-                )
-            }),
+        crate::output::observed_values::bounded_observed_values(
+            &finding.activation.observed_values,
+        )
+        .into_iter()
+        .take(8)
+        .map(crate::output::observed_values::source_value_evidence_line),
     );
 
     values.extend(
@@ -908,14 +1095,28 @@ fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
         .max_by_key(|test| test.oracle_strength.rank())
 }
 
-fn activation_json(out: &mut String, finding: &Finding, indent: usize) {
+/// The observed values the check JSON renders for a finding: every value up
+/// to `MAX_OBSERVED_VALUES_PER_FINDING`, otherwise the bounded projection.
+fn rendered_observed_values(finding: &Finding) -> Vec<ValueFact> {
+    crate::output::observed_values::bounded_observed_values(&finding.activation.observed_values)
+        .into_iter()
+        .cloned()
+        .collect()
+}
+
+fn activation_json(
+    out: &mut String,
+    finding: &Finding,
+    rendered_values: &[ValueFact],
+    indent: usize,
+) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}\"activation\": {{\n"));
-    let shared_text = shared_assertion_text_map(&finding.activation.observed_values);
+    let shared_text = shared_assertion_text_map(rendered_values);
     value_facts_array_json(
         out,
         "observed_values",
-        &finding.activation.observed_values,
+        rendered_values,
         indent + 1,
         &shared_text,
     );
@@ -1353,7 +1554,12 @@ fn typescript_repair_packet_json(record: &crate::output::gap_decision_ledger::Ga
     })
 }
 
-pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: usize) {
+pub(super) fn related_test_json(
+    out: &mut String,
+    test: &RelatedTest,
+    missing_discriminators: &[MissingDiscriminatorFact],
+    indent: usize,
+) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
     field(out, indent + 1, "name", &test.name, true);
@@ -1382,6 +1588,11 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
     // Additive optional fields: relation_reason and relation_confidence.
     // Present only on Rust diff-check findings; absent (omitted) on Python /
     // TypeScript preview findings and on legacy callers that set None.
+    // #5344: `miss` and `why` say why this test would not notice the change;
+    // both are omitted when the analyzer established no miss.
+    let why =
+        crate::output::related_test_miss::related_test_miss_reason(test, missing_discriminators);
+    let has_miss = test.miss.is_some();
     let has_reason = test.relation_reason.is_some();
     let has_confidence = test.relation_confidence.is_some();
     field(
@@ -1389,7 +1600,7 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
         indent + 1,
         "oracle",
         test.oracle.as_deref().unwrap_or(""),
-        has_reason || has_confidence,
+        has_reason || has_confidence || has_miss,
     );
     if let Some(reason) = test.relation_reason {
         field(
@@ -1397,7 +1608,7 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
             indent + 1,
             "relation_reason",
             reason.as_str(),
-            has_confidence,
+            has_confidence || has_miss,
         );
     }
     if let Some(confidence) = test.relation_confidence {
@@ -1406,8 +1617,14 @@ pub(super) fn related_test_json(out: &mut String, test: &RelatedTest, indent: us
             indent + 1,
             "relation_confidence",
             confidence.as_str(),
-            false,
+            has_miss,
         );
+    }
+    if let Some(miss) = test.miss {
+        field(out, indent + 1, "miss", miss.as_str(), why.is_some());
+        if let Some(why) = &why {
+            field(out, indent + 1, "why", why, false);
+        }
     }
     out.push_str(&format!("{sp}}}"));
 }
@@ -1525,6 +1742,8 @@ mod harness_projection_tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
+            unlinked_python_tests: None,
             suppression: None,
             partial_scope: None,
         }
@@ -1556,7 +1775,7 @@ mod harness_projection_tests {
 
     #[test]
     fn absent_without_registrations() -> TestResult {
-        let rendered = render_with_config(&output_with(Vec::new()), &RiprConfig::default());
+        let rendered = render_with_config(&output_with(Vec::new()), &RiprConfig::default(), None);
         let value = parse(&rendered)?;
         assert!(value.get("test_harnesses").is_none());
         Ok(())
@@ -1580,7 +1799,8 @@ mod harness_projection_tests {
                 detail: "trial name is not a simple string literal".to_string(),
             }],
         };
-        let rendered = render_with_config(&output_with(vec![projection]), &RiprConfig::default());
+        let rendered =
+            render_with_config(&output_with(vec![projection]), &RiprConfig::default(), None);
         let value = parse(&rendered)?;
         let harness = value
             .get("test_harnesses")
@@ -1606,6 +1826,105 @@ mod harness_projection_tests {
             .ok_or("limitations array missing")?;
         assert_eq!(limitations[0]["code"], "dynamic_trial_name");
         assert_eq!(limitations[0]["line"], 17);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod evidence_path_separator_tests {
+    use super::evidence_path_values;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, OracleKind,
+        OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence, RiprEvidence,
+        SourceLocation, StageEvidence, StageState, SymbolId,
+    };
+    use std::path::PathBuf;
+
+    fn finding_with_related(file: &str) -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:9:error_path".to_string(),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:9:error_path".to_string()),
+                location: SourceLocation::new("src/lib.rs", 9, 1),
+                owner: Some(SymbolId("crate::sample".to_string())),
+                family: ProbeFamily::Predicate,
+                delta: DeltaKind::Control,
+                before: None,
+                after: None,
+                expression: "x >= 0".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::WeaklyExposed,
+            ripr: RiprEvidence {
+                reach: StageEvidence::new(StageState::Yes, Confidence::Medium, "reach"),
+                infect: StageEvidence::new(StageState::Yes, Confidence::Medium, "infect"),
+                propagate: StageEvidence::new(StageState::Yes, Confidence::Medium, "propagate"),
+                reveal: RevealEvidence {
+                    observe: StageEvidence::new(StageState::Yes, Confidence::Medium, "observe"),
+                    discriminate: StageEvidence::new(
+                        StageState::Yes,
+                        Confidence::Medium,
+                        "discriminate",
+                    ),
+                },
+            },
+            confidence: 0.5,
+            evidence: vec![],
+            missing: vec![],
+            flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
+            stop_reasons: vec![],
+            related_tests_matched_total: None,
+            related_tests: vec![RelatedTest {
+                name: "applies the discount".to_string(),
+                file: PathBuf::from(file),
+                line: 4,
+                oracle: None,
+                oracle_kind: OracleKind::ExactValue,
+                oracle_strength: OracleStrength::Strong,
+                relation_reason: None,
+                relation_confidence: None,
+                miss: None,
+            }],
+            recommended_next_step: None,
+            language: None,
+            language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
+        }
+    }
+
+    fn related_line(file: &str) -> Result<String, String> {
+        evidence_path_values(&finding_with_related(file))
+            .into_iter()
+            .find(|line| line.starts_with("related test "))
+            .ok_or_else(|| format!("missing related-test evidence for {file}"))
+    }
+
+    #[test]
+    fn related_test_paths_use_stable_slashes() -> Result<(), String> {
+        let windows = related_line("tests\\discount.test.ts")?;
+        if windows.contains('\\') {
+            return Err(format!("evidence_path kept a backslash: {windows}"));
+        }
+        if windows
+            != "related test tests/discount.test.ts:4 applies the discount uses strong exact value oracle"
+        {
+            return Err(format!("unexpected evidence_path line: {windows}"));
+        }
+        let posix = related_line("tests/discount.test.ts")?;
+        if posix
+            != "related test tests/discount.test.ts:4 applies the discount uses strong exact value oracle"
+        {
+            return Err(format!("posix path must stay slash-separated: {posix}"));
+        }
         Ok(())
     }
 }

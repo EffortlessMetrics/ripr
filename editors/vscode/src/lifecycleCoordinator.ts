@@ -1,9 +1,16 @@
 export interface LifecycleController {
   start(): Promise<void>;
-  stop(): Promise<void>;
+  stop(): Promise<unknown>;
+  /**
+   * Whether the last start() left a live session. A start can resolve without
+   * one (untrusted workspace, no or ambiguous workspace root, missing server);
+   * the coordinator must then let a later start try again. Controllers that
+   * omit it are treated as running after a resolved start.
+   */
+  isRunning?(): boolean;
 }
 
-export type LifecycleStartController = Pick<LifecycleController, 'start'>;
+export type LifecycleStartController = Pick<LifecycleController, 'start' | 'isRunning'>;
 
 export type LifecycleWait = (
   operation: Promise<void>,
@@ -22,6 +29,21 @@ interface LifecycleOperation {
   promise: Promise<void>;
 }
 
+/**
+ * The typed rejection every lifecycle settle budget produces. The shared
+ * default waiter constructs it, so `kind === 'timedOut'` holds for real
+ * timeouts, not only for injected test waiters. (#2822)
+ */
+export class RiprClientLifecycleTimeoutError extends Error {
+  readonly kind = 'timedOut' as const;
+  constructor(description: string, budgetMs: number) {
+    super(
+      `${description} did not settle within ${budgetMs}ms; refusing an unsafe ripr lifecycle transition.`
+    );
+    this.name = 'RiprClientLifecycleTimeoutError';
+  }
+}
+
 export async function waitForLifecyclePromise(
   operation: Promise<void>,
   budgetMs: number,
@@ -30,11 +52,7 @@ export async function waitForLifecyclePromise(
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_resolve, reject) => {
     timeoutHandle = setTimeout(() => {
-      reject(
-        new Error(
-          `${description} did not settle within ${budgetMs}ms; refusing an unsafe ripr lifecycle transition.`
-        )
-      );
+      reject(new RiprClientLifecycleTimeoutError(description, budgetMs));
     }, budgetMs);
   });
 
@@ -227,7 +245,9 @@ export class ExtensionLifecycleCoordinator {
     this.inFlightStart = start;
     try {
       await start;
-      this.sessionRunning = true;
+      // A resolved start is not proof of a session: trust grant and folder
+      // events must still be able to start after an early-return start.
+      this.sessionRunning = currentController.isRunning?.() ?? true;
     } catch (error) {
       this.sessionRunning = false;
       throw error;
@@ -239,7 +259,9 @@ export class ExtensionLifecycleCoordinator {
   }
 
   private async stopController(currentController: LifecycleController): Promise<void> {
-    if (!this.sessionRunning) {
+    // The controller can also start a session outside the coordinator
+    // (workspace-root picker, missing-server Retry); its own state decides.
+    if (!this.sessionRunning && !(currentController.isRunning?.() ?? false)) {
       return;
     }
     await currentController.stop();

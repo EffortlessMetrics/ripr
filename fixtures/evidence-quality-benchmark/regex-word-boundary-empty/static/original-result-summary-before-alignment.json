@@ -1,0 +1,452 @@
+{
+  "status": "OBSERVED_AND_CAPTURE_VERIFIED",
+  "observed_utc": "2026-10-03T09:53:49Z",
+  "producer_head": "68770f7cbc382425fdd2d0c1d02f1b198466d788",
+  "producer_tree": "307af00404a907dae69a9e7ad02c7de4003985e7",
+  "tool": {
+    "path": "/workspace/shared/targets/ripr/debug/ripr",
+    "bytes": 158795648,
+    "sha256": "3ae247fffbfeb234b21c5fbb10a51ac86ffbd14dffdb0fdaabeec0b2dd2384f1"
+  },
+  "producer_receipt": {
+    "path": "/workspace/shared/ripr-admission-gap-qa/integrated/property-refresh/qualification-value-wording-final/phase-receipt.json",
+    "bytes": 13822,
+    "sha256": "d0f16a8620fa322b7f803a63a50f1f018bad3d5163f479702571bc4400728d52"
+  },
+  "execution_receipt": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/receipt-68770.json",
+    "bytes": 37957,
+    "sha256": "1d886a503bebe88aa76e49f408a3b2e6b7a053a4b000b0912ffa2de66b6ae22a"
+  },
+  "command_count": 3,
+  "all_json_byte_identical": true,
+  "json_sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3",
+  "observations": [
+    {
+      "variant": "corrected",
+      "native_exit": 0,
+      "json": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected.stdout.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "input_inventory_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "input_inventory_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-corrected-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "0994c790789c674587a788c7e447e22b2e99335a46420f87d5805fa91541cdf9"
+      },
+      "analysis_complete": true,
+      "outcome": "complete_with_findings",
+      "limitations": [],
+      "probe": {
+        "id": "probe:regex-syntax_src_hir_mod.rs:call_deletion:5ca77ad5",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace/regex-syntax/src/hir/mod.rs",
+        "line": 343,
+        "expression": "info.set_match_empty(true)"
+      },
+      "classification": "exposed",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "related_tests_total": 8,
+      "related_tests": [
+        {
+          "name": "class_canonicalize_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1679,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, branges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_canonicalize_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1641,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, uranges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1807,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bcasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1718,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, ucasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1777,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(cls.try_case_fold_simple().is_err());",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled_panics",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1793,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2169,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bdifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2106,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, udifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "target_test_selected": false,
+      "reach": {
+        "state": "yes",
+        "confidence": "medium",
+        "summary": "Related tests appear to reach word_boundary: class_canonicalize_bytes, class_canonicalize_unicode, class_case_fold_bytes"
+      },
+      "discriminate": {
+        "state": "yes",
+        "confidence": "medium",
+        "summary": "Strong oracle found: whole-object equality assertion"
+      }
+    },
+    {
+      "variant": "original",
+      "native_exit": 0,
+      "json": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original.stdout.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "input_inventory_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "input_inventory_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-original-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "cc5aa8d9f9f88bc7ef91bcebe451e181e078aba1bda86b0794278791ae059066"
+      },
+      "analysis_complete": true,
+      "outcome": "complete_with_findings",
+      "limitations": [],
+      "probe": {
+        "id": "probe:regex-syntax_src_hir_mod.rs:call_deletion:5ca77ad5",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace/regex-syntax/src/hir/mod.rs",
+        "line": 343,
+        "expression": "info.set_match_empty(true)"
+      },
+      "classification": "exposed",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "related_tests_total": 8,
+      "related_tests": [
+        {
+          "name": "class_canonicalize_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1679,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, branges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_canonicalize_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1641,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, uranges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1807,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bcasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1718,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, ucasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1777,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(cls.try_case_fold_simple().is_err());",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled_panics",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1793,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2169,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bdifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2106,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, udifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "target_test_selected": false,
+      "reach": {
+        "state": "yes",
+        "confidence": "medium",
+        "summary": "Related tests appear to reach word_boundary: class_canonicalize_bytes, class_canonicalize_unicode, class_case_fold_bytes"
+      },
+      "discriminate": {
+        "state": "yes",
+        "confidence": "medium",
+        "summary": "Strong oracle found: whole-object equality assertion"
+      }
+    },
+    {
+      "variant": "weak",
+      "native_exit": 0,
+      "json": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak.stdout.json",
+        "bytes": 15583,
+        "sha256": "659c706a088fecde651ba82698d9d708ea3157f3a4133a8b40f8994362bba3d3"
+      },
+      "stderr": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak.stderr",
+        "bytes": 1313,
+        "sha256": "cfe332448589760908ad23ee46b1e60407bae54b359c898ce2a63ec8a76c14fb"
+      },
+      "input_inventory_before": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak-before-inputs.json",
+        "bytes": 42092,
+        "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+      },
+      "input_inventory_after": {
+        "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/68770-weak-after-inputs.json",
+        "bytes": 42092,
+        "sha256": "d796cd8166f482a304b07b44ee7dde8db0f7a940d749831af4705d9aa2c102ff"
+      },
+      "analysis_complete": true,
+      "outcome": "complete_with_findings",
+      "limitations": [],
+      "probe": {
+        "id": "probe:regex-syntax_src_hir_mod.rs:call_deletion:5ca77ad5",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/workspace/regex-syntax/src/hir/mod.rs",
+        "line": 343,
+        "expression": "info.set_match_empty(true)"
+      },
+      "classification": "exposed",
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "related_tests_total": 8,
+      "related_tests": [
+        {
+          "name": "class_canonicalize_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1679,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, branges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_canonicalize_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1641,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, uranges(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1807,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bcasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1718,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, ucasefold(&cls));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1777,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "assert!(cls.try_case_fold_simple().is_err());",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_case_fold_unicode_disabled_panics",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 1793,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_bytes",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2169,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, bdifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "class_difference_unicode",
+          "file": "regex-syntax/src/hir/mod.rs",
+          "line": 2106,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(expected, udifference(&cls1, &cls2));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "target_test_selected": false,
+      "reach": {
+        "state": "yes",
+        "confidence": "medium",
+        "summary": "Related tests appear to reach word_boundary: class_canonicalize_bytes, class_canonicalize_unicode, class_case_fold_bytes"
+      },
+      "discriminate": {
+        "state": "yes",
+        "confidence": "medium",
+        "summary": "Strong oracle found: whole-object equality assertion"
+      }
+    }
+  ],
+  "interpretation": {
+    "observed": "All three declared test variants receive the same exposed/strong exact-value call-deletion finding, using eight same-file class tests instead of the intended boundary-analysis test.",
+    "semantic_axis": "Independent semantic review accepts corrected valid and original wrong-sign invalid. Weak is only a removal control. Those judgments are separate from static classifications.",
+    "limits": "The native six-pair proof exercises the complete analysis_is_match_empty test, not the full upstream test suite. Identical static output does not by itself establish full-suite mutation adequacy or a specific replacement classification. Same-file relation and oracle selection need their own source investigation."
+  },
+  "old_attempt": {
+    "receipt": {
+      "path": "/workspace/shared/ripr-regex-case-evidence/ripr-observation/receipt.json",
+      "bytes": 6653,
+      "sha256": "c09291f66b6ea2d3f2006ed431bb59f88e1468d8847147e0c7425cc8ef30a3b9"
+    },
+    "status": "INSTRUMENT_BUDGET_STOP; corrected stdout empty; no static finding",
+    "producer": "0e57b1e27f25559ec3b1a133b71a56cf558017b3",
+    "cache_retained_unchanged": true
+  },
+  "terminal_usage": {
+    "source_bytes": 11124736,
+    "output_cache_receipts_bytes": 25255936,
+    "total_bytes": 36380672,
+    "free_bytes": 4780707840
+  },
+  "lock_status": "released; read-only-open exclusive reacquisition probe passed and released",
+  "resources": {
+    "source_root": "retained for corpus evidence; consumer released",
+    "old_cache": "retained unchanged; consumer released",
+    "new_cache": "retained and counted; consumer released",
+    "shared_binary": "read-only consumer released; owned by family",
+    "logs_receipts": "retained for exact static observation review"
+  },
+  "product_validator_compilation": "NOT_RUN"
+}

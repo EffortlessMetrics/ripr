@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 1282397..4e0eea4 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -59,7 +59,7 @@ pub fn tier_label(tier: Tier) -> String {
+     match tier {
+         Tier::Standard => String::from("standard"),
+         Tier::Silver => String::from("silver"),
+-        Tier::Gold => String::from("gold"),
++        Tier::Gold => "gold".to_string(),
+     }
+ }
+ 

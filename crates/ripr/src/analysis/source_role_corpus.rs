@@ -49,7 +49,7 @@ fn build_case(name: &str) -> Result<RustIndex, String> {
 
 fn roles_by_name(index: &RustIndex) -> BTreeMap<String, String> {
     index
-        .functions
+        .functions()
         .iter()
         .map(|function| (function.name.clone(), format!("{:?}", function.source_role)))
         .collect()
@@ -60,7 +60,7 @@ fn empty_context() -> SourceRoleContext {
 }
 
 fn test_names(index: &RustIndex) -> Vec<String> {
-    let mut names: Vec<String> = index.tests.iter().map(|test| test.name.clone()).collect();
+    let mut names: Vec<String> = index.tests().iter().map(|test| test.name.clone()).collect();
     names.sort();
     names
 }

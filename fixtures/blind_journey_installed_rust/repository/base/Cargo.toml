@@ -1,0 +1,5 @@
+[package]
+name = "tier_fixture"
+version = "0.1.0"
+edition = "2021"
+description = "Bounded installed-journey fixture: one equality boundary moved from exclusive to inclusive."

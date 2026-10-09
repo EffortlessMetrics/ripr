@@ -1,0 +1,16 @@
+use pricing::score;
+
+#[test]
+fn score_triples_points() {
+    assert_eq!(score(7), 21);
+}
+
+#[test]
+fn order_rebate_is_five_percent() {
+    assert_eq!(orders::rebate(200), 10);
+}
+
+#[test]
+fn order_total_takes_the_discount() {
+    assert_eq!(orders::order_total(50), 45);
+}

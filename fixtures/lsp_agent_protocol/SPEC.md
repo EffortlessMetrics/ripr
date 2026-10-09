@@ -7,14 +7,18 @@ Spec: RIPR-SPEC-0131
 This fixture corpus pins the versioned wire contract for generic headless
 clients. It tests vocabulary and envelope shape against the live capability
 advertisement: `ripr/listActionableItems` is the one implemented request, the
-`actionable` profile is the one supported profile, cancellation and the
-interim generation identity are advertised, and every other request, profile,
-progress, and continuation surface stays fail-closed.
+`actionable` profile is the one supported profile, and cancellation is
+advertised. Every other request, profile, progress, continuation, and
+snapshot-handle surface stays fail-closed: `snapshot_id` is echoed in
+responses only as the interim refresh generation identity, and
+`snapshot_handles` stays `false` until #1602 lands the immutable
+snapshot-handle contract.
 
 ## Given
 
 - `capability.json` mirrors the live `server_capability()` projection
-  (implemented state, `ripr/listActionableItems`, cancellation available).
+  (implemented state, `ripr/listActionableItems`, cancellation available,
+  `snapshot_handles: false` until #1602).
 - `requests/` contains one valid envelope for every reserved request.
 - `errors/` contains one valid envelope for every reserved error kind.
 - `success-envelope.json` keeps snapshot, input, profile, and budget identities

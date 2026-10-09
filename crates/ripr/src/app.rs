@@ -15,7 +15,10 @@ mod explain;
 pub(crate) mod impacted_evidence;
 mod navigation;
 pub mod pr_evidence;
+mod progress;
+pub use impacted_evidence::run_impacted_evidence_at;
 pub use pr_evidence::reject_pr_evidence_error_packet;
+pub(crate) mod feedback;
 /// Shared PR-evidence summary projection used by the `ripr` binary and the
 /// compatibility `xtask` route.
 pub mod pr_summary;
@@ -23,10 +26,30 @@ pub(crate) mod python_repair_binding;
 pub(crate) mod python_repair_verification;
 pub(crate) mod receipt;
 pub(crate) mod repair_attempt;
+pub(crate) mod repair_card;
+/// Production handoff producer that assembles a `RepairCardV1` for one seam
+/// entry (#4667: card-first bounded agent handoff; canonical packet stays
+/// behind the explicit `ripr agent packet` route).
+pub(crate) mod repair_card_handoff;
+/// Measurement and ratification producer for the RepairCard default budget
+/// (#4669; RIPR-SPEC-0196): synthetic wire-size measurement and governed
+/// real-opportunity accounting that back the versioned decision receipt.
+pub mod repair_card_usability;
 pub(crate) mod review_comments;
 pub(crate) mod ripr_plus;
+
+/// Shared final qualification boundary for legacy RIPR+ receipt composition.
+/// Exposure summaries and gap ledgers preserve useful observed counts, but
+/// cannot establish complete test-quality evidence bound to the current candidate.
+/// The compatibility xtask uses this same boundary before writing a receipt.
+pub fn qualify_legacy_ripr_plus_receipt(
+    receipt: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    ripr_plus::qualify_legacy_receipt(receipt)
+}
 mod selector;
 pub(crate) mod temp_diff;
+pub(crate) mod test_stub;
 pub(crate) mod verification_execution;
 
 pub use crate::output::format::OutputFormat;
@@ -41,8 +64,23 @@ pub(crate) const PERL_FACT_PACKET_SCHEMA: &str = "ripr-perl-facts-v1";
 
 /// The versioned envelope consumed by the producer-owned agent verification
 /// route and emitted by the agent seam packet renderer.
-pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.4";
+///
+/// `0.5` adds the seam packet's edit-cage fields (`allowed_edit_surface`,
+/// `forbidden_files`, `must_not_change`, #4330): the packet now states the
+/// cage its repair will enforce, derived from the same recommended target the
+/// cage authority consumes, so the disclosure cannot drift from enforcement.
+/// `0.5` also adds the optional envelope-level `repair_attempt` continuation
+/// block carried by the `ripr agent repair --phase before --json` success
+/// stdout (#4329); every other projection keeps the `0.4` shape and only the
+/// version string moves.
+pub(crate) const AGENT_SEAM_PACKET_SCHEMA_VERSION: &str = "0.5";
 pub(crate) use crate::analysis::repair_route::repair_route_readiness;
+pub(crate) use check::check_with_progress;
+#[cfg(test)]
+pub(crate) use check::check_workspace_repo_with_origins;
+#[cfg(test)]
+pub(crate) use check::check_workspace_worktree_with_origins;
+pub(crate) use check::check_workspace_worktree_with_sources_open_rust_paths_and_progress;
 pub(crate) use check::is_managed_perl_producer;
 pub use check::{
     check_workspace_repo_with_config, check_workspace_with_config,
@@ -50,6 +88,7 @@ pub use check::{
 };
 pub(crate) use context::collect_context_from_artifact;
 pub use context::collect_context_with_config;
+pub(crate) use context::collect_context_with_config_and_worktree;
 pub use context::{collect_context, collect_context_with_input};
 #[cfg(test)]
 pub(crate) use explain::explain_finding_from_artifact;
@@ -59,7 +98,13 @@ pub(crate) use explain::{
     explain_finding_from_artifact_with_navigation_mode,
     explain_finding_with_config_and_navigation_mode,
 };
-pub(crate) use navigation::{FindingNavigation, finding_navigation};
+pub(crate) use navigation::{
+    FindingDrillIn, FindingNavigation, finding_navigation, finding_navigation_with_worktree,
+};
+pub(crate) use progress::{
+    AnalysisProgressEvent, AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage,
+    repo_inventory_with_progress,
+};
 
 use crate::analysis::{AnalysisMode, PreviewLanguageAdvisory};
 use crate::config::RiprConfig;
@@ -78,6 +123,9 @@ pub struct CheckInput {
     /// Workspace root used for discovery and analysis.
     pub root: PathBuf,
     /// Git base revision used when collecting a diff automatically.
+    /// `None` resolves the repository's real default branch
+    /// (RIPR-SPEC-0084); the library default is `None` so every consumer
+    /// inherits resolution instead of a hardcoded branch.
     pub base: Option<String>,
     /// Optional path to a unified diff file. When set, `base` is ignored.
     pub diff_file: Option<PathBuf>,
@@ -117,7 +165,10 @@ impl Default for CheckInput {
     fn default() -> Self {
         Self {
             root: PathBuf::from("."),
-            base: Some("origin/main".to_string()),
+            // #3952 / RIPR-SPEC-0084: no hardcoded branch. `None` sends
+            // every consumer through default-branch resolution instead of
+            // `origin/main`, which need not exist in the analyzed repo.
+            base: None,
             diff_file: None,
             mode: Mode::Draft,
             format: OutputFormat::Human,
@@ -229,12 +280,25 @@ pub struct CheckOutput {
     /// state does NOT mean the changed behavior is covered — it means nothing
     /// was analyzed. See RIPR-SPEC-0083.
     pub no_scope_provided: bool,
-    /// When `true`, `--base` was used to analyze committed history AND the
-    /// working tree has uncommitted changes to tracked source files that were
-    /// NOT part of the analyzed diff. An empty result in this state does NOT
-    /// mean the working-tree changes are covered — they were silently excluded
-    /// from the analysis. See RIPR-SPEC-0112.
+    /// When `true`, the run analyzed committed history (an explicit `--base`
+    /// or the resolved default base) while source or test files had
+    /// uncommitted changes. The run read those files as committed at `HEAD`,
+    /// so the changes were NOT analyzed, neither in the diff nor as test
+    /// evidence. An empty result in this state does NOT mean they are
+    /// covered. See RIPR-SPEC-0112.
     pub unanalyzed_working_tree: bool,
+    /// The untracked subset of the unanalyzed working-tree state (#5258):
+    /// routed source/test files that are neither committed nor staged, so
+    /// neither the committed diff nor `--worktree` analyzes them. Lets the
+    /// human/GitHub notes name the real repair (staging) instead of offering
+    /// `--worktree` for files it cannot see. Cleared together with
+    /// `unanalyzed_working_tree` for every non-committed-history mode.
+    pub(crate) untracked_working_tree_source_paths: Vec<String>,
+    /// Python test files in the repository, set only when a changed Rust file
+    /// has a `no_static_path` finding (#6340). Human-output context only: ripr
+    /// does not link Python tests to Rust changes. Never serialized; no
+    /// verdict, class or gate reads it.
+    pub(crate) unlinked_python_tests: Option<crate::analysis::UnlinkedPythonTests>,
     /// Suppression-policy application outcome (#1441). `Some` only when the
     /// caller passed `--suppression-policy`; findings named here stay in
     /// `findings` (visible, marked suppressed by renderers) while the
@@ -267,13 +331,25 @@ pub(crate) fn render_check_with_config(
     output::render::render_check_with_config(output, format, config)
 }
 
-pub(crate) fn render_check_with_config_and_navigation(
+/// Unbounded JSON render for in-process consumers (#5203): the internal
+/// `pr-evidence` input carries the full finding set regardless of
+/// `RIPR_CHECK_FINDINGS_BYTES`. Infallible: no budget parsing, no failure.
+pub(crate) fn render_check_json_unbounded(output: &CheckOutput) -> String {
+    output::render::render_check_json_unbounded(output, &RiprConfig::default())
+}
+
+/// Renders with navigation while reporting repo-scope progress boundaries to
+/// `progress` for the full-repo audit-path formats (#4945).
+pub(crate) fn render_check_with_config_and_navigation_and_progress(
     output: &CheckOutput,
     format: &OutputFormat,
     config: &RiprConfig,
-    navigation: Option<&FindingNavigation>,
+    drill_in: Option<&FindingDrillIn>,
+    progress: Option<&dyn AnalysisProgressSink>,
 ) -> Result<String, String> {
-    output::render::render_check_with_config_and_navigation(output, format, config, navigation)
+    output::render::render_check_with_config_and_navigation_and_progress(
+        output, format, config, drill_in, progress,
+    )
 }
 
 #[cfg(test)]

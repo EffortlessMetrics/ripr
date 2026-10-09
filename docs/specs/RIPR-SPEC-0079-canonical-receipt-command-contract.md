@@ -158,6 +158,9 @@ applies equally to:
 - first-PR packets (`crates/ripr/src/output/first_pr.rs`)
 - LSP repair packets (`crates/ripr/src/lsp/backend.rs`)
 - agent gap-packet command (`crates/ripr/src/cli/commands/agent_gap_packet.rs`)
+- TypeScript preview repair packets
+  (`crates/ripr/src/output/typescript_packet_projection.rs`, through the
+  gap ledger's shared `preview_receipt_write_command`)
 - xtask report surfaces (`xtask/src/main.rs`)
 - VS Code extension copyable fields
 - PR summary and review-card renderers
@@ -379,6 +382,8 @@ Emitter-alignment tests (PR 2):
 - `crates/ripr/src/output/tests.rs::agent_seam_packet_receipt_command_is_canonical`
 - `crates/ripr/src/output/tests.rs::first_pr_packet_receipt_command_is_canonical`
 - `crates/ripr/src/lsp/tests.rs::backend_repair_packet_receipt_command_is_canonical`
+- `crates/ripr/src/cli/commands.rs::tests::typescript_preview_receipt_command_parses_as_receipt_write`
+- `crates/ripr/src/cli/commands.rs::tests::typescript_preview_receipt_command_is_not_ripr_outcome`
 
 ## Implementation Mapping
 

@@ -149,7 +149,7 @@ definition does not mention the changed owner name.
 - `StopReason::MacroReachUnresolved` in `crates/ripr/src/domain/probe.rs`.
 - Macro-boundary witness logic in
   `crates/ripr/src/analysis/classify/transitive_reach.rs`.
-- Rust adapter wiring in `crates/ripr/src/analysis/language/rust.rs` for diff
+- Rust adapter wiring in `crates/ripr/src/analysis/language/rust/mod.rs` for diff
   and repo modes.
 - Pure fixture: `fixtures/rust_macro_reach_limitation/`.
 - Honesty corpus member in
@@ -176,7 +176,7 @@ definition does not mention the changed owner name.
 | Stop reason enum | `crates/ripr/src/domain/probe.rs` |
 | Macro witness producer | `crates/ripr/src/analysis/classify/transitive_reach.rs` |
 | Classifier export | `crates/ripr/src/analysis/classify/mod.rs` |
-| Diff/repo-mode wiring | `crates/ripr/src/analysis/language/rust.rs` |
+| Diff/repo-mode wiring | `crates/ripr/src/analysis/language/rust/mod.rs` |
 | Human witness and limitation-detail projection | `crates/ripr/src/output/human/sections.rs` |
 | Output contract docs | `docs/OUTPUT_SCHEMA.md` |
 | Pure fixture | `fixtures/rust_macro_reach_limitation/` |

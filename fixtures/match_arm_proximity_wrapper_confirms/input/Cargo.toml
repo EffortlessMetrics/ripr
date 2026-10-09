@@ -1,0 +1,4 @@
+[package]
+name = "match_arm_proximity_wrapper_confirms_fixture"
+version = "0.0.0"
+edition = "2024"

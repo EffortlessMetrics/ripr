@@ -74,6 +74,31 @@ recommendations. The checked corpus must include `no_related_test`,
 already-strong evidence, and uncertain related-test proximity stay visible
 without inflating repair-card or packet success metrics.
 
+## Curated upstream regression
+
+`werkzeug-multiple-cookie/` retains a real Werkzeug bug/fix and complete
+upstream test with exact source/license/provenance. Independent native
+correct/broken and effective/ineffective controls establish the answer key
+before the historical analyzer observation is recorded as an `external_repo`
+static-limit row. Runtime execution is separate from RIPR's static output.
+The case README documents dependency setup, replay, source reduction and
+future descriptor-reach/list-observer acceptance criteria.
+
+`check-fixture-contracts` checks retained artifact identities and nonzero,
+error-free native control evidence through the existing corpus route. The
+explicit pytest replay is a separate operation; the Rust fixture checker does
+not execute Python. A historical limitation snapshot is not a golden requiring
+future analyzers to stay limited. Curated upstream cases do not increment
+blind-user, real-opportunity, installed-journey or release denominators.
+
+The separate `native_cases` bucket retains independently justified upstream
+behavior controls before an analyzer observation is available. The
+ItsDangerous future-age case includes an exact bug/fix pair, original inherited
+pytest fixtures, a valid but ineffective payload oracle, method/class skips and
+expected-failure suppression. Its native identities and nonempty control
+subjects are checked by the existing fixture-contract route. It contributes to
+none of the repair-card, no-action, installed-journey or promotion metrics.
+
 ## Must Not
 
 - Do not treat these records as support-tier promotion.

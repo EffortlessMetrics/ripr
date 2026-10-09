@@ -11,10 +11,19 @@ One coherent claim has one current candidate, current proof and review for the a
 
 - `review_route:deliver_pr_to_review_pr`
 
+# PR operating contract markers
+
+- `pr_contract:current_claim_search`
+- `pr_contract:duplicate_check_before_conflict`
+- `pr_contract:behind_only_no_restack`
+- `pr_contract:routine_repo_writes`
+- `pr_contract:ordinary_squash_merge`
+- `pr_contract:local_commit_not_delivery`
+
 # Procedure
 
-1. Hydrate the selected claim from the issue, governing artifacts, current source, and any existing PR.
-2. Search for an equivalent existing PR before creating a branch. Reuse the current candidate when one exists.
+1. Hydrate the selected claim from the current user instruction, root `AGENTS.md`, the issue, governing artifacts, current source, live GitHub state, and any existing PR. Prior summaries and subagent reports are leads until verified.
+2. Search current source, all-state PRs, recently merged PRs, and the controlling issue for an equivalent implementation before creating a branch. Reuse the current candidate when one exists.
 3. Identify the earliest missing or stale judgment:
    - premise or issue quality;
    - proof design;
@@ -31,20 +40,27 @@ One coherent claim has one current candidate, current proof and review for the a
 6. If proof is absent or self-confirming, use `prepare-proof` and continue.
 7. Build or repair the one current candidate with `build-candidate` and materialize an exact committed head.
 8. Run `review-pr` on that exact head. Before publication, retain unavailable remote checks, artifacts, and external review as `REVIEW_INCOMPLETE`; do not convert them to pass.
-9. Use `finish-pr` to publish or resume the exact candidate when no equivalent PR already exists.
-10. Re-enter `review-pr` on the exact published PR head after remote evidence is available. A green check set, empty thread list, or unavailable reviewer does not establish substantive review.
-11. Route `REPAIR_REQUIRED` back through the same candidate, then refresh only the affected proof and review dimensions.
-12. Only a current `REVIEW_READY` PR head may enter `finish-pr` merge convergence. Explicit incomplete or blocking review states remain draft or durably in flight.
-13. After merge or deliberate closure, verify current `main`, update delivered versus remaining acceptance, update parents, and release the candidate worktree.
+9. Use `finish-pr` to publish or resume the exact candidate when no equivalent PR already exists. Committing, pushing an ordinary branch, opening or updating the PR, and repairing it are routine delivery inside the selected claim; do not pause for owner permission.
+10. Immediately before publication, before resolving a conflict, and before replacing a supposedly stale candidate, repeat the claim-identity search against current `main`, open PRs, and recently merged PRs. If equivalent work landed, stop conflict repair, preserve any unique residual, and close or disposition the duplicate instead of manufacturing a rival PR.
+11. Re-enter `review-pr` on the exact published PR head after remote evidence is available. A green check set, empty thread list, or unavailable reviewer does not establish substantive review.
+12. Route `REPAIR_REQUIRED` back through the same candidate, then refresh only the affected proof and review dimensions.
+13. Only a current `REVIEW_READY` PR head may enter `finish-pr` merge convergence. Explicit incomplete or blocking review states remain draft or durably in flight.
+14. After merge or deliberate closure, verify current `main`, update delivered versus remaining acceptance, update parents, and release the candidate worktree.
 
 # Candidate law
 
 - One coherent claim normally has one branch, worktree, candidate, and PR.
+- A local edit or local commit is an unpublished candidate and counts as zero repository delivery. Delivery begins when the branch and PR are reachable; the claim becomes landed only after protected merge and becomes terminal only after acceptance reconciliation.
 - Do not create rival implementations merely to manufacture parallelism.
 - Multiple writers may contribute genuinely disjoint pieces only through one integrating candidate owner.
 - Do not inspect sibling worktrees or reserve files, crates, APIs, or semantic surfaces.
-- A behind-only branch needs no action.
-- Rebase or update only for an actual conflict, changed explicit prerequisite, material combined-tree failure, or repository policy that applies to this candidate.
+- A behind-only branch needs no action. Unrelated movement on `main` does not require a rebase, restack, force-push, or broad re-proof.
+- Rebase or update only for an actual content conflict, changed explicit prerequisite, material combined-tree failure, or repository policy that explicitly applies to this candidate.
+- Before repairing a conflict, first determine whether the conflicting upstream change already satisfies or supersedes the claim.
+
+# Merge law
+
+Ordinary `ripr-swarm` development PRs use protected squash merge. The squash result is the integration object; the branch's age or distance behind `main` is not a defect by itself. Exact history-preserving source-integration transactions are a separate controlled path and must follow their governing issue rather than this ordinary squash rule.
 
 # Release-scope law
 
@@ -70,7 +86,7 @@ Refresh only the dimensions changed by the latest edit. Unrelated movement on `m
 
 # Useful fan-out
 
-Focused read-only agents may inspect authority, tests, correctness, security, compatibility, product behavior, or platform semantics. One writer integrates accepted repairs. Conflicting reports must be resolved against canonical source and actual behavior before publication.
+Focused read-only agents may inspect authority, tests, correctness, security, compatibility, product behavior, or platform semantics. One writer integrates accepted repairs. A delegated writer receives the candidate-owned worktree and is the only mutator until handback. Conflicting reports must be resolved against canonical source and actual behavior before publication.
 
 # Valid exits
 

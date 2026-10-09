@@ -132,6 +132,29 @@ surface. They exclude repository automation and non-production trees such as
 `node_modules/`, tests, examples, benches, and `src/tests.rs`. Passing a
 fixture workspace as `--root` remains valid and analyzes that fixture normally.
 
+## Implicit Check And Cache Roots
+
+Without `--root`, `ripr check` first searches for a Cargo workspace, then the
+nearest Cargo package or JavaScript/Python workspace declaration, then a
+verified Git work-tree root. `ripr cache` shares this resolver. Explicit
+`--root` remains authoritative.
+
+A `.git` entry alone is not proof of a Git root. An inert ancestor marker must
+not move a standalone project's analysis away from its current directory or
+lose marker-based Python detection (#5111). Valid repositories, linked-worktree
+Git files, and nested repository boundaries remain supported. If Git establishes
+that a candidate is inside an enclosing work tree, the walk may continue to the
+actual root. A refused or unverified marker remains a traversal barrier without
+being selected as a root; a Cargo package or workspace declaration at or below
+that barrier can still choose the root. Otherwise the current directory stays
+selected, including when analyzing a saved diff without Git installed.
+
+Root verification has a bounded deadline and captured output and ignores
+inherited Git repository selectors. Invocation failures other than missing Git
+must surface rather than widen the walk: `check` names the explicit `--root`
+recovery and `cache` names `RIPR_CACHE_DIR`. These rules change root selection
+only, not analysis classification or exit policy.
+
 ## Pilot Packet
 
 The first public pilot path should converge on these user-facing files:
@@ -153,6 +176,23 @@ What focused test should I write next?
 Which file contains the structured packet?
 How do I compare before and after after adding the test?
 ```
+
+Pilot ranks Rust repo seams only. When that scan produces no Rust seams and
+the workspace contains TypeScript, JavaScript, Python or Perl files, pilot must
+not present the empty ranking as a clean result: the terminal and Markdown name
+each such language, its diff-first `ripr check --root <root>` route (or, when
+this binary cannot analyze the language, the unavailable-adapter notice), and
+close with that route instead of the Rust before/after snapshot commands. When
+Rust seams exist, the human output is unchanged and other languages are listed
+only in `pilot-summary.json` `language_routes` (#3906).
+
+When a seam limit (the repo-exposure inventory limit or the pilot seam budget)
+cut the classified seams before ranking, `pilot-summary.md` must say so under
+"What Was Inspected": it names how many seams were ranked out of the outermost
+total (the inventory total when both limits cut), reads the actionable count as
+"at least N", and reads each "Also in this function" count as "at least N",
+because seams past the cut were never counted (#6602). Without a limit, the
+wording is unchanged.
 
 The pilot command must remain advisory. It should not edit source files,
 generate tests, run mutation testing, or enable CI blocking policy.
@@ -251,6 +291,11 @@ blocking by default.
 Defaults-first adoption evidence should cover:
 
 - documentation for every default surface listed above;
+- implicit-root saved-diff analysis beneath invalid Git markers matching the
+  explicit-root and genuine-repository positives with nonzero changed files,
+  probes, findings and related tests;
+- shared cache-root parity, real nested and linked-worktree boundaries,
+  inherited-selector isolation, and the gitless saved-diff route;
 - built-in missing-config behavior matching the generated init profile's
   default policy behavior;
 - fast/normal/deep operator mode vocabulary pinned to concrete analysis scopes;
@@ -334,6 +379,22 @@ Given a workspace with repo seam evidence,
 when a user runs ripr pilot,
 then ripr writes a pilot packet and prints the top actionable seam, why it was
 flagged, and how to compare before and after after a focused test is added.
+```
+
+### Pilot names languages its Rust scan did not rank
+
+```text
+Given a workspace whose code is TypeScript, JavaScript, Python or Perl and
+whose Rust seam scan produces no seams,
+when a user runs ripr pilot,
+then pilot names each detected language and its diff-first ripr check route,
+or says the language is not available from this ripr binary, and does not
+report the empty ranking as a clean result.
+
+Given a workspace with Rust seams and other-language files,
+when a user runs ripr pilot,
+then the terminal and Markdown output are unchanged and pilot-summary.json
+lists the other languages under language_routes with state supplementary.
 ```
 
 ### Outcome is public CLI
@@ -432,16 +493,28 @@ Current tests and reports that support the contract:
 - `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_prefers_actionable_class_order_before_tie_breakers`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_uses_evidence_tie_breakers_then_stable_location`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_excludes_solved_governed_classes`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_takes_one_seam_per_owner_before_a_second`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_spreads_owners_without_crossing_class_order`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_counts_an_owners_unlisted_seams_once`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_marks_owner_counts_as_lower_bounds_after_a_seam_limit`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_ranking_counts_owner_rounds_across_classes`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_names_unlisted_seams_on_an_owners_first_pick_only`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_contains_config_state_artifacts_and_next_commands`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_md_spells_out_first_screen_recommendation`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_terminal_prints_top_test_and_follow_up_commands`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_summary_json_projects_python_first_use_repair_card`
 - `crates/ripr/src/output/pilot/tests.rs::pilot_markdown_and_terminal_use_python_repair_card_when_no_seam_ranked`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_language_routes_state_follows_rust_seams_and_discovered_languages`
+- `crates/ripr/src/output/pilot/tests.rs::pilot_renderers_show_language_routes_only_without_rust_seams`
 - `crates/ripr/tests/cli_smoke.rs::pilot_writes_default_packet_outputs_for_boundary_gap_fixture`
 - `crates/ripr/tests/cli_smoke.rs::pilot_accepts_python_project_without_ripr_config`
 - `crates/ripr/tests/cli_smoke.rs::pilot_projects_python_repair_card_for_git_diff`
 - `crates/ripr/tests/cli_smoke.rs::pilot_uses_repo_config_mode_without_explicit_flag`
 - `crates/ripr/tests/cli_smoke.rs::pilot_honors_explicit_mode_over_repo_config`
+- `crates/ripr/tests/cli_smoke.rs::pilot_names_typescript_diff_first_route_when_repo_has_no_rust_seams`
+- `crates/ripr/tests/cli_smoke.rs::pilot_names_python_check_route_when_repo_has_no_rust_seams`
+- `crates/ripr/tests/cli_smoke.rs::pilot_says_perl_is_unavailable_when_repo_has_no_rust_seams`
+- `crates/ripr/tests/cli_smoke.rs::pilot_keeps_rust_output_byte_identical_when_rust_seams_exist`
 - `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_report_buckets_seam_movement`
 - `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_json_and_markdown_are_structured`
 - `crates/ripr/src/output/outcome/mod.rs::tests::targeted_test_outcome_from_repo_exposure_json_parses_static_evidence`

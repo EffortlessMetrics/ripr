@@ -1,0 +1,99 @@
+name: Printed Command Paste
+
+on:
+  schedule:
+    - cron: "43 5 * * *"
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - "crates/ripr/src/**"
+      - "crates/ripr/tests/printed_command_paste.rs"
+      - "crates/ripr/tests/common/paste_shell.rs"
+      - "crates/ripr/tests/common/fixture_git.rs"
+      - ".github/workflows/printed-command-paste.yml"
+      - "Cargo.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Every command ripr prints, pasted into every shell a user has (#5188, #5232,
+# #5247, #5269 each fixed one surface by hand).
+#
+# `printed_command_paste` runs the main ripr flows against a repository whose
+# root and source file names hold spaces, apostrophes, typographic quotes,
+# backticks, `$` and `;` payloads and non-ASCII text, lifts every command out
+# of the output (text, Markdown, JSON and the artifacts ripr writes), and pastes
+# each into the shells below from a foreign working directory. The `ripr` and
+# `git` the shell finds are argv recorders, so a split, a mis-parse, a second
+# command or a wrong `--root` fails the job without running an analysis per
+# command.
+#
+#   ubuntu-latest   bash, sh (dash), zsh, PowerShell 7
+#   macos-latest    bash 3.2, sh, zsh, PowerShell 7
+#   windows-latest  Git Bash, PowerShell 7, Windows PowerShell 5.1
+#
+# A shell named in the matrix `shells` that is missing fails the job, because
+# a lane that silently drops a shell proves nothing about it. Elsewhere (the
+# required Rust lane runs this test too) a missing shell is reported and
+# skipped. Known gaps are listed, with the surface and the reason, in
+# KNOWN_GAPS in the test; a listed gap that stops reproducing fails the job
+# until its row is deleted.
+#
+# Triggers: a nightly standing signal, pull requests that touch the code that
+# prints commands or the harness itself, and manual dispatch. The cost is one
+# test target per platform, built from the shared dependency cache.
+
+jobs:
+  paste:
+    name: paste-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shells: bash,sh,zsh,pwsh
+          - os: macos-latest
+            shells: bash,sh,zsh,pwsh
+          - os: windows-latest
+            shells: bash,pwsh,powershell
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@1.95
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ripr-printed-command-paste-1.95-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The Ubuntu runner image ships bash, dash and PowerShell 7 but not zsh.
+      - name: Install zsh
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y zsh
+
+      - name: Record shells
+        shell: bash
+        run: bash --version | head -n 1
+
+      - name: Paste every printed command into every shell
+        shell: bash
+        env:
+          RIPR_PASTE_REQUIRE: ${{ matrix.shells }}
+          RIPR_PASTE_REPORT: ${{ runner.temp }}/printed-commands.jsonl
+        run: cargo test -p ripr --test printed_command_paste -- --nocapture
+
+      - name: Upload printed-command report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: printed-commands-${{ matrix.os }}
+          path: ${{ runner.temp }}/printed-commands.jsonl
+          if-no-files-found: ignore

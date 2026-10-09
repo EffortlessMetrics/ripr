@@ -48,6 +48,7 @@
         "limitation": null,
         "missing_discriminator": "amount == discount_threshold",
         "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seamalpha000000004 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_command": null,
         "repair_target": {
           "file": "tests/pricing.rs",
           "kind": "related_test",
@@ -112,6 +113,7 @@
         "limitation": null,
         "missing_discriminator": "amount == 0",
         "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seambeta0000000005 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_command": null,
         "repair_target": {
           "file": "tests/pricing.rs",
           "kind": "related_test",
@@ -159,6 +161,17 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "advisory",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "baseline": {
+        "content_hash": "sha256:c423558e9c664de86960734fb5488191491fd46067079752ae7894e5c2f44ce0"
+      },
+      "pr_guidance": {
+        "content_hash": "sha256:0a05faaa264dcd9164102b20ba6747bb931d63c3ba331508e66305c134547c24"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 0,
     "advisory": 2,

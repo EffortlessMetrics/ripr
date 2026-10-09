@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 7bf251d..892df96 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -375,7 +375,7 @@ fn encode_to_slice_inner(
+     output: &mut [u8],
+     table: &[u8; 16],
+ ) -> Result<(), FromHexError> {
+-    if input.len() * 2 != output.len() {
++    if output.len() != input.len() * 2 {
+         return Err(FromHexError::InvalidStringLength);
+     }
+ 

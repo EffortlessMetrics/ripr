@@ -1,0 +1,63 @@
+//! Return values, one function per test style.
+
+pub fn greeting(name: &str) -> String {
+    format!("Hello, {name}!")
+}
+
+pub fn first_word(text: &str) -> Option<&str> {
+    text.split_whitespace().next()
+}
+
+pub fn slug(title: &str) -> String {
+    title.to_lowercase().replace(' ', "-")
+}
+
+pub fn tags(list: &str) -> Vec<String> {
+    list.split(',').map(|t| t.trim().to_string()).collect()
+}
+
+pub fn banner(version: u32) -> String {
+    format!("v{version}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn greets_by_name() {
+        assert_eq!(greeting("Ada"), "Hello, Ada!");
+    }
+
+    #[test]
+    fn first_word_table() {
+        let cases = [("hello world", Some("hello")), ("  one", Some("one")), ("", None)];
+        for (text, want) in cases {
+            assert_eq!(first_word(text), want, "{text:?}");
+        }
+    }
+
+    #[test]
+    fn slugs_have_no_spaces_or_capitals() {
+        for title in ["Hello World", "A B C", "rust"] {
+            let s = slug(title);
+            assert!(!s.contains(' '), "{s}");
+            assert!(!s.chars().any(|c| c.is_uppercase()), "{s}");
+        }
+    }
+
+    fn check_tags(list: &str, want: &[&str]) {
+        assert_eq!(tags(list), want);
+    }
+
+    #[test]
+    fn tags_are_trimmed() {
+        check_tags("a, b ,c", &["a", "b", "c"]);
+        check_tags("solo", &["solo"]);
+    }
+
+    #[test]
+    fn banner_smoke() {
+        let _ = banner(3);
+    }
+}

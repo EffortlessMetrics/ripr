@@ -22,7 +22,16 @@
 use super::super::{
     AnalysisOptions, diff::ChangedFile, fingerprint_probe_id, normalize_expression,
 };
+use super::read_limit_disclosure::bounded_read_limit_limitations;
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
+mod bounded_read;
+use crate::analysis::workspace::{
+    changed_source_files_absent_from_worktree, limitations_for_absent_changed_files,
+};
+use crate::analysis_outcome::{
+    AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
+    AnalysisStage,
+};
 use crate::config::{
     OraclePolicy, is_detectable_excluded_python_path, is_detectable_generated_python_path,
 };
@@ -35,21 +44,30 @@ use crate::domain::{
     ExposureClass, Finding, MissingDiscriminatorFact, OracleKind, OracleStrength, OwnerKind,
     ProbeFamily, StaticLimitKind, StopReason, SymbolId,
 };
+use bounded_read::{
+    PYTHON_MAX_WORKSPACE_FILES_ENV, PythonDiffWalkLimits, read_workspace_sources_capped,
+    truncate_workspace_files,
+};
 use rustpython_parser::ast::Expr;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     ops::RangeInclusive,
     path::{Path, PathBuf},
 };
+mod boundary;
 mod classify;
 use classify::{PythonNoBehaviorContext, classify_change_with_context};
 #[cfg(test)]
 use classify::{classify_change, classify_change_with_old};
 mod discriminators;
+mod module_constants;
 mod no_behavior;
 mod oracles;
 mod owners_tests;
+mod parametrize;
+mod parse_budget;
 mod probe_shape;
+mod reexports;
 mod related_tests;
 mod repo;
 mod sink_alignment;
@@ -72,7 +90,12 @@ use discriminators::{
 #[cfg(test)]
 use no_behavior::{
     analyze_call_args, changed_default_value_params, free_function_call_arglists,
-    is_annotation_only_def_change, is_annotation_only_var_change, is_python_no_behavior_line,
+    is_annotation_only_def_change, is_annotation_only_var_change,
+};
+use no_behavior::{
+    header_param_line_defaults, is_python_import_line, is_python_no_behavior_line,
+    is_python_structural_line, is_structural_def_header_text, multi_line_def_header_span,
+    python_quiet_lines_covered_by_run,
 };
 use oracles::collect_assertions_from_statements;
 #[cfg(test)]
@@ -82,15 +105,17 @@ use probe_shape::{
 };
 #[cfg(test)]
 use related_tests::{
-    PythonRelationKind, binding_target_for_construction, body_calls_owner,
+    PythonRelatedCandidate, PythonRelationKind, binding_target_for_construction, body_calls_owner,
     construct_result_is_called, contains_any_attribute_call, find_related_tests,
     has_unclosed_quote, imported_module_matches_owner, local_binding_calls_owner,
-    normalize_similarity_key, normalize_test_stem, owner_similarity_keys, related_test_candidates,
-    related_test_relation, same_stem_related, similarity_key_contains, verify_command_for_test,
+    normalize_similarity_key, normalize_test_stem, owner_similarity_keys, python_repair_placement,
+    related_test_candidates, related_test_relation, same_stem_related, similarity_key_contains,
+    verify_command_for_test,
 };
 use related_tests::{
-    first_parenthesized_string_argument, import_source_module_matches_owner,
-    strong_test_calls_owner_method_on_bound_receiver, strong_test_imports_owner_from_module,
+    first_parenthesized_string_argument, import_module_may_be_owners,
+    import_source_module_matches_owner, strong_test_calls_owner_method_on_bound_receiver,
+    strong_test_imports_owner_from_module, strong_tests_import_only_rival_modules,
 };
 #[cfg(test)]
 use sink_alignment::strong_oracle_observes_owner;
@@ -105,14 +130,15 @@ pub(crate) use source_facts::detect_python_test_framework;
 use source_facts::parse_module;
 use source_facts::{extract_source_facts, source_fact_snapshot_observation};
 mod source_utils;
-#[cfg(test)]
-use source_utils::line_for_offset;
 use source_utils::{is_test_file, normalized_path};
+mod same_class_callees;
 mod static_limits;
+mod test_activation;
 use static_limits::{
     PythonStaticLimit, has_identifier_boundary, line_prefix_before,
     python_callee_start_has_boundary, python_prefix_hides_code,
 };
+mod transitive_reach;
 #[cfg(test)]
 use static_limits::{
     contains_dynamic_dispatch, contains_dynamic_import, contains_metaprogramming,
@@ -135,6 +161,17 @@ use workspace::{
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct PythonAdapter;
 
+/// Whether `text` holds `name` as a whole Python identifier.
+fn mentions_python_name(text: &str, name: &str) -> bool {
+    let is_ident = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_';
+    !name.is_empty()
+        && text.match_indices(name).any(|(start, _)| {
+            let end = start + name.len();
+            (start == 0 || !is_ident(text.as_bytes()[start - 1]))
+                && !text.as_bytes().get(end).is_some_and(|byte| is_ident(*byte))
+        })
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PythonOwner {
     name: String,
@@ -148,6 +185,42 @@ struct PythonOwner {
     cli_receiver_names: Vec<String>,
     route_paths: Vec<String>,
     dynamic_route_decorators: Vec<String>,
+    /// Declared parameters of a function/method owner, in declaration order.
+    /// Empty for class and module owners. Used only to bind literal test-call
+    /// arguments to predicate boundary operands (`boundary.rs`).
+    parameters: Vec<PythonParameter>,
+    /// Dotted package paths whose `__init__.py` re-exports this owner under
+    /// its own name (`reexports.rs`). Empty until the workspace pass fills it.
+    reexport_modules: Vec<String>,
+    /// Src-layout short module names of this owner's file that another
+    /// workspace source file also produces (`related_tests.rs`, #4566).
+    /// Empty until the workspace pass fills it.
+    ambiguous_src_modules: Vec<related_tests::AmbiguousSrcModule>,
+    /// Module-scope literal constants visible in a function/method owner
+    /// (not shadowed locally). Empty for class and module owners. Used only
+    /// to resolve named predicate boundary operands (`boundary.rs`, #4227).
+    module_constants: Vec<module_constants::PythonModuleConstant>,
+    /// Same-class methods this method may call through its receiver
+    /// (`self.` / `cls.`) or a bound-method alias (`f = self.x`). Empty for
+    /// non-methods and `@staticmethod`. Used only to name a Python
+    /// transitive-reach limitation on silent `no_static_path` findings (#4765).
+    same_class_callees: Vec<String>,
+    /// Dotted path of the enclosing classes of a method owner, outermost
+    /// first (`Outer.Inner` for `Outer.Inner.__init__`). Empty for other
+    /// owners. `qualified_name` keeps only the innermost class.
+    class_path: String,
+}
+
+/// One declared parameter of a Python function owner.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PythonParameter {
+    name: String,
+    /// Source text of the default value, when one is declared.
+    default: Option<String>,
+    /// Keyword-only parameters (after `*` / `*args`) never bind positionally.
+    keyword_only: bool,
+    /// Positional-only parameters (before `/`) never bind by keyword.
+    positional_only: bool,
 }
 
 impl PythonOwner {
@@ -203,10 +276,17 @@ struct PythonTest {
     body_text: String,
     imports: Vec<PythonImport>,
     decorators: Vec<String>,
+    /// Recognized test controls resolved before test-body imports can shadow aliases.
+    activation_controls: Vec<test_activation::PythonActivationControl>,
     fixtures: Vec<String>,
     parametrized: bool,
+    /// Literal `@pytest.mark.parametrize` cases, when statically certain (#4559).
+    parametrize: Option<parametrize::PythonParametrizeCases>,
     framework: &'static str,
     assertions: Vec<PythonAssertion>,
+    /// How the test and its module can rebind names and attributes; guards
+    /// module-constant boundary resolution (`boundary.rs`, #4227).
+    constant_rebinding: module_constants::PythonTestRebinding,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -271,6 +351,7 @@ fn expr_full_name(expr: &Expr) -> Option<String> {
 fn stop_reason_for_python_static_limit(limit: &PythonStaticLimit) -> StopReason {
     match limit.kind {
         StaticLimitKind::DynamicDispatch => StopReason::DynamicDispatchUnresolved,
+        StaticLimitKind::PythonTransitiveReachUnresolved => StopReason::TransitiveReachUnresolved,
         _ => StopReason::StaticProbeUnknown,
     }
 }
@@ -374,6 +455,33 @@ fn push_identifier(out: &mut Vec<String>, current: &mut String, stop: &[&str]) {
     current.clear();
 }
 
+fn parse_budget_limitation(
+    relative: &Path,
+    facts: &source_facts::PythonSourceFacts,
+) -> Result<Option<AnalysisLimitation>, String> {
+    let Some(detail) = facts.limitations.iter().find_map(|limitation| {
+        limitation
+            .evidence
+            .split_once("parse_budget:")
+            .map(|(_, rest)| format!("parse_budget: {}", rest.trim()))
+    }) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        AnalysisLimitation::new(
+            AnalysisLimitationKind::LanguageScopeUnsupported,
+            AnalysisStage::LanguageAdapter,
+            AnalysisRecovery::new(
+                AnalysisRecoveryKind::Retry,
+                "Split or simplify the deeply nested Python expression, operator chain, or elif chain, then re-run the analysis.",
+            )?,
+        )
+        .with_path(normalized_path(relative))?
+        .with_affected_items(1)?
+        .with_detail(detail)?,
+    ))
+}
+
 impl LanguageAdapter for PythonAdapter {
     fn accepts_path(&self, path: &Path) -> bool {
         matches!(route(path), Some(LanguageId::Python))
@@ -385,38 +493,208 @@ impl LanguageAdapter for PythonAdapter {
         _oracle_policy: &OraclePolicy,
         changed_files: &[ChangedFile],
     ) -> Result<LanguageDiffResult, String> {
-        let workspace_files = collect_workspace_python_files(&options.root);
+        PythonAdapter::analyze_diff_with_limits(
+            options,
+            changed_files,
+            PythonDiffWalkLimits::from_env(),
+        )
+    }
+
+    fn analyze_repo(
+        &self,
+        options: &AnalysisOptions,
+        _oracle_policy: &OraclePolicy,
+    ) -> Result<LanguageRepoResult, String> {
+        // #2109: the shared repo working-set override bounds the run before
+        // any read; an invalid override fails closed as a named error.
+        let working_set_limit = repo::repo_working_set_limit()?;
+        PythonAdapter::analyze_repo_with_limit(&options.root, working_set_limit)
+    }
+}
+
+impl PythonAdapter {
+    /// The deterministic diff-mode core of [`LanguageAdapter::analyze_diff`]
+    /// with the workspace-walk bounds injected (mirrors
+    /// [`PythonAdapter::analyze_repo_with_limit`]: `analyze_diff` resolves
+    /// the environment, this entry point carries the bounds, so tests can
+    /// inject tiny caps without `set_var`, which edition 2024 forbids).
+    ///
+    /// The bounded walk (`bounded_read.rs`, mirroring the TypeScript
+    /// adapter's bounded pattern) caps the discovered-file count, then reads
+    /// every retained source ONCE under a per-file cap and an aggregate
+    /// byte budget. Files refused by any bound, and unreadable files the
+    /// diff touches, become named typed limitations — never silent skips.
+    pub(in crate::analysis::language::python) fn analyze_diff_with_limits(
+        options: &AnalysisOptions,
+        changed_files: &[ChangedFile],
+        walk_limits: PythonDiffWalkLimits,
+    ) -> Result<LanguageDiffResult, String> {
+        let discovered = collect_workspace_python_files(&options.root);
+        #[cfg(test)]
+        let discovered_count = discovered.len();
+        let (workspace_files, refused_files) =
+            truncate_workspace_files(discovered, walk_limits.max_workspace_files);
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::source_calibration::limit(
+                PYTHON_MAX_WORKSPACE_FILES_ENV,
+                walk_limits.max_workspace_files,
+            );
+            crate::analysis::source_calibration::put(
+                "python_discovery",
+                serde_json::json!({"discovered_source_files": discovered_count,
+                "retained_source_files": workspace_files.len(), "refused_files": refused_files,
+                "paths_identity": crate::analysis::source_calibration::paths_identity(workspace_files.iter().map(std::path::PathBuf::as_path)),
+                "walk_entry_limit": "NONE_IN_EXISTING_OWNER"}),
+            );
+        }
+        let workspace_read = read_workspace_sources_capped(
+            &options.root,
+            &workspace_files,
+            walk_limits.max_file_read_bytes,
+            walk_limits.max_workspace_read_bytes,
+        );
+        #[cfg(test)]
+        if crate::analysis::source_calibration::active() {
+            crate::analysis::cancellation::checkpoint()?;
+            return Ok(LanguageDiffResult::default());
+        }
         let mut all_owners: Vec<PythonOwner> = Vec::new();
         let mut all_tests: Vec<PythonTest> = Vec::new();
         let mut docstring_ranges_by_file: BTreeMap<PathBuf, Vec<RangeInclusive<usize>>> =
             BTreeMap::new();
+        let mut import_ranges_by_file: BTreeMap<PathBuf, Vec<RangeInclusive<usize>>> =
+            BTreeMap::new();
+        let mut limitations = Vec::new();
         for relative in &workspace_files {
-            let absolute = options.root.join(relative);
-            let Ok(source) = std::fs::read_to_string(&absolute) else {
+            let Some(source) = workspace_read.sources.get(relative) else {
                 continue;
             };
-            let facts = extract_source_facts(relative, &source);
+            let facts = extract_source_facts(relative, source);
             debug_assert!(source_fact_snapshot_observation(&facts) > 0);
+            if let Some(limitation) = parse_budget_limitation(relative, &facts)? {
+                limitations.push(limitation);
+            }
             docstring_ranges_by_file.insert(relative.clone(), facts.docstring_line_ranges.clone());
+            import_ranges_by_file.insert(relative.clone(), facts.import_line_ranges.clone());
             if is_test_file(relative) {
                 all_tests.extend(facts.tests);
             } else {
                 all_owners.extend(facts.owners);
             }
         }
+        reexports::apply_package_reexports(&mut all_owners, |file| {
+            workspace_read.sources.get(file).map(String::as_str)
+        });
+        related_tests::apply_src_module_ambiguity(
+            &mut all_owners,
+            workspace_files.iter().filter(|file| !is_test_file(file)),
+        );
+
+        // Walk-count cap disclosure: one named limitation carrying the
+        // refused count, mirroring the TypeScript adapter's
+        // `DiffScopeOversized` truncated-scan disclosure.
+        if refused_files > 0 {
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::DiffScopeOversized,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::IncreaseConfiguredLimit,
+                        "Raise RIPR_PYTHON_MAX_WORKSPACE_FILES, then re-run the analysis.",
+                    )?,
+                )
+                .with_affected_items(
+                    u64::try_from(refused_files)
+                        .map_err(|err| format!("refused file count overflows u64: {err}"))?,
+                )?
+                .with_detail(format!(
+                    "python workspace walk stopped at the {}-file cap ({PYTHON_MAX_WORKSPACE_FILES_ENV}); {refused_files} discovered .py file(s) were not analyzed.",
+                    walk_limits.max_workspace_files,
+                ))?,
+            );
+        }
+
+        // Read-bound disclosures: named limitations for the files the read
+        // caps refuse, bounded per run (#5022). The disclosure is a
+        // stable-sorted sample of refused paths; refusals beyond the sample
+        // fold into one summary entry carrying the true refused count, and
+        // its detail states why the full per-file list is not materialized.
+        // Fail-closed behavior is unchanged: every refused file is still
+        // refused; only the disclosure is sampled. The recovery names the
+        // env knobs so operators can raise the bounds.
+        limitations.extend(bounded_read_limit_limitations(
+            "python",
+            workspace_read
+                .limits
+                .iter()
+                .map(|(file, err)| (normalized_path(file), err.reason()))
+                .collect(),
+            "Raise RIPR_PYTHON_MAX_FILE_READ_BYTES and/or RIPR_PYTHON_MAX_WORKSPACE_READ_BYTES, then re-run the analysis.",
+        )?);
+
+        // Read-failure disclosure (the TypeScript adapter's #4099 model):
+        // an unreadable CHANGED file is never classified and its tests
+        // vanish from the index, so the diff-scoped result names the path
+        // and the concrete read failure. Unreadable unchanged files are
+        // counted in `skipped_files` below but stay out of the diff-scoped
+        // limitation set.
+        let changed_paths: Vec<String> = changed_files
+            .iter()
+            .map(|changed| normalized_path(&changed.path))
+            .collect();
+        for (file, error) in &workspace_read.io_failures {
+            if !changed_paths
+                .iter()
+                .any(|changed| changed == &normalized_path(file))
+            {
+                continue;
+            }
+            limitations.push(
+                AnalysisLimitation::new(
+                    AnalysisLimitationKind::LanguageScopeUnsupported,
+                    AnalysisStage::LanguageAdapter,
+                    AnalysisRecovery::new(
+                        AnalysisRecoveryKind::Retry,
+                        "Restore read access to the file (check permissions and UTF-8 encoding), then re-run the analysis.",
+                    )?,
+                )
+                .with_path(normalized_path(file))?
+                .with_affected_items(1)?
+                .with_detail(format!("read failed: {error}"))?,
+            );
+        }
+        let skipped_files = workspace_read.io_failures.len();
+
+        // Excluded subtrees and generated files are skipped before admission
+        // and counting (#3672); the pipeline owns their skipped-scope disclosure.
+        let python_changed_files = changed_files
+            .iter()
+            .filter(|changed| {
+                matches!(route(&changed.path), Some(LanguageId::Python))
+                    && !is_detectable_generated_python_path(&changed.path)
+                    && !is_detectable_excluded_python_path(&changed.path)
+            })
+            .collect::<Vec<_>>();
+        // The workspace walk cannot discover a missing NEW-side path. Reuse
+        // source admission before counting or classifying it (#5110); genuine
+        // deletions are already omitted by the diff parser.
+        let absent_changed_files = changed_source_files_absent_from_worktree(
+            &options.root,
+            python_changed_files
+                .iter()
+                .map(|changed| changed.path.as_path()),
+        );
+        limitations.extend(limitations_for_absent_changed_files(&absent_changed_files)?);
+        let absent_changed_paths = absent_changed_files
+            .iter()
+            .map(|path| normalized_path(path))
+            .collect::<BTreeSet<_>>();
 
         let mut findings: Vec<Finding> = Vec::new();
         let mut changed_count: usize = 0;
-        for changed in changed_files {
-            // Excluded subtrees (vendor, environment, cache, build output)
-            // are skipped BEFORE counting (#3672): the diff workspace walk
-            // prunes them, so no workspace facts can back a changed file
-            // under one and no findings can ever be emitted for it. Counting
-            // it would put an uninspected file in the report denominator.
-            if !self.accepts_path(&changed.path)
-                || is_detectable_generated_python_path(&changed.path)
-                || is_detectable_excluded_python_path(&changed.path)
-            {
+        for changed in python_changed_files {
+            if absent_changed_paths.contains(&normalized_path(&changed.path)) {
                 continue;
             }
             changed_count += 1;
@@ -427,24 +705,116 @@ impl LanguageAdapter for PythonAdapter {
                 .get(&changed.path)
                 .map(Vec::as_slice)
                 .unwrap_or_default();
-            let old_docstring_ranges = std::fs::read_to_string(options.root.join(&changed.path))
-                .ok()
-                .and_then(|source| reconstruct_old_source(&source, changed))
-                .map(|source| extract_source_facts(&changed.path, &source).docstring_line_ranges)
+            // The old-source reconstruction reuses the once-read capped
+            // workspace source. A fresh read here would defeat the walk
+            // bounds above; a capped-out file degrades to empty ranges,
+            // exactly the pre-existing unreadable-file path, and the file
+            // itself is already named in the limitation set.
+            let (old_docstring_ranges, old_import_ranges) = workspace_read
+                .sources
+                .get(&changed.path)
+                .and_then(|source| reconstruct_old_source(source, changed))
+                .map(|source| {
+                    let old_facts = extract_source_facts(&changed.path, &source);
+                    (
+                        old_facts.docstring_line_ranges,
+                        old_facts.import_line_ranges,
+                    )
+                })
                 .unwrap_or_default();
-            for added in &changed.added_lines {
+            let import_ranges = import_ranges_by_file
+                .get(&changed.path)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            // An import line that replaces an import line re-points a name
+            // (`from a import x` -> `from b import x`, or `old as x,` inside a
+            // parenthesized import), so it is behavior of its own; any other
+            // added import line is not.
+            let is_added_import = |added: &crate::analysis::diff::ChangedLine| {
+                line_is_in_ranges(added.line, import_ranges)
+                    && changed
+                        .removed_lines
+                        .iter()
+                        .find(|removed| removed.new_side_line == added.line)
+                        .is_none_or(|removed| {
+                            !line_is_in_ranges(removed.line, &old_import_ranges)
+                                && !is_python_import_line(&removed.text)
+                        })
+            };
+            let covered = python_quiet_lines_covered_by_run(&changed.added_lines, |added| {
+                line_is_in_ranges(added.line, new_docstring_ranges)
+                    || is_added_import(added)
+                    || is_python_no_behavior_line(&added.text)
+                    || is_python_structural_line(&added.text)
+            });
+            // Header span per owner, computed once per changed file.
+            let mut header_spans: BTreeMap<usize, Option<(usize, usize)>> = BTreeMap::new();
+            for (added_index, added) in changed.added_lines.iter().enumerate() {
                 // Pair the in-place removed line (same new-side position) so the
                 // classifier can credit the changed-sink token on the DELTA only.
                 let old_line = changed
                     .removed_lines
                     .iter()
                     .find(|removed| removed.new_side_line == added.line);
+                // Git pairs a rewritten block line by line, so a comment, a
+                // lone bracket or an import that lands where old code stood is
+                // not the carrier of that code's change: the behavioral lines of
+                // the same added run are (#4216 for Rust). An added import is
+                // not a behavior probe of its own either (the Rust adapter
+                // ignores `use` lines).
+                if covered[added_index] || is_added_import(added) {
+                    continue;
+                }
                 let old_line_text = old_line.map(|removed| removed.text.as_str());
+                // Only a structural or default-carrying line can matter inside a
+                // multi-line header, so other lines skip the span lookup.
+                let in_multi_line_def_header = (is_structural_def_header_text(&added.text)
+                    || header_param_line_defaults(&added.text).is_some())
+                    && workspace_read
+                        .sources
+                        .get(&changed.path)
+                        .zip(owner_for_changed_line(
+                            &changed.path,
+                            added.line,
+                            &all_owners,
+                        ))
+                        .and_then(|(source, owner)| {
+                            *header_spans.entry(owner.start_line).or_insert_with(|| {
+                                multi_line_def_header_span(source, owner.start_line)
+                            })
+                        })
+                        .is_some_and(|(def_line, header_end)| {
+                            (def_line..=header_end).contains(&added.line)
+                        });
                 let no_behavior = PythonNoBehaviorContext {
                     new_line_in_docstring: line_is_in_ranges(added.line, new_docstring_ranges),
                     old_line_in_docstring: old_line.is_some_and(|removed| {
                         line_is_in_ranges(removed.line, &old_docstring_ranges)
                     }),
+                    opens_owner_with_added_body: owner_for_changed_line(
+                        &changed.path,
+                        added.line,
+                        &all_owners,
+                    )
+                    .is_some_and(|owner| {
+                        owner.start_line == added.line
+                            // An old line naming the owner means its `def`
+                            // existed before, even when git pairs the old
+                            // header with an unrelated inserted line.
+                            && !changed
+                                .removed_lines
+                                .iter()
+                                .any(|removed| mentions_python_name(&removed.text, &owner.name))
+                            && changed.added_lines.iter().any(|other| {
+                                other.line > owner.start_line
+                                    && other.line <= owner.end_line
+                                    && !line_is_in_ranges(other.line, new_docstring_ranges)
+                                    && !is_python_no_behavior_line(&other.text)
+                            })
+                    }),
+                    structural_def_header_line: in_multi_line_def_header
+                        && is_structural_def_header_text(&added.text),
+                    multi_line_def_header_line: in_multi_line_def_header,
                 };
                 if let Some(finding) = classify_change_with_context(
                     &changed.path,
@@ -470,24 +840,13 @@ impl LanguageAdapter for PythonAdapter {
             candidate_line_count: 0,
             changed_files_by_language: Vec::new(),
             partial_scope: None,
-            skipped_files: 0,
-            limitations: Vec::new(),
+            skipped_files,
+            limitations,
+            rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         })
     }
 
-    fn analyze_repo(
-        &self,
-        options: &AnalysisOptions,
-        _oracle_policy: &OraclePolicy,
-    ) -> Result<LanguageRepoResult, String> {
-        // #2109: the shared repo working-set override bounds the run before
-        // any read; an invalid override fails closed as a named error.
-        let working_set_limit = repo::repo_working_set_limit()?;
-        PythonAdapter::analyze_repo_with_limit(&options.root, working_set_limit)
-    }
-}
-
-impl PythonAdapter {
     /// The deterministic repo-mode core of
     /// [`LanguageAdapter::analyze_repo`] with the working-set limit
     /// injected (#2109, #3554 PR C).
@@ -517,12 +876,70 @@ impl PythonAdapter {
             production_files,
             skipped_files,
             partial_reason,
+            rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         })
     }
 }
 
 #[cfg(test)]
+mod new_declaration_tests;
+
+#[cfg(test)]
+#[test]
+fn source_counter_python_sorted_prefix_keeps_true_refused_count() -> Result<(), String> {
+    let fixture = crate::analysis::source_calibration::OwnedFixture::new()?;
+    fixture.seed("b.py", b"b = 2\n")?;
+    fixture.seed("a.py", b"a = 1\n")?;
+    let options = AnalysisOptions {
+        root: fixture.root.clone(),
+        base: None,
+        diff_file: None,
+        mode: crate::analysis::AnalysisMode::Draft,
+        include_unchanged_tests: false,
+        resolve_tsconfig_paths: false,
+        perl_facts_path: None,
+        git_timeout: None,
+        git_candidate: None,
+        production_like_targets: Default::default(),
+        test_harnesses: Vec::new(),
+        resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
+    };
+    let (_, report) = crate::analysis::source_calibration::observe(|| {
+        PythonAdapter::analyze_diff_with_limits(
+            &options,
+            &[],
+            PythonDiffWalkLimits {
+                max_workspace_files: 1,
+                max_file_read_bytes: 100,
+                max_workspace_read_bytes: 100,
+            },
+        )
+        .map(|_| ())
+    })?;
+    assert_eq!(
+        report["stages"]["python_discovery"]["discovered_source_files"],
+        2
+    );
+    assert_eq!(
+        report["stages"]["python_discovery"]["retained_source_files"],
+        1
+    );
+    assert_eq!(report["stages"]["python_discovery"]["refused_files"], 1);
+    assert_eq!(
+        report["stages"]["python_source_read"]["successful_source_bytes"],
+        6
+    );
+    assert_eq!(report["stages"]["python_source_read"]["accepted_files"], 1);
+    Ok(())
+}
+
+#[cfg(test)]
 mod python_tests;
+
+#[cfg(test)]
+mod reexport_tests;
 
 #[cfg(test)]
 mod tests;

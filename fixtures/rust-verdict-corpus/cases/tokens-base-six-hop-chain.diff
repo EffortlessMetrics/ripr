@@ -1,0 +1,13 @@
+diff --git a/src/reach.rs b/src/reach.rs
+index 0e86388..c347b62 100644
+--- a/src/reach.rs
++++ b/src/reach.rs
+@@ -13,7 +13,7 @@ pub fn score(x: i64) -> i64 {
+ }
+ 
+ fn base(x: i64) -> i64 {
+-    x * 7
++    7 * x
+ }
+ fn hop1(x: i64) -> i64 {
+     base(x)

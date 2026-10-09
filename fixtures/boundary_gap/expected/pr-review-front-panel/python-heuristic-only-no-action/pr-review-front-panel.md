@@ -11,7 +11,7 @@ Start here:
 - Class: heuristic_only
 - Current evidence strength: Only heuristic Python related-test proximity was found.
 - Why not actionable: the only related-test signal is uncertain name or fixture proximity, so bounded repair routing would overclaim
-- Verify command: not_available
+- Verify after the test edit: not_available
 - Receipt: receipt_not_applicable
 - Boundary: static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.
 

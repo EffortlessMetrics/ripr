@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/observation_unverified_field_construction/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":1,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:dc1f78a1d493820b574d552cb2228ca576df7154813dbab10361bbed9405e1e6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:dc1f78a1d493820b574d552cb2228ca576df7154813dbab10361bbed9405e1e6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -30,7 +29,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_exists", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches constructed field: retries: 1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches constructed field: retries: 1 (line 9)", "related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);", "observed assertion argument value 0 at line 6", "missing discriminator retries: 1,: No field-value assertion observes the constructed field: retries: 1,"],
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_exists", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches constructed field: retries: 1", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches constructed field: retries: 1 (line 9)", "related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);", "source assertion argument value 0 at line 6", "missing discriminator retries: 1,: No field-value assertion observes the constructed field: retries: 1,"],
       "flow_sinks": [
         {"kind":"struct_field","text":"retries: 1","line":9}
       ],
@@ -79,7 +78,9 @@
           "oracle_kind": "relational_check",
           "oracle": "assert!(cfg.timeout_secs > 0);",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],
@@ -110,7 +111,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"high","summary":"Only relational oracle found; it may not discriminate the changed value exactly"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_exists", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "local flow reaches unknown sink: unknown sink (line 9)", "related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);", "observed assertion argument value 0 at line 6"],
+      "evidence_path": ["reach yes: Related tests appear to reach default_config: config_exists", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Only relational oracle found; it may not discriminate the changed value exactly", "local flow reaches unknown sink: unknown sink (line 9)", "related test tests/item_tests.rs:4 config_exists uses weak relational check oracle: assert!(cfg.timeout_secs > 0);", "source assertion argument value 0 at line 6"],
       "flow_sinks": [
         {"kind":"unknown","text":"unknown sink","line":9}
       ],

@@ -76,7 +76,28 @@ fn python_return_value_discriminator(line_text: &str) -> Option<String> {
     if expression.is_empty() {
         None
     } else {
-        Some(format!("return value == {expression}"))
+        Some(format!(
+            "return value == {}",
+            python_expected_value_or_placeholder(expression)
+        ))
+    }
+}
+
+/// Placeholder for an expected value the syntax-first preview cannot derive.
+/// Same `<...>` placeholder style the Python repair card already uses for
+/// `<expected exception>` and `<instance>`.
+const PYTHON_EXPECTED_VALUE_PLACEHOLDER: &str = "<expected value>";
+
+/// The expected side of a synthesized equality discriminator. A literal is an
+/// independent expected value (`return 42` → `== 42`). Any other expression is
+/// the changed production computation itself: echoing it would make the
+/// suggested oracle restate the changed code (`== sum(...) + 1`), which passes
+/// for every mutant of that expression. Name no concrete value then (#4216 row 6).
+fn python_expected_value_or_placeholder(value: &str) -> &str {
+    if is_literal_python_model_field_value(value) {
+        value.trim()
+    } else {
+        PYTHON_EXPECTED_VALUE_PLACEHOLDER
     }
 }
 
@@ -103,19 +124,22 @@ fn python_exception_discriminator(line_text: &str) -> Option<String> {
 fn python_field_value_discriminator(line_text: &str, owner: &PythonOwner) -> Option<String> {
     let text = line_text.trim();
     if let Some((field, value)) = python_return_dict_field_parts(text) {
+        let value = python_expected_value_or_placeholder(&value);
         if !owner.route_paths.is_empty() {
             return Some(format!("response.json()[\"{field}\"] == {value}"));
         }
         return Some(format!("{field} == {value}"));
     }
     if let Some((_constructor, field, value)) = python_return_constructor_field_parts(text) {
+        let value = python_expected_value_or_placeholder(&value);
         return Some(format!("result.{field} == {value}"));
     }
     if let Some((target, _constructor, field, value)) =
         python_assignment_constructor_field_parts(text)
     {
+        let value = python_expected_value_or_placeholder(&value);
         if !owner.route_paths.is_empty() {
-            return python_route_response_field_discriminator(&field, &value);
+            return python_route_response_field_discriminator(&field, value);
         }
         return Some(format!("{target}.{field} == {value}"));
     }
@@ -123,7 +147,10 @@ fn python_field_value_discriminator(line_text: &str, owner: &PythonOwner) -> Opt
     if lhs.is_empty() || rhs.is_empty() {
         return None;
     }
-    Some(format!("{lhs} == {rhs}"))
+    Some(format!(
+        "{lhs} == {}",
+        python_expected_value_or_placeholder(rhs)
+    ))
 }
 
 pub(super) fn python_route_response_field_discriminator(
@@ -577,6 +604,17 @@ pub(super) fn first_python_string_literal(text: &str) -> Option<String> {
 
 pub(super) fn python_string_literal_value(text: &str) -> Option<String> {
     let trimmed = text.trim();
+    // One triple-quoted literal: the first unescaped closing delimiter must
+    // end the text. Adjacent-string concatenation (`"a" "b"`) stays
+    // non-literal.
+    for delimiter in [r#"""""#, "'''"] {
+        if let Some(body) = trimmed.strip_prefix(delimiter) {
+            let close = python_closing_delimiter_offset(body, delimiter)?;
+            return (close + delimiter.len() == body.len())
+                .then(|| body.get(..close).map(str::to_string))
+                .flatten();
+        }
+    }
     let mut chars = trimmed.chars();
     let quote = chars.next()?;
     if quote != '\'' && quote != '"' {
@@ -585,14 +623,52 @@ pub(super) fn python_string_literal_value(text: &str) -> Option<String> {
     if !trimmed.ends_with(quote) || trimmed.len() < quote.len_utf8() * 2 {
         return None;
     }
-    trimmed
-        .get(quote.len_utf8()..trimmed.len() - quote.len_utf8())
-        .map(str::to_string)
+    // One literal only: the first unescaped closing quote must be the last
+    // character. `"Hello, " + name + "!"` or `"yes" if flag else "no"` start
+    // and end with a quote but are compound expressions (#4216 row 6).
+    let close = quote.len_utf8() + python_closing_quote_offset(chars.as_str(), quote)?;
+    if close != trimmed.len() - quote.len_utf8() {
+        return None;
+    }
+    trimmed.get(quote.len_utf8()..close).map(str::to_string)
+}
+
+/// Byte offset in `body` of the first unescaped triple-quote `delimiter`.
+fn python_closing_delimiter_offset(body: &str, delimiter: &str) -> Option<usize> {
+    let mut escaped = false;
+    for (idx, ch) in body.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+        } else if body
+            .get(idx..)
+            .is_some_and(|rest| rest.starts_with(delimiter))
+        {
+            return Some(idx);
+        }
+    }
+    None
+}
+
+/// Byte offset in `body` of the first unescaped `quote`.
+fn python_closing_quote_offset(body: &str, quote: char) -> Option<usize> {
+    let mut escaped = false;
+    for (idx, ch) in body.char_indices() {
+        if escaped {
+            escaped = false;
+        } else if ch == '\\' {
+            escaped = true;
+        } else if ch == quote {
+            return Some(idx);
+        }
+    }
+    None
 }
 
 fn strip_python_control_prefix(line_text: &str) -> String {
     let mut text = line_text.trim().trim_end_matches(':').trim().to_string();
-    for prefix in ["if ", "elif ", "while ", "case "] {
+    for prefix in ["if ", "elif ", "while ", "case ", "return "] {
         if let Some(stripped) = text.strip_prefix(prefix) {
             text = stripped.trim().to_string();
             break;

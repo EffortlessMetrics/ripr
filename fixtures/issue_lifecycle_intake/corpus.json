@@ -1,0 +1,1156 @@
+{
+ "schema_version": "issue_lifecycle_intake_corpus.v1",
+ "captured_at": "2026-10-04T11:02:59Z",
+ "base_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+ "rows": [
+  {
+   "id": "intake-5439-narrow-accepted-contract-bug",
+   "category": "narrow_accepted_contract_bug",
+   "snapshot": {
+    "issue_number": 5439,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#5439",
+    "snapshot_path": "snapshots/issue-5439.json",
+    "comments_path": "snapshots/issue-5439-comments.json",
+    "timeline_path": "snapshots/issue-5439-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:707a573f54df96f4a1b926cfaad976fd5f691f15ed463e92dd63b0e1fc7d5a91",
+    "captured_at": "2026-10-04T11:02:59Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:cc44974a5062196b4cbb05052c6840452b9bfd948bf89a5425db42361d97ea31",
+    "comments_snapshot_id": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+   },
+   "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+   "packet_bytes": {
+    "selected": {
+     "measured": 25222
+    },
+    "omitted": {
+     "measured": 0
+    },
+    "overflow": {
+     "measured": 0
+    }
+   },
+   "open_candidates": [],
+   "triager_findings": [
+    "issue body names the producer (verify_command_for_discovery in crates/ripr/src/analysis/language/typescript/package.rs) and lists every affected consumer surface",
+    "acceptance is exact and fixture-provable; PR #5400 exposed the gap but does not fix it, so no open PR blocks pickup"
+   ],
+   "missing_evidence_questions": [],
+   "root_disposition": {
+    "disposition": "qualified_one_pr",
+    "rationale": "nested TypeScript verify commands must run from the package root; the accepted producer contract (verify_command_for_discovery) names the fix site and the issue records exact acceptance; no new spec artifact is required for this one-PR producer/consumer wiring fix",
+    "corrected_candidates": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5439",
+     "bytes": {
+      "measured": 6028
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5439/comments",
+     "bytes": {
+      "measured": 2
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5439/timeline",
+     "bytes": {
+      "measured": 19192
+     }
+    },
+    {
+     "step": "open PR sweep",
+     "command": "gh pr list --search \"5439 in title,body\" --state all",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "intake-time row only: no implementation, PR or verification is claimed",
+    "single-package repositories are unaffected per the issue observation"
+   ],
+   "false_candidates": [],
+   "non_claims": [
+    "claims no verdict on any other verify-command language surface",
+    "claims no editor UX judgment beyond the copied-command contract"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "intake-5439-narrow-accepted-contract-bug",
+    "observation_key": "observation-intake-5439-narrow-accepted-contract-bug",
+    "synthetic": false,
+    "disposition": "qualified_one_pr",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-intake-5439-narrow-accepted-contract-bug",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:cc44974a5062196b4cbb05052c6840452b9bfd948bf89a5425db42361d97ea31",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#5439",
+     "comments_ref": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "narrow_bug"
+    },
+    "context": {
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+     "relevant_prs": [],
+     "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#5439",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:cc44974a5062196b4cbb05052c6840452b9bfd948bf89a5425db42361d97ea31",
+       "bytes": 6028
+      },
+      {
+       "identity": "gh-issue-timeline:sha256:707a573f54df96f4a1b926cfaad976fd5f691f15ed463e92dd63b0e1fc7d5a91",
+       "bytes": 19192
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "nested TypeScript verify commands must run from the package root; the accepted producer contract (verify_command_for_discovery) names the fix site and the issue records exact acceptance; no new spec artifact is required for this one-PR producer/consumer wiring fix",
+     "root_disposition": "root-qualified-one-pr"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-5439-package-root-prefix",
+     "work_items": [
+      "work-item-5439-prefix-verify-command-with-package-root"
+     ],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "acceptance: the command a user copies for a nested-package record runs from the package root, proved with a nested-package fixture"
+     ]
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "intake-time row only: no implementation, PR or verification is claimed",
+     "single-package repositories are unaffected per the issue observation"
+    ],
+    "non_claims": [
+     "claims no verdict on any other verify-command language surface",
+     "claims no editor UX judgment beyond the copied-command contract"
+    ],
+    "row_digest": "60f4d6431f920f1f4d9d26c1efda2d4e266e1c14ef47962c253e48063bb409d8"
+   }
+  },
+  {
+   "id": "intake-5440-duplicate-of-5270",
+   "category": "duplicate_or_already_satisfied",
+   "snapshot": {
+    "issue_number": 5440,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#5440",
+    "snapshot_path": "snapshots/issue-5440.json",
+    "comments_path": "snapshots/issue-5440-comments.json",
+    "timeline_path": "snapshots/issue-5440-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:df01a118ae329a1f05318fc9335609c39f7ea07df6df98dbe0527b9cb286d9bd",
+    "captured_at": "2026-10-04T11:02:59Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:670c49b96ed34a88842863247ea4a13b7be1cf3e675c0924b14e9f95218086a4",
+    "comments_snapshot_id": "gh-issue-comments:sha256:b10c48f80ea91c2a8a1f65dc15934800b0bd65f16c6f58157a9424c549b10051"
+   },
+   "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+   "packet_bytes": {
+    "selected": {
+     "measured": 24596
+    },
+    "omitted": {
+     "measured": 0
+    },
+    "overflow": {
+     "measured": 0
+    }
+   },
+   "open_candidates": [
+    {
+     "kind": "duplicate",
+     "identity": "EffortlessMetrics/ripr-swarm#5270",
+     "evidence": "#5270 names the same failing test with the same left/right assertion values on native Windows and carries the broader two-facet acceptance",
+     "root_corrected": false,
+     "root_note": null
+    }
+   ],
+   "triager_findings": [
+    "duplicate candidate: same test, same assertion values, same platform as #5270",
+    "#5440 adds verified_current reproduction on base b0c9ff3, newer than #5270's 2942ff7ad"
+   ],
+   "missing_evidence_questions": [],
+   "root_disposition": {
+    "disposition": "duplicate",
+    "rationale": "triager flagged #5440 as a duplicate of #5270; root review confirmed: both name the same failing test agent_card_readiness_agrees_with_repair_target_admission with the same left src\\lib.rs versus right src/lib.rs assertion on native Windows, and #5270 (older, broader: both cli_smoke agent-card failures) already tracks the repair; #5440's newer verified_current snapshot at base b0c9ff3 is retained as supporting evidence for #5270",
+    "corrected_candidates": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5440",
+     "bytes": {
+      "measured": 4203
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5440/comments",
+     "bytes": {
+      "measured": 2250
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5440/timeline",
+     "bytes": {
+      "measured": 18143
+     }
+    },
+    {
+     "step": "duplicate-of sweep",
+     "command": "gh issue view 5270; gh pr list --search \"5440 in title,body\" --state all",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "the duplicate disposition claims no implementation success and starts no work",
+    "#5270 also tracks the seam_not_found portability facet, which #5440 does not cover"
+   ],
+   "false_candidates": [],
+   "non_claims": [
+    "claims no judgment that the seam_not_found facet shares the same root cause",
+    "claims no Windows-lane policy change (promotion to required is separate)"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "intake-5440-duplicate-of-5270",
+    "observation_key": "observation-intake-5440-duplicate-of-5270",
+    "synthetic": false,
+    "disposition": "duplicate",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-intake-5440-duplicate-of-5270",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:670c49b96ed34a88842863247ea4a13b7be1cf3e675c0924b14e9f95218086a4",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#5440",
+     "comments_ref": "gh-issue-comments:sha256:b10c48f80ea91c2a8a1f65dc15934800b0bd65f16c6f58157a9424c549b10051",
+     "labels_ref": "gh-issue-labels:sha256:35b80714ad16b6d86e0cd1d02b7e8f47382b1c9da0f808fe95d2fcce547e8c9d",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "duplicate_candidate"
+    },
+    "context": {
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+     "relevant_prs": [],
+     "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#5440",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:670c49b96ed34a88842863247ea4a13b7be1cf3e675c0924b14e9f95218086a4",
+       "bytes": 4203
+      },
+      {
+       "identity": "gh-issue-timeline:sha256:df01a118ae329a1f05318fc9335609c39f7ea07df6df98dbe0527b9cb286d9bd",
+       "bytes": 18143
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "triager flagged #5440 as a duplicate of #5270; root review confirmed: both name the same failing test agent_card_readiness_agrees_with_repair_target_admission with the same left src\\lib.rs versus right src/lib.rs assertion on native Windows, and #5270 (older, broader: both cli_smoke agent-card failures) already tracks the repair; #5440's newer verified_current snapshot at base b0c9ff3 is retained as supporting evidence for #5270",
+     "root_disposition": "root-confirmed-duplicate"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-5440-intake-only",
+     "work_items": [],
+     "dependencies": [],
+     "acceptance_coverage": []
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "the duplicate disposition claims no implementation success and starts no work",
+     "#5270 also tracks the seam_not_found portability facet, which #5440 does not cover"
+    ],
+    "non_claims": [
+     "claims no judgment that the seam_not_found facet shares the same root cause",
+     "claims no Windows-lane policy change (promotion to required is separate)"
+    ],
+    "row_digest": "30c6c169c12103bc93cb01ef6033ad80d0ae7b90c835dfec7f01ca4cbbc9c783"
+   }
+  },
+  {
+   "id": "intake-5399-overlapping-open-pr",
+   "category": "overlapping_open_pr",
+   "snapshot": {
+    "issue_number": 5399,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#5399",
+    "snapshot_path": "snapshots/issue-5399.json",
+    "comments_path": "snapshots/issue-5399-comments.json",
+    "timeline_path": "snapshots/issue-5399-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:a70efccb300cd9c4f2900f0114ad2bbec813d1438c4e50ecf016ec5d64e59981",
+    "captured_at": "2026-10-04T11:02:59Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:76704c40aab7eb448f2bb7be9ab07a0340a544af216eb5841e20cabcc1c52c9a",
+    "comments_snapshot_id": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+   },
+   "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+   "packet_bytes": {
+    "selected": {
+     "measured": 105769
+    },
+    "omitted": {
+     "measured": 0
+    },
+    "overflow": {
+     "measured": 0
+    }
+   },
+   "open_candidates": [
+    {
+     "kind": "open_pr_overlap",
+     "identity": "pr-5408",
+     "evidence": "PR #5408 is open with title fixing this issue, published head cd757a638f4675b1473dbf1850a3efedce38581a, and an independent exact-head review recorded on the PR",
+     "root_corrected": false,
+     "root_note": null
+    }
+   ],
+   "triager_findings": [
+    "issue body names the exact candidate PR with published head and integration basis",
+    "a real overlapping PR blocks any duplicate pickup of this lane (see control corpus)",
+    "the residual current terminal/failed next-action disagreement is separately tracked in issue #5413 and is not part of this row's claim"
+   ],
+   "missing_evidence_questions": [],
+   "root_disposition": {
+    "disposition": "blocked",
+    "rationale": "open PR #5408 (head cd757a638f4675b1473dbf1850a3efedce38581a) carries the exact bounded claim of this issue; pickup would collide with the in-flight owner lane, so the row stays blocked with the collision retained; the residual terminal/failed next-action disagreement is separately tracked in #5413",
+    "corrected_candidates": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5399",
+     "bytes": {
+      "measured": 11371
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5399/comments",
+     "bytes": {
+      "measured": 2
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5399/timeline",
+     "bytes": {
+      "measured": 94396
+     }
+    },
+    {
+     "step": "overlapping PR verification",
+     "command": "gh pr view 5408 --json state,title,headRefOid",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "blocked is an intake-time state: no review or CI judgment of PR #5408 is claimed",
+    "the row does not assert that PR #5408's acceptance is complete"
+   ],
+   "false_candidates": [],
+   "non_claims": [
+    "claims no MCP protocol change beyond what PR #5408 itself claims",
+    "claims no LSP receipt parity (explicitly out of the PR's own boundary)"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "intake-5399-overlapping-open-pr",
+    "observation_key": "observation-intake-5399-overlapping-open-pr",
+    "synthetic": false,
+    "disposition": "blocked",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-intake-5399-overlapping-open-pr",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:76704c40aab7eb448f2bb7be9ab07a0340a544af216eb5841e20cabcc1c52c9a",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#5399",
+     "comments_ref": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "labels_ref": "gh-issue-labels:sha256:2284a98f4922371628b0a66f48ee6f0a5f569503f8791ac5bac3a9f5fb723b6b",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "overlapping_claim"
+    },
+    "context": {
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+     "relevant_prs": [
+      "pr-5408"
+     ],
+     "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#5399",
+     "claim_ids": [
+      "claim-5399-cross-interface-freshness",
+      "claim-5399-cross-interface-freshness"
+     ]
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:76704c40aab7eb448f2bb7be9ab07a0340a544af216eb5841e20cabcc1c52c9a",
+       "bytes": 11371
+      },
+      {
+       "identity": "gh-issue-timeline:sha256:a70efccb300cd9c4f2900f0114ad2bbec813d1438c4e50ecf016ec5d64e59981",
+       "bytes": 94396
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "open PR #5408 (head cd757a638f4675b1473dbf1850a3efedce38581a) carries the exact bounded claim of this issue; pickup would collide with the in-flight owner lane, so the row stays blocked with the collision retained; the residual terminal/failed next-action disagreement is separately tracked in #5413",
+     "root_disposition": "root-blocked-open-pr-overlap"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-5399-blocked-by-pr-5408",
+     "work_items": [],
+     "dependencies": [],
+     "acceptance_coverage": []
+    },
+    "claim_events": [
+     {
+      "claim_id": "claim-5399-cross-interface-freshness",
+      "event": "claimed",
+      "detail": "durable exclusive writer claim observed on the issue lane"
+     },
+     {
+      "claim_id": "claim-5399-cross-interface-freshness",
+      "event": "collision",
+      "detail": "open PR #5408 holds the same selected work; pickup blocked"
+     }
+    ],
+    "execution_refs": {
+     "pr": "pr-5408",
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "blocked is an intake-time state: no review or CI judgment of PR #5408 is claimed",
+     "the row does not assert that PR #5408's acceptance is complete"
+    ],
+    "non_claims": [
+     "claims no MCP protocol change beyond what PR #5408 itself claims",
+     "claims no LSP receipt parity (explicitly out of the PR's own boundary)"
+    ],
+    "row_digest": "c072060a6ade63dc4ef44e3eda80c31a998ffe3c6e752d25bb0bd1c22a044409"
+   }
+  },
+  {
+   "id": "intake-5373-needs-evidence",
+   "category": "needs_evidence",
+   "snapshot": {
+    "issue_number": 5373,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#5373",
+    "snapshot_path": "snapshots/issue-5373.json",
+    "comments_path": "snapshots/issue-5373-comments.json",
+    "timeline_path": "snapshots/issue-5373-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:3677886af747d876fe1893b9f33a8508327ce67f49ca9fd0bbfd33b9092c6ac0",
+    "captured_at": "2026-10-04T11:02:59Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:d0c0a1fd852c2190dbbc8d3f3b81701268094e5e7c6285f00dd46ad77fd18c90",
+    "comments_snapshot_id": "gh-issue-comments:sha256:a323ae2f8e6d1b20fa79ce0ba1c6c5699db99cd14728a8739ff4456cb53e5f88"
+   },
+   "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+   "packet_bytes": {
+    "selected": {
+     "measured": 12270
+    },
+    "omitted": {
+     "measured": 0
+    },
+    "overflow": {
+     "measured": 0
+    }
+   },
+   "open_candidates": [],
+   "triager_findings": [
+    "snapshot retains exact evidence: three pushed heads with zero github-actions suites, contrast cases with partial and full fleets, and check-suite API output",
+    "acceptance box 1 (root cause identified) is unchecked and not answerable from the snapshot"
+   ],
+   "missing_evidence_questions": [
+    "Which event-delivery path failed for the three pushed heads that carry no github-actions check suite, given that third-party app suites attached normally on the same commits?",
+    "Is the silence reproducible on a fresh push to an open PR branch, and does it correlate with any repository-side setting (pull_request trigger types, concurrency groups, or stale conflicted merge refs)?",
+    "Did a GitHub-side incident window cover 2026-10-04, and if so what exact window should be recorded for the detection step?",
+    "Does any existing push hook or xtask check already warn when a pushed PR head has no github-actions suite after N minutes, or must the detection step be built from nothing?"
+   ],
+   "root_disposition": {
+    "disposition": "needs_evidence",
+    "rationale": "the issue's own acceptance demands a root cause before any fix; intake cannot answer the four open questions from the snapshot, so the row stays needs_evidence with the exact questions retained instead of a guessed implementation",
+    "corrected_candidates": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5373",
+     "bytes": {
+      "measured": 5136
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5373/comments",
+     "bytes": {
+      "measured": 3038
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5373/timeline",
+     "bytes": {
+      "measured": 4096
+     }
+    },
+    {
+     "step": "check-suite enumeration",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/commits/<head>/check-suites (named in issue; not re-run at capture)",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "no fix route is proposed until the root cause is identified; guessing a trigger-type fix could mask a GitHub-side incident",
+    "the manual workflow_dispatch unblock is recorded in the issue and works, so this is not merge-blocking fleet-wide"
+   ],
+   "false_candidates": [],
+   "non_claims": [
+    "claims no root cause (event delivery, scheduling skip, merge-ref staleness and incident window all remain open)",
+    "claims no repository-settings change is required"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "intake-5373-needs-evidence",
+    "observation_key": "observation-intake-5373-needs-evidence",
+    "synthetic": false,
+    "disposition": "needs_evidence",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-intake-5373-needs-evidence",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:d0c0a1fd852c2190dbbc8d3f3b81701268094e5e7c6285f00dd46ad77fd18c90",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#5373",
+     "comments_ref": "gh-issue-comments:sha256:a323ae2f8e6d1b20fa79ce0ba1c6c5699db99cd14728a8739ff4456cb53e5f88",
+     "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "missing_evidence",
+     "issue_family": "unknown"
+    },
+    "context": {
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+     "relevant_prs": [],
+     "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#5373",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:d0c0a1fd852c2190dbbc8d3f3b81701268094e5e7c6285f00dd46ad77fd18c90",
+       "bytes": 5136
+      },
+      {
+       "identity": "gh-issue-timeline:sha256:3677886af747d876fe1893b9f33a8508327ce67f49ca9fd0bbfd33b9092c6ac0",
+       "bytes": 4096
+      }
+     ],
+     "missing_evidence_questions": [
+      "Which event-delivery path failed for the three pushed heads that carry no github-actions check suite, given that third-party app suites attached normally on the same commits?",
+      "Is the silence reproducible on a fresh push to an open PR branch, and does it correlate with any repository-side setting (pull_request trigger types, concurrency groups, or stale conflicted merge refs)?",
+      "Did a GitHub-side incident window cover 2026-10-04, and if so what exact window should be recorded for the detection step?",
+      "Does any existing push hook or xtask check already warn when a pushed PR head has no github-actions suite after N minutes, or must the detection step be built from nothing?"
+     ]
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "the issue's own acceptance demands a root cause before any fix; intake cannot answer the four open questions from the snapshot, so the row stays needs_evidence with the exact questions retained instead of a guessed implementation",
+     "root_disposition": "root-needs-evidence"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-5373-blocked-pending-evidence",
+     "work_items": [],
+     "dependencies": [],
+     "acceptance_coverage": []
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "no fix route is proposed until the root cause is identified; guessing a trigger-type fix could mask a GitHub-side incident",
+     "the manual workflow_dispatch unblock is recorded in the issue and works, so this is not merge-blocking fleet-wide"
+    ],
+    "non_claims": [
+     "claims no root cause (event delivery, scheduling skip, merge-ref staleness and incident window all remain open)",
+     "claims no repository-settings change is required"
+    ],
+    "row_digest": "407680c24a6fceb18673d2f8ec9e34f54ca9093cb08fedcb79ace8898484a46e"
+   }
+  },
+  {
+   "id": "intake-2928-partially-landed-umbrella",
+   "category": "partially_landed_umbrella",
+   "snapshot": {
+    "issue_number": 2928,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#2928",
+    "snapshot_path": "snapshots/issue-2928.json",
+    "comments_path": "snapshots/issue-2928-comments.json",
+    "timeline_path": "snapshots/issue-2928-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:e6b4c4aff9c8258e9d9741a988e396af8fff1157de86845ed65e815fe7dd7ac8",
+    "captured_at": "2026-10-04T11:02:59Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:f6028fcca5a61a8f00ba9a8a86748249c7991886bb624344d784880a64450d86",
+    "comments_snapshot_id": "gh-issue-comments:sha256:8cb87107ea1c03c7b5e310ccba412a8652f5dc1ff3d73b5c794dc2472b2e8609"
+   },
+   "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+   "packet_bytes": {
+    "selected": {
+     "measured": 499943
+    },
+    "omitted": {
+     "measured": 0
+    },
+    "overflow": {
+     "measured": 0
+    }
+   },
+   "open_candidates": [],
+   "triager_findings": [
+    "six residual rows map one-to-one to open issues linked from the umbrella body",
+    "the umbrella body itself disclaims 0.11.0 release-blocking status, matching the deferred burn-down row",
+    "merged child identity pr-5366 is bound in execution_refs.merge; it records the partial landing and advances no closeout"
+   ],
+   "missing_evidence_questions": [],
+   "root_disposition": {
+    "disposition": "partially_landed",
+    "rationale": "merged children cover part of the umbrella: #4643 (shared RepairAttempt status projection) landed via squash PR #5366 at 2026-10-04T10:46:12Z and #2528 (packaged editor composition) is closed; the required outcome still has open residuals (#1574, #2927, #1661, #1702, #1579 and the editor-shell command work), so the umbrella stays partially_landed with uncovered acceptance retained",
+    "corrected_candidates": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/2928",
+     "bytes": {
+      "measured": 15331
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/2928/comments",
+     "bytes": {
+      "measured": 12055
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/2928/timeline",
+     "bytes": {
+      "measured": 472557
+     }
+    },
+    {
+     "step": "merged child verification",
+     "command": "gh issue view 4643 --json state,closedAt; gh pr view 5366 --json state,mergedAt",
+     "bytes": {
+      "measured": 0
+     }
+    },
+    {
+     "step": "residual open child sweep",
+     "command": "gh issue view 1574 2528 2927 1613 1661 1702 1579 --json state",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "burn-down rows are intake-time observations of open sub-issues, not a re-review of each child's state",
+    "the umbrella row claims no schedule and no priority ordering among residuals"
+   ],
+   "false_candidates": [],
+   "non_claims": [
+    "claims no judgment that open residuals are ready for pickup",
+    "claims no 0.11.0 release-decision input beyond what the issue already records"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "intake-2928-partially-landed-umbrella",
+    "observation_key": "observation-intake-2928-partially-landed-umbrella",
+    "synthetic": false,
+    "disposition": "partially_landed",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-intake-2928-partially-landed-umbrella",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:f6028fcca5a61a8f00ba9a8a86748249c7991886bb624344d784880a64450d86",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#2928",
+     "comments_ref": "gh-issue-comments:sha256:8cb87107ea1c03c7b5e310ccba412a8652f5dc1ff3d73b5c794dc2472b2e8609",
+     "labels_ref": "gh-issue-labels:sha256:76a943d83203e36275ff9ca2b41715df01056e3f9d542a4442d51f656f5e419d",
+     "assignees_ref": null,
+     "milestone_ref": "issue-milestone:sha256:cf41c1d891959d306d246a72a440945e7c275dd2455414e305b14955a122eeee"
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "umbrella"
+    },
+    "context": {
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+     "relevant_prs": [
+      "pr-5366"
+     ],
+     "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#2928",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:f6028fcca5a61a8f00ba9a8a86748249c7991886bb624344d784880a64450d86",
+       "bytes": 15331
+      },
+      {
+       "identity": "gh-issue-timeline:sha256:e6b4c4aff9c8258e9d9741a988e396af8fff1157de86845ed65e815fe7dd7ac8",
+       "bytes": 472557
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "merged children cover part of the umbrella: #4643 (shared RepairAttempt status projection) landed via squash PR #5366 at 2026-10-04T10:46:12Z and #2528 (packaged editor composition) is closed; the required outcome still has open residuals (#1574, #2927, #1661, #1702, #1579 and the editor-shell command work), so the umbrella stays partially_landed with uncovered acceptance retained",
+     "root_disposition": "root-partially-landed"
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-2928-umbrella-burndown",
+     "work_items": [],
+     "dependencies": [],
+     "acceptance_coverage": [
+      "covered: shared RepairAttempt status projection with typed adapter (#4643 via PR #5366, merged 2026-10-04T10:46:12Z)",
+      "covered: current-main packaged editor composition and qualified live journeys (#2528 closed)",
+      "covered: progressive discovery workflow catalog (#1613 closed)"
+     ]
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": null,
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": "pr-5366",
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "in_progress",
+     "uncovered_rows": [
+      "residual: primary Start or Continue Repair command shell over the shared RepairAttempt",
+      "residual: durable RepairAttempt transaction authority (#2927 open)",
+      "residual: editor/LSP usable-alpha epic (#1574 open)",
+      "residual: first five real repair attempts dogfood (#1702 open)",
+      "residual: real repair usefulness proof across CLI, standard LSP editors and MCP agents (#1579 open)",
+      "residual: semantically correct lazily-resolved code actions (#1661 open)"
+     ],
+     "contradicted_rows": [],
+     "deferred_rows": [
+      "deferred: release disposition decision (post-0.11.0 unless the release authority promotes a bounded slice)"
+     ]
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [
+      "the merge identity binds only the #4643 child; it does not advance the umbrella closeout"
+     ],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "burn-down rows are intake-time observations of open sub-issues, not a re-review of each child's state",
+     "the umbrella row claims no schedule and no priority ordering among residuals"
+    ],
+    "non_claims": [
+     "claims no judgment that open residuals are ready for pickup",
+     "claims no 0.11.0 release-decision input beyond what the issue already records"
+    ],
+    "row_digest": "2522cdd6323d9f0417f288be68f4c75d30be44b0403e54650bdf9e9685bf236a"
+   }
+  },
+  {
+   "id": "intake-5441-root-decision-required",
+   "category": "root_decision_required",
+   "snapshot": {
+    "issue_number": 5441,
+    "issue_ref": "EffortlessMetrics/ripr-swarm#5441",
+    "snapshot_path": "snapshots/issue-5441.json",
+    "comments_path": "snapshots/issue-5441-comments.json",
+    "timeline_path": "snapshots/issue-5441-timeline.json",
+    "timeline_snapshot_id": "gh-issue-timeline:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "captured_at": "2026-10-04T11:02:59Z",
+    "issue_snapshot_id": "gh-issue-snapshot:sha256:0cb29bf154e2aaada496cb42df9d930500fd05870683c0e0a457396c440e5677",
+    "comments_snapshot_id": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+   },
+   "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+   "packet_bytes": {
+    "selected": {
+     "measured": 7621
+    },
+    "omitted": {
+     "measured": 0
+    },
+    "overflow": {
+     "measured": 0
+    }
+   },
+   "open_candidates": [],
+   "triager_findings": [
+    "triager found no duplicate, already-satisfied, stale or spec-needed candidate (none_found over the open-issue and PR sweep; denominator recorded in retrieval steps)",
+    "the issue itself is the decision packet: options, recommendation and decision owner are all in the snapshot",
+    "PR #5423 landed the stub producer with the conflicting editor action removed; re-landing is gated on this decision"
+   ],
+   "missing_evidence_questions": [],
+   "root_disposition": {
+    "disposition": "root_decision_required",
+    "rationale": "the issue is an authority ambiguity, not an implementation gap: PR #5423's editor stub action conflicts with ADR 0017 (the editor must not generate tests) and the decision owner (Steven) must choose between amending the ADR, projecting an upstream-generated stub, or keeping the editor read-only; intake stops at root_decision_required and drafts no contract artifact",
+    "corrected_candidates": []
+   },
+   "retrieval_steps": [
+    {
+     "step": "issue snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5441",
+     "bytes": {
+      "measured": 7617
+     }
+    },
+    {
+     "step": "comments snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5441/comments",
+     "bytes": {
+      "measured": 2
+     }
+    },
+    {
+     "step": "timeline snapshot",
+     "command": "gh api repos/EffortlessMetrics/ripr-swarm/issues/5441/timeline",
+     "bytes": {
+      "measured": 2
+     }
+    },
+    {
+     "step": "authority read",
+     "command": "read docs/adr/0017-editor-gap-queue-is-read-only.md at capture main",
+     "bytes": {
+      "measured": 0
+     }
+    }
+   ],
+   "limitations": [
+    "the row records the three options verbatim but recommends none; the decision owner is named in the issue",
+    "PR #5423 merged the stub producer with the action removed; re-landing the action is gated on this decision"
+   ],
+   "false_candidates": [],
+   "non_claims": [
+    "claims no ADR 0017 amendment (that is the decision itself)",
+    "claims no overlap with the #1902/#1571 WorkspaceEdit track, which explicitly excludes generated tests"
+   ],
+   "attempt": {
+    "schema_version": "issue_lifecycle_attempt.v1",
+    "lifecycle_id": "intake-5441-root-decision-required",
+    "observation_key": "observation-intake-5441-root-decision-required",
+    "synthetic": false,
+    "disposition": "root_decision_required",
+    "base_attempts": [
+     {
+      "attempt_id": "attempt-intake-5441-root-decision-required",
+      "shared_facts": [
+       "context"
+      ]
+     }
+    ],
+    "issue": {
+     "snapshot_id": "gh-issue-snapshot:sha256:0cb29bf154e2aaada496cb42df9d930500fd05870683c0e0a457396c440e5677",
+     "issue_ref": "EffortlessMetrics/ripr-swarm#5441",
+     "comments_ref": "gh-issue-comments:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "labels_ref": "gh-issue-labels:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+     "assignees_ref": null,
+     "milestone_ref": null
+    },
+    "initial": {
+     "information_completeness": "complete",
+     "issue_family": "architecture_ambiguity"
+    },
+    "context": {
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58",
+     "relevant_prs": [
+      "pr-5423"
+     ],
+     "portfolio": "ripr-swarm-issue-lifecycle-intake-pilot",
+     "selected_work": "EffortlessMetrics/ripr-swarm#5441",
+     "claim_ids": []
+    },
+    "intake": {
+     "evidence": [
+      {
+       "identity": "gh-issue-snapshot:sha256:0cb29bf154e2aaada496cb42df9d930500fd05870683c0e0a457396c440e5677",
+       "bytes": 7617
+      },
+      {
+       "identity": "gh-issue-timeline:sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+       "bytes": 2
+      }
+     ],
+     "missing_evidence_questions": []
+    },
+    "contract_decision": {
+     "spec_required": false,
+     "decision_rationale": "the issue is an authority ambiguity, not an implementation gap: PR #5423's editor stub action conflicts with ADR 0017 (the editor must not generate tests) and the decision owner (Steven) must choose between amending the ADR, projecting an upstream-generated stub, or keeping the editor read-only; intake stops at root_decision_required and drafts no contract artifact",
+     "root_disposition": null
+    },
+    "contract_artifacts": {
+     "proposal": null,
+     "spec": null,
+     "adr": null,
+     "challenge": null,
+     "amendments": [],
+     "acceptance": null
+    },
+    "plan": {
+     "plan_id": "plan-5441-awaiting-root-decision",
+     "work_items": [],
+     "dependencies": [],
+     "acceptance_coverage": []
+    },
+    "claim_events": [],
+    "execution_refs": {
+     "pr": "pr-5423",
+     "review": null,
+     "checks": [],
+     "verification": null,
+     "merge": null,
+     "current_main": "a88034ea3c3d6baae360d6d374bf547f5f9b4d58"
+    },
+    "progress": {
+     "mutation_plan": null,
+     "before_digest": null,
+     "after_digest": null,
+     "suppressed_unchanged": false
+    },
+    "burn_down": {
+     "state": "open",
+     "uncovered_rows": [],
+     "contradicted_rows": [],
+     "deferred_rows": []
+    },
+    "closeout": {
+     "state": "not_started",
+     "reason": null,
+     "remaining_limitations": [],
+     "current_head_verification": null
+    },
+    "limitations": [
+     "the row records the three options verbatim but recommends none; the decision owner is named in the issue",
+     "PR #5423 merged the stub producer with the action removed; re-landing the action is gated on this decision"
+    ],
+    "non_claims": [
+     "claims no ADR 0017 amendment (that is the decision itself)",
+     "claims no overlap with the #1902/#1571 WorkspaceEdit track, which explicitly excludes generated tests"
+    ],
+    "row_digest": "4ba4544f7dcd8a74faae1cd19247bb32d92b72ad0859295878ba04ee9ba96aac"
+   }
+  }
+ ]
+}

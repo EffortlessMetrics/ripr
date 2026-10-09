@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/typescript_adversarial_owner_identity_after_insertion/input",
-  "base": "origin/main",
-  "summary": {"changed_rust_files":0,"probes":2,"findings":2,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
+  "summary": {"changed_rust_files":0,"probes":2,"findings":2,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":2,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":0},{"language":"typescript","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:96bc4f328221076ad671ac6e78755286875f5c73dfc7126791a1c86b090dae97","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":9,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:4fbb9720aa6abe91","base_revision":null,"input_identity":"sha256:02dc0a0b84a2b3ba1f3d6800f314416b044a3621718d3a384e9c57468175cc1e","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":9,"candidate_line_count":2,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -124,7 +123,7 @@
     },
     {
       "id": "probe:src_pricing.ts:typescript_preview:bd772dc8",
-      "classification": "weakly_exposed",
+      "classification": "no_static_path",
       "severity": "warning",
       "confidence": 0.40,
       "probe": {
@@ -137,17 +136,17 @@
         "owner": "typescript:src/pricing.ts::applyDiscount"
        },
       "ripr": {
-        "reach": {"state":"weak","confidence":"low","summary":"1 related test(s) found for owner `applyDiscount`"},
+        "reach": {"state":"no","confidence":"low","summary":"0 related test(s) found for owner `applyDiscount`"},
         "infect": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model infection."},
         "propagate": {"state":"unknown","confidence":"low","summary":"TypeScript preview adapter does not yet model propagation."},
-        "observe": {"state":"weak","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
-        "discriminate": {"state":"weak","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
+        "observe": {"state":"no","confidence":"low","summary":"Strongest extracted oracle kind: `unknown` (rank 0)"},
+        "discriminate": {"state":"no","confidence":"low","summary":"TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."}
        },
-      "evidence_path": ["reach weak: 1 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation weak: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator weak: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands.", "related test tests/pricing.test.ts:3 computes the processing fee uses unknown unknown oracle"],
+      "evidence_path": ["reach no: 0 related test(s) found for owner `applyDiscount`", "infection unknown: TypeScript preview adapter does not yet model infection.", "propagation unknown: TypeScript preview adapter does not yet model propagation.", "observation no: Strongest extracted oracle kind: `unknown` (rank 0)", "discriminator no: TypeScript preview adapter found no strong discriminator; use `toBe` / `toEqual` / `toStrictEqual` to escalate. TypeScript `toThrow` forms remain broad error evidence until payload inspection lands."],
       "flow_sinks": [
       ],
-      "evidence": ["owner: applyDiscount", "gap_state: advisory", "actionability_category: ambiguous_related_test", "why_not_actionable: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof", "repair_route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection", "missing_actionability_fields: related_test_or_observer, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted token-aware relation plus complete verify, receipt, and edit-boundary fields", "raw_evidence_ref: file=src/pricing.ts;line=14;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:bd772dc8;owner=applyDiscount", "related_test_relation: same_file_proximity (computes the processing fee)", "related_test_uncertain: same_file_proximity (computes the processing fee)", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
-      "missing": ["Only heuristic TypeScript test links were found for `applyDiscount`; verify the suggested test location or add a direct Jest/Vitest owner call with an exact-value assertion.", "TypeScript preview actionability `advisory` / `ambiguous_related_test`: related-test link is heuristic-only and cannot safely borrow extracted assertions as proof. Repair route: add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection"],
+      "evidence": ["owner: applyDiscount", "gap_state: advisory", "actionability_category: missing_context", "why_not_actionable: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route", "repair_route: add trusted related-test matching for this owner shape before emitting a repair packet", "missing_actionability_fields: related_test_or_observer, target_test_shape, verify_command, receipt_command, must_not_change, allowed_edit_surface, raw_evidence_refs", "evidence_needed_to_promote: trusted related test or observer, target shape, verify command, receipt command, and edit boundaries", "raw_evidence_ref: file=src/pricing.ts;line=14;kind=typescript_preview_probe;source_id=probe:src_pricing.ts:typescript_preview:bd772dc8;owner=applyDiscount", "typescript_package_confidence: none", "typescript_package_limitation: typescript_package_root_unresolved", "typescript_package_limitation: typescript_test_runner_unresolved"],
+      "missing": ["No test references `applyDiscount(` — add a test that calls the changed owner.", "TypeScript preview actionability `advisory` / `missing_context`: no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route. Repair route: add trusted related-test matching for this owner shape before emitting a repair packet"],
       "assertion_texts": {
       },
       "activation": {
@@ -160,16 +159,8 @@
       ],
       "missing_discriminators": [
       ],
-      "related_tests_total": 1,
+      "related_tests_total": 0,
       "related_tests": [
-        {
-          "name": "computes the processing fee",
-          "file": "tests/pricing.test.ts",
-          "line": 3,
-          "oracle_strength": "unknown",
-          "oracle_kind": "unknown",
-          "oracle": ""
-        }
       ],
       "typescript_preview_card": {
         "authority_boundary": "preview_advisory_only",
@@ -185,32 +176,29 @@
         ],
         "missing_discriminator": null,
         "oracle_kind": "unknown",
-        "oracle_strength": "unknown",
+        "oracle_strength": "none",
         "owner": "applyDiscount",
         "owner_kind": "function",
         "probe_family": "predicate",
-        "related_test": {
-          "file": "tests/pricing.test.ts",
-          "line": 3,
-          "name": "computes the processing fee"
-        },
+        "related_test": null,
         "repair_packet_ready": false,
-        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
         "source": "check_typescript_preview",
         "static_limits": [],
         "suggested_assertion_shape": "Add an exact boundary assertion for the changed predicate.",
         "verify": {
           "command": null
         },
-        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
       },
       "preview_actionability": {
-        "actionability_category": "ambiguous_related_test",
+        "actionability_category": "missing_context",
         "authority_boundary": "preview_advisory_only",
-        "evidence_needed_to_promote": "trusted token-aware relation plus complete verify, receipt, and edit-boundary fields",
+        "evidence_needed_to_promote": "trusted related test or observer, target shape, verify command, receipt command, and edit boundaries",
         "gap_state": "advisory",
         "missing_actionability_fields": [
           "related_test_or_observer",
+          "target_test_shape",
           "verify_command",
           "receipt_command",
           "must_not_change",
@@ -231,15 +219,15 @@
           }
         ],
         "repair_packet_ready": false,
-        "repair_route": "add a direct owner-call, import-aware, or receiver-aware relation before repair packet projection",
+        "repair_route": "add trusted related-test matching for this owner shape before emitting a repair packet",
         "unlock_condition": null,
-        "why_not_actionable": "related-test link is heuristic-only and cannot safely borrow extracted assertions as proof"
+        "why_not_actionable": "no trusted related Jest/Vitest test or observer is available for a bounded TypeScript repair route"
       },
       "stop_reasons": [],
       "oracle_kind": "unknown",
-      "oracle_strength": "unknown",
-      "recommended_next_step": "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.",
-      "suggested_next_action": "TypeScript preview advisory: related-test proximity is heuristic only; add a direct owner call before treating this as an actionable repair target.",
+      "oracle_strength": "none",
+      "recommended_next_step": "TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.",
+      "suggested_next_action": "TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet is emitted.",
       "language": "typescript",
       "language_status": "preview",
       "owner_kind": "function",
@@ -256,5 +244,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/pricing.ts","digest":"sha256:c043a1b803a780cf47da8fa778b0d70ed842b76d5d359fdd97fb7e7978cb6c2b"}]}
 }

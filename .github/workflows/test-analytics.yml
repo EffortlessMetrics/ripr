@@ -2,6 +2,11 @@ name: Test Analytics
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnose_source_promotion:
+        description: Run only the original source-promotion fixture with bounded phase diagnostics
+        type: boolean
+        default: false
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
@@ -17,9 +22,11 @@ concurrency:
 jobs:
   rust-tests:
     name: rust-tests-junit
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    if: (github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')) && !(github.event_name == 'workflow_dispatch' && inputs.diagnose_source_promotion)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The historical fixture completed in 17m28s within the former 30m cap.
+    # Allow the remaining suite and doctests a bounded completion experiment.
+    timeout-minutes: 60
     env:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -61,3 +68,53 @@ jobs:
       - name: Explain skipped Codecov test-results upload
         if: ${{ !cancelled() && (env.CODECOV_TOKEN == '' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository)) }}
         run: echo "Skipping Codecov test-results upload because CODECOV_TOKEN is unavailable for this run."
+
+  source-promotion-phase-diagnosis:
+    name: Source-promotion all-features phase diagnosis
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnose_source_promotion
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RIPR_SOURCE_PROMOTION_PHASE_DIAGNOSTICS: "1"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+        with:
+          shared-key: ripr-test-analytics-${{ runner.os }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: taiki-e/install-action@nextest
+
+      - name: Check the exact nextest reservation oracle
+        run: cargo test -p xtask product_gate_plan::tests::required_nextest_profile_cannot_filter_retry_or_drop_junit
+
+      - name: Prepare the default-feature xtask listing class
+        run: cargo test -p xtask repository_language_policy_admits_real_mixed_language_producer --no-run
+
+      - name: Prepare the offline xtask listing class
+        run: cargo test -p xtask --locked --offline rust_judged_panel::rolling_observation --no-run
+
+      - name: Prepare the xtask binary listing class
+        run: cargo test -p xtask --bin xtask dx_scoreboard --no-run
+
+      - name: Prepare the causal-delta fixture listing class
+        run: cargo test -p ripr --test causal_delta_fixture --no-run
+
+      - name: Prepare the portable-consumer fixture listing class
+        run: cargo test -p ripr --locked --offline --test portable_consumer_packet --no-run
+
+      - name: Run original fixture in the all-features CI build context
+        run: cargo nextest run --workspace --all-features --profile ci -E 'binary(=source_promotion_workflow_contract) & test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)'
+
+      - name: Retain bounded original fixture phase context
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: source-promotion-phase-${{ github.run_id }}
+          path: target/ripr/reports/source-promotion-initial-required-command-context-*.txt
+          if-no-files-found: warn
+          retention-days: 5

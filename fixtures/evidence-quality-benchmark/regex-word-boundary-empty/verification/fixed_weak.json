@@ -1,0 +1,11 @@
+{
+  "kind": "post_capture_frozen_executable_rehash",
+  "observed_utc": "2026-10-03T09:16:44Z",
+  "artifact": {
+    "path": "/workspace/shared/ripr-regex-case-evidence/native-experiment/witnesses/b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c.bin",
+    "bytes": 17152240,
+    "sha256": "b03fbf008d18cf0cec84ef2ef23ac2470cfe1f9bd394c2120a1ba5bc2956823c"
+  },
+  "measurement": "Direct read of retained frozen executable after historical native capture completed; byte count and SHA256 computed now.",
+  "scope": "This is not a contemporaneous after-run measurement of the mutable compiler-selected executable. Routine source-only checks validate this compact record; external executable bytes remain NOT_REVERIFIED by those checks."
+}

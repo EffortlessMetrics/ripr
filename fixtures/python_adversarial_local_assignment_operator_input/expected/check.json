@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_adversarial_local_assignment_operator_input/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:631d7f7e07f6abf494829cadcb2ffc2fa49467b438ea6bf7c2710441fc3370c2","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:631d7f7e07f6abf494829cadcb2ffc2fa49467b438ea6bf7c2710441fc3370c2","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -47,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"total = base - bonus","line":2}
       ],
-      "evidence": ["owner: compute", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_calc.py", "suggested_test_name: test_base_unchanged", "suggested_test_node_id: tests/test_calc.py::test_base_unchanged", "suggested_verify_command: pytest tests/test_calc.py::test_base_unchanged", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_base_unchanged)", "test_verify_command: pytest tests/test_calc.py::test_base_unchanged (test_base_unchanged)", "related_test_relation: syntactic_call (test_base_unchanged)", "test_oracle: exact_value strong (test_base_unchanged)"],
+      "evidence": ["owner: compute", "owner_kind: function", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_calc.py", "suggested_test_name: test_base_unchanged", "suggested_test_node_id: tests/test_calc.py::test_base_unchanged", "suggested_verify_command: python -m pytest tests/test_calc.py::test_base_unchanged", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_base_unchanged)", "test_verify_command: python -m pytest tests/test_calc.py::test_base_unchanged (test_base_unchanged)", "related_test_relation: syntactic_call (test_base_unchanged)", "test_oracle: exact_value strong (test_base_unchanged)"],
       "missing": ["A strong Python oracle reaches `compute`, but its assertion does not observe the changed owner's output; static evidence cannot confirm the changed behavior is discriminated. Add an assertion on the changed owner's output."],
       "assertion_texts": {
       },
@@ -76,7 +75,7 @@
         "suggested_test_file": "tests/test_calc.py",
         "suggested_test_name": "test_base_unchanged",
         "suggested_test_node_id": "tests/test_calc.py::test_base_unchanged",
-        "verify_command": "pytest tests/test_calc.py::test_base_unchanged",
+        "verify_command": "python -m pytest tests/test_calc.py::test_base_unchanged",
         "verify_command_confidence": "high"
        },
       "stop_reasons": [],
@@ -104,5 +103,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/calc.py","digest":"sha256:537821db0944bd9543df004d77c4327cc0d8f37a577a35759ba394b6b82784f0"}]}
 }

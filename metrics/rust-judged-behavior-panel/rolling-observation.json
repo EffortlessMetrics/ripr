@@ -1,0 +1,178 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_panel_rolling_observation",
+  "authority": "EffortlessMetrics/ripr-swarm#4578",
+  "inherited_authorities": [
+    "EffortlessMetrics/ripr-swarm#3164",
+    "EffortlessMetrics/ripr-swarm#3806"
+  ],
+  "seed_manifest_path": "metrics/rust-judged-behavior-panel/manifest.json",
+  "seed_manifest_sha256": "sha256:e6d2a31d0ef736e0ad6472aa8cf9066281d7066eea42afd5e6f17411f6ce17fb",
+  "release_judgments_path": "metrics/rust-judged-behavior-panel/release-judgments.json",
+  "release_judgments_sha256": "sha256:04ad4167e930af01d48041e518796f1167d9c3347b5e51445976c80586f6c869",
+  "portable_current_path": "metrics/rust-judged-behavior-panel/portable/current.json",
+  "portable_generation_id": "4445540688268e4cde561d095a7af38a20d5fd4af549986e92d48c2be6c92b4a",
+  "limits": [
+    "Rolling observation over the retained panel only; this is not a second corpus or a new judging engine.",
+    "Frozen #3806 release judgments are bound by digest and are not rewritten.",
+    "Production-quiet coverage is filled by the authorized seed production subject, not by test-only zero-finding controls.",
+    "Canonical actionability is typed absence until a non-blocked gap-decision ledger is retained; check JSON and governed-manifest expected labels are not that producer.",
+    "No population accuracy, mutation, support-tier, or 0.11 release-scope claim."
+  ],
+  "coverage": {
+    "production_quiet": {
+      "status": "covered",
+      "case_ids": [
+        "rust-boundary-exact-equality-should-stay-quiet"
+      ]
+    },
+    "production_gap": {
+      "status": "covered",
+      "case_ids": [
+        "rust-boundary-missing-equality-should-gap"
+      ]
+    },
+    "production_limit": {
+      "status": "covered",
+      "case_ids": [
+        "rust-macro-wrapped-reach-should-limit"
+      ]
+    },
+    "test_only_quiet": {
+      "status": "control_only",
+      "case_ids": [
+        "p1744-quiet-test-only",
+        "p1731-quiet-test-only",
+        "p1732-quiet-test-only"
+      ]
+    }
+  },
+  "unmet": [
+    {
+      "row": "authorized_real_repository_production_quiet_replay",
+      "reason": "Inherited release production-quiet rows such as p1741-helper-rows-quiet remain proposed_unauthorized. This packet names that authorization gap instead of inventing a new real-repository case or treating test-only quiet as the production-quiet row."
+    }
+  ],
+  "observations": [
+    {
+      "case_id": "rust-boundary-exact-equality-should-stay-quiet",
+      "inherited_from": "seed",
+      "coverage_stratum": "production_quiet",
+      "production_behavior": true,
+      "classification": {
+        "status": "observed",
+        "source": "check_json_findings",
+        "value": "exposed",
+        "cause": null
+      },
+      "actionability": {
+        "status": "not_observed",
+        "source": "governed_manifest_is_not_canonical_producer",
+        "value": null,
+        "cause": "governed_manifest_is_not_canonical_producer"
+      },
+      "false_actionable": null,
+      "disposition": "completed"
+    },
+    {
+      "case_id": "rust-boundary-missing-equality-should-gap",
+      "inherited_from": "seed",
+      "coverage_stratum": "production_gap",
+      "production_behavior": true,
+      "classification": {
+        "status": "observed",
+        "source": "check_json_findings",
+        "value": "weakly_exposed",
+        "cause": null
+      },
+      "actionability": {
+        "status": "not_observed",
+        "source": "governed_manifest_is_not_canonical_producer",
+        "value": null,
+        "cause": "governed_manifest_is_not_canonical_producer"
+      },
+      "false_actionable": null,
+      "disposition": "completed"
+    },
+    {
+      "case_id": "rust-macro-wrapped-reach-should-limit",
+      "inherited_from": "seed",
+      "coverage_stratum": "production_limit",
+      "production_behavior": true,
+      "classification": {
+        "status": "observed",
+        "source": "check_json_findings",
+        "value": "no_static_path",
+        "cause": null
+      },
+      "actionability": {
+        "status": "not_observed",
+        "source": "governed_manifest_is_not_canonical_producer",
+        "value": null,
+        "cause": "governed_manifest_is_not_canonical_producer"
+      },
+      "false_actionable": null,
+      "disposition": "completed"
+    },
+    {
+      "case_id": "p1744-quiet-test-only",
+      "inherited_from": "release_challenge",
+      "coverage_stratum": "test_only_quiet",
+      "production_behavior": false,
+      "classification": {
+        "status": "not_observed",
+        "source": "check_json_findings",
+        "value": null,
+        "cause": "test_only_zero_finding_is_not_production_quiet"
+      },
+      "actionability": {
+        "status": "not_observed",
+        "source": "missing_ledger",
+        "value": null,
+        "cause": "missing_ledger"
+      },
+      "false_actionable": null,
+      "disposition": "completed"
+    },
+    {
+      "case_id": "p1731-quiet-test-only",
+      "inherited_from": "release_challenge",
+      "coverage_stratum": "test_only_quiet",
+      "production_behavior": false,
+      "classification": {
+        "status": "not_observed",
+        "source": "check_json_findings",
+        "value": null,
+        "cause": "test_only_zero_finding_is_not_production_quiet"
+      },
+      "actionability": {
+        "status": "not_observed",
+        "source": "missing_ledger",
+        "value": null,
+        "cause": "missing_ledger"
+      },
+      "false_actionable": null,
+      "disposition": "completed"
+    },
+    {
+      "case_id": "p1732-quiet-test-only",
+      "inherited_from": "release_challenge",
+      "coverage_stratum": "test_only_quiet",
+      "production_behavior": false,
+      "classification": {
+        "status": "not_observed",
+        "source": "check_json_findings",
+        "value": null,
+        "cause": "test_only_zero_finding_is_not_production_quiet"
+      },
+      "actionability": {
+        "status": "not_observed",
+        "source": "missing_ledger",
+        "value": null,
+        "cause": "missing_ledger"
+      },
+      "false_actionable": null,
+      "disposition": "completed"
+    }
+  ]
+}

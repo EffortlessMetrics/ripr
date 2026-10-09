@@ -46,10 +46,36 @@ input.
 | Max framing header block | 8 KiB | Legitimate headers are under ~100 bytes (`Content-Length` plus optional `Content-Type`); bounds a client streaming header bytes forever. |
 | In-flight request concurrency | 4 | tower-lsp's own implicit default, made explicit. Must stay above 1 so the built-in `$/cancelRequest` notification and lifecycle messages stay serviceable under load. |
 | Write-stall deadline | 120 s | Any successful write resets the clock; only a reader that has completely stopped draining stdout trips it. Converts a permanent bounded-memory wedge into clean process termination. |
+| Server→client request liveness (#5278) | 30 s | One bound per outstanding ripr-issued client request (`workspace/configuration`, `client/registerCapability`, refresh/lens refresh requests, `workspace/workspaceFolders`). A client that never answers — a desynced or dead proxy — must not pin a handler task forever: after a framing violation the read loop has fused, so a response can never arrive, and an unbounded await left the sidecar alive but permanently silent mid-session. Expiry fails the one request through its ordinary error arm (logged, and the configuration pull records `ConfigPullState::Failed`); notifications are not requests and are bounded by the write-stall deadline instead. |
 | `initialization_options` | 64 KiB (size estimate) | Only a handful of known keys are read (`lsp/config.rs`). |
 | `previousResultIds` | 4096 entries; 4096 B/URI; 1024 B/value | One entry per tracked document must tolerate monorepo pull-diagnostic sessions; bounds the URI-set clone and per-document scan. |
 | `executeCommand` arguments | 8 entries; 64 KiB total (size estimate) | Every RIPR command takes zero or one argument object; bounds all downstream identifiers (gap/seam/snapshot ids) transitively. |
+| `ripr/listActionableItems` params | 16 KiB (size estimate) | The live handler reads no client-supplied fields (#1603); the bound caps the params blob as one opaque value at handler entry, before any snapshot access or early-return fast path. |
 | JSON nesting depth | 128 | Enforced by serde_json's default recursion limit; the `unbounded_depth` feature is not enabled anywhere in the workspace. Over-deep bodies are bounded codec errors. |
+
+## Typed-size traversal work
+
+The 64 KiB typed limits use the existing decoded-value estimate, not exact
+serialized JSON bytes. Scalars retain their 16-byte allowance, strings and
+keys contribute their UTF-8 byte lengths, and containers contribute their
+entry counts. The limits are inclusive, and command arguments share one
+budget rather than receiving a fresh budget per argument.
+
+The validator stops at the first charge that cannot fit (#3844). Container
+cardinality is checked before its children; an oversized object key skips
+its value; a rejected argument skips all later arguments. It neither
+serializes nor clones the payload. The existing depth guard is unchanged.
+
+The payload-bound unit tests include a legacy-accounting parity oracle,
+exact-limit and aggregate-limit controls, and test-only visit counters for
+oversized containers, rejected array tails, object keys, and later command
+arguments. These are deterministic work controls, not wall-clock thresholds,
+and run in the existing Rust test lane without a new workflow.
+
+This bounds avoidable typed-validation traversal only. JSON decoding,
+already-allocated payload memory, value destruction, and transport delivery
+remain separate costs; no end-to-end latency or peak-memory improvement is
+claimed by these controls alone. Measured LSP envelopes remain #1578's scope.
 
 ## Composition with existing budget machinery
 
@@ -58,7 +84,11 @@ These bounds compose with, and do not duplicate, the existing authorities:
 - expensive analysis work is already funneled through the refresh scheduler
   (`lsp/refresh_scheduler.rs`: one active attempt plus coalesced pending);
 - egress payloads are already bounded by the diagnostic budget
-  (`lsp/diagnostic_budget.rs`);
+  (`lsp/diagnostic_budget.rs`); when push delivery omits eligible diagnostics,
+  it adds one informational `ripr-diagnostic-budget-omitted` summary for each
+  affected document. The summary is delivery metadata outside the selected
+  finding count and directs users to the governed retrieval route. Pull
+  diagnostic visibility remains follow-up work under #2596;
 - cancellation is the tower-lsp built-in `$/cancelRequest` plus the ripr
   cancellation substrate (`analysis/cancellation.rs`), both of which stay
   serviceable because request concurrency is above 1;
@@ -73,6 +103,18 @@ These bounds compose with, and do not duplicate, the existing authorities:
   including an ingress bound trip — ends the session after one bounded
   `-32700`. This is deliberate ("terminate cleanly when framing cannot be
   recovered") and pinned by tests.
+- **The session-end contract is uniform across lifecycle stages (#5278).**
+  Any framing violation — before `initialize`, after `initialized`, at any
+  request — produces the same observable outcome: one bounded `-32700`
+  response, then prompt session end and process exit (code 0; the pinned
+  divergence from LSP §exit's non-zero recommendation is unchanged). Before
+  #5278 the mid-session stage could wedge alive-but-silent: ripr's
+  `initialized`/root-transition handlers awaited server→client requests with
+  no timeout, the fused transport could never deliver their responses, and
+  the outstanding handler tasks pinned tower-lsp-server's task pipeline.
+  The server→client request liveness bound above removes that wedge; the
+  documented recovery rule for any desynced transport is: **restart the
+  process**.
 - **Duplicate `Content-Length` headers are last-wins** in the vendored codec;
   `BoundedStdinReader` mirrors last-wins so both layers agree on which value
   governs the cap.
@@ -84,10 +126,11 @@ These bounds compose with, and do not duplicate, the existing authorities:
   client EOF. Full lifecycle cleanup is #2030's scope.
 - **The queued-future bound (100)** is a tower-lsp internal constant,
   bounded but not configurable without forking the transport.
-- **`riprAgent/*` requests are capability-only** in this slice
-  (`lsp/agent_protocol.rs`); there is no live request family to bound. When
-  handlers land they must register payload bounds in
-  `lsp/payload_bounds.rs` first.
+- **`ripr/listActionableItems` is the one live `riprAgent/*` request** (#1603);
+  its params blob is bounded at handler entry in `lsp/payload_bounds.rs`
+  (16 KiB serialized estimate, rejected before any snapshot access). Any
+  additional riprAgent handler must register its typed bounds there before
+  it lands.
 - **Slow-reader egress** cannot be given a per-message write deadline
   without forking the transport; the enforced posture is bounded memory
   (rendezvous response channel) plus the session-level write-stall trip.
@@ -98,10 +141,12 @@ These bounds compose with, and do not duplicate, the existing authorities:
 ## Evidence
 
 - `crates/ripr/src/lsp/transport_bounds.rs::tests` — adapter unit tests plus
-  two in-process end-to-end tests over the real `serve_streams` composition:
-  an oversized frame yields one bounded `-32700` then a clean stop, and a
-  client that stops reading trips the write-stall deadline and ends the
-  session instead of wedging it.
+  in-process end-to-end tests over the real `serve_streams` composition:
+  an oversized frame yields one bounded `-32700` then a clean stop; a client
+  that stops reading trips the write-stall deadline and ends the session
+  instead of wedging it; and a mid-session framing violation with a
+  `workspace/configuration` request left unanswered ends the session (#5278,
+  the stage that previously wedged).
 - `crates/ripr/src/lsp/payload_bounds.rs::tests` — typed bound unit tests.
 - `crates/ripr/tests/lsp_lifecycle.rs` section 9 (issue #2034) — real-binary
   adversarial cases: oversized declared `Content-Length` with no body,

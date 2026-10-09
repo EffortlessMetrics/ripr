@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index b6b5c00..6d6fbe9 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,7 +19,7 @@ impl PartialEq for Wrapped {
+ 
+ pub fn wrap(n: u32) -> Wrapped {
+     Wrapped::One(Config {
+-        retries: n + 1,
++        retries: 1 + n,
+         name: "x".into(),
+     })
+ }

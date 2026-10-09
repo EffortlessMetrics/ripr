@@ -51,6 +51,7 @@ rewrite the active manifest explicitly.
 | Hover evidence | LSP hover on seam diagnostics | Shows evidence, related tests, missing discriminator text, and next-step wording without changing files |
 | LSP cockpit | `cargo xtask lsp-cockpit-report` | Checks fixture-pinned diagnostics, hovers, code actions, and VS Code command registration |
 | Inspect Test Gap - Copy Context | `ripr.copyContext` / `ripr agent packet --root . --seam-id <id> --json` | Copies or emits the selected test-gap packet |
+| Start repair: copy repair command | `ripr.copyAgentRepairCommand` / `ripr agent repair --root . --seam-id <id> --phase before` | Starts a retained repair attempt; offered only for a seam that passes the repair-packet flip (RIPR-SPEC-0087 §8) with a test-surface target |
 | Write targeted test: copy brief | `ripr.copyTargetedTestBrief` / `ripr agent brief --root . --diff <patch> --json` | Copies or emits a focused test brief for an agent working set |
 | Write targeted test: open best related test | `ripr.openRelatedTest` | Opens the strongest related test without editing it |
 | Write targeted test: copy suggested assertion | `ripr.copySuggestedAssertion` | Copies assertion text when the packet has a concrete assertion shape |

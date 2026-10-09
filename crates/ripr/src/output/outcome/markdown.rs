@@ -2,6 +2,7 @@ use super::{
     SEAM_GRIP_CLASS_ORDER, TargetedTestOutcomeMovement, TargetedTestOutcomeReport,
     TargetedTestOutcomeSeam, review, targeted_test_outcome_gap_summary,
 };
+use crate::output::markdown::{code_span, inline_prose};
 use std::collections::BTreeMap;
 
 pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport) -> String {
@@ -9,8 +10,10 @@ pub(crate) fn render_targeted_test_outcome_md(report: &TargetedTestOutcomeReport
     out.push_str("# ripr targeted-test outcome report\n\n");
     out.push_str("Status: advisory\n\n");
     out.push_str("Inputs:\n");
-    out.push_str(&format!("- before: `{}`\n", md_escape(&report.before_path)));
-    out.push_str(&format!("- after: `{}`\n\n", md_escape(&report.after_path)));
+    out.push_str(&format!("- before: {}\n", code_span(&report.before_path)));
+    out.push_str(&format!("- after: {}\n", code_span(&report.after_path)));
+    out.push_str(&repository_heads_line(report));
+    out.push('\n');
 
     out.push_str("## Summary\n\n");
     out.push_str("| Bucket | Count |\n| --- | ---: |\n");
@@ -52,6 +55,33 @@ fn count_for_class(counts: &BTreeMap<String, usize>, class: &str) -> usize {
     }
 }
 
+/// The Inputs head line (#6031): what repository head each snapshot
+/// reports, and what that means for attributing the movement. Matching,
+/// mismatching, and head-less pairs each get the sentence that is true of
+/// them — the markdown receipt must not leave the mismatch on stderr only.
+fn repository_heads_line(report: &TargetedTestOutcomeReport) -> String {
+    match (&report.heads.before_repository_head, &report.heads.after_repository_head) {
+        (Some(before), Some(after)) if before == after => format!(
+            "- repository heads: both snapshots report {}\n",
+            code_span(before)
+        ),
+        (Some(before), Some(after)) => format!(
+            "- repository heads: before {} / after {} — the pair spans different heads, so reported movement may include changes other than the one being measured\n",
+            code_span(before),
+            code_span(after)
+        ),
+        (Some(only), None) => format!(
+            "- repository heads: the before snapshot reports {}, the after snapshot does not carry a head SHA, so the receipt cannot confirm the pair came from the same repository\n",
+            code_span(only)
+        ),
+        (None, Some(only)) => format!(
+            "- repository heads: the after snapshot reports {}, the before snapshot does not carry a head SHA, so the receipt cannot confirm the pair came from the same repository\n",
+            code_span(only)
+        ),
+        (None, None) => "- repository heads: neither snapshot carries a head SHA, so the receipt cannot confirm the pair came from the same repository\n".to_string(),
+    }
+}
+
 fn push_targeted_outcome_movements_md(
     out: &mut String,
     title: &str,
@@ -64,9 +94,9 @@ fn push_targeted_outcome_movements_md(
     }
     for movement in movements {
         out.push_str(&format!(
-            "- `{}` {}:{} {} -> {} ({}; gap {})\n",
-            md_escape(&movement.seam_id),
-            md_escape(&movement.file),
+            "- {} {}:{} {} -> {} ({}; gap {})\n",
+            code_span(&movement.seam_id),
+            inline_prose(&movement.file),
             movement.line,
             movement.before,
             movement.after,
@@ -74,12 +104,12 @@ fn push_targeted_outcome_movements_md(
             movement.gap_movement
         ));
         for delta in &movement.evidence_delta {
-            out.push_str(&format!("  - {}\n", md_escape(delta)));
+            out.push_str(&format!("  - {}\n", inline_prose(delta)));
         }
         if movement.evidence_delta.is_empty()
             && let Some(reason) = &movement.no_movement_reason
         {
-            out.push_str(&format!("  - no movement: {}\n", md_escape(reason)));
+            out.push_str(&format!("  - no movement: {}\n", inline_prose(reason)));
         }
     }
 }
@@ -143,7 +173,7 @@ fn push_targeted_outcome_gap_summary_md(out: &mut String, report: &TargetedTestO
 fn push_review_receipt_list_md(out: &mut String, title: &str, items: &[String]) {
     out.push_str(&format!("### {title}\n\n"));
     for item in items {
-        out.push_str(&format!("- {}\n", md_escape(item)));
+        out.push_str(&format!("- {}\n", inline_prose(item)));
     }
     out.push('\n');
 }
@@ -160,16 +190,12 @@ fn push_targeted_outcome_seams_md(
     }
     for seam in seams {
         out.push_str(&format!(
-            "- `{}` {}:{} {} ({})\n",
-            md_escape(&seam.seam_id),
-            md_escape(&seam.file),
+            "- {} {}:{} {} ({})\n",
+            code_span(&seam.seam_id),
+            inline_prose(&seam.file),
             seam.line,
             seam.grip_class,
             seam.seam_kind
         ));
     }
-}
-
-pub(super) fn md_escape(value: &str) -> String {
-    value.replace('`', "\\`").replace(['\r', '\n'], " ")
 }

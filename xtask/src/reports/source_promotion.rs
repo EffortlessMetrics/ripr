@@ -3,8 +3,10 @@
 //! This command is deliberately a preflight only. It validates two named
 //! repository identities and exact commit inputs, then performs `git
 //! merge-tree` in a disposable repository containing fetched objects. It
-//! never changes either caller checkout and never creates the source join.
+//! consumes native selection and complete qualification acceptance, never
+//! changes either caller checkout, and never creates the source join.
 
+use super::release::candidate_harness::{AdmittedHandoff, HandoffInput, HandoffReceipt};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -13,13 +15,14 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SCHEMA: &str = "ripr.source_promotion_preflight.v1";
+const SCHEMA: &str = "ripr.source_promotion_preflight.v2";
 const REPORT_JSON: &str = "source-promotion-preflight.json";
 const REPORT_MD: &str = "source-promotion-preflight.md";
 const DEFAULT_OUT: &str = "target/ripr/source-promotion";
 
 #[derive(Clone, Debug)]
 struct Options {
+    handoff: HandoffInput,
     source_parent: String,
     swarm_parent: String,
     swarm_ref: String,
@@ -48,11 +51,11 @@ struct RepositoryIdentity {
 }
 
 #[derive(Clone, Debug, Serialize)]
-struct CommitRange {
-    all_reachable_count: usize,
-    first_parent_count: usize,
-    all_reachable_sha256: String,
-    first_parent_ordered_sha256: String,
+pub(crate) struct CommitRange {
+    pub(crate) all_reachable_count: usize,
+    pub(crate) first_parent_count: usize,
+    pub(crate) all_reachable_sha256: String,
+    pub(crate) first_parent_ordered_sha256: String,
     all_reachable_ordered_recipe: String,
     first_parent_ordered_recipe: String,
 }
@@ -85,7 +88,7 @@ struct DryMerge {
 }
 
 #[derive(Clone, Debug, Serialize)]
-struct Receipt {
+struct GeometryReceipt {
     schema: String,
     mode: String,
     source_parent: String,
@@ -108,12 +111,39 @@ struct Receipt {
     next_commands: Vec<String>,
 }
 
+#[derive(Serialize)]
+struct Receipt {
+    #[serde(flatten)]
+    geometry: GeometryReceipt,
+    acceptance: HandoffReceipt,
+}
+
 pub(crate) fn source_promotion(args: &[String]) -> Result<(), String> {
     let options = parse_args(args)?;
-    let receipt = build_receipt(&options)?;
+    let admitted = AdmittedHandoff::admit(&options.handoff, &options.version)?;
+    admitted.verify_source(
+        &options.swarm_repo,
+        &options.swarm_parent,
+        &options.swarm_ref,
+    )?;
+    let geometry = build_receipt(&options)?;
+    admitted.verify_source(
+        &options.swarm_repo,
+        &options.swarm_parent,
+        &options.swarm_ref,
+    )?;
+    let receipt = Receipt {
+        geometry,
+        acceptance: admitted.revalidate(&options.version)?,
+    };
     let json = serde_json::to_string_pretty(&receipt)
         .map_err(|error| format!("failed to serialize source-promotion receipt: {error}"))?;
-    let markdown = render_markdown(&receipt);
+    let acceptance_json = serde_json::to_string_pretty(&receipt.acceptance)
+        .map_err(|error| format!("failed to serialize native acceptance: {error}"))?;
+    let markdown = format!(
+        "{}\n## Consumed native acceptance\n\n```json\n{acceptance_json}\n```\n",
+        render_markdown(&receipt.geometry)
+    );
     fs::create_dir_all(&options.out)
         .map_err(|error| format!("failed to create {}: {error}", options.out.display()))?;
     fs::write(options.out.join(REPORT_JSON), format!("{json}\n"))
@@ -138,7 +168,12 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         }
         if !matches!(
             key,
-            "--source-parent"
+            "--controller-root"
+                | "--candidate-manifest"
+                | "--selection-decision"
+                | "--qualification-bundle"
+                | "--qualification-decision"
+                | "--source-parent"
                 | "--swarm-parent"
                 | "--swarm-ref"
                 | "--source-repo"
@@ -180,6 +215,13 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
         validate_sha("--resolved-tree", "tree", tree)?;
     }
     Ok(Options {
+        handoff: HandoffInput {
+            controller_root: PathBuf::from(required("--controller-root")?),
+            manifest: PathBuf::from(required("--candidate-manifest")?),
+            selection_decision: required("--selection-decision")?,
+            qualification_bundle: PathBuf::from(required("--qualification-bundle")?),
+            qualification_decision: required("--qualification-decision")?,
+        },
         source_parent,
         swarm_parent,
         swarm_ref,
@@ -211,7 +253,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask source-promotion preflight --source-parent <full-sha> --swarm-parent <full-sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> [--resolved-tree <full-tree-sha>] [--source-main <rev>] [--swarm-main <rev>] [--source-remote <owner/repo>] [--swarm-remote <owner/repo>] [--out <dir>]".to_string()
+    "usage: cargo xtask source-promotion preflight --source-parent <full-sha> --swarm-parent <full-sha> --swarm-ref <protected-tag-ref> --source-repo <path> --swarm-repo <path> --version <version> --controller-root <path> --candidate-manifest <relative-path> --selection-decision <native-1609-comment> --qualification-bundle <relative-path> --qualification-decision <native-2769-comment> [--resolved-tree <full-tree-sha>] [--source-main <rev>] [--swarm-main <rev>] [--source-remote <owner/repo>] [--swarm-remote <owner/repo>] [--out <dir>]".to_string()
 }
 
 fn validate_sha(name: &str, object_kind: &str, value: &str) -> Result<(), String> {
@@ -234,7 +276,7 @@ fn validate_swarm_ref(reference: &str, version: &str, parent: &str) -> Result<()
     Ok(())
 }
 
-fn build_receipt(options: &Options) -> Result<Receipt, String> {
+fn build_receipt(options: &Options) -> Result<GeometryReceipt, String> {
     let source = inspect_repository(
         "source",
         &options.source_repo,
@@ -312,7 +354,7 @@ fn build_receipt(options: &Options) -> Result<Receipt, String> {
         .cloned()
         .collect::<Vec<_>>();
     swarm_authority_resolution_candidates.sort();
-    Ok(Receipt {
+    Ok(GeometryReceipt {
         schema: SCHEMA.to_string(),
         mode: if merge_base == options.source_parent {
             "fast_forward".to_string()
@@ -550,28 +592,32 @@ fn canonical_remote(value: &str) -> Option<String> {
 }
 
 fn commit_range(repo: &Path, base: &str, head: &str) -> Result<CommitRange, String> {
-    let all = lines(git(
-        repo,
-        &[
-            "rev-list",
-            "--topo-order",
-            "--reverse",
-            &format!("{base}..{head}"),
-        ],
-    )?);
-    let first = lines(git(
-        repo,
-        &[
-            "rev-list",
-            "--first-parent",
-            "--reverse",
-            &format!("{base}..{head}"),
-        ],
-    )?);
-    let first_forward = lines(git(
-        repo,
-        &["rev-list", "--first-parent", &format!("{base}..{head}")],
-    )?);
+    commit_range_with(base, head, |args| git(repo, args))
+}
+
+/// Shared ordered SHA+LF recipe; the caller retains its existing process owner.
+pub(crate) fn commit_range_with(
+    base: &str,
+    head: &str,
+    mut git: impl FnMut(&[&str]) -> Result<String, String>,
+) -> Result<CommitRange, String> {
+    let all = lines(git(&[
+        "rev-list",
+        "--topo-order",
+        "--reverse",
+        &format!("{base}..{head}"),
+    ])?);
+    let first = lines(git(&[
+        "rev-list",
+        "--first-parent",
+        "--reverse",
+        &format!("{base}..{head}"),
+    ])?);
+    let first_forward = lines(git(&[
+        "rev-list",
+        "--first-parent",
+        &format!("{base}..{head}"),
+    ])?);
     Ok(CommitRange {
         all_reachable_count: all.len(),
         first_parent_count: first.len(),
@@ -594,19 +640,48 @@ fn digest_lines(lines: &[String]) -> String {
     let mut hasher = Sha256::new();
     for line in lines {
         hasher.update(line.as_bytes());
-        hasher.update([b'\n']);
+        hasher.update(b"\n");
     }
     format!("sha256:{:x}", hasher.finalize())
 }
 
 fn changed_paths(repo: &Path, base: &str, head: &str) -> Result<Vec<String>, String> {
-    let mut paths = lines(git(
-        repo,
-        &["diff", "--name-only", &format!("{base}..{head}")],
-    )?);
+    // Raw NUL-delimited inventory (#4006): `-z` output is never C-quoted,
+    // so exotic names survive byte-exact; parsing rules come from the
+    // shared authority in `decode_changed_paths`, not from line splitting
+    // here.
+    let range = format!("{base}..{head}");
+    let owned = ["diff", "--name-only", "-z", range.as_str()]
+        .iter()
+        .map(|arg| (*arg).to_string())
+        .collect::<Vec<_>>();
+    let output = crate::run::capture_process_output_in("git", &owned, Some(repo), &[], &[], &[])
+        .map_err(|error| format!("git diff --name-only -z inventory: {}", error.message))?;
+    let mut paths = decode_changed_paths(&output)?;
     paths.sort();
     paths.dedup();
     Ok(paths)
+}
+
+/// Decode raw `--name-only -z` bytes through the shared NUL path-record
+/// authority (#4006). Strict: non-UTF-8 or empty records fail loudly
+/// instead of collapsing through lossy conversion.
+fn decode_changed_paths(output: &[u8]) -> Result<Vec<String>, String> {
+    ripr::analysis::parse_git_path_records(output)
+        .map_err(|err| format!("source-promotion changed-path inventory: {err}"))
+        .and_then(|paths| {
+            paths
+                .iter()
+                .map(|path| {
+                    path.to_str().map(str::to_string).ok_or_else(|| {
+                        format!(
+                            "source-promotion changed-path inventory: decoded path {} is not valid UTF-8",
+                            path.display()
+                        )
+                    })
+                })
+                .collect()
+        })
 }
 
 fn is_swarm_authority_path(path: &str) -> bool {
@@ -966,7 +1041,7 @@ fn git_show(root: &Path, commit: &str, path: &str) -> Option<String> {
     }
 }
 
-fn render_markdown(receipt: &Receipt) -> String {
+fn render_markdown(receipt: &GeometryReceipt) -> String {
     let list = |items: &[String]| {
         if items.is_empty() {
             "- none\n".to_string()
@@ -1071,6 +1146,131 @@ mod tests {
         {
             return Err(format!(
                 "NUL-delimited merge-tree output was misparsed: tree={parsed_tree:?}, paths={paths:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strict_changed_path_inventory_rejects_non_utf8() -> Result<(), String> {
+        // The strict-failure side of the NUL authority at the
+        // source-promotion decode boundary: non-UTF-8 records fail loudly
+        // instead of collapsing through lossy conversion.
+        let err = match decode_changed_paths(b"ok.txt\0\xffbad\0") {
+            Err(err) => err,
+            Ok(paths) => {
+                return Err(format!("non-UTF-8 inventory must fail, decoded {paths:?}"));
+            }
+        };
+        if !err.contains("not valid UTF-8") {
+            return Err(format!("unexpected strict-decode error: {err}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn changed_paths_decode_exotic_names_exact() -> Result<(), String> {
+        // Discriminates NUL-delimited inventory (#4006): space and
+        // non-ASCII names must decode byte-exact; the old line parser kept
+        // git's C-quoted octal form. Asserts through the real
+        // `changed_paths` production path in a synthetic repository.
+        let repo = temp_repo("ripr-source-promotion-names")?;
+        fixture_git(&repo, &["init"])?;
+        fixture_git(
+            &repo,
+            &["config", "user.email", "ripr-promotion@example.invalid"],
+        )?;
+        fixture_git(&repo, &["config", "user.name", "RIPR Promotion Test"])?;
+        write_repo_file(&repo, "base.txt", "base\n")?;
+        fixture_git(&repo, &["add", "."])?;
+        fixture_git(&repo, &["commit", "--no-gpg-sign", "-m", "initial"])?;
+        write_repo_file(&repo, "sp ace.txt", "spaces\n")?;
+        write_repo_file(&repo, "uni-\u{e9}.txt", "unicode\n")?;
+        fixture_git(&repo, &["add", "-A"])?;
+        fixture_git(&repo, &["commit", "--no-gpg-sign", "-m", "exotic"])?;
+
+        let paths = changed_paths(&repo, "HEAD~1", "HEAD")?;
+        let expected = vec!["sp ace.txt".to_string(), "uni-\u{e9}.txt".to_string()];
+        fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
+        if paths != expected {
+            return Err(format!(
+                "exotic changed-path inventory mismatch: got {paths:?}, want {expected:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn temp_repo(name: &str) -> Result<PathBuf, String> {
+        let unique = format!(
+            "{}-{}-{}",
+            name,
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|err| format!("system clock before epoch: {err}"))?
+                .as_nanos()
+        );
+        let path = std::env::temp_dir().join(unique);
+        fs::create_dir_all(&path).map_err(|err| format!("create {}: {err}", path.display()))?;
+        Ok(path)
+    }
+
+    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+        let path = repo.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("create {}: {err}", parent.display()))?;
+        }
+        fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn fixture_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+        // The production git runner is the shared spawn site for this
+        // file; the fixture reuses it instead of adding its own.
+        super::run_git(repo, args).map(|_| ())
+    }
+
+    #[test]
+    fn public_preflight_requires_complete_native_handoff_inputs() -> Result<(), String> {
+        let sha = "a".repeat(40);
+        let mut args = vec!["preflight".to_string()];
+        for (key, value) in [
+            ("--source-parent", sha.clone()),
+            ("--swarm-parent", sha.clone()),
+            (
+                "--swarm-ref",
+                format!("refs/tags/ripr-release-0.11.0-{sha}"),
+            ),
+            ("--source-repo", "missing-source".to_string()),
+            ("--swarm-repo", "missing-swarm".to_string()),
+            ("--version", "0.11.0".to_string()),
+        ] {
+            args.extend([key.to_string(), value]);
+        }
+        for (key, value) in [
+            ("--controller-root", "."),
+            ("--candidate-manifest", "manifest.json"),
+            ("--selection-decision", "https://example.invalid/selection"),
+            ("--qualification-bundle", "qualification.json"),
+            (
+                "--qualification-decision",
+                "https://example.invalid/qualification",
+            ),
+        ] {
+            let error = source_promotion(&args)
+                .err()
+                .ok_or_else(|| format!("preflight omitted required {key}"))?;
+            if !error.starts_with(&format!("missing {key}\n")) {
+                return Err(format!("wrong missing-input refusal: {error}"));
+            }
+            args.extend([key.to_string(), value.to_string()]);
+        }
+        let error = source_promotion(&args)
+            .err()
+            .ok_or_else(|| "preflight accepted a caller-authored decision URL".to_string())?;
+        if !error.contains("native decision must be an exact") {
+            return Err(format!(
+                "native gate did not precede source geometry: {error}"
             ));
         }
         Ok(())
@@ -1657,7 +1857,16 @@ mod tests {
         let swarm_head_before = test_git_output(&swarm, &["rev-parse", "HEAD"])?;
         let swarm_ref = format!("refs/tags/ripr-release-0.11.0-{swarm_parent}");
         test_git(&swarm, &["update-ref", swarm_ref.as_str(), &swarm_parent])?;
+        // Geometry-only fixture: the public command separately requires native
+        // admission before it can serialize any source-handoff receipt.
         let receipt = build_receipt(&Options {
+            handoff: HandoffInput {
+                controller_root: root.clone(),
+                manifest: "unused.json".into(),
+                selection_decision: String::new(),
+                qualification_bundle: "unused.json".into(),
+                qualification_decision: String::new(),
+            },
             source_parent,
             swarm_parent: swarm_parent.clone(),
             swarm_ref: swarm_ref.to_string(),

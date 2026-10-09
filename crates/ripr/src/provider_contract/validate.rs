@@ -348,6 +348,11 @@ fn validate_summary(
                 "summary strongest oracle must match the strongest related-test oracle",
             ));
         }
+    } else if summary.strongest_oracle != OracleStrength::None.as_str() {
+        return Err(error(
+            RiprProviderContractErrorCodeV1::CompletenessConflict,
+            "summary strongest oracle must be none without related test evidence",
+        ));
     }
     Ok(())
 }

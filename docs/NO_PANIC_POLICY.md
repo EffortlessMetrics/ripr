@@ -138,7 +138,7 @@ rewrite policy files and its TOML output must be reviewed before adoption.
 1. Convert the call site to a fallible form if possible.
 2. If not possible, add an entry to `policy/no-panic-allowlist.toml` following
    the schema-0.3 template in that file.
-3. The entry must have `id`, `path`, `family`, `classification`, `owner`,
+3. The entry must have a unique `id`, plus `path`, `family`, `classification`, `owner`,
    `explanation`, `expires`, and `[allow.selector]`.
 4. Run `cargo xtask check-no-panic-family` to verify the entry matches.
 5. Do not add new entries to `.ripr/no-panic-allowlist.toml`; it is a legacy

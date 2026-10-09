@@ -65,6 +65,30 @@ framework vocabulary (`Test2::V0`/`Test2::V1`/`Test2::Suite`) is present on
 both sides; relation referential integrity holds; the file digests bind the
 committed input bytes.
 
+## Synthetic runner-availability controls
+
+`analysis::language::perl::static_limit::runner_tests` derives in-memory
+projection controls from this packet. Those variants are synthetic: they clear
+inherited operational limitations and verification commands, set a complete
+status to isolate the boundary under test, and add scoped boundary facts. They
+do not replace the byte-pinned producer packet or enter the migration corpus as
+new producer observations. They exercise `static_limit::for_change` and the
+production `packet_to_findings` projection, not the ingestion boundary.
+
+A relevant `missing_test_runner` boundary alone must preserve an established
+static sink observation, while continuing to block strict actionability and
+canonical repair-gap/suggested-repair fields. Runner availability is not static
+oracle-to-sink evidence. Removing the changed observable must retain the weaker
+class, never invent an `exposed` finding. Every other boundary variant remains
+conservative, including unknown, incomplete, and partially emitted boundaries.
+A runner boundary must not clear another boundary's class cap in either array
+order. Unrelated-owner and related-test-file controls retain the existing scope
+rules. Every control first requires a nonempty change/related-test/finding
+subject where its assertion depends on that evidence.
+
+These controls do not establish live exporter compatibility, command execution,
+public repair readiness, or broader partial-packet semantics under #3222.
+
 ## Must Not
 
 This corpus must not imply v1 compatibility, a RIPR-owned Perl parser, live

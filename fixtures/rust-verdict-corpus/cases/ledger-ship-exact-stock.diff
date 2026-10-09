@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8282a55..9e5e97a 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -67,7 +67,7 @@ impl Inventory {
+             Some(n) => *n,
+             None => return Err(StockError::UnknownSku(sku.to_string())),
+         };
+-        if qty > available {
++        if qty >= available {
+             return Err(StockError::Insufficient {
+                 sku: sku.to_string(),
+                 requested: qty,

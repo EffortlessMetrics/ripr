@@ -1,18 +1,18 @@
 use super::component_outcome::ComponentOutcome;
 use super::gap_artifacts::{GapArtifactRejection, ValidatedGapArtifact};
 use super::input_identity::LspAnalysisInputIdentity;
-use super::uri::{file_uris_match, path_from_file_uri};
+use super::uri::{file_uri_relative_to_root, file_uris_match, path_from_file_uri};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::Mode;
 use crate::config::LspDiagnosticProfile;
 use crate::domain::Finding;
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 use tower_lsp_server::ls_types::{
     Diagnostic, DidChangeTextDocumentParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
-    Uri, WorkspaceFolder,
+    Position, PositionEncodingKind, TextDocumentContentChangeEvent, Uri, WorkspaceFolder,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -428,6 +428,7 @@ pub(super) enum AnalysisFailureKind {
     ConfigPullFailed,
     ConfigPullInvalid,
     SessionStateInconsistent,
+    DeadlineExceeded,
 }
 
 impl AnalysisFailureKind {
@@ -441,6 +442,7 @@ impl AnalysisFailureKind {
             Self::ConfigPullFailed => "config_pull_failed",
             Self::ConfigPullInvalid => "config_pull_invalid",
             Self::SessionStateInconsistent => "session_state_inconsistent",
+            Self::DeadlineExceeded => "deadline_exceeded",
         }
     }
 }
@@ -618,8 +620,23 @@ pub(super) enum HarnessFactsOnSnapshot {
 }
 
 #[derive(Clone, Debug)]
+pub(super) struct DiagnosticUriIndex {
+    root: PathBuf,
+    uris: Vec<Uri>,
+    by_relative: BTreeMap<PathBuf, Option<usize>>,
+}
+
+impl DiagnosticUriIndex {
+    fn matches(&self, root: &Path, diagnostics: &BTreeMap<Uri, Vec<Diagnostic>>) -> bool {
+        self.root == root && self.uris.iter().eq(diagnostics.keys())
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(super) struct AnalysisSnapshot {
     pub(super) root: PathBuf,
+    /// Private per-path raw input commitments, never a complete dependency ID.
+    pub(super) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
     /// The exact input identity that produced this completed snapshot. This
     /// is producer-owned provenance, not a renderer-derived summary.
     pub(super) input_identity: Option<LspAnalysisInputIdentity>,
@@ -651,6 +668,10 @@ pub(super) struct AnalysisSnapshot {
     /// surface reads. Never a claim that harness subjects were executed.
     pub(super) harness_facts: HarnessFactsOnSnapshot,
     pub(super) diagnostics_by_uri: BTreeMap<Uri, Vec<Diagnostic>>,
+    /// Admitted root-relative keys prepared once for this immutable snapshot.
+    /// `None` is unprepared; duplicate stored keys retain `None` values so an
+    /// alias lookup refuses ambiguity instead of choosing an arbitrary URI.
+    pub(super) diagnostic_uri_index: Option<DiagnosticUriIndex>,
     /// The one immutable delivery selection shared by push publication and
     /// both pull handlers (#1973). Computed once at refresh-transaction
     /// prepare time (before any publication) and retained with the committed
@@ -734,6 +755,21 @@ impl AnalysisSnapshot {
             .flatten()
             .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "gap_id"))
             .count();
+        // Limited-run scope-guard disclosures (#2299, #4325): the oversized
+        // diff warning is a governed, code-marked publication that is not a
+        // finding, seam, or gap-record projection. Accounting it here keeps
+        // the reject-unknown-extras property for every other plain diagnostic.
+        let scope_guard_disclosures = self
+            .diagnostics_by_uri
+            .values()
+            .flatten()
+            .filter(|diagnostic| {
+                diagnostic_has_code(
+                    diagnostic,
+                    super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE,
+                )
+            })
+            .count();
         let published_finding_count = super::diagnostics::canonical_finding_groups(&self.findings)
             .into_iter()
             .filter(|(primary, _)| {
@@ -746,7 +782,11 @@ impl AnalysisSnapshot {
                 .as_ref()
                 .is_none_or(|base| !base.trim().is_empty())
             && !self.mode.as_str().is_empty()
-            && published_finding_count + surfacable_seams + gap_diagnostics == diagnostic_count
+            && published_finding_count
+                + surfacable_seams
+                + gap_diagnostics
+                + scope_guard_disclosures
+                == diagnostic_count
             && self
                 .gap_artifacts
                 .iter()
@@ -754,15 +794,35 @@ impl AnalysisSnapshot {
     }
 
     pub(super) fn diagnostics_for_uri(&self, uri: &Uri) -> Option<&[Diagnostic]> {
-        self.diagnostics_by_uri
-            .get(uri)
-            .or_else(|| {
-                self.diagnostics_by_uri
-                    .iter()
-                    .find(|(stored_uri, _)| file_uris_match(stored_uri, uri))
-                    .map(|(_, diagnostics)| diagnostics)
-            })
-            .map(Vec::as_slice)
+        self.diagnostics_entry_for_uri(uri)
+            .map(|(_, diagnostics)| diagnostics)
+    }
+
+    /// Build the immutable alias lookup from the same admitted projection used
+    /// by indexing and currentness. Call before publication, after the final
+    /// diagnostic keys are known; fixtures that mutate keys must rebuild it.
+    pub(super) fn prepare_diagnostic_uri_index(&mut self) {
+        let uris = self.diagnostics_by_uri.keys().cloned().collect::<Vec<_>>();
+        let mut by_relative = BTreeMap::new();
+        for (position, uri) in uris.iter().enumerate() {
+            if let Some(relative) = file_uri_relative_to_root(&self.root, uri) {
+                by_relative
+                    .entry(relative)
+                    .and_modify(|stored| *stored = None)
+                    .or_insert(Some(position));
+            }
+        }
+        self.diagnostic_uri_index = Some(DiagnosticUriIndex {
+            root: self.root.clone(),
+            uris,
+            by_relative,
+        });
+    }
+
+    pub(super) fn diagnostic_uri_index_is_current(&self) -> bool {
+        self.diagnostic_uri_index
+            .as_ref()
+            .is_some_and(|index| index.matches(&self.root, &self.diagnostics_by_uri))
     }
 
     /// The stored document key and complete diagnostics for one URI. The
@@ -777,6 +837,22 @@ impl AnalysisSnapshot {
                 self.diagnostics_by_uri
                     .iter()
                     .find(|(stored_uri, _)| file_uris_match(stored_uri, uri))
+                    .map(|(stored_uri, diagnostics)| (stored_uri, diagnostics.as_slice()))
+            })
+            .or_else(|| {
+                // Stored keys are admitted once at preparation/commit, rather
+                // than canonicalizing every diagnostic path on each miss.
+                let index = self.diagnostic_uri_index.as_ref()?;
+                if index.by_relative.is_empty()
+                    || !index.matches(&self.root, &self.diagnostics_by_uri)
+                {
+                    return None;
+                }
+                let relative = file_uri_relative_to_root(&self.root, uri)?;
+                let stored_position = index.by_relative.get(&relative)?.as_ref()?;
+                let stored_uri = index.uris.get(*stored_position)?;
+                self.diagnostics_by_uri
+                    .get_key_value(stored_uri)
                     .map(|(stored_uri, diagnostics)| (stored_uri, diagnostics.as_slice()))
             })
     }
@@ -815,11 +891,27 @@ impl AnalysisSnapshot {
         super::diagnostics::canonical_finding_groups(&self.findings).len()
     }
 
+    /// Count published diagnostics that carry a bounded next action: a
+    /// canonical gap diagnostic, or an ordinary finding diagnostic whose
+    /// finding passes the actionable-profile authority
+    /// (`finding_is_visible_in_profile`). Rust producers do not set
+    /// `canonical_gap`, so counting only `canonical_gap_id` reported zero
+    /// actionable items while a fix-site-ready diagnostic was live.
     pub(super) fn actionable_diagnostic_count(&self) -> usize {
         self.diagnostics_by_uri
             .values()
             .flatten()
-            .filter(|diagnostic| diagnostic_has_string_data(diagnostic, "canonical_gap_id"))
+            .filter(|diagnostic| {
+                diagnostic_has_string_data(diagnostic, "canonical_gap_id")
+                    || self
+                        .finding_for_diagnostic(diagnostic)
+                        .is_some_and(|finding| {
+                            super::diagnostics::finding_is_visible_in_profile(
+                                LspDiagnosticProfile::Actionable,
+                                finding,
+                            )
+                        })
+            })
             .count()
     }
 
@@ -878,6 +970,13 @@ fn diagnostic_has_string_data(diagnostic: &Diagnostic, key: &str) -> bool {
         .is_some()
 }
 
+fn diagnostic_has_code(diagnostic: &Diagnostic, code: &str) -> bool {
+    matches!(
+        diagnostic.code.as_ref(),
+        Some(tower_lsp_server::ls_types::NumberOrString::String(value)) if value == code
+    )
+}
+
 /// Stable content identity for saved workspace bytes. Only a digest is
 /// retained: unsaved buffer text is hashed on demand for comparison and is
 /// never stored outside the in-memory document store, so it cannot leak into
@@ -894,6 +993,11 @@ pub(super) enum DocumentStalenessReason {
     /// snapshot analyzed, so saved-state line identity no longer matches
     /// the client's buffer.
     BufferDivergesFromAnalyzedSavedContent,
+    /// An incremental change could not be applied to the retained buffer
+    /// under the negotiated position encoding. The retained text is no
+    /// longer authoritative for line identity, so diagnostics stay
+    /// quarantined until a later full replacement/open re-establishes it.
+    InvalidIncrementalChange,
     /// No refresh has analyzed this document's saved content in the current
     /// session, so there is no analyzed baseline to serve against.
     NoAnalyzedSavedContent,
@@ -905,6 +1009,7 @@ impl DocumentStalenessReason {
             Self::BufferDivergesFromAnalyzedSavedContent => {
                 "buffer_diverges_from_analyzed_saved_content"
             }
+            Self::InvalidIncrementalChange => "invalid_incremental_change",
             Self::NoAnalyzedSavedContent => "no_analyzed_saved_content",
         }
     }
@@ -913,6 +1018,9 @@ impl DocumentStalenessReason {
         match self {
             Self::BufferDivergesFromAnalyzedSavedContent => {
                 "the open buffer diverges from the last analyzed saved content"
+            }
+            Self::InvalidIncrementalChange => {
+                "an incremental document change could not be applied under the negotiated position encoding"
             }
             Self::NoAnalyzedSavedContent => {
                 "the document's saved content has not been analyzed in this session"
@@ -970,6 +1078,13 @@ pub(super) struct DocumentState {
     pub(super) analyzed_saved_digest: Option<String>,
     /// Input identity of the snapshot that last analyzed this document.
     pub(super) analyzed_input_identity: Option<String>,
+    /// True while the retained buffer is not a synchronization authority:
+    /// a rejected incremental change left the retained text out of step with
+    /// the client's document (#1746). While set, the fail-closed quarantine
+    /// cannot be lifted by the ordinary staleness recomputation and the
+    /// buffer never supplies a save identity; only a range-less full
+    /// replacement or client-provided save text re-establishes authority.
+    pub(super) buffer_authority_unknown: bool,
     pub(super) quarantine: Option<DocumentQuarantine>,
 }
 
@@ -978,9 +1093,9 @@ impl DocumentState {
         let path = document_path(&uri);
         // Saved-workspace authority: the saved-content identity comes from
         // the persisted bytes, not the client-sent text (#2129 rationale).
-        let saved_digest = std::fs::read(&path)
-            .ok()
-            .map(|bytes| content_digest(&bytes));
+        // Only an admitted local path is readable. The display fallback is
+        // not a filesystem path (#4145).
+        let saved_digest = read_saved_digest(&uri);
         Self {
             uri,
             path,
@@ -989,6 +1104,7 @@ impl DocumentState {
             saved_digest,
             analyzed_saved_digest: None,
             analyzed_input_identity: None,
+            buffer_authority_unknown: false,
             quarantine: None,
         }
     }
@@ -1021,8 +1137,28 @@ impl DocumentState {
 
     /// Recompute the quarantine state from the current buffer and the
     /// analyzed/saved content identities. A document is quarantined while
-    /// its buffer digest differs from the analyzed saved digest.
+    /// its buffer digest differs from the analyzed saved digest. While the
+    /// buffer is not a synchronization authority (`buffer_authority_unknown`,
+    /// #1746), the invalid-change quarantine is pinned: the ordinary
+    /// recomputation must not silently lift the fail-closed state that only a
+    /// full replacement or client-provided save text may end.
     pub(super) fn refresh_quarantine(&mut self) -> QuarantineTransition {
+        if self.buffer_authority_unknown {
+            let was_quarantined = self.quarantine.is_some();
+            let was_disclosed = self
+                .quarantine
+                .as_ref()
+                .is_some_and(|quarantine| quarantine.withdrawal_disclosed);
+            self.quarantine = Some(DocumentQuarantine {
+                reason: DocumentStalenessReason::InvalidIncrementalChange,
+                withdrawal_disclosed: was_disclosed,
+            });
+            return if was_quarantined {
+                QuarantineTransition::Unchanged
+            } else {
+                QuarantineTransition::Entered
+            };
+        }
         let mut next = self
             .staleness_for_analyzed(self.analyzed_saved_digest.as_ref())
             .map(|reason| DocumentQuarantine {
@@ -1049,6 +1185,144 @@ impl DocumentState {
     }
 }
 
+/// Convert one LSP position to a UTF-8 byte offset in the retained buffer.
+///
+/// LSP incremental ranges are expressed in the session's negotiated position
+/// encoding, while Rust string edits require UTF-8 byte boundaries. Lines are
+/// split on LF and a CR immediately before LF is excluded from the line's
+/// character span, matching the protocol's CRLF semantics.
+fn document_position_byte_offset(
+    text: &str,
+    position: Position,
+    encoding: &PositionEncodingKind,
+) -> Option<usize> {
+    let target_line = usize::try_from(position.line).ok()?;
+    let target_units = usize::try_from(position.character).ok()?;
+
+    let mut line_start = 0usize;
+    for _ in 0..target_line {
+        let newline = text.get(line_start..)?.find('\n')?;
+        line_start = line_start.checked_add(newline)?.checked_add(1)?;
+    }
+
+    let remainder = text.get(line_start..)?;
+    let raw_line_end = remainder.find('\n').unwrap_or(remainder.len());
+    let raw_line = remainder.get(..raw_line_end)?;
+    let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);
+
+    let relative = if *encoding == PositionEncodingKind::UTF8 {
+        if target_units > line.len() || !line.is_char_boundary(target_units) {
+            return None;
+        }
+        target_units
+    } else if *encoding == PositionEncodingKind::UTF32 {
+        encoded_units_to_byte_offset(line, target_units, |character| {
+            let _ = character;
+            1
+        })?
+    } else {
+        // UTF-16 is both the protocol default and the preferred negotiated
+        // encoding. Unknown future encodings fail through the UTF-16 path
+        // rather than silently treating code units as UTF-8 bytes.
+        encoded_units_to_byte_offset(line, target_units, |character| character.len_utf16())?
+    };
+    line_start.checked_add(relative)
+}
+
+fn encoded_units_to_byte_offset(
+    line: &str,
+    target_units: usize,
+    units_for: impl Fn(char) -> usize,
+) -> Option<usize> {
+    let mut units = 0usize;
+    for (byte_index, character) in line.char_indices() {
+        if units == target_units {
+            return Some(byte_index);
+        }
+        units = units.checked_add(units_for(character))?;
+        if units > target_units {
+            // The requested position lands inside a multi-unit character
+            // (for example, between the UTF-16 surrogates of an emoji).
+            return None;
+        }
+    }
+    (units == target_units).then_some(line.len())
+}
+
+fn apply_document_content_change(
+    text: &mut String,
+    change: TextDocumentContentChangeEvent,
+    encoding: &PositionEncodingKind,
+) -> Result<(), ()> {
+    let Some(range) = change.range else {
+        *text = change.text;
+        return Ok(());
+    };
+    let Some(start) = document_position_byte_offset(text, range.start, encoding) else {
+        return Err(());
+    };
+    let Some(end) = document_position_byte_offset(text, range.end, encoding) else {
+        return Err(());
+    };
+    if start > end {
+        return Err(());
+    }
+    text.replace_range(start..end, &change.text);
+    Ok(())
+}
+
+/// Apply an LSP change list in wire order. A range-less change is a full
+/// replacement; later range changes are evaluated against that replacement,
+/// as required by the incremental synchronization contract.
+///
+/// The common zero/one-change path edits the retained buffer without copying
+/// the whole document. Multi-change notifications use a candidate buffer so a
+/// malformed later range cannot partially commit earlier changes from the
+/// same notification.
+fn apply_document_content_changes(
+    text: &mut String,
+    changes: Vec<TextDocumentContentChangeEvent>,
+    encoding: &PositionEncodingKind,
+) -> Result<(), ()> {
+    let mut changes = changes.into_iter();
+    let Some(first) = changes.next() else {
+        return Ok(());
+    };
+    let Some(second) = changes.next() else {
+        return apply_document_content_change(text, first, encoding);
+    };
+
+    let mut candidate = text.clone();
+    apply_document_content_change(&mut candidate, first, encoding)?;
+    apply_document_content_change(&mut candidate, second, encoding)?;
+    for change in changes {
+        apply_document_content_change(&mut candidate, change, encoding)?;
+    }
+    *text = candidate;
+    Ok(())
+}
+
+fn invalidate_incremental_document_state(state: &mut DocumentState) -> QuarantineTransition {
+    let was_quarantined = state.quarantine.is_some();
+    let was_disclosed = state
+        .quarantine
+        .as_ref()
+        .is_some_and(|quarantine| quarantine.withdrawal_disclosed);
+    // The retained buffer is no longer a synchronization authority (#1746):
+    // later saves and refresh commits must not silently lift this quarantine
+    // through the ordinary staleness recomputation.
+    state.buffer_authority_unknown = true;
+    state.quarantine = Some(DocumentQuarantine {
+        reason: DocumentStalenessReason::InvalidIncrementalChange,
+        withdrawal_disclosed: was_disclosed,
+    });
+    if was_quarantined {
+        QuarantineTransition::Unchanged
+    } else {
+        QuarantineTransition::Entered
+    }
+}
+
 #[derive(Default)]
 pub(super) struct DocumentStore {
     pub(super) documents: BTreeMap<Uri, DocumentState>,
@@ -1067,34 +1341,109 @@ impl DocumentStore {
         transition
     }
 
-    pub(super) fn change(&mut self, params: DidChangeTextDocumentParams) -> QuarantineTransition {
+    pub(super) fn change(
+        &mut self,
+        params: DidChangeTextDocumentParams,
+        position_encoding: &PositionEncodingKind,
+    ) -> QuarantineTransition {
         let uri = params.text_document.uri;
         let version = Some(params.text_document.version);
-        let text = params
-            .content_changes
-            .into_iter()
-            .last()
-            .map(|change| change.text);
+        let changes = params.content_changes;
+
         if let Some(state) = self.documents.get_mut(&uri) {
             state.version = version;
-            if let Some(text) = text {
-                state.text = text;
+
+            // Once one incremental range was rejected, the retained buffer is
+            // no longer an authority for later range-relative edits: the
+            // client may have applied the rejected notification. Stay
+            // quarantined until a range-less replacement re-establishes the
+            // complete current buffer, then apply only changes after that
+            // replacement.
+            if state.quarantine.as_ref().is_some_and(|quarantine| {
+                quarantine.reason == DocumentStalenessReason::InvalidIncrementalChange
+            }) {
+                let Some(last_full_replacement) =
+                    changes.iter().rposition(|change| change.range.is_none())
+                else {
+                    return QuarantineTransition::Unchanged;
+                };
+                let mut recovered = changes[last_full_replacement].text.clone();
+                if apply_document_content_changes(
+                    &mut recovered,
+                    changes
+                        .into_iter()
+                        .skip(last_full_replacement + 1)
+                        .collect(),
+                    position_encoding,
+                )
+                .is_err()
+                {
+                    return QuarantineTransition::Unchanged;
+                }
+                state.text = recovered;
+                // The range-less replacement re-established the complete
+                // buffer, so the retained text is a synchronization
+                // authority again and the ordinary staleness recomputation
+                // applies (#1746).
+                state.buffer_authority_unknown = false;
+                return state.refresh_quarantine();
+            }
+
+            if apply_document_content_changes(&mut state.text, changes, position_encoding).is_err()
+            {
+                return invalidate_incremental_document_state(state);
             }
             return state.refresh_quarantine();
         }
-        let Some(text) = text else {
+
+        // didChange is valid only for an open document. Preserve the legacy
+        // recovery for a range-less full replacement, but never invent a
+        // base buffer for an incremental range when didOpen state is absent.
+        let Some(last_full_replacement) = changes.iter().rposition(|change| change.range.is_none())
+        else {
             return QuarantineTransition::Unchanged;
         };
+        let mut text = changes[last_full_replacement].text.clone();
+        if apply_document_content_changes(
+            &mut text,
+            changes
+                .into_iter()
+                .skip(last_full_replacement + 1)
+                .collect(),
+            position_encoding,
+        )
+        .is_err()
+        {
+            return QuarantineTransition::Unchanged;
+        }
         let mut state = DocumentState::new(uri.clone(), version, text);
         let transition = state.refresh_quarantine();
         self.documents.insert(uri, state);
         transition
     }
 
+    /// Fail closed when a didChange notification cannot be interpreted under
+    /// the session's negotiated position encoding. The server must not guess
+    /// an encoding and mutate retained text: the client may already have
+    /// applied the change, so line identity is unknown until synchronization
+    /// authority is re-established.
+    pub(super) fn invalidate_change(&mut self, uri: &Uri, version: i32) -> QuarantineTransition {
+        let Some(state) = self.state_for_uri_mut(uri) else {
+            return QuarantineTransition::Unchanged;
+        };
+        state.version = Some(version);
+        invalidate_incremental_document_state(state)
+    }
+
     /// Record a save: the didSave digest is the new saved-content identity
     /// (#2129), and the buffer now holds the persisted text when the client
     /// included it. The quarantine recomputation may lift the withdrawal
-    /// when the buffer matches the analyzed saved content again.
+    /// when the buffer matches the analyzed saved content again. While the
+    /// buffer is not a synchronization authority (#1746), a save without
+    /// client text observes nothing: the caller could only offer a digest of
+    /// the same disowned buffer, so neither identity is adopted and the
+    /// fail-closed quarantine holds. Client-provided save text is itself the
+    /// authoritative document content and restores authority.
     pub(super) fn save(
         &mut self,
         uri: &Uri,
@@ -1104,6 +1453,12 @@ impl DocumentStore {
         let Some(state) = self.documents.get_mut(uri) else {
             return QuarantineTransition::Unchanged;
         };
+        if state.buffer_authority_unknown {
+            if text.is_none() {
+                return state.refresh_quarantine();
+            }
+            state.buffer_authority_unknown = false;
+        }
         if let Some(digest) = saved_digest {
             state.saved_digest = Some(digest);
         }
@@ -1113,24 +1468,30 @@ impl DocumentStore {
         state.refresh_quarantine()
     }
 
-    /// Compute the analyzed saved-content identity a refresh transaction
-    /// would record for every open document, without mutating any state
-    /// (#1970). The identity comes from the persisted bytes on disk — the
-    /// same bytes the refresh's analysis read — not from the didSave-tracked
-    /// digest, so a file changed on disk outside didSave (git checkout,
-    /// formatter, external editor) cannot be recorded as analyzed against
-    /// its stale pre-change digest. Falls back to the didSave-tracked digest
-    /// only when the persisted bytes cannot be read. Also returns the URIs
-    /// that are currently clean but would enter quarantine under the pending
-    /// identity, so publication can withdraw them before commit.
-    pub(super) fn pending_analyzed_digests(&self) -> (BTreeMap<Uri, Option<String>>, Vec<Uri>) {
+    /// Prepare identities without changing document state. `.rs` paths use only raw
+    /// bytes captured by this analysis, including cache hits. Missing or
+    /// conflicting commitments cannot fall back to disk or didSave state.
+    /// Other extensions retain their existing saved-content behavior; this
+    /// carrier does not establish their consumed-input provenance, including
+    /// non-`.rs` Rust-language buffers and uncaptured include inputs.
+    /// Also return clean URIs that would enter quarantine under that identity.
+    pub(super) fn pending_analyzed_digests(
+        &self,
+        root: &Path,
+        consumed: &crate::analysis::consumed_source::ConsumedRustSources,
+    ) -> (BTreeMap<Uri, Option<String>>, Vec<Uri>) {
         let mut digests = BTreeMap::new();
         let mut entered = Vec::new();
         for (uri, state) in &self.documents {
-            let analyzed = std::fs::read(&state.path)
-                .ok()
-                .map(|bytes| content_digest(&bytes))
-                .or_else(|| state.saved_digest.clone());
+            let analyzed = if state
+                .path
+                .extension()
+                .is_some_and(|extension| extension == "rs")
+            {
+                file_uri_relative_to_root(root, uri).and_then(|relative| consumed.digest(&relative))
+            } else {
+                read_saved_digest(uri).or_else(|| state.saved_digest.clone())
+            };
             if !state.is_quarantined() && state.staleness_for_analyzed(analyzed.as_ref()).is_some()
             {
                 entered.push(uri.clone());
@@ -1145,7 +1506,7 @@ impl DocumentStore {
     /// commit path, so document identities advance exclusively with the
     /// committed snapshot — a superseded or failed transaction leaves them
     /// untouched. `analyzed` carries the pending identities computed at
-    /// prepare time from the persisted bytes (see
+    /// prepare time from the producer commitments for Rust (see
     /// `pending_analyzed_digests`); `pre_disclosed` lists URIs whose pending
     /// withdrawal was already disclosed during publication, so the new
     /// episode does not disclose a second time.
@@ -1207,8 +1568,52 @@ impl DocumentStore {
     }
 }
 
+/// Project a document URI to the path used for display. A URI the shared
+/// decoder (`lsp::uri::normalized_file_uri_path`) refuses has no local file
+/// path, so the wire string is kept as display text.
+///
+/// Digest reads do not use this fallback. [`read_saved_digest`] reads only a
+/// path [`path_from_file_uri`] admits. A refused URI, including one whose
+/// path contains `..`, therefore has no saved-content bytes. On Unix the wire
+/// string is a relative path, and a working directory that contains a
+/// directory named `file:` would otherwise let `std::fs::read` follow `..`
+/// out of that directory.
+///
+/// Containment is a separate check. `path_is_within_root` refuses a relative
+/// candidate whose first component carries a URI scheme separator, so this
+/// fallback cannot read as contained under the selected root. The fallback is
+/// published in the MCP-visible `workspace_status` projection as a display
+/// string. It does not reach code actions, apply-edit, or any spawned command
+/// payload; those are built from admitted `file_uri_for_path` output.
 fn document_path(uri: &Uri) -> PathBuf {
     path_from_file_uri(uri).unwrap_or_else(|| PathBuf::from(uri.as_str()))
+}
+
+/// Digest of the persisted bytes for an admitted local file URI.
+/// `None` when the decoder refuses the URI, the admitted path is not a regular
+/// file, or it cannot be read within the bound.
+fn read_saved_digest(uri: &Uri) -> Option<String> {
+    let path = path_from_file_uri(uri)?;
+    read_saved_bytes(&path).map(|bytes| content_digest(&bytes))
+}
+
+/// A client names this path in `didOpen`, so it may be a device, FIFO or
+/// huge file (`/dev/zero`, `/dev/stdin`). Read only a regular file, and no
+/// more than one LSP message can carry: an open document never exceeds that.
+fn read_saved_bytes(path: &Path) -> Option<Vec<u8>> {
+    use std::io::Read as _;
+    let limit = crate::lsp::transport_bounds::MAX_MESSAGE_BYTES as u64;
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > limit {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)
+        .ok()?
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .ok()?;
+    (bytes.len() as u64 <= limit).then_some(bytes)
 }
 
 pub(super) fn format_duration(duration: Duration) -> String {
@@ -1239,6 +1644,7 @@ mod tests {
             saved_digest: Some(digest_of(saved_text)),
             analyzed_saved_digest: Some(digest_of(saved_text)),
             analyzed_input_identity: Some("input:test".to_string()),
+            buffer_authority_unknown: false,
             quarantine: None,
         }
     }
@@ -1263,6 +1669,7 @@ mod tests {
                 AnalysisFailureKind::SessionStateInconsistent,
                 "session_state_inconsistent",
             ),
+            (AnalysisFailureKind::DeadlineExceeded, "deadline_exceeded"),
         ];
 
         for (kind, expected) in cases {
@@ -1501,6 +1908,693 @@ mod tests {
     }
 
     #[test]
+    fn incremental_content_changes_apply_in_wire_order_for_utf16() -> Result<(), String> {
+        let mut text = "a🎉b\r\nsecond\n".to_string();
+        let changes = vec![
+            TextDocumentContentChangeEvent {
+                range: Some(tower_lsp_server::ls_types::Range {
+                    start: Position {
+                        line: 0,
+                        character: 1,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 3,
+                    },
+                }),
+                range_length: None,
+                text: "é".to_string(),
+            },
+            TextDocumentContentChangeEvent {
+                range: Some(tower_lsp_server::ls_types::Range {
+                    start: Position {
+                        line: 1,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: 1,
+                        character: 6,
+                    },
+                }),
+                range_length: None,
+                text: "next".to_string(),
+            },
+        ];
+        apply_document_content_changes(&mut text, changes, &PositionEncodingKind::UTF16)
+            .map_err(|()| "incremental UTF-16 change unexpectedly failed".to_string())?;
+        if text != "aéb\r\nnext\n" {
+            return Err(format!("unexpected incremental result: {text:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incremental_positions_follow_the_negotiated_encoding() -> Result<(), String> {
+        for (encoding, start, end) in [
+            (PositionEncodingKind::UTF8, 1, 3),
+            (PositionEncodingKind::UTF16, 1, 2),
+            (PositionEncodingKind::UTF32, 1, 2),
+        ] {
+            let mut text = "aéb".to_string();
+            apply_document_content_changes(
+                &mut text,
+                vec![TextDocumentContentChangeEvent {
+                    range: Some(tower_lsp_server::ls_types::Range {
+                        start: Position {
+                            line: 0,
+                            character: start,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: end,
+                        },
+                    }),
+                    range_length: None,
+                    text: "X".to_string(),
+                }],
+                &encoding,
+            )
+            .map_err(|()| format!("change failed for encoding {encoding:?}"))?;
+            if text != "aXb" {
+                return Err(format!("wrong result for encoding {encoding:?}: {text:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn incremental_change_rejects_mid_character_and_reversed_ranges() {
+        let mut mid_surrogate = "a🎉b".to_string();
+        let original = mid_surrogate.clone();
+        let result = apply_document_content_changes(
+            &mut mid_surrogate,
+            vec![TextDocumentContentChangeEvent {
+                range: Some(tower_lsp_server::ls_types::Range {
+                    start: Position {
+                        line: 0,
+                        character: 2,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 3,
+                    },
+                }),
+                range_length: None,
+                text: "X".to_string(),
+            }],
+            &PositionEncodingKind::UTF16,
+        );
+        assert!(result.is_err());
+        assert_eq!(mid_surrogate, original);
+
+        let mut reversed = "abcd".to_string();
+        let result = apply_document_content_changes(
+            &mut reversed,
+            vec![TextDocumentContentChangeEvent {
+                range: Some(tower_lsp_server::ls_types::Range {
+                    start: Position {
+                        line: 0,
+                        character: 3,
+                    },
+                    end: Position {
+                        line: 0,
+                        character: 1,
+                    },
+                }),
+                range_length: None,
+                text: "X".to_string(),
+            }],
+            &PositionEncodingKind::UTF16,
+        );
+        assert!(result.is_err());
+        assert_eq!(reversed, "abcd");
+    }
+
+    #[test]
+    fn incremental_change_list_is_transactional_on_late_rejection() {
+        let mut text = "abcd".to_string();
+        let result = apply_document_content_changes(
+            &mut text,
+            vec![
+                TextDocumentContentChangeEvent {
+                    range: Some(tower_lsp_server::ls_types::Range {
+                        start: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 1,
+                        },
+                    }),
+                    range_length: None,
+                    text: "A".to_string(),
+                },
+                TextDocumentContentChangeEvent {
+                    range: Some(tower_lsp_server::ls_types::Range {
+                        start: Position {
+                            line: 9,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 9,
+                            character: 0,
+                        },
+                    }),
+                    range_length: None,
+                    text: "X".to_string(),
+                },
+            ],
+            &PositionEncodingKind::UTF16,
+        );
+        assert!(result.is_err());
+        assert_eq!(text, "abcd");
+    }
+
+    #[test]
+    fn invalid_incremental_change_enters_fail_closed_quarantine() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+        store
+            .documents
+            .insert(uri.clone(), clean_document_state(&uri, "a🎉b"));
+        let transition = store.change(
+            DidChangeTextDocumentParams {
+                text_document: tower_lsp_server::ls_types::VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 2,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: Some(tower_lsp_server::ls_types::Range {
+                        start: Position {
+                            line: 0,
+                            character: 2,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 3,
+                        },
+                    }),
+                    range_length: None,
+                    text: "X".to_string(),
+                }],
+            },
+            &PositionEncodingKind::UTF16,
+        );
+        if transition != QuarantineTransition::Entered {
+            return Err("an invalid incremental change must enter quarantine".to_string());
+        }
+        let Some(state) = store.state_for_uri(&uri) else {
+            return Err("missing document state".to_string());
+        };
+        if state.quarantine.as_ref().map(|q| q.reason)
+            != Some(DocumentStalenessReason::InvalidIncrementalChange)
+        {
+            return Err("invalid incremental change must name its quarantine reason".to_string());
+        }
+        if state.text != "a🎉b" {
+            return Err("a rejected incremental change must not corrupt retained text".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unavailable_position_encoding_invalidates_without_mutating_retained_text()
+    -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+        store
+            .documents
+            .insert(uri.clone(), clean_document_state(&uri, "aéb"));
+
+        let transition = store.invalidate_change(&uri, 2);
+        if transition != QuarantineTransition::Entered {
+            return Err("uninterpretable didChange must enter quarantine".to_string());
+        }
+        let Some(state) = store.state_for_uri(&uri) else {
+            return Err("missing document state".to_string());
+        };
+        if state.version != Some(2) {
+            return Err("uninterpretable didChange must still advance the observed version".into());
+        }
+        if state.text != "aéb" {
+            return Err(
+                "uninterpretable didChange must not guess an encoding or mutate text".into(),
+            );
+        }
+        if state.quarantine.as_ref().map(|q| q.reason)
+            != Some(DocumentStalenessReason::InvalidIncrementalChange)
+        {
+            return Err("uninterpretable didChange must use invalid-change quarantine".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn invalid_incremental_state_requires_full_replacement_to_recover() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+        let mut state = clean_document_state(&uri, "abcd");
+        state.quarantine = Some(DocumentQuarantine {
+            reason: DocumentStalenessReason::InvalidIncrementalChange,
+            withdrawal_disclosed: true,
+        });
+        store.documents.insert(uri.clone(), state);
+
+        let range_only = store.change(
+            DidChangeTextDocumentParams {
+                text_document: tower_lsp_server::ls_types::VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 3,
+                },
+                content_changes: vec![TextDocumentContentChangeEvent {
+                    range: Some(tower_lsp_server::ls_types::Range {
+                        start: Position {
+                            line: 0,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: 0,
+                            character: 1,
+                        },
+                    }),
+                    range_length: None,
+                    text: "X".to_string(),
+                }],
+            },
+            &PositionEncodingKind::UTF16,
+        );
+        if range_only != QuarantineTransition::Unchanged {
+            return Err("range-only edit must not recover unknown buffer authority".to_string());
+        }
+        let Some(state) = store.state_for_uri(&uri) else {
+            return Err("missing document state".to_string());
+        };
+        if state.text != "abcd"
+            || state.quarantine.as_ref().map(|q| q.reason)
+                != Some(DocumentStalenessReason::InvalidIncrementalChange)
+        {
+            return Err("range-only edit must preserve invalid-change quarantine".to_string());
+        }
+
+        let recovered = store.change(
+            DidChangeTextDocumentParams {
+                text_document: tower_lsp_server::ls_types::VersionedTextDocumentIdentifier {
+                    uri: uri.clone(),
+                    version: 4,
+                },
+                content_changes: vec![
+                    TextDocumentContentChangeEvent {
+                        range: None,
+                        range_length: None,
+                        text: "wxyz".to_string(),
+                    },
+                    TextDocumentContentChangeEvent {
+                        range: Some(tower_lsp_server::ls_types::Range {
+                            start: Position {
+                                line: 0,
+                                character: 0,
+                            },
+                            end: Position {
+                                line: 0,
+                                character: 1,
+                            },
+                        }),
+                        range_length: None,
+                        text: "W".to_string(),
+                    },
+                ],
+            },
+            &PositionEncodingKind::UTF16,
+        );
+        if recovered != QuarantineTransition::Unchanged {
+            // The document remains quarantined because the recovered buffer
+            // still differs from the analyzed saved digest. What changes is
+            // the reason: buffer authority is known again.
+            return Err("recovery must continue the existing quarantine episode".to_string());
+        }
+        let Some(state) = store.state_for_uri(&uri) else {
+            return Err("missing recovered document state".to_string());
+        };
+        if state.text != "Wxyz" {
+            return Err(format!(
+                "full replacement did not recover buffer: {:?}",
+                state.text
+            ));
+        }
+        if state.quarantine.as_ref().map(|q| q.reason)
+            != Some(DocumentStalenessReason::BufferDivergesFromAnalyzedSavedContent)
+        {
+            return Err(
+                "full replacement must restore ordinary dirty-buffer quarantine".to_string(),
+            );
+        }
+        if !state
+            .quarantine
+            .as_ref()
+            .is_some_and(|quarantine| quarantine.withdrawal_disclosed)
+        {
+            return Err(
+                "recovery inside one quarantine episode must retain disclosure state".into(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn save_without_client_text_during_unknown_buffer_authority_refuses_identity()
+    -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+        let mut state = clean_document_state(&uri, "fn saved() {}");
+        state.quarantine = Some(DocumentQuarantine {
+            reason: DocumentStalenessReason::InvalidIncrementalChange,
+            withdrawal_disclosed: true,
+        });
+        state.buffer_authority_unknown = true;
+        store.documents.insert(uri.clone(), state);
+
+        // includeText: false: the caller can only offer a digest of the same
+        // disowned buffer. The store must adopt neither identity and must not
+        // let the recomputation lift the fail-closed quarantine (#1746).
+        let transition = store.save(&uri, Some(digest_of("fn fabricated() {}")), None);
+        if transition != QuarantineTransition::Unchanged {
+            return Err("an unobserved save must not move the quarantine edges".to_string());
+        }
+        let Some(state) = store.state_for_uri(&uri) else {
+            return Err("missing document state".to_string());
+        };
+        if state.saved_digest.as_deref() != Some(digest_of("fn saved() {}").as_str()) {
+            return Err("an unobserved save must not adopt a fabricated digest".to_string());
+        }
+        if state
+            .quarantine
+            .as_ref()
+            .map(|quarantine| quarantine.reason)
+            != Some(DocumentStalenessReason::InvalidIncrementalChange)
+        {
+            return Err("unknown buffer authority must hold the quarantine".to_string());
+        }
+
+        // Client-provided save text is itself the authoritative document
+        // content: it restores ordinary staleness semantics.
+        let transition = store.save(
+            &uri,
+            Some(digest_of("fn saved() {}")),
+            Some("fn saved() {}".to_string()),
+        );
+        if transition
+            != (QuarantineTransition::Exited {
+                was_disclosed: true,
+            })
+        {
+            return Err("client save text must restore authority and end the episode".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn refresh_commit_cannot_lift_unknown_buffer_authority_quarantine() -> Result<(), String> {
+        let uri = test_uri("file:///workspace/src/lib.rs")?;
+        let mut store = DocumentStore::default();
+        let mut state = clean_document_state(&uri, "fn saved() {}");
+        state.quarantine = Some(DocumentQuarantine {
+            reason: DocumentStalenessReason::InvalidIncrementalChange,
+            withdrawal_disclosed: true,
+        });
+        state.buffer_authority_unknown = true;
+        store.documents.insert(uri.clone(), state);
+
+        // The committed snapshot analyzed exactly the frozen buffer's bytes;
+        // the ordinary recomputation would read that as clean and lift the
+        // quarantine even though no full replacement ever re-established
+        // buffer authority (#1746).
+        let analyzed = store
+            .documents
+            .iter()
+            .map(|(uri, state)| (uri.clone(), state.saved_digest.clone()))
+            .collect::<BTreeMap<_, _>>();
+        let edges = store.note_refresh_analyzed(Some("input:43".to_string()), &analyzed, &[]);
+        if !edges.entered.is_empty() || !edges.exited.is_empty() {
+            return Err(format!(
+                "unknown buffer authority must hold the quarantine across a refresh commit: {edges:?}"
+            ));
+        }
+        let Some(state) = store.state_for_uri(&uri) else {
+            return Err("missing document state".to_string());
+        };
+        if state
+            .quarantine
+            .as_ref()
+            .map(|quarantine| quarantine.reason)
+            != Some(DocumentStalenessReason::InvalidIncrementalChange)
+        {
+            return Err("refresh commit must keep the invalid-change quarantine".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn saved_digest_refuses_oversized_and_non_regular_paths() -> Result<(), String> {
+        let stamp = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-state-saved-bound-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+        let result = (|| {
+            let limit = crate::lsp::transport_bounds::MAX_MESSAGE_BYTES as u64;
+            let at_limit = dir.join("at_limit.rs");
+            std::fs::File::create(&at_limit)
+                .and_then(|file| file.set_len(limit))
+                .map_err(|err| format!("create at-limit file failed: {err}"))?;
+            let at_limit_uri = crate::lsp::uri::file_uri_for_path(&at_limit)
+                .map_err(|err| format!("file URI failed: {err}"))?;
+            if read_saved_digest(&at_limit_uri).is_none() {
+                return Err("a file within the message bound must still be digested".to_string());
+            }
+            // Sparse: a client-named multi-GB file must not be read whole.
+            let oversized = dir.join("oversized.rs");
+            std::fs::File::create(&oversized)
+                .and_then(|file| file.set_len(limit + 1))
+                .map_err(|err| format!("create oversized file failed: {err}"))?;
+            let oversized_uri = crate::lsp::uri::file_uri_for_path(&oversized)
+                .map_err(|err| format!("file URI failed: {err}"))?;
+            if read_saved_digest(&oversized_uri).is_some() {
+                return Err("a file larger than one LSP message must not be read".to_string());
+            }
+            let directory_uri = crate::lsp::uri::file_uri_for_path(&dir)
+                .map_err(|err| format!("file URI failed: {err}"))?;
+            if read_saved_digest(&directory_uri).is_some() {
+                return Err("a directory has no saved digest".to_string());
+            }
+            #[cfg(target_os = "linux")]
+            if read_saved_bytes(Path::new("/dev/zero")).is_some() {
+                return Err("a device must not be read as saved content".to_string());
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    #[test]
+    fn parent_directory_uri_does_not_seed_saved_digest_from_traversed_bytes() -> Result<(), String>
+    {
+        let stamp = SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let dir =
+            std::env::temp_dir().join(format!("ripr-state-dotdot-{}-{stamp}", std::process::id()));
+        std::fs::create_dir_all(dir.join("a"))
+            .map_err(|err| format!("create temp dir failed: {err}"))?;
+        std::fs::write(dir.join("secret.txt"), "secret-bytes")
+            .map_err(|err| format!("write secret failed: {err}"))?;
+        let keep_path = dir.join("a").join("keep.txt");
+        std::fs::write(&keep_path, "keep-bytes")
+            .map_err(|err| format!("write keep failed: {err}"))?;
+        let keep_uri = crate::lsp::uri::file_uri_for_path(&keep_path)
+            .map_err(|err| format!("keep URI failed: {err}"))?;
+        // `%2e%2e` decodes to `..`. The `a` directory exists, so a decoder that
+        // admits the segment lets `std::fs::read` resolve it to secret.txt.
+        let display = dir.to_string_lossy().replace('\\', "/");
+        let rooted = if display.starts_with('/') {
+            display
+        } else {
+            format!("/{display}")
+        };
+        let traversal = format!("file://{rooted}/a/%2e%2e/secret.txt");
+        let traversal_uri = test_uri(&traversal)?;
+        let mut store = DocumentStore::default();
+        store.open(DidOpenTextDocumentParams {
+            text_document: tower_lsp_server::ls_types::TextDocumentItem::new(
+                keep_uri.clone(),
+                "rust".to_string(),
+                1,
+                "client-keep".to_string(),
+            ),
+        });
+        store.open(DidOpenTextDocumentParams {
+            text_document: tower_lsp_server::ls_types::TextDocumentItem::new(
+                traversal_uri.clone(),
+                "rust".to_string(),
+                1,
+                "client-secret".to_string(),
+            ),
+        });
+        let result = (|| {
+            let Some(keep) = store.documents.get(&keep_uri) else {
+                return Err("missing admitted document".to_string());
+            };
+            if keep.saved_digest.as_deref() != Some(digest_of("keep-bytes").as_str()) {
+                return Err(
+                    "an admitted sibling must still seed its digest from its own bytes".to_string(),
+                );
+            }
+            if path_from_file_uri(&traversal_uri).is_some() {
+                return Err("parent-segment URI must not be admitted as a local path".to_string());
+            }
+            let Some(state) = store.documents.get(&traversal_uri) else {
+                return Err("missing traversal document".to_string());
+            };
+            if state.saved_digest.is_some() {
+                return Err(format!(
+                    "refused parent-segment URI must not seed a saved digest: {:?}",
+                    state.saved_digest
+                ));
+            }
+            let (pending, _) = store.pending_analyzed_digests(&PathBuf::new(), &Default::default());
+            if matches!(pending.get(&traversal_uri), Some(Some(_))) {
+                return Err(
+                    "pending analyzed digest must not read through a parent segment".to_string(),
+                );
+            }
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&dir);
+        result
+    }
+
+    /// A refused `file:` URI is a relative path. On Unix, `file:/a/../../secret`
+    /// resolves to `<cwd>/secret` when `<cwd>/file:/a` exists. The digest reads
+    /// must not follow that fallback. The control read is the oracle: if it
+    /// cannot see the secret, this test is blind rather than green.
+    #[cfg(unix)]
+    #[test]
+    fn refused_parent_uri_is_not_read_from_a_file_scheme_cwd_directory() -> Result<(), String> {
+        let cwd = std::env::current_dir().map_err(|err| format!("cwd failed: {err}"))?;
+        let scheme_root = cwd.join("file:");
+        let nested = scheme_root.join("a");
+        let created_root = !scheme_root.exists();
+        let created_nested = !nested.exists();
+        let secret_name = format!("ripr-uri-cwd-secret-{}", std::process::id());
+        let secret = cwd.join(&secret_name);
+        let wire = format!("file:///a/../../{secret_name}");
+        let prepared = (|| {
+            std::fs::create_dir_all(&nested)
+                .map_err(|err| format!("create file-scheme dir failed: {err}"))?;
+            std::fs::write(&secret, "secret-bytes")
+                .map_err(|err| format!("write secret failed: {err}"))?;
+            Ok(())
+        })();
+        let result = prepared.and_then(|()| {
+            let control = std::fs::read(PathBuf::from(&wire)).map_err(|err| {
+                format!(
+                    "cwd fixture must resolve the refused wire string, or the oracle is blind: {err}"
+                )
+            })?;
+            if control != b"secret-bytes" {
+                return Err("cwd fixture resolved a different file".to_string());
+            }
+            let uri = test_uri(&wire)?;
+            if path_from_file_uri(&uri).is_some() {
+                return Err("parent-segment URI must stay refused".to_string());
+            }
+            let mut store = DocumentStore::default();
+            store.open(DidOpenTextDocumentParams {
+                text_document: tower_lsp_server::ls_types::TextDocumentItem::new(
+                    uri.clone(),
+                    "rust".to_string(),
+                    1,
+                    "client-text".to_string(),
+                ),
+            });
+            let Some(state) = store.documents.get(&uri) else {
+                return Err("missing document".to_string());
+            };
+            if state.saved_digest.is_some() {
+                return Err(format!(
+                    "refused URI must not digest the cwd traversal target: {:?}",
+                    state.saved_digest
+                ));
+            }
+            let (pending, _) = store.pending_analyzed_digests(&PathBuf::new(), &Default::default());
+            if matches!(pending.get(&uri), Some(Some(_))) {
+                return Err("pending digest must not read the cwd traversal target".to_string());
+            }
+            Ok(())
+        });
+        let _ = std::fs::remove_file(&secret);
+        if created_nested {
+            let _ = std::fs::remove_dir_all(&nested);
+        }
+        if created_root {
+            let _ = std::fs::remove_dir(&scheme_root);
+        }
+        result
+    }
+
+    #[test]
+    fn rejected_uri_document_path_fallback_is_never_contained() -> Result<(), String> {
+        // `document_path` keeps the wire string when the shared URI decoder
+        // refuses the URI. That text is relative, so without the containment
+        // guard it would join under any selected root and read as a workspace
+        // file. #4060.
+        let root = PathBuf::from("/workspace/ripr");
+        for value in [
+            "file://remote.example/workspace/ripr/src/lib.rs",
+            "file://127.0.0.1/workspace/ripr/src/lib.rs",
+            "file:////remote.example/share/workspace/ripr/src/lib.rs",
+            "FILE://LOCALHOST/workspace/ripr/src/lib.rs?revision=1",
+            "file:/workspace/ripr/src/lib.rs#symbol",
+            "file:///a/../../etc/passwd",
+            "file://localhost/tmp/%2e%2e/etc/passwd",
+            "file:///workspace/src/../lib.rs",
+        ] {
+            let uri = test_uri(value)?;
+            let fallback = document_path(&uri);
+            if !fallback.is_relative() {
+                return Err(format!("expected a relative fallback for {value}"));
+            }
+            if crate::lsp::uri::path_is_within_root(&root, &fallback) {
+                return Err(format!(
+                    "rejected-URI fallback must not read as contained: {value}"
+                ));
+            }
+            if crate::lsp::uri::file_uri_is_within_root(&root, &uri) {
+                return Err(format!("rejected URI must not be contained: {value}"));
+            }
+        }
+
+        // The admitted spelling still yields a real absolute path that does
+        // resolve under the same root, so the guard is not over-broad.
+        let admitted = document_path(&test_uri("file:///workspace/ripr/src/lib.rs")?);
+        if admitted.as_path() != std::path::Path::new("/workspace/ripr/src/lib.rs") {
+            return Err(format!(
+                "admitted URI must keep its local path: {admitted:?}"
+            ));
+        }
+        if !crate::lsp::uri::path_is_within_root(&root, &admitted) {
+            return Err("an admitted local path must stay contained".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
     fn analysis_health_run_status_preserves_limited_partial_scope() {
         // RIPR-PROP-0019 (#1999): a partial partition is a limited run
         // state; the DTO must not fall through to "full" (#2142 review).
@@ -1520,6 +2614,7 @@ mod tests {
         diagnostics_by_uri.insert(uri, vec![gap_diagnostic()]);
         let snapshot = AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: None,
             mode: Mode::Draft,
@@ -1532,6 +2627,7 @@ mod tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
@@ -1552,6 +2648,7 @@ mod tests {
         diagnostics_by_uri.insert(uri, vec![plain_diagnostic()]);
         let snapshot = AnalysisSnapshot {
             root: PathBuf::from("/workspace"),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: None,
             mode: Mode::Draft,
@@ -1564,6 +2661,7 @@ mod tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
@@ -1575,6 +2673,63 @@ mod tests {
             return Err(
                 "plain diagnostics should still require matching source evidence".to_string(),
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn snapshot_consistency_counts_scope_guard_disclosures() -> Result<(), String> {
+        // #2299 / #4325: the oversized-diff warning is a governed,
+        // code-marked limited-run disclosure, so it is accounted without
+        // findings, seams, or gap records. A lookalike with a different code
+        // stays unaccounted.
+        let uri = test_uri("file:///workspace/src/pricing.rs")?;
+        let mut scope_guard = plain_diagnostic();
+        scope_guard.code = Some(tower_lsp_server::ls_types::NumberOrString::String(
+            crate::lsp::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+        ));
+        let mut diagnostics_by_uri = BTreeMap::new();
+        diagnostics_by_uri.insert(uri.clone(), vec![scope_guard]);
+        let snapshot = AnalysisSnapshot {
+            root: PathBuf::from("/workspace"),
+            rust_consumed_sources: Default::default(),
+            input_identity: None,
+            base: None,
+            mode: Mode::Draft,
+            refresh: RefreshMetadata::default(),
+            findings: Vec::new(),
+            analysis_outcome: None,
+            diagnostic_profile: LspDiagnosticProfile::Full,
+            classified_seams: Vec::new(),
+            gap_artifacts: Vec::new(),
+            gap_artifact_rejections: Vec::new(),
+            harness_facts: HarnessFactsOnSnapshot::NotRegistered,
+            diagnostics_by_uri,
+            diagnostic_uri_index: None,
+            delivery_selection: None,
+            seams_deferred: false,
+            partial_scope: None,
+            component_outcomes: Vec::new(),
+            out_of_scope_test_file_findings: 0,
+        };
+
+        if !snapshot.is_consistent() {
+            return Err("scope-guard disclosures should count as explicit diagnostics".to_string());
+        }
+
+        let mut lookalike = plain_diagnostic();
+        lookalike.code = Some(tower_lsp_server::ls_types::NumberOrString::String(
+            "ripr-something-else".to_string(),
+        ));
+        let mut lookalike_by_uri = BTreeMap::new();
+        lookalike_by_uri.insert(uri, vec![lookalike]);
+        let lookalike_snapshot = AnalysisSnapshot {
+            diagnostics_by_uri: lookalike_by_uri,
+            ..snapshot
+        };
+
+        if lookalike_snapshot.is_consistent() {
+            return Err("a lookalike code must stay unaccounted".to_string());
         }
         Ok(())
     }

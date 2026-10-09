@@ -335,14 +335,9 @@ fn cycle_or_depth_limited_children(
 }
 
 fn rebase_function_identities(index: &mut RustIndex) {
-    let parents = &index.include_parents;
-    for function in &mut index.functions {
-        rebase_function_identity(function, parents);
-    }
-    for facts in index.files.values_mut() {
-        for function in &mut facts.functions {
-            rebase_function_identity(function, parents);
-        }
+    let ids = index.live_function_ids();
+    for id in ids {
+        rebase_function_identity(&mut index.function_facts[id], &index.include_parents);
     }
 }
 
@@ -424,14 +419,17 @@ mod tests {
             file: PathBuf::from("src/frag_50%.rs"),
             start_line: 1,
             end_line: 2,
-            body: "fn f() {}".to_string(),
+            body: "fn f() {}".into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: crate::analysis::facts::FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         };
         super::rebase_function_identity(&mut function, &parents);
         assert_eq!(function.id.0, "src/lib.rs::impl W::f");

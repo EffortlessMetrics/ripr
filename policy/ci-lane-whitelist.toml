@@ -26,6 +26,18 @@ id = "release-readiness"
 paths = ["target/package/", "editors/vscode/dist/*.vsix", "dist/ripr-server-*", "dist/ripr-server-manifest-*.json"]
 
 [[artifact_family]]
+id = "dx-scoreboard"
+paths = ["target/ripr/reports/dx-scoreboard.json", "target/ripr/reports/dx-scoreboard.md"]
+
+[[artifact_family]]
+id = "rust-corpus"
+paths = ["target/ripr/reports/rust-corpus-smoke.json", "target/ripr/reports/rust-corpus-smoke.md", "target/ripr/reports/dx-scoreboard.json", "target/ripr/reports/dx-scoreboard.md"]
+
+[[artifact_family]]
+id = "pilot-ranking"
+paths = ["target/ripr/reports/pilot-ranking.json", "target/ripr/reports/pilot-ranking.md", "target/ripr/reports/dx-scoreboard.json", "target/ripr/reports/dx-scoreboard.md"]
+
+[[artifact_family]]
 id = "public-badge-endpoints"
 paths = ["badges/*.json", "target/ripr/reports/repo-ripr-badge*.json", "target/ripr/reports/repo-ripr-badges.md"]
 
@@ -44,20 +56,20 @@ id = "rust"
 posture = "required"
 workflow = ".github/workflows/ci.yml"
 jobs = ["rust"]
-commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo clippy --workspace --all-targets -- -D warnings", "cargo test --workspace"]
+commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo clippy --workspace --all-targets -- -D warnings", "cargo nextest run --workspace"]
 estimated_lem = 12
 artifact_families = []
-description = "Primary Rust merge-safety lane."
+description = "Public required Rust CI job; actual protected check remains rust. The advisory ledger does not substitute a reusable context."
 
 [[lane]]
 id = "routed-rust-small"
 posture = "required"
 workflow = ".github/workflows/routed-rust.yml"
 jobs = ["Ripr Rust Small Result"]
-commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo clippy --workspace --all-targets -- -D warnings", "cargo test --workspace", "cargo xtask check-static-language", "cargo xtask check-no-panic-family", "cargo xtask check-allow-attributes", "cargo xtask check-local-context", "cargo xtask check-file-policy", "cargo xtask check-executable-files", "cargo xtask check-workflows", "cargo xtask check-droid-review-config", "cargo xtask check-spec-format", "cargo xtask check-spec-numbering", "cargo xtask check-fixture-contracts", "cargo xtask check-generated", "cargo xtask check-badge-diff-policy", "cargo xtask check-generated-clean", "cargo xtask check-dependencies", "cargo xtask check-process-policy", "cargo xtask check-network-policy", "cargo xtask check-command-catalog", "cargo xtask check-output-contracts", "cargo xtask goldens check", "cargo xtask fixtures", "cargo xtask check-traceability", "cargo xtask check-capabilities"]
+commands = ["cargo fmt --check", "cargo check --workspace --all-targets", "cargo clippy --workspace --all-targets -- -D warnings", "cargo nextest run --workspace", "cargo xtask precommit", "cargo xtask check-evidence-promotion-honesty", "cargo xtask check-agent-skills", "cargo xtask check-dependencies", "cargo xtask check-process-policy", "cargo xtask check-network-policy", "cargo xtask goldens check", "cargo xtask fixtures"]
 estimated_lem = 12
 artifact_families = ["ripr-evidence"]
-description = "Swarm Rust Small result gate routed through CX53, CX43, or GitHub-hosted fallback."
+description = "Required Ripr Rust Small Result proof through the hosted source typed plan, execution, and result receipts; precommit expands its full accepted policy table."
 
 [[lane]]
 id = "msrv"
@@ -130,6 +142,46 @@ artifact_families = ["public-badge-endpoints"]
 description = "Generated public badge endpoint refresh, bounded so stale badge generation does not occupy main CI indefinitely."
 
 [[lane]]
+id = "dx-scoreboard"
+posture = "advisory"
+workflow = ".github/workflows/dx-scoreboard.yml"
+jobs = ["scoreboard"]
+commands = ["cargo xtask dx-scoreboard --clone --include-heavy --corpus-dir \"$RUNNER_TEMP/dx-scoreboard-corpus\" --baseline metrics/dx-scoreboard/baseline.json --gate"]
+estimated_lem = 40
+artifact_families = ["dx-scoreboard"]
+description = "Nightly developer-experience scoreboards on the pinned real-repository corpus; fails only when a metric regresses past its margin against the committed baseline or an instrument breaks."
+
+[[lane]]
+id = "rust-corpus"
+posture = "advisory"
+workflow = ".github/workflows/rust-corpus.yml"
+jobs = ["corpus"]
+commands = ["cargo build --release -p ripr --bin ripr", "cargo xtask rust-corpus fetch --allow-network --tier \"$TIER\" --root \"$RUNNER_TEMP/rust-corpus\"", "cargo xtask rust-corpus smoke --tier \"$TIER\" --ripr target/release/ripr --root \"$RUNNER_TEMP/rust-corpus\"", "cargo xtask dx-scoreboard --boards corpus --ingest target/ripr/reports/rust-corpus-smoke.json --baseline \"metrics/dx-scoreboard/corpus-$TIER-baseline.json\" --gate"]
+estimated_lem = 30
+artifact_families = ["rust-corpus"]
+description = "Shared Rust corpus: fast tier on demand, full tier nightly; fails only when a repository that analyzed in the committed baseline stops analyzing or cannot be fetched."
+
+[[lane]]
+id = "pilot-ranking"
+posture = "advisory"
+workflow = ".github/workflows/pilot-ranking.yml"
+jobs = ["ranking"]
+commands = ["cargo build --release -p ripr --bin ripr", "cargo xtask pilot-ranking fetch --allow-network", "cargo xtask pilot-ranking score --ripr target/release/ripr", "cargo xtask dx-scoreboard --boards ranking --ingest target/ripr/reports/pilot-ranking.json --baseline metrics/dx-scoreboard/pilot-ranking-baseline.json --gate"]
+estimated_lem = 15
+artifact_families = ["pilot-ranking"]
+description = "Pilot ranking answer key: nightly, on demand, and at draft-to-ready on pilot ranking or seam grading changes; fails only when pooled top-5 or top-10 precision, scored share or function diversity regresses past its margin against the committed baseline, or a pinned crate cannot be fetched."
+
+[[lane]]
+id = "public-proof"
+posture = "advisory"
+workflow = ".github/workflows/public-proof.yml"
+jobs = ["drift"]
+commands = ["cargo xtask public-proof --check"]
+estimated_lem = 5
+artifact_families = []
+description = "Public proof page drift: nightly, on demand, and at draft-to-ready on a scoreboard, corpus, receipt or page change; fails when docs/PUBLIC_PROOF.md differs from its receipts or a receipt differs from its canonical source, and lists the page lines a refresh would change."
+
+[[lane]]
 id = "vscode-compile"
 posture = "required"
 workflow = ".github/workflows/ci.yml"
@@ -167,7 +219,7 @@ jobs = ["rust-tests-junit"]
 commands = ["cargo nextest run --workspace --all-features --profile ci", "cargo test --workspace --doc"]
 estimated_lem = 12
 artifact_families = ["ripr-evidence"]
-description = "JUnit test-results artifact and trusted Codecov Test Analytics upload."
+description = "Advisory all-feature JUnit telemetry plus a duplicate doctest receipt; neither substitutes for the routed required gates."
 
 [[lane]]
 id = "ripr-self-dogfood"
@@ -228,6 +280,26 @@ commands = []
 estimated_lem = 8
 artifact_families = []
 description = "Scheduled Droid security scan signal."
+
+[[lane]]
+id = "windows-advisory"
+posture = "advisory"
+workflow = ".github/workflows/windows-advisory.yml"
+jobs = ["windows-advisory", "windows-advisory-subset"]
+commands = ["cargo test --workspace", "cargo test -p ripr --lib lsp::gap_artifacts", "cargo test -p ripr --test cli_smoke unusable_cache_directory_is_reported_once_per_build", "cargo clippy -p ripr --all-targets -- -D warnings"]
+estimated_lem = 30
+artifact_families = []
+description = "Advisory Windows lane (#2393): runs the suite twice on windows-latest and summarizes per-test verdicts. Since #4938 an always-on subset job (windows-advisory-subset) also runs a fast gap_artifacts/cache-warning/Windows-clippy filter on every subscribed pull_request action (opened, synchronize, reopened, labeled) with no labels required, advisory under the same contract. Test outcomes are advisory; missing or zero-subject evidence fails the job. Promotion to required is gated on #2430 and on stability across repeated runs."
+
+[[lane]]
+id = "printed-command-paste"
+posture = "advisory"
+workflow = ".github/workflows/printed-command-paste.yml"
+jobs = ["paste"]
+commands = ["cargo test -p ripr --test printed_command_paste"]
+estimated_lem = 18
+artifact_families = []
+description = "Advisory paste lane: runs every command ripr prints through bash, sh, zsh, PowerShell 7 and Windows PowerShell on Linux, macOS and Windows from a foreign directory against hostile root and file names, with argv recorders standing in for ripr and git. Nightly, on pull requests touching ripr source or the harness, and on dispatch. A shell the platform should provide but lacks fails the job."
 
 [[lane]]
 id = "future-clippy"
@@ -298,6 +370,16 @@ commands = []
 estimated_lem = 60
 artifact_families = ["release-readiness"]
 description = "Cross-platform server archive and manifest proof. Actual build commands come from the workflow matrix."
+
+[[lane]]
+id = "python-wheelhouse"
+posture = "on_demand_release"
+workflow = ".github/workflows/python-wheelhouse-qualification.yml"
+jobs = ["qualify"]
+commands = ["cargo xtask qualify-python-wheelhouse --receipts <dir>"]
+estimated_lem = 20
+artifact_families = ["release-readiness"]
+description = "Dispatch-only local-wheelhouse pip/uv qualification (#4631). Fail-closed aggregate; no registry write."
 
 [[lane]]
 id = "release-readiness-proof"

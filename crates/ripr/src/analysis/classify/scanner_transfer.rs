@@ -282,14 +282,17 @@ mod tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 10,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         }
     }
 
@@ -470,14 +473,17 @@ mod string_state_tests {
             file: PathBuf::from("src/lib.rs"),
             start_line: 1,
             end_line: 10,
-            body: body.to_string(),
+            body: body.into(),
             calls: Vec::new(),
             returns: Vec::new(),
             literals: Vec::new(),
             source_role: FunctionSourceRole::Production,
             attrs: Vec::new(),
+            impl_attrs: Vec::new(),
             nested_fn_names: Vec::new(),
             let_bindings: Vec::new(),
+            item: Default::default(),
+            impl_context: Default::default(),
         }
     }
 

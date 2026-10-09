@@ -11,8 +11,9 @@ use tower_lsp_server::ls_types::{
     CodeActionKind, CodeActionOptions, CodeActionProviderCapability, CodeLensOptions,
     DiagnosticOptions, DiagnosticServerCapabilities, ExecuteCommandOptions,
     HoverProviderCapability, InitializeParams, InitializeResult, OneOf, PositionEncodingKind,
-    ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
-    WorkspaceFoldersServerCapabilities, WorkspaceServerCapabilities,
+    SaveOptions, ServerCapabilities, ServerInfo, TextDocumentSyncCapability, TextDocumentSyncKind,
+    TextDocumentSyncOptions, TextDocumentSyncSaveOptions, WorkspaceFoldersServerCapabilities,
+    WorkspaceServerCapabilities,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -27,14 +28,18 @@ pub(super) enum WorkspaceRootResolution {
 /// set: the code-action parity tests in `lsp/tests.rs` assert every emitted
 /// kind against these constants so the advertisement and the emitters
 /// cannot drift in the same direction. `quickfix.ripr` and
-/// `source.ripr.verify` are advertised-but-unemitted (reserved); the emitters
-/// in `lsp/actions.rs` use the `source.ripr.*` inspect/navigate/refresh
-/// kinds.
+/// `quickfix.ripr.verify` are advertised-but-unemitted (reserved); the emitters
+/// in `lsp/actions.rs` use `quickfix.ripr.inspect` / `quickfix.ripr.navigate`
+/// for per-diagnostic actions and `source.ripr.refresh` for the
+/// workspace-level refresh. Per-diagnostic actions sit under `quickfix`
+/// because VS Code's lightbulb / Quick Fix menu never lists `source.*`
+/// actions (they appear only under "Source Action..."); refresh is not a fix
+/// for one diagnostic, so it stays a source action.
 pub(super) const ADVERTISED_CODE_ACTION_KINDS: [&str; 5] = [
     "quickfix.ripr",
-    "source.ripr.inspect",
-    "source.ripr.navigate",
-    "source.ripr.verify",
+    "quickfix.ripr.inspect",
+    "quickfix.ripr.navigate",
+    "quickfix.ripr.verify",
     "source.ripr.refresh",
 ];
 
@@ -49,7 +54,24 @@ pub(super) fn initialize_result_for_client(
 ) -> InitializeResult {
     InitializeResult {
         capabilities: ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
+            // Options form, not the bare `Kind`: under the LSP spec only
+            // `save` opts a client into `textDocument/didSave`, and saved
+            // content is what ripr analyzes. `include_text: false` keeps
+            // that opt-in without the client resending the whole document:
+            // the server compares its retained buffer, and a buffer whose
+            // synchronization authority is unknown (#1746) never supplies
+            // the save identity.
+            text_document_sync: Some(TextDocumentSyncCapability::Options(
+                TextDocumentSyncOptions {
+                    open_close: Some(true),
+                    change: Some(TextDocumentSyncKind::INCREMENTAL),
+                    will_save: Some(false),
+                    will_save_wait_until: Some(false),
+                    save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
+                        include_text: Some(false),
+                    })),
+                },
+            )),
             position_encoding: Some(position_encoding),
             diagnostic_provider: supports_pull_diagnostics.then_some(
                 DiagnosticServerCapabilities::Options(DiagnosticOptions {
@@ -75,9 +97,9 @@ pub(super) fn initialize_result_for_client(
                 resolve_provider: Some(true),
                 ..CodeActionOptions::default()
             })),
-            // Advisory codeLens: resolve is disabled; lenses are display-only
-            // text hints citing the cached related-test count. No resolve
-            // round-trip is needed (RIPR-SPEC-0099).
+            // Advisory codeLens: resolved lenses offer registered saved-workspace
+            // refresh with the cached related-test count. No resolve
+            // round-trip is needed (RIPR-SPEC-0100).
             code_lens_provider: Some(CodeLensOptions {
                 resolve_provider: Some(false),
             }),
@@ -280,6 +302,31 @@ mod tests {
                 PositionEncodingKind::UTF16
             );
         }
+    }
+
+    #[test]
+    fn initialize_result_advertises_incremental_saved_workspace_sync() -> Result<(), String> {
+        let Some(TextDocumentSyncCapability::Options(options)) =
+            initialize_result().capabilities.text_document_sync
+        else {
+            return Err("expected explicit textDocumentSync options".to_string());
+        };
+        if options.open_close != Some(true)
+            || options.change != Some(TextDocumentSyncKind::INCREMENTAL)
+            || options.will_save != Some(false)
+            || options.will_save_wait_until != Some(false)
+        {
+            return Err(
+                "textDocumentSync options drifted from the saved-workspace contract".into(),
+            );
+        }
+        let Some(TextDocumentSyncSaveOptions::SaveOptions(save)) = options.save else {
+            return Err("expected explicit save options".to_string());
+        };
+        if save.include_text != Some(false) {
+            return Err("didSave text must remain optional for saved-workspace authority".into());
+        }
+        Ok(())
     }
 
     #[test]

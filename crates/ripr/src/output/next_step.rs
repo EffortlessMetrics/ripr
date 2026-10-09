@@ -131,6 +131,7 @@ mod tests {
                 "typescript_oracle_confidence: high".to_string(),
                 "typescript_oracle_evidence_ref: tests/discount.test.ts:3".to_string(),
                 "missing_discriminator: amount == threshold".to_string(),
+                "typescript_boundary_parameters: parameter=amount;index=0;operand=threshold;operand_index=1".to_string(),
             ],
             missing: Vec::new(),
             flow_sinks: Vec::new(),
@@ -145,6 +146,7 @@ mod tests {
                 }],
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "applyDiscount applies discount when amount meets threshold".to_string(),
                 file: PathBuf::from("tests/discount.test.ts"),
@@ -154,6 +156,7 @@ mod tests {
                 oracle: Some("expect(result).toBeGreaterThan(50)".to_string()),
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: Some(
                 "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.".to_string(),
@@ -196,6 +199,8 @@ mod tests {
             language_runs: Vec::new(),
             no_scope_provided: false,
             unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
+            unlinked_python_tests: None,
             suppression: None,
             analysis_outcome: None,
             partial_scope: None,
@@ -264,7 +269,12 @@ mod tests {
         let no_suppressions: Vec<SuppressionEntry> = Vec::new();
 
         // Human surface
-        let human = human_render_with_config(&output, &config);
+        // The human renderer wraps long Next step lines (#4323); compare on
+        // collapsed whitespace so a wrap cannot hide or fake a phrase.
+        let human = human_render_with_config(&output, &config)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(
             human.contains("the repair packet is complete and delegatable (advisory)"),
             "human surface must contain reconciled next-step.\nExpected: {expected}\nHuman output: {human}"
@@ -275,7 +285,7 @@ mod tests {
         );
 
         // JSON surface
-        let json_out = json_render_with_config(&output, &config);
+        let json_out = json_render_with_config(&output, &config, None);
         assert!(
             json_out.contains("the repair packet is complete and delegatable (advisory)"),
             "JSON surface must contain reconciled next-step.\nExpected: {expected}\nJSON output: {json_out}"
@@ -358,14 +368,19 @@ mod tests {
         let no_suppressions: Vec<SuppressionEntry> = Vec::new();
 
         // Human surface
-        let human = human_render_with_config(&output, &config);
+        // The human renderer wraps long Next step lines (#4323); compare on
+        // collapsed whitespace so a wrap cannot hide or fake a phrase.
+        let human = human_render_with_config(&output, &config)
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         assert!(
             human.contains("no actionable repair packet is emitted"),
             "human surface must preserve blocked-case disclosure for incomplete packet.\nHuman output: {human}"
         );
 
         // JSON surface
-        let json_out = json_render_with_config(&output, &config);
+        let json_out = json_render_with_config(&output, &config, None);
         assert!(
             json_out.contains("no actionable repair packet is emitted"),
             "JSON surface must preserve blocked-case disclosure for incomplete packet.\nJSON output: {json_out}"

@@ -1,443 +1,287 @@
 # Badge Policy
 
-`ripr` exposes two badges. Public README, crate, and extension-store badges
-are **user-actionable repair counters**: inbox-zero, not coverage.
-Diff-scoped artifacts preserve the legacy Finding exposure basis for PR-local
-summaries. Repo-scoped public badges use the
-`canonical_actionable_gap` basis: unresolved canonical repair items with a safe
-repair route, verification path, and receipt path. Seam-native classified repo
-seams remain an internal inventory basis, and explicit gap-decision-ledger
-targets remain the policy-backed projection bridge. This doc fixes the
-vocabulary, the counting rule, the JSON shape, and what the badge does and does
-not claim.
+`ripr` badges are **repair counters**, not coverage scores.
 
-This is the contract that `ripr check --format badge-json` and
-`--format badge-shields` will render against. It pairs with
-[RIPR-SPEC-0056](specs/RIPR-SPEC-0056-public-actionable-projection.md),
+They answer one bounded question:
+
+```text
+How many unresolved, policy-eligible static repair items are visible in this
+selected scope?
+```
+
+Two scopes use the same labels but have different subjects and audiences:
+
+- **diff scope** is a pull-request or local artifact derived from one selected
+  diff; the repository-owned producer binds that diff to a governed Git range;
+- **repo scope** is the public README/store signal derived from the repository
+  baseline.
+
+Do not publish a diff-scoped result as a repository badge. An empty PR diff
+means “nothing changed in this range,” not “the repository has no gaps.”
+
+This policy pairs with [RIPR-SPEC-0056](specs/RIPR-SPEC-0056-public-actionable-projection.md),
 [Static exposure model](STATIC_EXPOSURE_MODEL.md),
-[Output schema](OUTPUT_SCHEMA.md), and
+[Output schema](OUTPUT_SCHEMA.md),
+[Badge adoption](BADGE_ADOPTION.md), and
 [Configuration](CONFIGURATION.md).
-
-## Status
-
-This is the policy document. The badge command, the test-intent and
-suppressions config files, the diff-scoped CI artifact pipeline, the
-repo-scoped artifact path, and the trunk-only public Shields endpoint
-have all landed under Campaign 4A. The current implementation status
-of each piece is tracked in the status table at the bottom of this
-doc and in
-`.ripr/goals/active.toml` (deleted in #1701 PR 3).
-
-The public badge projection realignment has landed. This policy defines
-`canonical_actionable_gap` as the public basis, and generated endpoint snapshots
-now project unresolved actionable static repair gaps instead of seam-native
-inventory counts. Use `cargo xtask badge-basis` to audit the current endpoint
-basis before refreshing public JSON.
 
 ## What each badge means
 
-### `ripr 0`
+### `ripr`
 
-```text
-ripr found zero unsuppressed static exposure gaps under the configured policy.
-```
+A measured `ripr` badge counts unresolved static repair items under the selected
+scope and basis.
 
-Diff scope counts exposure-class findings from `ripr check`. Repo scope counts
-unresolved actionable canonical repair items eligible for public projection.
-The badge is a count-and-render policy on top of existing analyzer output.
+- In **diff scope**, it counts selected exposure-class findings in the supplied
+  change surface.
+- In **repo scope**, it counts unresolved canonical actionable gaps eligible for
+  public projection.
 
-### `ripr+ 0`
+### `ripr+`
 
-```text
-ripr found zero unsuppressed static exposure gaps and zero unsuppressed
-actionable test-efficiency findings.
-```
+A measured `ripr+` badge starts with the same `ripr` count and adds actionable
+test-efficiency repairs that have entered the same repair, verification, and
+receipt model.
 
-`ripr+` adds only actionable test-efficiency repair items that have been lifted
-into the same repair / verify / receipt model. A passing `ripr+` is strictly
-stronger than a passing `ripr`.
+`ripr+` is not measured when its test-efficiency input is missing. In that case
+the renderer emits the neutral `needs test-efficiency` state; that state must
+not be published or enforced as a real count.
 
 ## Scope: diff vs repo
 
-The same badge label renders at two different **scopes** depending on
-input. The two scopes have different audiences and different meanings,
-and conflating them produces misleading public signal.
+### Informational `ripr plus` receipts
 
-### Diff scope (`scope: diff`)
+`ripr plus --repo-exposure-summary <path>` and `--gap-ledger <path>` compose
+existing evidence; they do not produce a complete test-efficiency measurement
+or establish that the supplied evidence describes current candidate bytes.
+An exposure-only zero must not become a full RIPR+ zero qualification.
 
-The badge counts findings within the diff under analysis — typically
-`origin/main...HEAD` for a PR. This is what `ripr check` produces by
-default and what `cargo xtask badge-artifacts` writes for PR step
-summaries.
+These legacy receipt inputs therefore retain observed counters as
+`known_actionable_unresolved` and `counts`, while the complete `unresolved`
+total and qualified `head` are null, `status` is `indeterminate`, and
+`zero_unresolved_established` is false. `observed_repository_head` is only the
+HEAD observed during composition, not a binding of the input artifact to it.
+`incomplete_evidence` and warnings name the missing quality, identity and
+blocked-scope evidence. Static limitations and unsupported scope are not
+silently counted as resolved, nor are raw seams relabeled as actionable debt.
 
-- **Audience**: PR reviewers, CI step summary, PR artifact uploads.
-- **Meaning**: "this PR's changed behavior has N unresolved
-  findings under policy."
-- **Not** a meaningful README / marketplace / store badge. On `main`
-  itself the diff vs `origin/main` is empty, so a diff-scoped pure
-  `ripr` badge always reports `0`. That is "nothing changed," not
-  "the repo is clean."
+Plain composition may exit 0 after writing this informational receipt;
+`--check` exits nonzero when zero is not established. Unreadable or malformed
+input also fails while retaining an indeterminate receipt. The compatibility
+`cargo xtask ripr-plus` path uses the same qualification boundary. Neither
+route should be enabled as an organization-wide zero policy from these inputs.
+A portable measured and candidate-bound producer is separate work; do not
+invent a supported command or reinterpret an incomplete result as pass.
 
-### Repo scope (`scope: repo`)
+The badge surfaces retain their own advisory scope contract. In particular,
+missing test-efficiency evidence renders `needs test-efficiency`, not a
+measured zero. A badge count alone does not authorize merge or publication.
 
-The badge counts unresolved actionable static repair gaps across the entire
-repo baseline using `canonical_actionable_gap` as its public basis. This is the
-only scope that should be published as a public README, crate page, or
-extension store badge.
+| Scope | Primary producers | Subject | Basis | Use |
+| --- | --- | --- | --- | --- |
+| `diff` | `ripr check --format badge-*`; `cargo xtask badge-artifacts` | A selected diff; the repository wrapper uses one resolved base-to-head range | `finding_exposure` | PR summary and retained CI artifacts |
+| `repo` | `ripr check --format repo-badge-*`; `cargo xtask repo-badge-artifacts` | Full repository baseline | `canonical_actionable_gap` or explicit `gap_decision_ledger` | README, crate, marketplace, or store endpoint |
 
-- **Audience**: anyone reading the repo cold from outside.
-- **Meaning**: "the current repo baseline has N unresolved actionable static
-  repair gaps under policy."
-- Public repo scope uses `canonical_actionable_gap` as its basis. A counted
-  item has a canonical gap identity, unresolved state, actionable repair route,
-  safe verification command, receipt path, no suppression or intentional
-  disposition, and eligibility for public projection.
-- Seam-native counts remain available as internal inventory in badge-basis,
-  repo-exposure, seam-inventory, and evidence-quality reports. They should not
-  be published as the README / crate / store headline unless the badge is
-  explicitly labeled as seam inventory.
-- The CLI surface is `--format repo-badge-json`,
-  `--format repo-badge-shields`, `--format repo-badge-plus-json`,
-  and `--format repo-badge-plus-shields`; the xtask wrapper is
-  `cargo xtask repo-badge-artifacts`.
+### The repository diff producer uses one governed Git subject
 
-Committed `badges/*.json` files are generated endpoint snapshots, not
-hand-authored copy. Ordinary PRs should not carry badge endpoint diffs; use
-`cargo xtask badges` or the Badge Endpoints workflow and let the generated
-`badge: refresh public endpoints` PR carry the endpoint update.
-`cargo xtask check-badge-diff-policy` enforces that ownership boundary while
-leaving README badge link/layout edits to normal docs review.
+`cargo xtask badge-artifacts` does not hardcode `origin/main` and does not
+assemble an ambient `git diff` command.
 
-### `ripr+` fact source vs aggregation scope
+It uses the same authorities as RIPR analysis:
 
-`cargo xtask test-efficiency-report` is repo-wide as a **fact source**:
-it scans the entire test suite and records per-test evidence
-(`reached_owners`, oracle kind/strength, observed values, declared
-intent). Badge **aggregation** is scope-aware:
+```text
+RIPR-SPEC-0084 default-base resolution
++ ripr::analysis::load_diff_range
+= one resolved base commit, exact HEAD, and pinned diff byte stream
+```
 
-- **Diff-scoped `ripr+`** (`--format badge-plus-json`,
-  `--format badge-plus-shields`) filters the test-efficiency ledger to
-  entries *related to* the changed owners / findings in the analyzed
-  diff. A test-efficiency entry is related when **either**:
-  - the entry's bare or `<path>::<name>` form appears in any diff
-    `Finding.related_tests`, or
-  - the entry's `reached_owners` intersect the changed/probed owners
-    drawn from `Finding.probe.owner`.
+The pinned presentation currently includes:
 
-  Unrelated repo-wide debt (e.g. a `likely_vacuous` test in a module
-  this PR doesn't touch) does **not** move the diff `ripr+` headline.
-  Suppressions and declared intent still apply to the filtered set:
-  declared intent moves a related entry into
-  `intentional_test_efficiency_findings` (out of the headline);
-  matched suppressions move a related actionable entry from
-  `unsuppressed_test_efficiency_findings` to
-  `suppressed_test_efficiency_findings`.
+```text
+-c core.quotePath=true
+--no-ext-diff
+--no-textconv
+--no-color
+--unified=0
+--inter-hunk-context=0
+--submodule=short
+```
 
-- **Repo-scoped `ripr+`** (`--format repo-badge-plus-json`,
-  `--format repo-badge-plus-shields`) counts test-efficiency items only when
-  they are projected into the same actionable repair model as canonical gaps.
-  Raw repo-wide test-efficiency inventory belongs in detailed reports.
+The producer retains:
 
-The split keeps PR badges scoped to the tests that act on the changed
-code while README / store badges remain repo-baseline signals. Native
-badge JSON carries `basis` so consumers can distinguish
-`finding_exposure` diff artifacts, `canonical_actionable_gap` public repo
-artifacts, `seam_native` internal inventory artifacts, and
-`gap_decision_ledger` explicit projection artifacts.
+```text
+resolved base ref and commit
+HEAD commit and tree
+diff byte count and SHA-256
+presentation authority and argv contract
+generator binary identity when available
+badge output identities
+```
+
+The retained files are:
+
+```text
+target/ripr/badge-input.diff
+target/ripr/reports/badge-artifacts-identity.json
+```
+
+Base-resolution and Git failures are named failures. They must not be converted
+into a clean-looking zero badge.
+
+For ordinary CLI use, omit `--base` to use the shared default-base authority or
+supply the repository’s real base explicitly:
+
+```bash
+ripr check --format badge-json
+ripr check --base <base-ref> --format badge-json
+```
+
+Direct CLI use may instead select an explicit `--diff` or immutable candidate
+tree. Those inputs remain diff-scoped, but they do not acquire the
+`badge-artifacts` base/head identity receipt merely by selecting a badge format;
+the caller must preserve the explicit subject and its provenance.
+
+`origin/main` is one possible repository ref, not the badge contract.
+
+### Repo scope does not use a diff
+
+Repo badge formats analyze the repository baseline. They do not consult a
+base-to-head range and must not inherit PR-local emptiness.
+
+Only repo-scoped native artifacts may feed public endpoints:
+
+```text
+target/ripr/reports/repo-ripr-badge.json
+target/ripr/reports/repo-ripr-plus-badge.json
+```
+
+The public Shields projections are:
+
+```text
+badges/ripr.json
+badges/ripr-plus.json
+```
 
 ## Basis vocabulary
 
-Badge-producing surfaces must name the basis they used. The basis tells
-readers whether a count is a repair queue, a PR-local exposure artifact, an
-internal inventory, or a policy-backed projection.
+Every native badge names the basis used to compute its count.
 
-| Basis | Primary scope | Public README / store headline? | Meaning |
+| Basis | Scope | Public headline? | Meaning |
 | --- | --- | :---: | --- |
-| `canonical_actionable_gap` | repo | yes | Unresolved canonical repair items with a repair route, verify command, receipt path, and public projection eligibility. |
-| `finding_exposure` | diff | no | Legacy PR-local Finding / ExposureClass aggregation from `ripr check`. |
-| `seam_native` | repo inventory | no | Repo seam inventory and static limitation pressure by `SeamGripClass`; useful internally, too broad for the public repair counter. |
-| `gap_decision_ledger` | repo projection | legacy bridge | Explicit GapRecord projection targets supplied by policy or release tooling. Use when the ledger is the source of projection authority. |
+| `canonical_actionable_gap` | repo | yes | Unresolved canonical repair items with an actionable route, safe verification command, receipt path, and public-projection eligibility. |
+| `finding_exposure` | diff | no | PR-local `Finding` / `ExposureClass` aggregation from the selected change surface. |
+| `seam_native` | repo inventory | no | Internal seam inventory and static-limitation pressure. It is broader than the public repair queue. |
+| `gap_decision_ledger` | repo projection | explicit bridge | Policy-selected `GapRecord` projection targets supplied by release or repository tooling. |
 
-README and store badges must count user-actionable canonical repair items. If a
-badge intentionally reports seam-native inventory, its label and docs must say
-that plainly and it must not reuse the main `ripr` / `ripr+` headline.
+A seam inventory must not reuse the public `ripr` / `ripr+` headline unless the
+surface is explicitly relabeled as inventory.
 
-#### What repo seam-native inventory means — and does not mean
+## Counting rules
 
-The repo seam-native inventory counts classified behavior seams from the seam
-inventory.
-At repo root, seam discovery excludes repository automation and fixture data
-(`xtask/` and top-level `fixtures/`) so inventory reports represent the
-published `ripr` package surface instead of the repository harness. An
-individual fixture workspace is still analyzable when passed as `--root`.
+### Diff-scoped `ripr`
 
-Badge classification uses a compact, ranked related-test sample per seam.
-That keeps public endpoint refreshes operable while preserving the same
-`SeamGripClass` headline mapping as the detailed repo exposure report.
-It is **not**:
-
-- a complete inventory of every behavior seam in the repo
-- confirmation that every behavior is tested
-- confirmation of mutation adequacy
-- a coverage metric
-
-Public README / store badges that derive from
-`cargo xtask badge-artifacts` are unsafe — that task generates
-diff-scoped artifacts only.
-
-### What neither badge proves
-
-A green badge does **not** mean:
-
-- the code is fully tested
-- mutants would fail under the test suite
-- there are no behavioral bugs
-- coverage is high
-
-A green badge means: under the static evidence `ripr` could gather, no
-unresolved gaps or actionable test-efficiency findings remain after applying
-the configured suppressions and test-intent declarations. Mutation testing
-remains the runtime confirmation step. See the closing wording in the
-[product contract](../AGENTS.md#product-contract) and
-[`STATIC_EXPOSURE_MODEL.md`](STATIC_EXPOSURE_MODEL.md).
-
-## Why no denominator
-
-The badge does **not** show `0/2300`.
-
-A denominator reads as a coverage fraction ("2300 things to cover, 0 covered"),
-which is exactly the wrong mental model. `ripr` is not measuring coverage; it
-is measuring whether changed behavior appears exposed to a meaningful oracle.
-
-The badge is an **inbox-zero** counter: zero unresolved gaps is the
-target, like inbox zero. Scope, unknowns, suppressed findings, intentional
-findings, and total analyzed counts all live in the detailed JSON and
-markdown reports — not in the badge message.
-
-Avoid:
+The headline counts unsuppressed findings whose `exposure_class` is one of:
 
 ```text
-ripr 0/2300        # reads as incomplete coverage
-ripr coverage 0    # ripr is not a coverage tool
-ripr uncovered 0   # same problem
+weakly_exposed
+reachable_unrevealed
+no_static_path
 ```
 
-Prefer:
+These remain separate from unknown classifications:
 
 ```text
-ripr 0
-ripr+ 0
+infection_unknown
+propagation_unknown
+static_unknown
 ```
 
-Or, if disambiguation is needed in dense badge bars:
+Unknowns describe where static analysis stopped. They remain visible in native
+artifacts but do not enter the default headline.
+
+### Repo-scoped public `ripr`
+
+A canonical item counts only when all of these are true:
 
 ```text
-ripr gaps 0
-ripr+ issues 0
+gap_state = unresolved
+actionability = actionable
+repair route exists
+safe verification command exists
+receipt path exists
+not suppressed
+not intentional
+eligible for public projection
 ```
 
-## Exposure-class counting
+A limited, stale, unknown, missing, malformed, or wrong-subject source must not
+resolve toward the cleaner-looking zero state.
 
-These come from `ExposureClass` in
-[`crates/ripr/src/domain/`](../crates/ripr/src/domain/) and from the
-classification table in
-[`STATIC_EXPOSURE_MODEL.md`](STATIC_EXPOSURE_MODEL.md#exposure-classes).
+### `ripr+`
 
-Exposure-class counting is the `finding_exposure` basis used by diff-scoped
-badge artifacts. It remains documented and versioned for PR summaries and
-legacy consumers.
+`ripr+` adds supported test-efficiency entries whose class is:
 
-| Exposure class | Counts in `ripr` | Counts in `ripr+` | Notes |
-| --- | :---: | :---: | --- |
-| `weakly_exposed` | yes | yes | Default exposure gap. |
-| `reachable_unrevealed` | yes | yes | Default exposure gap. |
-| `no_static_path` | yes | yes | Default exposure gap. |
-| `exposed` | no | no | Already exposed; not a gap. |
-| `infection_unknown` | no | no | Reported separately as `unknowns`. |
-| `propagation_unknown` | no | no | Reported separately as `unknowns`. |
-| `static_unknown` | no | no | Reported separately as `unknowns`. |
+```text
+likely_vacuous
+possibly_circular
+smoke_only
+duplicative
+```
 
-Unknowns are first-class in `ripr`. They mean static analysis stopped, not
-that a gap exists. They are visible in the badge JSON's `counts.unknowns`,
-and visible in the human and JSON reports with their stop reasons. They do
-not move the badge number unless a future policy explicitly opts in via
-`--include-unknowns`.
+Declared intent and matching suppressions keep the original analyzer class
+visible while removing the item from the actionable headline.
+
+Diff-scoped `ripr+` includes only entries related to the changed owners or tests.
+Repo-scoped `ripr+` includes only entries projected into the same actionable
+repair model as the repo `ripr` count.
 
 ## Test-efficiency vocabulary (locked)
 
-The badge counts use the exact strings emitted by
-`cargo xtask test-efficiency-report`. The source of truth is
-[`xtask/src/main.rs`](../xtask/src/main.rs) — function `test_efficiency_class`
-for the class string and `test_efficiency_reasons` for the reason strings. If
-you add a new class or reason there, update this table.
+The recognized class and reason strings are a wire contract. Update this section
+when the producer changes them.
 
-### Per-test class field (exactly seven values)
+### Class values
 
-| `class` value | Counts in `ripr+` | Triggered when |
+| `class` | Counts in measured `ripr+`? | Meaning |
 | --- | :---: | --- |
-| `strong_discriminator` | no | Strong oracle and no other condition demoted the test. |
-| `useful_but_broad` | no | Medium- or weak-strength oracle that still asserts something. Visible in reports. |
-| `smoke_only` | yes (unless declared intent) | Smoke-strength oracle (e.g. `is_ok`, `is_err`, `unwrap`). |
-| `likely_vacuous` | yes | A reason includes `no_assertion_detected`. |
-| `possibly_circular` | yes (unless declared intent) | A reason includes `expected_value_computed_from_detected_owner_path`. |
-| `duplicative` | yes (unless declared intent) | Test belongs to a duplicate-discriminator group: same owner set, role-aware activation signature, and oracle shape. Only `strong_discriminator`, `useful_but_broad`, and `smoke_only` entries are eligible to be promoted to `duplicative`; already-flagged classes are preserved. |
-| `opaque` | no | No reached owners detected. Visible only; static analysis cannot judge. |
+| `strong_discriminator` | no | Strong check with no demoting condition. |
+| `useful_but_broad` | no by default | A meaningful but broad check. |
+| `smoke_only` | yes, unless intentional or suppressed | Smoke-strength check such as startup, `is_ok`, `unwrap`, or `expect`. |
+| `likely_vacuous` | yes, unless intentional or suppressed | No detected assertion. |
+| `possibly_circular` | yes, unless intentional or suppressed | Expected value is computed through the detected owner path. |
+| `duplicative` | yes, unless intentional or suppressed | Duplicate owner, activation, and oracle shape within the supported grouping contract. |
+| `opaque` | no | Static analysis could not resolve the reached owner. |
 
-### Reason strings (exactly nine values)
+### Reason strings
 
-These are not counted directly. They explain why a class fired and feed
-suggested next steps. The table below documents them so the badge JSON's
-`reason_counts` can be interpreted without reading source.
-
-| Reason string | What it indicates |
+| Reason | Meaning |
 | --- | --- |
-| `no_assertion_detected` | The test body has no detected assertion. Demotes class to `likely_vacuous`. |
-| `smoke_oracle_only` | Oracle class is `Smoke` (e.g. `is_ok`, `unwrap`, `expect`). |
-| `relational_oracle` | Medium-strength relational assertion (`assert!(x > 0)`, `is_empty`, etc.). |
-| `broad_oracle` | Weak-strength oracle that asserts something but not exact behavior. |
-| `assertion_may_not_match_detected_owner` | Weak-oracle test where the assertion target may not be the changed owner. |
-| `opaque_helper_or_fixture_boundary` | No owner call was statically resolved; demotes class to `opaque`. |
-| `no_activation_literal_detected` | No literal activation values found in the test body. |
-| `expected_value_computed_from_detected_owner_path` | The expected side of an `assert_eq!` calls back into the detected owner; demotes class to `possibly_circular`. |
-| `duplicate_activation_and_oracle_shape` | The test shares an owner set, role-aware activation signature, and oracle shape with at least one other test; appended to existing reasons (e.g. `smoke_oracle_only`) and promotes the class to `duplicative`. |
+| `no_assertion_detected` | No detected assertion; supports `likely_vacuous`. |
+| `smoke_oracle_only` | Only a smoke-strength oracle was found. |
+| `relational_oracle` | A relational assertion was found. |
+| `broad_oracle` | A broad, non-exact assertion was found. |
+| `assertion_may_not_match_detected_owner` | The assertion may observe something other than the detected owner. |
+| `opaque_helper_or_fixture_boundary` | Helper or fixture structure prevented owner resolution. |
+| `no_activation_literal_detected` | No supported activation literal was found. |
+| `expected_value_computed_from_detected_owner_path` | The expected side reuses the detected owner path. |
+| `duplicate_activation_and_oracle_shape` | Another test shares the supported owner, activation, and oracle signature. |
 
-### Visible-but-not-counted by default
+### Intent and suppressions
 
-- `opaque` — static analysis stopped. Counts in `unknowns_test_efficiency`,
-  not in the `ripr+` headline. Intentionally distinct from "vacuous."
-- `useful_but_broad` — broad oracle. Visible in reports as advisory. Becomes
-  countable only when test-efficiency policy explicitly elevates it for the
-  changed behavior, which is a future policy switch, not a v1 default.
+Declared intent is additive metadata, not a replacement class. A declared smoke
+test remains `smoke_only`; the declaration explains why it is intentional and
+removes it from the actionable count.
 
-### Test intent is additive metadata, not a class
-
-Declared test intent (e.g. `intent = "smoke"` in `.ripr/test_intent.toml`)
-is **not** rendered as a replacement `class` value. The original
-`class` (`smoke_only`, `duplicative`, `useful_but_broad`, etc.) is
-preserved so the report still tells reviewers what the static analyzer
-saw. Intent is a layered, owner-and-reason-stamped declaration on top of
-the signal:
-
-```json
-{
-  "name": "cli_prints_help",
-  "class": "smoke_only",
-  "declared_intent": {
-    "intent": "smoke",
-    "owner": "devtools",
-    "reason": "CLI startup and help text smoke test.",
-    "source": ".ripr/test_intent.toml"
-  }
-}
-```
-
-`ripr+` consumes the `declared_intent` metadata to exclude declared
-intentional findings from its count. There is no `intentional_smoke` or
-`intentional_duplicate` *class* string — those would conflate the
-analyzer's signal with the user's declaration.
-
-The metric label `duplicate_discriminator_group_count` (delivered in
-`test-efficiency/report-and-metrics`) is a count-of-groups label, not a
-class. Today the equivalent value is `duplicate_groups.length` in the
-test-efficiency JSON.
-
-## Seam-native repo inventory counting
-
-Seam-native repo inventory uses the `seam_native` basis. These counts come
-from `SeamGripClass` in RIPR-SPEC-0005 and consume the configured seam severity
-from `ripr.toml`. They are useful for internal evidence-quality pressure,
-static limitation pressure, and analyzer health. They are not the public repair
-counter.
-
-When `ripr check --format repo-badge-json --gap-ledger <path>` or another
-repo-badge format supplies a gap decision ledger, the native JSON uses
-`basis = "gap_decision_ledger"` and counts explicit
-`projection_eligibility.ripr_zero_count` or `ripr_plus_count` targets instead
-of recalculating from seam-native counts. That path is for policy-backed badge
-refreshes and remains a bridge until public endpoints are generated directly
-from `canonical_actionable_gap`.
-
-| Seam grip class | Counts in repo `ripr` | Notes |
-| --- | :---: | --- |
-| `weakly_gripped` | yes, unless configured `off` | Headline-eligible seam gap. |
-| `ungripped` | yes, unless configured `off` | Headline-eligible seam gap. |
-| `reachable_unrevealed` | yes, unless configured `off` | Headline-eligible seam gap. |
-| `activation_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
-| `propagation_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
-| `observation_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
-| `discrimination_unknown` | yes, unless configured `off` | Headline-eligible static limitation. |
-| `opaque` | no | Reported separately as `unknowns` when configured visible. |
-| `strongly_gripped` | no | Default severity is `off`. |
-| `intentional` | no | Default severity is `off`. |
-| `suppressed` | no | Default severity is `off`; if configured visible, counted in `suppressed_exposure_gaps`. |
-
-`severity.seams.<class> = "off"` omits that class from the badge headline and
-visible count buckets. Other severities keep the class visible to the badge
-mapping but do not change the badge color thresholds.
-
-## Counting rule
-
-Diff-scoped `ripr` count:
-
-```text
-ripr count =
-    findings where exposure_class ∈ { weakly_exposed,
-                                      reachable_unrevealed,
-                                      no_static_path }
-    minus suppressed exposure-gap findings
-```
-
-Repo-scoped public `ripr` count:
-
-```text
-ripr count =
-    canonical items where gap_state = unresolved
-    and actionability = actionable
-    and a repair route exists
-    and a safe verify command exists
-    and a receipt path exists
-    and not suppressed
-    and not intentional
-    and eligible for public projection
-```
-
-`ripr+` adds test-efficiency findings to whichever `ripr` repair basis was
-selected by scope:
-
-```text
-ripr+ count =
-    ripr count
-  + tests where class ∈ { likely_vacuous,
-                          possibly_circular,
-                          smoke_only }
-    and not declared intentional in .ripr/test_intent.toml
-    and not suppressed in .ripr/suppressions.toml
-  + tests in `duplicative` groups
-    not declared intentional and not suppressed
-```
-
-Diff-scoped `ripr+` uses the diff's related-test filter. Repo-scoped `ripr+`
-adds only test-efficiency items lifted into the actionable repair model. The
-badge is a rendering policy over analyzer reports, not a separate analysis.
-
-Internal seam-native inventory count:
-
-```text
-seam inventory count =
-    seams where seam_grip_class is headline eligible
-    and configured seam severity != off
-```
-
-This count may appear in detailed reports, scorecards, and badge-basis audits.
-It must not drive the public `ripr` / `ripr+` headline unless that endpoint is
-explicitly relabeled as seam inventory.
+Durable exceptions belong in `.ripr/suppressions.toml` with an owner and reason.
+Expired or malformed suppressions must not silently hide debt.
 
 ## JSON wire shape
 
-There is **one** native schema. The Shields response is a projection at the
-output boundary; it is never the source of truth.
+Native badge JSON uses schema version `0.8`. It is the audit artifact and source
+of truth. The Shields response is a four-field projection.
 
-### Native (`--format badge-json`)
+A representative native repo badge contains the full count, reason, policy, and
+public-projection fields:
 
 ```json
 {
@@ -496,471 +340,278 @@ output boundary; it is never the source of truth.
 }
 ```
 
-`kind` is `"ripr"` or `"ripr_plus"`. The `_plus` form adds
-`unsuppressed_test_efficiency_findings` to its `message`; the schema is
-otherwise identical so consumers can parse one shape.
+`kind` is `ripr` or `ripr_plus`. Diff-scoped badges use the same native schema,
+carry their typed analysis outcome and completeness state, and omit the
+repo-only public projection.
 
-`schema_version` is the badge-native schema. Bumping it is a public-contract
-change and must be called out in the PR. `0.3` adds `basis` and
-`counts.analyzed_seams`; `0.4` adds `basis = "gap_decision_ledger"` and
-`counts.analyzed_gap_records`; `0.5` adds
-`basis = "canonical_actionable_gap"` for public repair-item projection;
-`0.6` adds `preview_skipped` so consumers can detect when a
-preview-language diff was not analyzed and the badge is not a clean
-Rust-grade result (see Preview-language honesty below); `0.7` adds the
-`public_projection` object on repo-scoped public badges (see Public badge
-projection below); `0.8` adds nullable `analysis_complete` and typed
-`analysis_outcome` fields for diff-scoped badges, downgrading incomplete
-zero-finding input from pass/green to warn/yellow.
+The closed public-projection states are:
 
-### Public badge projection (RIPR-SPEC-0066)
-
-Repo-scoped public badges (`canonical_actionable_gap` or
-`gap_decision_ledger` basis) carry a `public_projection` object that renders
-the badge into one closed user-facing state and supplies the machine-readable
-sidecar fields. Diff-scoped and internal badges omit it. The closed states
-are `zero_actionable`, `actionable`, `limited`, `stale`, and `unknown`,
-selected with fail-closed precedence (`unknown > stale > limited > count`): a
-degraded input — raw-finding basis, diff scope, missing or unreadable source
-report, missing `generated_at`, a `limited_*` run, or an over-age artifact —
-never resolves toward the cleaner-looking state, and a count is never carried
-alongside a degraded state. The native `message` / `status` / `color` are
-projected from this object, so the public Shields message reads as
-`ripr: <n> actionable`, `ripr: limited`, `ripr: stale`, or `ripr: unknown`.
-The sidecar fields (`run_status`, `generated_at`, `actionable_count`,
-`limited_reason`, `stale_age_secs`, `source_report`) are documented in
-[docs/OUTPUT_SCHEMA.md](OUTPUT_SCHEMA.md).
-
-### Preview-language honesty
-
-`preview_skipped` is an array of language names (e.g. `["typescript"]`) that
-were detected in the analyzed diff but whose adapter was **not enabled**.
-Non-empty means the badge result is **NOT a clean Rust-grade result** — those
-files were silently skipped. Consumers MUST treat a non-empty list as a
-honesty signal even when `status` is already `"warn"` due to real findings.
-
-When `preview_skipped` is non-empty and the headline count would otherwise be
-`0` (pass/green), the badge is downgraded to `warn`/`yellow` and `message`
-is set to `"preview-skipped: <language>"` instead of `"0"`. This prevents a
-glanceable "passing" badge on un-analyzed behavior. The Shields projection
-carries the same message so `img.shields.io` badge links are also honest.
-
-When `preview_skipped` is empty the badge behaves as before: clean Rust-only
-diffs with 0 findings render `pass`/`brightgreen`/`0`. The amber state does
-**not** fire on clean Rust — `preview_skipped` is populated only by the real
-producer in `analysis/pipeline.rs` (`detect_preview_advisories`) which sets
-`enabled: enabled.contains(language)`. It is never populated for Rust-only
-diffs.
-
-### Scope and basis metadata (native only)
-
-A `scope` field distinguishes PR artifacts from public repo badges. A `basis`
-field distinguishes legacy diff finding counts, public repair projections,
-internal seam-native inventory counts, and explicit ledger projections:
-
-```json
-{
-  "schema_version": "0.6",
-  "kind": "ripr",
-  "scope": "diff",
-  "basis": "finding_exposure",
-  "label": "ripr",
-  "message": "3",
-  "...": "..."
-}
+```text
+zero_actionable
+actionable
+limited
+stale
+unknown
 ```
 
-- `"scope": "diff"` — diff-scoped (PR artifacts). Native JSON SHOULD
-  also record `base` and `head` git refs so consumers can reproduce.
-- `"scope": "repo"` — repo-scoped (README / main endpoint).
-- `"basis": "finding_exposure"` — legacy `Finding`/`ExposureClass`
-  aggregation, currently used by diff-scoped badge artifacts.
-- `"basis": "canonical_actionable_gap"` — public repo repair-item projection.
-- `"basis": "seam_native"` — `RepoSeam`/`SeamGripClass` aggregation for
-  internal inventory and transitional repo-scoped badge artifacts.
-- `"basis": "gap_decision_ledger"` — explicit GapRecord projection targets,
-  used only when repo badge formats are invoked with `--gap-ledger`.
+Degraded-state precedence is:
 
-The Shields projection remains exactly four fields. Scope and basis metadata
-live only in native JSON, docs, and consumer tooling.
+```text
+unknown > stale > limited > count
+```
 
-### Shields projection (`--format badge-shields`)
+The projection does not carry a reassuring count beside a degraded state.
+
+### Shields projection
+
+The public endpoint contains exactly four fields:
 
 ```json
 {
   "schemaVersion": 1,
   "label": "ripr",
-  "message": "0",
+  "message": "0 actionable",
   "color": "brightgreen"
 }
 ```
 
-Shields requires `schemaVersion` (camelCase) and exactly four top-level
-fields. The projection is mechanical: drop everything except `label`,
-`message`, `color`; map `schema_version` → `schemaVersion: 1`.
+Scope, basis, counts, warnings, limitations, and retained identity stay in the
+native artifact.
 
-Both formats are derived from the same internal `BadgeSummary`. That type is
-intentionally **not public** — it lives in a private rendering module
-(`crates/ripr/src/output/badge/` when implemented) and the public API
-remains the JSON shape. This keeps `cargo xtask check-public-api` green and
-matches the existing pattern (`output::json::render` is private; the JSON
-contract is what's stable).
+## Preview-language honesty
 
-## Colors and status thresholds
+Diff-scoped native JSON carries `preview_skipped` when a preview-language file
+was detected but its adapter was not enabled.
 
-Conservative defaults. Tunable later.
+A non-empty value is not a clean Rust-grade result. When the count would
+otherwise be zero, the badge is downgraded to a warning state such as:
 
-| `count` | `status` | `color` |
-| --- | --- | --- |
-| 0 | `pass` | `brightgreen` |
-| 1–3 | `warn` | `yellow` |
-| 4+ | `warn` | `orange` |
-| any, with `--fail-on-nonzero` and count > 0 | `fail` | `red` |
+```text
+preview-skipped: typescript
+```
 
-`status` is independent of CI exit code. CI exit is governed by
-`--fail-on-nonzero`; the badge always renders. A `warn` status on `main`
-should never block a release on its own.
+A missing preview adapter, absent packet, or limited downstream route must not
+be interpreted as evidence that the change is safe.
 
-These thresholds will trip noisily on small diffs that legitimately have 4
-weak findings. A diff-relative threshold (e.g. yellow at any nonzero,
-orange when ratio of unresolved-to-analyzed exceeds a bound) is on the table
-for v2 once we have real-world numbers from CI artifacts (PR
-`ci/badge-artifacts`). For v1, absolute is simpler to reason about.
+Enabled preview-language findings (`language_status = "preview"`) stay visible
+in check JSON and human output. They do not increment the diff badge's
+calibrated exposure-gap count (`unsuppressed_exposure_gaps`) or the RIPR 0
+message. Native `counts.unknowns` still counts candidate-actionable static
+unknown Finding classes, including enabled preview evidence; only the unknowns
+headline contribution (`include_unknowns`) omits them. The badge authority is
+that status field, not a language-name table in the renderer. A candidate-current
+Rust gap still counts.
+
+## Colors and status
+
+The ordinary count thresholds are:
+
+| Count | Status | Color |
+| ---: | --- | --- |
+| `0` | `pass` | `brightgreen` |
+| `1–3` | `warn` | `yellow` |
+| `4+` | `warn` | `orange` |
+| nonzero with `--fail-on-nonzero` | `fail` | `red` |
+
+Limited, stale, unknown, preview-skipped, or missing-input states override these
+count thresholds. Badge status and CI exit policy remain separate decisions.
 
 ## CLI shape
 
-The badge is a render-time policy over `CheckOutput`. Reuse `ripr check`
-rather than introducing a new top-level command:
+Badges are renderings of `ripr check`, not a separate analyzer.
+
+### Diff artifacts
 
 ```bash
-ripr check --base origin/main --format badge-json
-ripr check --base origin/main --format badge-shields
+ripr check --format badge-json
+ripr check --format badge-shields
 
-ripr check --base origin/main --format badge-plus-json
-ripr check --base origin/main --format badge-plus-shields
+ripr check --base <base-ref> --format badge-plus-json
+ripr check --base <base-ref> --format badge-plus-shields
 ```
 
-The `badge-plus-*` formats read `target/ripr/reports/test-efficiency.json`
-(relative to `--root`). If the report is missing, the command renders a neutral
-`ripr+` badge with `message = "needs test-efficiency"`, warns on stderr, and
-exits successfully so badge generators do not publish a permanent
-`unavailable` state. CI artifact wiring (`ci/badge-artifacts`) should generate
-the report as part of the badge pipeline before publishing or enforcing a
-measured `ripr+` value.
+### Repo artifacts
 
-Reasoning. The current top-level commands are `check`, `explain`, `context`,
-`doctor`, `lsp`. Each is a distinct *operation*. A badge is the same
-operation as `check` rendered differently. Keeping it as a `--format` choice:
+```bash
+ripr check --root . --mode ready --format repo-badge-json
+ripr check --root . --mode ready --format repo-badge-shields
 
-- avoids growing the public CLI surface and the LSP/extension command tables
-- means `--root`, `--base`, `--diff`, `--mode`,
-  `--no-unchanged-tests` already work without re-implementation
-- matches how `--json` and `--format github` already behave
-
-If a dedicated `ripr badge` ergonomic alias is added later, this doc must be
-updated to call it out as a deliberate choice.
-
-### Useful flags (planned)
-
-These belong on `ripr check` once the badge formats land. They are scoped to
-the badge formats — they do not affect human/json/github output.
-
-| Flag | Default | Effect |
-| --- | --- | --- |
-| `--include-unknowns` | off | Add unknowns to the badge count. |
-| `--fail-on-nonzero` | off | Exit nonzero when count > 0. CI-only knob. |
-| `--test-intent PATH` | `.ripr/test_intent.toml` | Override the test-intent file. |
-| `--suppressions PATH` | `.ripr/suppressions.toml` | Override the suppressions file. |
-| `--show-suppressed` | off | Include suppressed findings in the human badge summary. |
-
-There are intentionally **no** inline allow/suppress CLI flags. Durable
-exceptions belong in files with `reason` and `owner`, not in shell history.
-
-## Test intent and suppressions
-
-Two files, two purposes. Both are planned for Campaign 4A.
-
-### `.ripr/test_intent.toml` — positive declarations
-
-Use when a test is intentionally smoke, intentionally duplicates a structurally
-similar test for a separate business case, or uses an opaque oracle by design.
-Declared tests stay visible in the report but do not move the `ripr+` count.
-
-```toml
-[[test_intent]]
-test = "cli_prints_help"
-intent = "smoke"
-reason = "CLI startup and help text smoke test."
-owner = "devtools"
+ripr check --root . --mode ready --format repo-badge-plus-json
+ripr check --root . --mode ready --format repo-badge-plus-shields
 ```
 
-Supported intents (initial set): `smoke`, `business_case_duplicate`,
-`opaque_external_oracle`, `integration_contract`, `performance_guard`,
-`documentation_example`. Adding a new intent is a doc + schema PR, not an
-ad-hoc string.
+When a gap decision ledger is the explicit projection authority, pass it rather
+than recalculating from another basis:
 
-### `.ripr/suppressions.toml` — exceptions for non-intent cases
-
-Use for known exposure gaps covered by oracles `ripr` cannot see today, or
-for accepted-risk cases pending later work.
-
-```toml
-[[suppressions]]
-kind = "exposure_gap"
-finding_id = "probe:src/pricing.rs:88:predicate"
-reason = "Covered by integration test in tests/billing/integration.rs that ripr cannot statically inspect yet."
-owner = "billing"
-expires = "2026-09-01"
+```bash
+ripr check \
+  --root . \
+  --mode ready \
+  --format repo-badge-json \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json
 ```
 
-Rules (enforced when the loader lands):
+The `*-plus-*` formats require
+`target/ripr/reports/test-efficiency.json`. See
+[Badge adoption](BADGE_ADOPTION.md) for the downstream portability boundary.
 
-- `reason` required, free-form but durable
-- `owner` required
-- `expires` strongly encouraged; expired entries surface as a separate count
-- suppressed findings remain visible in the report
-- the badge `counts.suppressed_*` fields show the count
+### Repository wrappers
 
-`test_intent` ships before `suppressions` so smoke and duplicate tests don't
-have to be "suppressed" merely for being intentional.
-
-## CI policy
-
-Advisory by default. PR runs and `main` runs render different surfaces.
-
-### PR runs — diff-scoped
-
-`cargo xtask badge-artifacts` invokes `ripr check` with the per-PR diff
-(`git diff origin/main...HEAD`) and writes diff-scoped artifacts:
+This repository provides wrappers for its own CI and endpoint maintenance:
 
 ```bash
 cargo xtask badge-artifacts
-# writes target/ripr/reports/ripr-badge.json (scope: diff, planned)
-# writes target/ripr/reports/ripr-badge-shields.json
-# writes target/ripr/reports/ripr-plus-badge.json
-# writes target/ripr/reports/ripr-plus-badge-shields.json
-# writes target/ripr/reports/ripr-badges.md
+cargo xtask repo-badge-artifacts
+cargo xtask badge-basis
+cargo xtask badges
+cargo xtask badges --check
+cargo xtask check-badge-diff-policy
+cargo xtask check-badge-endpoints
 ```
 
-Used for the PR step summary and uploaded as the `ripr-pr-reports`
-artifact. CI does **not** fail on a nonzero badge count unless a
-workflow explicitly passes `--fail-on-nonzero`. **These artifacts are
-not safe to publish as README badges** — see "Scope: diff vs repo."
+`badge-artifacts` is diff-scoped. `repo-badge-artifacts` and `badges` are
+repo-scoped. Do not substitute one for the other.
 
-### `main` runs — repo-scoped
+## CI policy
 
-`cargo xtask repo-badge-artifacts` (`badge/repo-scope-artifacts`)
-analyzes the full repo baseline rather than a diff and writes repo-
-scoped artifacts:
+### Pull requests
+
+PR workflows may generate diff-scoped native and Shields artifacts for the job
+summary and artifact upload. They are advisory unless the repository separately
+adopts a gate policy.
+
+Do not link these artifacts from a README or store listing.
+
+### Public endpoints
+
+Public endpoints must be generated from current repo-scoped native artifacts.
+Ordinary product PRs should not hand-edit `badges/*.json` or carry unrelated
+endpoint refreshes.
+
+Use the generated badge refresh route and validate:
+
+```bash
+cargo xtask badges
+cargo xtask badges --check
+```
+
+For a policy-backed endpoint refresh, provide the same explicit ledger to both
+commands:
+
+```bash
+cargo xtask badges \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json
+cargo xtask badges --check \
+  --gap-ledger target/ripr/reports/gap-decision-ledger.json
+```
+
+`cargo xtask check-badge-diff-policy` enforces the endpoint ownership boundary.
+`cargo xtask check-badge-endpoints` compares committed endpoints with a fresh
+repo-scoped generation; it is an explicit freshness check rather than a default
+requirement for every product PR.
+
+A public badge refresh still does not authorize release publication or establish
+runtime mutation results.
+
+## Self-hosted dogfood endpoint
+
+The published first-party endpoint lives on the source repository’s `main`
+branch:
+
+```text
+EffortlessMetrics/ripr
+  badges/ripr.json
+  badges/ripr-plus.json
+```
+
+The public README resolves those payloads through:
+
+```text
+https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json
+https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json
+```
+
+Only those source-repository endpoint projections are public badge authority.
+Equivalent files and generation runs in `ripr-swarm` are development rehearsal
+and evidence until they move through the governed source-integration path.
+Native reports, Markdown summaries, diff-scoped artifacts, and `target/`
+snapshots remain review evidence rather than public endpoints.
+
+The checked-in files are generated Shields projections, not audit artifacts or
+hand-authored status copy.
+
+### Why checked-in JSON, not GitHub Pages
+
+The earlier Pages design required repository settings, deployment permissions,
+and additional workflow machinery while suggesting that downstream users also
+needed Pages.
+
+Checked-in JSON provides the same stable-public-URL property with less machinery
+and leaves endpoint changes visible in review. Hosting remains replaceable: a
+downstream repository may use checked-in JSON, Pages, an asset bucket, an
+organization badge host, a Gist, or a future hosted RIPR service.
+
+## What neither badge proves
+
+A green badge does not establish:
+
+- full test coverage;
+- correctness or absence of bugs;
+- that every behavior was analyzed;
+- that every mutant would fail;
+- runtime mutation adequacy;
+- merge approval; or
+- release qualification.
+
+It means only that the selected, current, non-degraded static evidence produced
+no counted actionable items under the named scope, basis, and policy.
+
+## Why there is no denominator
+
+A label such as `0/2300` reads like a coverage fraction. RIPR does not measure
+coverage completeness, so the public badge is an inbox-zero counter:
+
+```text
+ripr 0 actionable
+ripr+ 0 actionable
+```
+
+Detailed denominators, unknowns, suppressed items, intent, analyzed counts, and
+limitations belong in the native artifact and reports.
+
+## Validation
+
+For a diff-scoped change, retain and review:
+
+```bash
+cargo xtask badge-artifacts
+cargo xtask check-badge-diff-policy
+```
+
+For repo-scoped endpoint work, retain and review:
 
 ```bash
 cargo xtask repo-badge-artifacts
-# writes target/ripr/reports/repo-ripr-badge.json (scope: repo)
-# writes target/ripr/reports/repo-ripr-badge-shields.json
-# writes target/ripr/reports/repo-ripr-plus-badge.json
-# writes target/ripr/reports/repo-ripr-plus-badge-shields.json
-# writes target/ripr/reports/repo-ripr-badges.md
+cargo xtask badge-basis
+cargo xtask badges --check
+cargo xtask check-badge-endpoints
 ```
 
-When a policy-backed gap decision ledger is the desired badge source, pass it
-explicitly:
-
-```bash
-cargo xtask repo-badge-artifacts --gap-ledger target/ripr/reports/gap-decision-ledger.json
-```
-
-That renders the same repo badge artifact filenames with
-`basis = "gap_decision_ledger"` and counts only the ledger's explicit
-`projection_eligibility.ripr_zero_count` and `ripr_plus_count` targets.
-The no-ledger public implementation renders `basis = "canonical_actionable_gap"`.
-Seam-native counts remain available in internal inventory and audit reports.
-
-`cargo xtask badge-basis` writes
-`target/ripr/reports/badge-basis.{json,md}` as an audit-only report. It
-decomposes the committed `badges/*.json` endpoint values, the current
-repo badge basis, compact seam-native inventory counts, test-efficiency
-counts, and whether an explicit gap-decision-ledger projection was
-available. It does **not** update `badges/*.json`; use it before a
-badge semantics PR or generated endpoint refresh to see whether the
-public badge names unresolved actionable static repair gaps with
-`canonical_actionable_gap` as the public basis. Seam-native inventory remains
-supporting/internal diagnostics, and `ripr+` items must project into the same
-repair, verify, and receipt model before they affect the public headline.
-
-### `ripr` badge product contract
-
-The `ripr` badge product contract is a single sentence:
-
-> `ripr` emits Shields-compatible JSON.
-
-To put a `ripr` value into a README, that JSON has to be available at a
-stable public URL. Hosting the JSON is a **separate, replaceable
-layer** — `ripr` itself does not require any specific host.
-
-| Question | Answer |
-| --- | --- |
-| Who computes the value? | A normal CI job that runs `cargo xtask repo-badge-artifacts`. |
-| Who hosts the value? | Any stable public surface that can serve the resulting Shields JSON. |
-| Does a downstream user have to enable GitHub Pages? | **No.** Pages is one host; it is not a requirement of `ripr`. |
-
-Compare to existing badges in this repo's README:
-
-| Badge | Computation | Hosting |
-| --- | --- | --- |
-| CI status | GitHub Actions | GitHub |
-| Codecov | CI uploads coverage | Codecov |
-| crates.io version | `cargo publish` | crates.io / Shields |
-| Open VSX downloads | registry | Open VSX / Shields |
-| `ripr` / `ripr+` | `ripr` CI computes JSON | self-hosted (see below) |
-
-The `ripr`/`ripr+` row is the one without a third-party host. Long-term
-that gap is intended to close — see `deferred/hosted-badge-service` in
-[`docs/DEFERRED.md`](DEFERRED.md). In the meantime, a self-hosted host
-is required.
-
-### Self-hosted dogfood endpoint (this repo)
-
-This repo's v1 dogfood endpoint is **two Shields JSON files committed
-to `main`**, served via `raw.githubusercontent.com`. It is not the
-standard downstream-user publishing model.
-
-The committed files live at:
-
-```text
-badges/ripr.json
-badges/ripr-plus.json
-```
-
-Each is a minimal four-field Shields object, e.g.:
-
-```json
-{
-  "schemaVersion": 1,
-  "label": "ripr",
-  "message": "163",
-  "color": "orange"
-}
-```
-
-The README renders those endpoints via:
-
-```text
-https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr.json
-https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/EffortlessMetrics/ripr/main/badges/ripr-plus.json
-```
-
-Refreshing the committed files is one xtask command:
-
-```bash
-cargo xtask update-badge-endpoints
-```
-
-That regenerates `target/ripr/reports/repo-ripr-{badge,plus-badge}-shields.json`
-via `repo_badge_artifacts()` and copies the two Shields projections
-into `badges/`. Commit the resulting diff.
-
-For a policy-backed endpoint refresh, provide the same explicit gap ledger:
-
-```bash
-cargo xtask badges --gap-ledger target/ripr/reports/gap-decision-ledger.json
-cargo xtask badges --check --gap-ledger target/ripr/reports/gap-decision-ledger.json
-```
-
-This keeps public endpoint updates tied to the same `GapRecord` projection
-targets used by RIPR Zero and avoids treating raw report counts as badge
-authority.
-
-#### Pinned contract for the endpoint
-
-- Only the two `badges/*.json` files are part of the public endpoint
-  surface — no reports, no markdown, no diff-scoped artifacts, no
-  `target/` snapshots.
-- `cargo xtask check-badge-diff-policy` rejects `badges/*.json` diffs outside
-  an explicit badge refresh branch, title, or work item. README badge link and
-  layout edits remain source docs and can move through ordinary docs PRs.
-- The endpoint URL points at the `main` branch via
-  `raw.githubusercontent.com`. Shields/CDN cache layers can take
-  minutes to refresh after a `main` push.
-- Diff-scoped artifacts (`ripr-badge-shields.json`,
-  `ripr-plus-badge-shields.json`) stay in per-PR step summaries and
-  CI artifact uploads — never linked from public docs.
-- `cargo xtask check-badge-endpoints` verifies the committed files
-  against a fresh `repo-badge-artifacts` run. It is **not** wired into
-  the default CI gate set in v1: the headline drifts whenever
-  production code or tests change, and requiring every PR to also
-  refresh `badges/` would be too much friction before the count
-  stabilizes. Use it locally before campaign closeouts and after
-  material analyzer changes.
-- The `ripr 0` headline on `main` means: zero unresolved actionable
-  canonical repair items under the current repo baseline and configured
-  projection policy. It does not mean the repo is fully tested, that all
-  behavior seams are gripped by oracles, or that runtime mutation confirmation
-  would pass.
-
-#### Why checked-in JSON, not GitHub Pages
-
-An earlier shape of this work used a Pages deployment workflow with
-first-party `actions/configure-pages` / `actions/upload-pages-artifact`
-/ `actions/deploy-pages`. That was over-engineered for v1 dogfood:
-
-- it required the repo owner to enable Pages
-- it added a workflow + `policy/workflow_allowlist.txt` entry +
-  Pages permissions surface
-- it implied that downstream users should also enable Pages, which is
-  not the long-term `ripr` user story
-
-Checked-in JSON gives the same public-URL-on-`main` outcome with much
-less machinery, and badge changes show up in PR diffs — which is
-useful while the repo headline is still stabilizing.
-
-#### What downstream users should do
-
-If you want `ripr` and `ripr+` badges in your own README today:
-
-1. Run `ripr` in your CI.
-2. Pick **any** stable public surface to serve the resulting Shields
-   JSON: a committed `badges/` directory in your repo (the pattern
-   this repo uses), GitHub Pages, an organization-level badge-host
-   repo, a static asset bucket, a Gist, or a hosted host. None is
-   required.
-3. Point Shields at your URL via the
-   `https://img.shields.io/endpoint?url=...` pattern.
-
-A general-purpose hosted `ripr` badge service (so step 2 disappears) is
-tracked as `deferred/hosted-badge-service`. Until that lands,
-self-hosting is the v1 path.
-
-## Implementation status
-
-Tracked alongside Campaign 4A and Campaign 5B in
-`.ripr/goals/active.toml` (deleted in #1701 PR 3) and
-[`docs/IMPLEMENTATION_CAMPAIGNS.md`](IMPLEMENTATION_CAMPAIGNS.md).
-
-| Component | Status | Source |
-| --- | --- | --- |
-| Test fact ledger | done | `cargo xtask test-efficiency-report` |
-| Vacuity signals (the 6-class table above, minus duplicate) | done | same |
-| Duplicate-discriminator grouping | done | `test-efficiency/duplicate-discriminator-v1` |
-| Test-efficiency report metrics | done | `test-efficiency/report-and-metrics` |
-| Private `BadgeSummary` model and renderer | done | `badge/summary-renderer-v1` |
-| `ripr check --format badge-json` / `badge-shields` | done | `badge/ripr-count-v1` |
-| `.ripr/test_intent.toml` loader | done | `test-intent/v1` |
-| `ripr check --format badge-plus-*` | done | `badge/ripr-plus-count-v1` |
-| `.ripr/suppressions.toml` loader | done | `suppressions/v1` |
-| CI badge artifacts (diff-scoped, PR) | done | `ci/badge-artifacts` |
-| Repo-scoped badge artifacts | done | `badge/repo-scope-artifacts` (`cargo xtask repo-badge-artifacts`) |
-| Published Shields endpoint from `main` | done | `badge/publish-main-endpoint` (committed `badges/*.json` served via `raw.githubusercontent.com`; refresh with `cargo xtask update-badge-endpoints`) |
-| Diff-scope `ripr+` related-tests filter | done | `badge/diff-ripr-plus-related-tests` |
-| Seam-native repo badge mapping | done | `badge/seam-native-count-mapping` |
-| Badge-basis audit report | done | `cargo xtask badge-basis` |
-| Actionable public badge basis policy | done | `canonical_actionable_gap` definition in this doc |
-| Canonical actionable endpoint generator | done | public badge projection realignment |
-| Internal seam-native inventory report | done | `cargo xtask badge-basis` internal inventory section and repo exposure reports |
+Before integration, also run the repository’s normal documentation and PR gate
+suite. A green command is evidence for that exact head and subject only.
 
 ## See also
 
+- [Badge adoption](BADGE_ADOPTION.md) — downstream generation and validation.
 - [Static exposure model](STATIC_EXPOSURE_MODEL.md) — exposure classes and stage states.
-- [Output schema](OUTPUT_SCHEMA.md) — stable JSON shape for `ripr check --json`.
-- [Configuration](CONFIGURATION.md) — current vs planned config surfaces.
-- [Implementation campaigns](IMPLEMENTATION_CAMPAIGNS.md) — Campaign 4A status.
-- [Roadmap](ROADMAP.md) — long-range plan including badge work.
+- [Output schema](OUTPUT_SCHEMA.md) — machine-readable output contracts.
+- [Configuration](CONFIGURATION.md) — intent, suppressions, modes, and limits.
+- [Verification](VERIFICATION.md) — evidence and non-claim boundaries.
+- [Deferred work](DEFERRED.md) — hosted badge service and other non-current surfaces.
+
+The legacy receipt remains schema version `0.1`: its existing indeterminate
+status already permits an unknown (`null`) unresolved count. Qualified `head`
+is now also `null` when no candidate binding is established; the observed local
+HEAD is retained separately. Consumers must require established authority, not
+coerce null to zero or use the observed HEAD as proof. This receipt is distinct
+from the four-field Shields badge schema.

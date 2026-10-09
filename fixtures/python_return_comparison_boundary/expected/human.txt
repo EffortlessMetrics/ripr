@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/python_return_comparison_boundary/input
+
+Summary: 1 probe(s), 0 exposed, 1 weakly_exposed, 0 reachable_unrevealed, 0 no_static_path, 0 infection_unknown, 0 propagation_unknown, 0 static_unknown; 1 of 1 finding(s) unsuppressed
+
+Changed file(s) by language: python: 1.
+
+Analysis outcome: findings below (analysis complete; complete_with_findings).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview language, advisory only (preview_limited)
+  Safe next action: preview-language evidence is advisory; apply the next step below to the suggested test and run its verify command before relying on it.
+  File: src/pricing.py:2
+  Language: python
+  Language status: preview
+  Static exposure: weak (weakly_exposed, warning, confidence 0.40)
+  Why weak: a related test reaches this change but does not observe the exact changed value
+  Canonical gap: gap:python:src/pricing.py:is_large:predicate_boundary:predicate:total>100
+  Changed behavior: return total > 100
+  Missing discriminator (1 of 2): A strong Python oracle reaches `is_large`, but static evidence does not place a related test input at the changed predicate boundary `total == 100`. No strong related test call…
+  Related test: tests/test_pricing.py:4 test_large_order
+  Suggested test file: tests/test_pricing.py
+  Suggested test: test_large_order
+  Test node: tests/test_pricing.py::test_large_order
+  Verify command: python -m pytest tests/test_pricing.py::test_large_order (high)
+  Next step: Python preview: strengthen the existing related test with a focused boundary assertion for missing discriminator `total == 100`.
+  Evidence: reach yes · infection weak · propagation weak · observation yes · discriminator weak
+    - reach yes: 1 related Python test(s) found for owner `is_large`
+    - infection weak: Related tests reach the changed predicate, but no strong related test call places an input at the changed boundary.
+    - 6 more detail line(s) in --format human-full
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/python_return_comparison_boundary/input --diff fixtures/python_return_comparison_boundary/diff.patch --mode fast probe:src_pricing.py:python_preview:69ed856b
+  ripr context --root fixtures/python_return_comparison_boundary/input --diff fixtures/python_return_comparison_boundary/diff.patch --mode fast --at probe:src_pricing.py:python_preview:69ed856b
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 1 Python file analyzed under preview support — preview evidence is advisory and may be incomplete. Treat its findings as advisory, not Rust-grade.

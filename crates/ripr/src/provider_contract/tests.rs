@@ -299,6 +299,21 @@ fn complete_no_static_path_receipts_may_have_no_related_tests() {
 }
 
 #[test]
+fn empty_related_tests_require_a_none_strongest_oracle() {
+    let mut no_path = receipt();
+    no_path.native_status = Some(ExposureClass::NoStaticPath);
+    if let Some(summary) = no_path.summary.as_mut() {
+        summary.related_tests.clear();
+        summary.strongest_oracle = "strong".into();
+        summary.fingerprint = "fp:".into();
+    }
+    assert_eq!(
+        error_code(no_path.validate()),
+        Some(RiprProviderContractErrorCodeV1::CompletenessConflict)
+    );
+}
+
+#[test]
 fn non_authoritative_results_require_explicit_disclosure() {
     let mut partial = receipt();
     partial.result_class = RiprProviderResultClassV1::Partial;

@@ -23,6 +23,12 @@ pub(crate) struct PilotSummaryContext<'a> {
     pub(crate) timeout_ms: u64,
     pub(crate) artifacts: &'a PilotArtifacts,
     pub(crate) python_first_use: Option<&'a PilotPythonFirstUse>,
+    /// Routes for languages pilot's Rust seam scan does not rank. `None` when
+    /// they were not collected (the timeout summary).
+    pub(crate) language_routes: Option<&'a super::PilotLanguageRoutes>,
+    /// Set when a seam limit (pilot budget or inventory limit) cut the
+    /// classified seams before ranking, so counts over them are lower bounds.
+    pub(crate) seam_limit: Option<&'a crate::analysis::SeamLimitInfo>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

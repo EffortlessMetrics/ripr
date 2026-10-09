@@ -3,6 +3,104 @@
 use super::*;
 
 #[test]
+fn node_expected_failure_options_cannot_supply_ordinary_test_evidence() {
+    let imports =
+        "import assert from 'node:assert/strict'; import { test, suite } from 'node:test';\n";
+    for value in [
+        "true",
+        "\"known defect\"",
+        "/ERR_ASSERTION/",
+        "{ code: 'ERR_ASSERTION' }",
+        "(error) => true",
+        "{ label: 'defect', match: /failed/ }",
+        "configuredMatcher",
+    ] {
+        let callback = "() => { assert.strictEqual(isAdult(18), true); }";
+        for source in [
+            format!("test('qualified', {{ expectFailure: {value} }}, {callback});"),
+            format!("test({{ expectFailure: {value} }}, {callback});"),
+            format!("test('qualified', {callback}, {{ expectFailure: {value} }});"),
+            format!(
+                "suite('qualified', {{ expectFailure: {value} }}, () => {{ test('child', {callback}); }});"
+            ),
+        ] {
+            let source = format!("{imports}{source}");
+            let file = Path::new("tests/qualified.test.ts");
+            let tests = extract_tests(file, &source);
+            assert!(tests.is_empty(), "{source}: {tests:?}");
+        }
+    }
+    for value in ["false", "undefined"] {
+        let source = format!(
+            "{imports}test('ordinary', {{ expectFailure: {value} }}, () => {{ assert.strictEqual(isAdult(18), true); }});"
+        );
+        let tests = extract_tests(Path::new("tests/ordinary.test.ts"), &source);
+        assert_eq!(tests.len(), 1, "{source}: {tests:?}");
+        assert_eq!(tests[0].assertions.len(), 1);
+    }
+}
+
+#[test]
+fn shadowed_undefined_cannot_disable_test_qualification_options() {
+    let imports =
+        "import assert from 'node:assert/strict'; import { test, suite } from 'node:test';\n";
+    let callback = "() => { assert.strictEqual(isAdult(18), true); }";
+    for key in ["skip", "todo", "fails", "expectFailure"] {
+        let registration = format!("test('qualified', {{ {key}: undefined }}, {callback});");
+        for source in [
+            format!("const undefined = true; {registration}"),
+            format!("const {{ flag: undefined }} = config; {registration}"),
+            format!("import {{ flag as undefined }} from './config'; {registration}"),
+            format!("export const undefined = true; {registration}"),
+            format!("export default function undefined() {{ return true; }} {registration}"),
+            format!("export default class undefined {{ }} {registration}"),
+            format!("suite('outer', () => {{ const undefined = true; {registration} }});"),
+            format!("suite.each([true])('outer', (undefined) => {{ {registration} }});"),
+            format!("for (const undefined of [true]) {{ {registration} }}"),
+            format!("[true].forEach((undefined) => {{ {registration} }});"),
+            format!("[true].forEach((...[undefined]) => {{ {registration} }});"),
+            format!(
+                "[true].forEach(function undefined(flag) {{ if (flag !== true) return true; {registration} }});"
+            ),
+            format!(
+                "const undefined = true; suite('qualified', {{ {key}: undefined }}, () => {{ test('child', {callback}); }});"
+            ),
+            // `var` hoists out of its block, so it still shadows.
+            format!("{{ var undefined = true; }} {registration}"),
+            format!("if (flag) {{ var undefined = true; }} {registration}"),
+        ] {
+            let source = format!("{imports}{source}");
+            let tests = extract_tests(Path::new("tests/shadowed.test.ts"), &source);
+            assert!(tests.is_empty(), "{source}: {tests:?}");
+        }
+    }
+    for source in [
+        format!("function unrelated(undefined) {{ return undefined; }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("export {{ flag as undefined }} from './config'; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("import type {{ Flag as undefined }} from './config'; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("import {{ type Flag as undefined }} from './config'; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        "test('ordinary', { expectFailure: undefined }, (undefined) => { assert.strictEqual(isAdult(18), true); });".to_string(),
+        "test('ordinary', { expectFailure: undefined }, (...[undefined]) => { assert.strictEqual(isAdult(18), true); });".to_string(),
+        "test('ordinary', { expectFailure: undefined }, function undefined() { assert.strictEqual(isAdult(18), true); });".to_string(),
+        format!("const undefined = true; test('ordinary', {{ expectFailure: false }}, {callback});"),
+        // Ambient `declare` forms are erased before the test runs.
+        format!("declare const undefined: undefined; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("declare function undefined(): void; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("export declare const undefined: undefined; test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        // Block-scoped bindings end with their block.
+        format!("{{ let undefined = true; }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("if (flag) {{ const undefined = true; }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("try {{ run(); }} catch (undefined) {{ }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+        format!("for (let undefined of []) {{ }} test('ordinary', {{ expectFailure: undefined }}, {callback});"),
+    ] {
+        let source = format!("{imports}{source}");
+        let tests = extract_tests(Path::new("tests/ordinary.test.ts"), &source);
+        assert_eq!(tests.len(), 1, "{source}: {tests:?}");
+        assert_eq!(tests[0].assertions.len(), 1);
+    }
+}
+
+#[test]
 fn extracts_active_test_modifiers_with_assertions() {
     let tests = extract_tests(
         Path::new("tests/pricing.test.ts"),
@@ -194,6 +292,8 @@ fn extracted_active_test_reaches_direct_owner_relation() {
     let tests = extract_tests(
         Path::new("tests/pricing.test.ts"),
         r#"
+import { applyDiscount } from "../src/pricing";
+
 test.only("discount boundary", () => {
     const result = applyDiscount(100, 100);
     expect(result).toBe(90);
@@ -210,7 +310,14 @@ test.only("discount boundary", () => {
         owner_kind: OwnerKind::Function,
         class_name: None,
         decorated: false,
+        params: Vec::new(),
+        exported_as_default: false,
+        class_default_export: false,
+        module_entries: Vec::new(),
+        arity: None,
+        source_text: None,
         imports: Vec::new(),
+        method_kind: TypeScriptMethodKind::Ordinary,
     };
     let candidates = related_test_candidates(&owner, &tests, None, &ReExportIndex::empty(), None);
 
@@ -220,4 +327,287 @@ test.only("discount boundary", () => {
         TypeScriptRelationKind::DirectOwnerCall
     );
     assert_eq!(candidates[0].test.name, "discount boundary");
+}
+
+/// A mock call chained after another call (`jest.mock("a").mock("b")`) must
+/// still record the owner-module registration: the chained callee's object
+/// is descended into, so the owner-module mock guard keeps applying. A plain
+/// member mock on an unrelated receiver is still not a runner mock call.
+#[test]
+fn collects_mock_chained_after_a_mock_call() {
+    let tests = extract_tests(
+        Path::new("tests/pricing.test.ts"),
+        r#"
+jest.mock("../src/pricing").mock("../src/other");
+unrelated.mock("../src/pricing");
+
+test("chained mock registration", () => {
+    expect(applyDiscount(100, 100)).toBe(90);
+});
+"#,
+    );
+    assert_eq!(tests.len(), 1);
+    assert!(
+        tests[0]
+            .mocks_in_file
+            .iter()
+            .any(|mock| mock == "../src/pricing"),
+        "a registration chained after jest.mock(...) must be collected, got {:?}",
+        tests[0].mocks_in_file
+    );
+    assert_eq!(
+        tests[0].mocks_in_file.len(),
+        1,
+        "the chained ../src/other argument and the unrelated receiver mock are not runner mock registrations, got {:?}",
+        tests[0].mocks_in_file
+    );
+}
+
+/// mocha BDD `context` / `specify` and the TDD / Vitest / `node:test` `suite`
+/// register tests exactly like `describe` / `it` (#4548).
+#[test]
+fn recognizes_mocha_context_specify_and_suite_roots() {
+    let tests = extract_tests(
+        Path::new("test/pricing.spec.js"),
+        r#"
+describe("pricing", function () {
+    context("with a coupon", function () {
+        specify("applies the discount", function () {
+            expect(applyDiscount(100, 100)).toBe(90);
+        });
+    });
+});
+suite("totals", function () {
+    test("adds", function () {
+        expect(add(1, 2)).toBe(3);
+    });
+    suite.only("focused", function () {
+        specify.only("normalizes", function () {
+            expect(normalize("x")).toBe("x");
+        });
+    });
+});
+"#,
+    );
+
+    let names: Vec<&str> = tests.iter().map(|test| test.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec![
+            "pricing with a coupon applies the discount",
+            "totals adds",
+            "totals focused normalizes",
+        ]
+    );
+    assert!(tests.iter().all(|test| test.assertions.len() == 1));
+}
+
+/// `node:test` / Vitest options objects sit between the title and the
+/// callback; the callback (and its receiver) is argument 2. A trailing
+/// timeout after the callback keeps argument 1 as the body (#4548).
+#[test]
+fn reads_callback_after_options_object_and_before_timeout() {
+    let source = r#"
+describe("pricing", { concurrency: 1 }, () => {
+    it("discounts", { timeout: 50 }, (t) => {
+        t.is(applyDiscount(100, 100), 90);
+    });
+});
+test("adds", () => {
+    expect(add(1, 2)).toBe(3);
+}, 5000);
+"#;
+    let tests = extract_tests(Path::new("test/pricing.test.mjs"), source);
+
+    assert_eq!(tests.len(), 2, "{tests:?}");
+    assert_eq!(tests[0].name, "pricing discounts");
+    // The `t` receiver comes from the callback after the options object.
+    assert_eq!(tests[0].assertions.len(), 1, "{:?}", tests[0].assertions);
+    assert_eq!(tests[0].assertions[0].matcher, "is");
+    assert_eq!(tests[1].name, "adds");
+    assert_eq!(tests[1].assertions.len(), 1);
+    assert!(
+        detect_partial_test_extraction(Path::new("test/pricing.test.mjs"), source, &tests)
+            .is_none(),
+        "tests inside an options-object describe are extracted, not dropped"
+    );
+}
+
+/// A `describe` whose title is not a string literal still has its body
+/// walked (#4548); it is named by the computed-title placeholder (#4593).
+#[test]
+fn walks_describe_with_non_literal_title() {
+    let source = r#"
+describe(Div.name, () => {
+    it("renders", () => {
+        expect(render(Div)).toBe("<div></div>");
+    });
+});
+describe(`${label} suite`, () => {
+    test("formats", () => {
+        expect(format(1)).toBe("1");
+    });
+});
+"#;
+    let tests = extract_tests(Path::new("test/div.test.ts"), source);
+
+    let names: Vec<&str> = tests.iter().map(|test| test.name.as_str()).collect();
+    assert_eq!(
+        names,
+        vec![
+            "<computed title, line 2> renders",
+            "<computed title, line 7> formats"
+        ]
+    );
+    assert_eq!(
+        tests[0].describe_names,
+        vec!["<computed title, line 2>".to_string()]
+    );
+    assert!(
+        detect_partial_test_extraction(Path::new("test/div.test.ts"), source, &tests).is_none(),
+        "tests inside a non-literal describe are extracted, not dropped"
+    );
+}
+
+/// Negative: skipped mocha spellings stay uncredited and are not reported as
+/// dropped registrations.
+#[test]
+fn keeps_skipped_mocha_and_suite_forms_uncredited() {
+    let source = r#"
+context.skip("skipped context", function () {
+    specify("nested", function () {
+        expect(applyDiscount(100, 100)).toBe(90);
+    });
+});
+xcontext("x context", function () {
+    it("nested", function () {
+        expect(applyDiscount(100, 100)).toBe(90);
+    });
+});
+specify.skip("skipped specify", function () {
+    expect(applyDiscount(100, 100)).toBe(90);
+});
+xit("x it", function () {
+    expect(applyDiscount(100, 100)).toBe(90);
+});
+suite.skip("skipped suite", function () {
+    test("nested", function () {
+        expect(applyDiscount(100, 100)).toBe(90);
+    });
+});
+describe.skip("skipped with options", { timeout: 5 }, () => {
+    it("nested", () => {
+        expect(applyDiscount(100, 100)).toBe(90);
+    });
+});
+"#;
+    let tests = extract_tests(Path::new("test/pricing.spec.js"), source);
+
+    assert!(tests.is_empty(), "{tests:?}");
+}
+
+/// Negative (#4638 review): a `node:test` / Vitest options object that skips,
+/// marks todo, or inverts (`fails`) the registration registers no running
+/// discriminator — exactly like `.skip` / `.todo` / `.fails`. Neither the
+/// test nor a skipped describe's body is extracted, and a skipped
+/// registration is not reported as a dropped test.
+#[test]
+fn options_object_skip_todo_fails_registrations_stay_uncredited() {
+    let source = r#"
+test("skipped", { skip: true }, () => {
+    assert.strictEqual(isAdult(18), true);
+});
+it("todo", { todo: true }, () => {
+    assert.strictEqual(isAdult(18), true);
+});
+it("skip reason", { skip: "flaky" }, (t) => {
+    t.is(isAdult(18), true);
+});
+test("fails", { fails: true }, () => {
+    expect(isAdult(18)).toBe(true);
+});
+test("dynamic skip", { skip: process.env.CI }, () => {
+    expect(isAdult(18)).toBe(true);
+});
+test("spread options", { ...options }, () => {
+    expect(isAdult(18)).toBe(true);
+});
+test("computed key", { [key]: true }, () => {
+    expect(isAdult(18)).toBe(true);
+});
+test("shorthand", { skip }, () => {
+    expect(isAdult(18)).toBe(true);
+});
+test("legacy trailing options", () => {
+    expect(isAdult(18)).toBe(true);
+}, { skip: true });
+test({ skip: true }, () => {
+    assert.strictEqual(isAdult(18), true);
+});
+test.each([[18]])("each skipped %i", { skip: true }, (age) => {
+    expect(isAdult(age)).toBe(true);
+});
+describe("skipped suite", { skip: "flaky" }, () => {
+    it("nested", () => {
+        expect(isAdult(18)).toBe(true);
+    });
+});
+"#;
+    let file = Path::new("test/calc.test.js");
+    let tests = extract_tests(file, source);
+
+    assert!(tests.is_empty(), "{tests:?}");
+    // The top-level skipped registrations are not "dropped" (a `.skip` call
+    // is not reported either).
+    let top_level_only = source
+        .split("describe(\"skipped suite\"")
+        .next()
+        .unwrap_or_default();
+    assert!(
+        detect_partial_test_extraction(file, top_level_only, &[]).is_none(),
+        "options-skipped registrations are not dropped registrations"
+    );
+    // A describe skipped through its options object discloses exactly what
+    // `describe.skip` discloses for the same body.
+    let skipped_by_options = r#"
+describe("skipped suite", { skip: true }, () => {
+    it("nested", () => {
+        expect(isAdult(18)).toBe(true);
+    });
+});
+"#;
+    let skipped_by_modifier = r#"
+describe.skip("skipped suite", () => {
+    it("nested", () => {
+        expect(isAdult(18)).toBe(true);
+    });
+});
+"#;
+    assert_eq!(
+        detect_partial_test_extraction(file, skipped_by_options, &[]).map(|gap| gap.shape),
+        detect_partial_test_extraction(file, skipped_by_modifier, &[]).map(|gap| gap.shape),
+    );
+}
+
+/// Positive control (#4638 review): options that leave the registration
+/// running (`skip: false`, `todo: undefined`, `only`, `timeout`) keep it
+/// extracted.
+#[test]
+fn options_object_with_inactive_skip_values_stays_extracted() {
+    let source = r#"
+describe("suite", { skip: false, concurrency: 1 }, () => {
+    it("runs", { todo: undefined, timeout: 50 }, () => {
+        expect(isAdult(18)).toBe(true);
+    });
+    test("focused", { only: true, fails: false }, () => {
+        expect(isAdult(18)).toBe(true);
+    });
+});
+"#;
+    let file = Path::new("test/calc.test.js");
+    let tests = extract_tests(file, source);
+
+    let names: Vec<&str> = tests.iter().map(|test| test.name.as_str()).collect();
+    assert_eq!(names, vec!["suite runs", "suite focused"]);
+    assert!(detect_partial_test_extraction(file, source, &tests).is_none());
 }

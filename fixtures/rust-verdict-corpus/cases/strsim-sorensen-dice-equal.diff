@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 309c065..1342e62 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -721,7 +721,7 @@ pub fn sorensen_dice(a: &str, b: &str) -> f64 {
+     let a: String = a.chars().filter(|&x| !char::is_whitespace(x)).collect();
+     let b: String = b.chars().filter(|&x| !char::is_whitespace(x)).collect();
+ 
+-    if a == b {
++    if b == a {
+         return 1.0;
+     }
+ 

@@ -1,0 +1,44 @@
+name: Zed extension
+
+# Checks format and Clippy for the Zed extension (editors/zed, #4460), builds
+# it to the WebAssembly target Zed compiles it with, and runs its unit tests.
+# Only changes to the extension or this workflow trigger it: the extension has
+# its own Cargo workspace, lockfile, and toolchain pin.
+
+on:
+  pull_request:
+    paths:
+      - "editors/zed/**"
+      - ".github/workflows/zed-extension.yml"
+  push:
+    branches: [main, master]
+    paths:
+      - "editors/zed/**"
+      - ".github/workflows/zed-extension.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  zed-extension:
+    name: Build Zed extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: editors/zed
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-wasip2
+          components: rustfmt, clippy
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --target wasm32-wasip2 --all-targets -- -D warnings
+      - run: cargo build --locked --release --target wasm32-wasip2
+      - run: cargo test --locked

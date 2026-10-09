@@ -34,11 +34,12 @@ substring matcher would link the test to the owner even though
 
 ## Then
 
-ripr classifies the change `weakly_exposed`. The call-name matcher requires a
+ripr classifies the change `no_static_path`. The call-name matcher requires a
 call boundary, so `bufferedStream(` does not credit a `buffer(` owner call; the
 import of `bufferedStream` from the owner file does not name the owner either.
-The only link is the same-file-stem proximity heuristic, which is
-advisory-only and cannot borrow the extracted strong assertion as proof.
+The test never references `buffer`, so the same-file stem alone does not
+relate it (RIPR-SPEC-0027) and the extracted strong assertion is never
+borrowed.
 
 **This fixture must NEVER read `exposed`.** Before call-boundary matching this
 family read `exposed` on substring coincidence alone (see `docs/LEARNINGS.md`

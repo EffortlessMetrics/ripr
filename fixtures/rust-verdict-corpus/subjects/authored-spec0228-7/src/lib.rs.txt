@@ -1,0 +1,15 @@
+pub fn store(p: &mut u32, v: u32) {
+    *p = v;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn store_writes_through_the_reference() {
+        let mut x = 0;
+        store(&mut x, 5);
+        assert_eq!(x, 5);
+    }
+}

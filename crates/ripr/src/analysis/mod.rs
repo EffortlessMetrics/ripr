@@ -2,14 +2,27 @@ pub(crate) mod cancellation;
 pub(crate) mod canonical_gap;
 mod classifier;
 mod classify;
-mod diff;
+pub(crate) mod committed_source;
+pub(crate) mod consumed_source;
+pub(crate) mod diagnostic_origin;
+pub(crate) mod diff;
 mod extract;
 mod facts;
+mod generated_rust_corpus;
+pub(crate) use generated_rust_corpus::generated_rust_recovery;
 pub(crate) mod harness_projection;
 mod language;
+pub(crate) mod new_test_target;
+pub(crate) mod path_glob;
 mod pipeline;
+pub(crate) use pipeline::NON_TEXT_ONLY_DETAIL;
 mod probes;
 pub(crate) mod repair_route;
+/// Process CPU time and peak resident memory observability (#5213). One
+/// owner for the whole `RIPR_REPO_EXPOSURE_LATENCY_TRACE` family: the
+/// wall-clock phase line and the end-of-run resource-cost receipt both live
+/// here, so a new phase cannot invent a parallel spelling.
+pub(crate) mod resource_cost;
 mod rust_index;
 pub(crate) mod seam_cache;
 mod seam_classification;
@@ -17,44 +30,93 @@ mod seam_inventory;
 pub(crate) mod seams;
 mod sort;
 #[cfg(test)]
+pub(crate) mod source_calibration;
+#[cfg(test)]
 mod source_role_corpus;
 mod summary;
 mod syntax;
 pub(crate) mod test_grip_evidence;
+pub(crate) mod test_stub;
 mod value_resolution;
+mod witness;
 mod workspace;
 
-pub(crate) use diff::{
-    load_diff, load_diff_range, load_worktree_diff, parse_unified_diff, resolve_base_commit,
-    resolve_default_base_commit, working_tree_has_tracked_changes,
+/// Original canonical analysis-range stdout before semantic decoding.
+pub use diff::load_canonical_pr_evidence_diff_bytes;
+/// Bounded canonical analysis input shared by the installed and xtask PR producers.
+pub use diff::load_canonical_pr_evidence_diff_range;
+/// Shared pinned PR-evidence diff assembly (#3930, #4004): the one named
+/// owner for packet diff presentation, consumed by the product route and the
+/// xtask route alike. Neither route may rebuild its argv inline.
+pub use diff::load_pr_evidence_diff_range;
+/// Shared NUL-delimited Git path-record authority (#4006), consumed by the
+/// product and xtask routes alike.
+pub use diff::records::{
+    PathRecordError, StatusRecord, parse_git_path_records, parse_git_status_records,
 };
+pub(crate) use diff::{
+    load_diff, load_diff_range_with_deadline_core, load_worktree_diff, no_merge_base_diagnosis,
+    parse_unified_diff, resolve_base_commit, resolve_effective_base,
+    working_tree_has_tracked_changes,
+};
+/// Shared RIPR-SPEC-0084 default-base authority and pinned analysis-range
+/// diff assembly (#4003): the one named owner for badge input base/diff,
+/// consumed by the analysis route and the xtask badge route alike. Neither
+/// route may hardcode a base ref or rebuild the diff argv inline.
+pub use diff::{load_diff_range, resolve_default_base_commit};
+/// Whether a boundary fact carries the producer's unresolved-operand
+/// marker. Renderers may disclose this fact but cannot turn it into an
+/// established input prescription. Keep the marker owned by its producer.
+pub(crate) fn boundary_operand_is_unresolved(
+    fact: &crate::domain::MissingDiscriminatorFact,
+) -> bool {
+    fact.reason
+        .contains(classify::BOUNDARY_OPERAND_UNRESOLVED_MARKER)
+}
+
+pub(crate) use facts::cfg_predicates;
 pub(crate) use facts::validated_file_wide_harness_targets;
-pub(crate) use language::{DIFF_SCOPE_OVERSIZED_PREFIX, is_diff_scope_oversized};
+pub(crate) use generated_rust_corpus::{
+    CorpusPayloadSize, analyzable_corpus_payload_size, review_guidance_input_paths,
+};
+pub(crate) use language::{
+    DIFF_SCOPE_OVERSIZED_PREFIX, JAVASCRIPT_SOURCE_EXTENSIONS, TYPESCRIPT_SOURCE_EXTENSIONS,
+    TsJsSourceKind, is_diff_scope_oversized, is_generated_rust_file_with_patterns,
+    is_ts_js_source_extension, ts_js_source_kind,
+};
 pub use language::{
     PARTIAL_DIFF_LANGUAGE_TIER_VERSION, PARTIAL_DIFF_SELECTION_VERSION, PartialDiffScope,
     PartialDiffStopReason,
 };
-pub(crate) use probes::{fingerprint_probe_id, normalize_expression};
+pub(crate) use probes::{
+    fingerprint_probe_id, legacy_whole_line_diff_probe_id, normalize_expression,
+};
+pub use seam_cache::cache_layer_names;
 pub(crate) use seam_classification::ClassifiedSeam;
 #[cfg(test)]
 pub(crate) use seam_classification::SeamGripClassCounts;
 #[cfg(test)]
 pub(crate) use seam_classification::classify_seam;
 pub(crate) use seam_inventory::{
-    DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory, SeamLimitInfo,
-    SeamLimitSource, apply_pilot_seam_budget,
-    inventory_changed_test_classified_seams_at_with_config_node,
-    inventory_classified_seams_at_with_config, inventory_compact_classified_seams_at_with_config,
+    ClassifiedSeamsReport, DEFAULT_REPO_EXPOSURE_SEAM_LIMIT, ScopedClassifiedSeamInventory,
+    ScopedEvidenceConsumer, SeamLimitInfo, SeamLimitSource, TargetedTestInventoryError,
+    apply_pilot_seam_budget, inventory_changed_test_classified_seams_at_with_config_node,
+    inventory_classified_seams_at_with_config, inventory_classified_seams_report_at_with_config,
+    inventory_compact_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config,
-    inventory_diff_scoped_classified_seams_at_with_config_and_lines,
-    inventory_seams_at_with_config, workspace_cache_key_at_with_config,
+    inventory_diff_scoped_streamed_seams_at_with_config, inventory_seams_at_with_config,
+    pilot_seam_budget, workspace_cache_key_at_with_config,
 };
 pub(crate) use seams::{RepoSeam, RequiredDiscriminator};
+pub(crate) use syntax::fn_signature::{owner_fn_line_span, rust_source_parses_cleanly};
+pub(crate) use syntax::parse_clean_source_file;
 pub(crate) use workspace::PathDependencyAdjacency;
 pub(crate) use workspace::SourceRoleContext;
-pub(crate) use workspace::classify_with;
+pub(crate) use workspace::apply_module_graph_evidence;
 pub(crate) use workspace::context_for_files;
 pub(crate) use workspace::is_test_surface_path;
+pub(crate) use workspace::seeds_diff_probes;
+pub(crate) use workspace::{UnlinkedPythonTests, discover_python_test_files};
 
 /// Re-export workspace discovery helpers for the output layer so it can
 /// detect TS-predominant workspaces without importing through analysis::workspace
@@ -63,6 +125,16 @@ pub(crate) fn workspace_preview_language_files(
     root: &Path,
 ) -> Vec<(language::LanguageId, PathBuf)> {
     workspace::discover_preview_language_files(root)
+}
+
+/// Source files in languages no ripr adapter reads, counted per language
+/// name in stable name order; see `workspace::discover_unanalyzed_source_files`.
+pub(crate) fn workspace_unanalyzed_source_languages(root: &Path) -> Vec<(&'static str, usize)> {
+    let mut counts = std::collections::BTreeMap::<&'static str, usize>::new();
+    for (language, _) in workspace::discover_unanalyzed_source_files(root) {
+        *counts.entry(language).or_default() += 1;
+    }
+    counts.into_iter().collect()
 }
 
 /// Re-export workspace Rust file discovery for the output layer so it can
@@ -177,6 +249,7 @@ pub(crate) fn targeted_typescript_findings_for_scope(
         diff_file: None,
         mode: AnalysisMode::Draft,
         resolved_subject_identity: None,
+        open_rust_index_paths: Default::default(),
         include_unchanged_tests: config.analysis().include_unchanged_tests().unwrap_or(true),
         resolve_tsconfig_paths: config.typescript().resolve_tsconfig_paths(),
         perl_facts_path: None,
@@ -390,6 +463,7 @@ fn top_typescript_readiness_blocker(
 }
 
 use crate::config::OraclePolicy;
+use crate::core_error::CoreError;
 use crate::domain::{Finding, Summary};
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -457,6 +531,9 @@ pub enum AnalysisMode {
 #[derive(Clone, Debug)]
 pub struct AnalysisOptions {
     pub root: PathBuf,
+    /// LSP-only, index-only paths admitted from open saved Rust documents.
+    /// These never seed changed-file probes or public analysis input.
+    pub(crate) open_rust_index_paths: std::collections::BTreeSet<PathBuf>,
     pub base: Option<String>,
     pub diff_file: Option<PathBuf>,
     pub mode: AnalysisMode,
@@ -526,6 +603,12 @@ pub struct PreviewLanguageAdvisory {
     pub file_count: usize,
     /// Up to three sample file paths (normalized, forward-slash).
     pub sample_paths: Vec<String>,
+    /// How many of the `file_count` files are JavaScript-family sources
+    /// (`.js`, `.jsx`, `.mjs`, `.cjs`). The TypeScript adapter analyzes both
+    /// halves of the family under the `typescript` wire name, so this lets
+    /// prose call a JavaScript-only diff JavaScript (#4555). Always `0` for
+    /// other languages.
+    pub javascript_file_count: usize,
     /// Whether this preview adapter was configured and available for this
     /// analysis.
     ///
@@ -552,6 +635,56 @@ impl PreviewLanguageAdvisory {
     /// non-success entry therefore closes this readiness claim fail-closed.
     pub(crate) fn analyzed(&self, language_runs: &[LanguageRun]) -> bool {
         self.enabled && self.file_count > 0 && self.non_success_run(language_runs).is_none()
+    }
+
+    /// Recovery text for a not-enabled advisory whose adapter is not compiled
+    /// into this ripr binary, or `None` when the adapter is compiled in (the
+    /// `ripr.toml` enablement hint then applies). Text is owned by
+    /// [`crate::domain::LanguageId::unavailable_adapter_recovery`] so every
+    /// renderer tells the same story.
+    pub(crate) fn unavailable_adapter_recovery(&self) -> Option<String> {
+        let language = crate::domain::LanguageId::from_wire(&self.language)?;
+        (!self.enabled && !language.is_available()).then(|| language.unavailable_adapter_recovery())
+    }
+
+    /// Single-line `why` for a not-enabled advisory, shared by the JSON check
+    /// report and the diff report so the two machine surfaces cannot drift.
+    pub(crate) fn not_enabled_why(&self) -> String {
+        if let Some(recovery) = self.unavailable_adapter_recovery() {
+            return format!(
+                "preview adapter not compiled into this ripr binary; files detected but not analyzed; empty result is not Rust-grade clean; {recovery}"
+            );
+        }
+        let mut why = format!(
+            "preview adapter not enabled; files detected but not analyzed; empty result is not Rust-grade clean; to enable add to ripr.toml: [languages] enabled = [\"rust\", \"{}\"]",
+            self.language
+        );
+        if let Some(prerequisite) = crate::domain::LanguageId::from_wire(&self.language)
+            .and_then(crate::domain::LanguageId::enable_prerequisite)
+        {
+            why.push_str("; ");
+            why.push_str(&prerequisite);
+        }
+        why
+    }
+
+    /// Single-line `why` for a detected-but-not-analyzed advisory: not
+    /// enabled (or not compiled into this binary), adapter run failed, or
+    /// enabled but nothing routed. Shared by the JSON check report and the
+    /// GitHub annotation stream so the machine surfaces cannot drift; the
+    /// analyzed arm stays owned by each renderer's own caveat.
+    pub(crate) fn unaudited_why(&self, language_runs: &[LanguageRun]) -> String {
+        if !self.enabled {
+            return self.not_enabled_why();
+        }
+        if let Some(run) = self.non_success_run(language_runs) {
+            return format!(
+                "preview adapter did not complete successfully ({}); files detected but not analyzed; empty result is not Rust-grade clean",
+                run.status.as_str()
+            );
+        }
+        "preview adapter enabled but no files were routed; files not analyzed; empty result is not Rust-grade clean"
+            .to_string()
     }
 }
 
@@ -637,6 +770,26 @@ pub struct AnalysisResult {
     /// gate, baseline, badge, or RIPR Zero input — and the uninspected
     /// accounting on the record is a lower bound, not an estimate.
     pub partial_scope: Option<PartialDiffScope>,
+    /// The base ref the diff loader actually used for this run (#3940):
+    /// the explicit base when one was given, the resolved default base
+    /// otherwise, and `None` when no base was involved (diff-file/stdin
+    /// inputs, repo-scope runs, subject-materialized runs).
+    pub effective_base: Option<String>,
+    /// Tracked source and test files with uncommitted edits in a
+    /// committed-history run. The run read their `HEAD` content (or left a
+    /// staged addition out), so these are the edits a `--worktree` run would
+    /// add; they decide the uncommitted-edits note. Empty for every other
+    /// mode.
+    pub(crate) uncommitted_source_paths: Vec<String>,
+    /// The untracked subset of [`AnalysisResult::uncommitted_source_paths`]
+    /// (#5258): files neither the committed diff nor `--worktree` analyzes,
+    /// so the note can name the real repair (staging) instead of offering
+    /// `--worktree`. Empty when no untracked routed file exists.
+    pub(crate) untracked_source_paths: Vec<String>,
+    /// Crate-private numeric diagnostic origins for Rust findings (#4464).
+    pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    /// Raw per-path Rust producer observations, separate from decoded geometry.
+    pub(crate) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
 }
 
 /// Default language list when callers do not pass `[languages]` config.
@@ -660,41 +813,42 @@ fn reject_git_candidate_subject(options: &AnalysisOptions) -> Result<(), String>
 pub fn run_analysis(options: &AnalysisOptions) -> Result<AnalysisResult, String> {
     reject_git_candidate_subject(options)?;
     run_analysis_with_oracle_policy(options, &OraclePolicy::default(), DEFAULT_LANGUAGES)
+        .map_err(Into::into)
 }
 
 pub(crate) fn run_analysis_with_oracle_policy(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-) -> Result<AnalysisResult, String> {
+) -> Result<AnalysisResult, CoreError> {
     pipeline::run_diff_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
-pub(crate) fn run_analysis_with_oracle_policy_and_generated_file_patterns(
+pub(crate) fn run_analysis_with_oracle_policy_and_rust_config(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-    generated_file_patterns: &[String],
-) -> Result<AnalysisResult, String> {
-    pipeline::run_diff_pipeline_with_oracle_policy_and_generated_file_patterns(
+    rust_config: &crate::config::RustLanguageConfig,
+) -> Result<AnalysisResult, CoreError> {
+    pipeline::run_diff_pipeline_with_oracle_policy_and_rust_config(
         options,
         oracle_policy,
         languages,
-        generated_file_patterns,
+        rust_config,
     )
 }
 
-pub(crate) fn run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
+pub(crate) fn run_worktree_analysis_with_oracle_policy_and_rust_config(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-    generated_file_patterns: &[String],
-) -> Result<AnalysisResult, String> {
-    pipeline::run_worktree_pipeline_with_oracle_policy_and_generated_file_patterns(
+    rust_config: &crate::config::RustLanguageConfig,
+) -> Result<AnalysisResult, CoreError> {
+    pipeline::run_worktree_pipeline_with_oracle_policy_and_rust_config(
         options,
         oracle_policy,
         languages,
-        generated_file_patterns,
+        rust_config,
     )
 }
 
@@ -711,17 +865,17 @@ pub(crate) fn run_repo_analysis_with_oracle_policy(
     pipeline::run_repo_pipeline_with_oracle_policy(options, oracle_policy, languages)
 }
 
-pub(crate) fn run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
+pub(crate) fn run_repo_analysis_with_oracle_policy_and_rust_config(
     options: &AnalysisOptions,
     oracle_policy: &OraclePolicy,
     languages: &[language::LanguageId],
-    generated_file_patterns: &[String],
+    rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, String> {
-    pipeline::run_repo_pipeline_with_oracle_policy_and_generated_file_patterns(
+    pipeline::run_repo_pipeline_with_oracle_policy_and_rust_config(
         options,
         oracle_policy,
         languages,
-        generated_file_patterns,
+        rust_config,
     )
 }
 
@@ -736,6 +890,27 @@ pub(crate) fn owner_symbols_for_lines(
     root: &Path,
     lines: &[(PathBuf, usize)],
 ) -> Result<Vec<ChangedLineOwner>, String> {
+    changed_line_ownership_for_lines(root, lines).map(|ownership| ownership.owners)
+}
+
+/// Owner attribution for changed lines from one Rust index build.
+///
+/// `owners` holds the innermost owner function of each changed line (the
+/// historical `owner_symbols_for_lines` projection). `enclosing_owners` holds
+/// every function whose span contains a changed line, so a consumer can tell
+/// whether an outer owner's span overlaps the diff even when attribution named
+/// a nested function. A line outside every function span has no entry in
+/// either list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChangedLineOwnership {
+    pub(crate) owners: Vec<ChangedLineOwner>,
+    pub(crate) enclosing_owners: Vec<ChangedLineOwner>,
+}
+
+pub(crate) fn changed_line_ownership_for_lines(
+    root: &Path,
+    lines: &[(PathBuf, usize)],
+) -> Result<ChangedLineOwnership, String> {
     let files = lines
         .iter()
         .map(|(file, _)| file.clone())
@@ -744,7 +919,7 @@ pub(crate) fn owner_symbols_for_lines(
         .collect::<Vec<_>>();
 
     let index = rust_index::build_index(root, &files)?;
-    let mut owners = lines
+    let owners = lines
         .iter()
         .filter_map(|(file, line)| {
             rust_index::find_owner_function(&index, file, *line).map(|function| ChangedLineOwner {
@@ -754,6 +929,25 @@ pub(crate) fn owner_symbols_for_lines(
             })
         })
         .collect::<Vec<_>>();
+    let enclosing_owners = lines
+        .iter()
+        .flat_map(|(file, line)| {
+            rust_index::find_enclosing_functions(&index, file, *line).map(|function| {
+                ChangedLineOwner {
+                    file: file.clone(),
+                    line: *line,
+                    owner: function.id.to_string(),
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    Ok(ChangedLineOwnership {
+        owners: sorted_owners(owners),
+        enclosing_owners: sorted_owners(enclosing_owners),
+    })
+}
+
+fn sorted_owners(mut owners: Vec<ChangedLineOwner>) -> Vec<ChangedLineOwner> {
     owners.sort_by(|left, right| {
         left.file
             .cmp(&right.file)
@@ -761,7 +955,7 @@ pub(crate) fn owner_symbols_for_lines(
             .then_with(|| left.owner.cmp(&right.owner))
     });
     owners.dedup();
-    Ok(owners)
+    owners
 }
 
 #[cfg(test)]
@@ -897,15 +1091,17 @@ mod tests {
     }
 
     #[test]
-    fn analyzes_simple_predicate_gap() {
+    fn analyzes_simple_predicate_gap() -> Result<(), String> {
         let root = temp_dir("simple");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::create_dir_all(root.join("tests")).unwrap();
+        fs::create_dir_all(root.join("src"))
+            .map_err(|error| format!("failed to create src directory: {error}"))?;
+        fs::create_dir_all(root.join("tests"))
+            .map_err(|error| format!("failed to create tests directory: {error}"))?;
         fs::write(
             root.join("Cargo.toml"),
             "[package]\nname='x'\nversion='0.1.0'\nedition='2024'\n",
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write Cargo.toml: {error}"))?;
         fs::write(
             root.join("src/lib.rs"),
             r#"
@@ -914,7 +1110,7 @@ pub fn price(amount: i32, threshold: i32) -> i32 {
 }
 "#,
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write src/lib.rs: {error}"))?;
         fs::write(
             root.join("tests/pricing.rs"),
             r#"
@@ -925,7 +1121,7 @@ fn premium_customer_gets_discount() {
 }
 "#,
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write tests/pricing.rs: {error}"))?;
         fs::write(
             root.join("diff.patch"),
             r#"diff --git a/src/lib.rs b/src/lib.rs
@@ -938,7 +1134,7 @@ index 0000000..1111111 100644
  }
 "#,
         )
-        .unwrap();
+        .map_err(|error| format!("failed to write diff.patch: {error}"))?;
         let out = run_analysis(&AnalysisOptions {
             root: root.clone(),
             base: None,
@@ -950,10 +1146,10 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
-        })
-        .unwrap();
+        })?;
         assert!(!out.findings.is_empty());
         assert!(
             out.findings
@@ -973,14 +1169,15 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
-        })
-        .unwrap();
+        })?;
         assert!(instant.findings.iter().any(|finding| {
             finding.class == crate::domain::ExposureClass::NoStaticPath
                 && finding.related_tests.is_empty()
         }));
+        Ok(())
     }
 
     #[test]
@@ -1027,6 +1224,7 @@ fn premium_customer_gets_discount() {
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1132,6 +1330,72 @@ pub fn unrelated() -> i32 {
     }
 
     #[test]
+    fn changed_line_ownership_names_outer_owner_of_nested_function_line() -> Result<(), String> {
+        // Review placement (RIPR-SPEC-0012) needs the outer owner span for a
+        // changed line inside a nested fn; a blank line between functions
+        // has no owner at all.
+        let root = temp_dir("owner_chain_lines");
+        fs::create_dir_all(root.join("src"))
+            .map_err(|e| format!("failed to create src dir: {e}"))?;
+        fs::write(
+            root.join("src/lib.rs"),
+            r#"
+pub fn discounted_total(amount: i32, threshold: i32) -> i32 {
+    fn clamp(value: i32) -> i32 {
+        value.max(0)
+    }
+    if amount >= threshold { clamp(amount - 10) } else { amount }
+}
+
+pub fn unrelated() -> i32 {
+    0
+}
+"#,
+        )
+        .map_err(|e| format!("failed to write src/lib.rs: {e}"))?;
+
+        let ownership = changed_line_ownership_for_lines(
+            &root,
+            &[
+                (PathBuf::from("src/lib.rs"), 4),
+                (PathBuf::from("src/lib.rs"), 8),
+                (PathBuf::from("src/lib.rs"), 10),
+            ],
+        );
+        fs::remove_dir_all(&root).map_err(|e| format!("failed to remove temp dir: {e}"))?;
+        let ownership = ownership?;
+
+        let owners_at = |owners: &[ChangedLineOwner], line: usize| {
+            let mut names = owners
+                .iter()
+                .filter(|owner| owner.line == line)
+                .map(|owner| {
+                    owner
+                        .owner
+                        .rsplit("::")
+                        .next()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        assert_eq!(owners_at(&ownership.owners, 4), vec!["clamp"]);
+        assert_eq!(
+            owners_at(&ownership.enclosing_owners, 4),
+            vec!["clamp", "discounted_total"]
+        );
+        assert!(owners_at(&ownership.owners, 8).is_empty());
+        assert!(owners_at(&ownership.enclosing_owners, 8).is_empty());
+        assert_eq!(
+            owners_at(&ownership.enclosing_owners, 10),
+            vec!["unrelated"]
+        );
+        Ok(())
+    }
+
+    #[test]
     fn repo_analysis_excludes_test_files_from_probe_seed() -> Result<(), String> {
         let root = temp_dir("repo_exclude_tests");
         fs::create_dir_all(root.join("src"))
@@ -1176,6 +1440,7 @@ fn test_with_predicate() {
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1245,6 +1510,7 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1264,6 +1530,7 @@ index 0000000..1111111 100644
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })?;
@@ -1293,6 +1560,7 @@ mod git_candidate_entry_tests {
                 .map_err(|error| error.to_string())?,
             )),
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             ..default_options_for_entry_test()?
         })
     }
@@ -1309,6 +1577,7 @@ mod git_candidate_entry_tests {
             git_timeout: None,
             git_candidate: None,
             resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
             production_like_targets: Default::default(),
             test_harnesses: Vec::new(),
         })

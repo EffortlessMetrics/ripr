@@ -1,0 +1,13 @@
+diff --git a/crates/atuin-ai/src/context.rs b/crates/atuin-ai/src/context.rs
+index 411b52aa..b42b8bbd 100644
+--- a/crates/atuin-ai/src/context.rs
++++ b/crates/atuin-ai/src/context.rs
+@@ -37,7 +37,7 @@ pub struct AppContext {
+ }
+ 
+ pub fn history_output_capability_available(daemon_enabled: bool) -> bool {
+-    cfg!(feature = "daemon") && daemon_enabled
++    daemon_enabled && cfg!(feature = "daemon")
+ }
+ 
+ /// The `client_v1_*` capability strings this client sends with every AI

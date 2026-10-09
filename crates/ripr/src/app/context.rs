@@ -37,17 +37,47 @@ pub fn collect_context_with_config(
     max_related_tests: usize,
     config: &RiprConfig,
 ) -> Result<String, String> {
+    collect_context_with_config_and_worktree(
+        input,
+        selector,
+        max_related_tests,
+        config,
+        false,
+        false,
+    )
+}
+
+/// [`collect_context_with_config`] over the working tree when `worktree` is
+/// set (`ripr context --worktree`), so a finding `ripr check --worktree`
+/// listed from uncommitted edits can be selected.
+pub(crate) fn collect_context_with_config_and_worktree(
+    input: CheckInput,
+    selector: &str,
+    max_related_tests: usize,
+    config: &RiprConfig,
+    worktree: bool,
+    mode_explicit: bool,
+) -> Result<String, String> {
     let input = CheckInput {
         format: OutputFormat::Json,
         ..input
     };
-    let output = check_workspace_with_config(input, config)?;
+    let navigation = super::finding_navigation_with_worktree(&input, None, mode_explicit, worktree);
+    let output = if worktree {
+        super::check_workspace_worktree_with_config(input, config)?
+    } else {
+        check_workspace_with_config(input, config)?
+    };
     match select_finding(&output.findings, selector) {
-        Some(finding) => Ok(output::json::render_context_packet(
+        Some(finding) => Ok(output::json::render_context_packet_with_explain_command(
             finding,
             max_related_tests,
+            Some(navigation.explain_command(&finding.id)),
         )),
-        None => Err(format!("no finding matched {selector:?}")),
+        None => Err(super::explain::no_finding_matched(
+            selector,
+            &navigation.list_command(),
+        )),
     }
 }
 
@@ -72,12 +102,19 @@ pub(crate) fn collect_context_from_artifact(
         config,
         asserted_base,
     )?;
+    // As in `explain --from`, the navigation names the artifact: replaying
+    // it keeps the verified identity without re-running the pipeline.
+    let navigation = super::finding_navigation(&input, Some(artifact_path), false);
     match select_finding(&findings, selector) {
-        Some(finding) => Ok(output::json::render_context_packet(
+        Some(finding) => Ok(output::json::render_context_packet_with_explain_command(
             finding,
             max_related_tests,
+            Some(navigation.explain_command(&finding.id)),
         )),
-        None => Err(format!("no finding matched {selector:?}")),
+        None => Err(super::explain::no_finding_matched(
+            selector,
+            "ripr check --json",
+        )),
     }
 }
 
@@ -116,6 +153,34 @@ mod tests {
         Ok(())
     }
 
+    /// #3952: the witness's explain command replays the input identity that
+    /// produced the finding. Without it, `ripr explain` re-analyzes the
+    /// default branch instead of the `--diff` (or `--base`) the user chose.
+    #[test]
+    fn context_explain_command_carries_the_input_diff() -> Result<(), String> {
+        let input = sample_diff_input();
+        let diff = input
+            .diff_file
+            .as_ref()
+            .map(|path| crate::agent::loop_commands::shell_arg(&path.display().to_string()))
+            .ok_or("sample input must carry a diff file")?;
+        let selector = "probe:crates_ripr_examples_sample_src_lib.rs:error_path:a776c683";
+        let rendered = collect_context_with_input(input, selector, 2)?;
+        let packet: serde_json::Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse packet: {err}"))?;
+        let command = packet
+            .pointer("/witness/explain_command")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| format!("fixture must render a witness: {rendered}"))?;
+        if !command.starts_with("ripr explain --root ")
+            || !command.contains(&format!("--diff {diff}"))
+            || !command.ends_with(selector)
+        {
+            return Err(format!("explain command must replay --diff: {command}"));
+        }
+        Ok(())
+    }
+
     #[test]
     fn collect_context_public_wrapper_reports_invalid_root() {
         let result = collect_context(
@@ -124,10 +189,12 @@ mod tests {
             1,
         );
 
+        // #3952: a missing root must fail as a missing root, not as an
+        // unresolvable default base.
         assert!(
             result
                 .err()
-                .is_some_and(|err| err.contains("failed to run git diff"))
+                .is_some_and(|err| err.contains("does not exist or is not a directory"))
         );
     }
 }

@@ -1,0 +1,1010 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_release_challenge_judgments",
+  "authority": "EffortlessMetrics/ripr-swarm#3806",
+  "selection_path": "metrics/rust-judged-behavior-panel/release-selection.json",
+  "selection_sha256": "sha256:69c9b45616bd4c9bd13e8da0d668e52c39bca32485f93335589009e77c3fdd72",
+  "reference_run": {
+    "analyzer": "ripr 0.11.0 (dev profile, binary sha256:6e51f363cb017d26...)",
+    "source": "EffortlessMetrics/ripr-swarm main c989c30a8 (2026-09-27)",
+    "argv": [
+      "check",
+      "--root",
+      "<case head worktree>",
+      "--base",
+      "<case base>",
+      "--mode",
+      "draft",
+      "--json"
+    ],
+    "scope": "Investigation input for the reference_outcome labels only. Rows that the selection freezes with production_like_targets (p1745, p1617) use the run with that ripr.toml opt-in; without it main c989c30 silently skips every xtask path (fixed by ripr-swarm#4243). This is not the #1609 candidate replay, which #2769 runs against this packet."
+  },
+  "roles": [
+    {
+      "id": "static-source",
+      "method": "Read-only source and test reading at the case head and base (git diff, grep, file reading); answered owner/activation/propagation/observer/oracle/target/limitation and a verdict per claimed observer. Three separate reviewer contexts split the 18 carried rows; a fourth took the three limit rows.",
+      "blind_to": [
+        "selection expected_direction, labels, reason, must_not_claim, required_discriminator",
+        "prior #1675 rounds and issue/PR comments",
+        "reference analyzer output"
+      ]
+    },
+    {
+      "id": "static-test-first",
+      "method": "Separate reviewer context for the three should_limit rows: started from every test that could observe the behavior, traced each hop to the owner, and ran the observing cli_smoke tests unmutated at each head.",
+      "blind_to": [
+        "selection expected_direction, labels, reason, required_discriminator",
+        "the static-source reviews",
+        "reference analyzer output"
+      ]
+    },
+    {
+      "id": "runtime-mutation",
+      "method": "Targeted mutants applied at the case head in a detached worktree; the claimed observers, the aligned candidates and wider suites run before and after with exact test counts; every mutant restored and the worktree verified clean.",
+      "blind_to": [
+        "selection expected_direction, labels, reason",
+        "the static reviews (except that the assembler forwarded two candidate observer names without verdicts)",
+        "reference analyzer output"
+      ]
+    },
+    {
+      "id": "assembler-runtime",
+      "method": "Targeted mutants run by the assembling session where the runtime-mutation context was not given them: the xtask cases (p1745, p1617), and after the #4280 review the s3755 FC-gate residual. Each mutant was planned from the static review's residual list, applied at the case head, the named or full suite run, and the file restored with git checkout.",
+      "blind_to": [
+        "nothing: the assembler had read the static reviews; the evidence is the runtime result, not the reading"
+      ]
+    },
+    {
+      "id": "assembler-check",
+      "method": "Mechanical check by the assembling session: every diff hunk located inside a #[cfg(test)] module or a CI workflow, from git diff -U0 hunk headers and the module's opening line.",
+      "blind_to": [
+        "nothing: the assembler had read the static reviews; used only for mechanical test-only controls"
+      ]
+    }
+  ],
+  "limits": [
+    "Terminal judgments are structural, from source/test evidence and targeted runtime mutants; they do not claim population accuracy or mutation adequacy.",
+    "reference_outcome labels compare with one swarm-main analyzer run, not the frozen #1609 candidate; #2769 replays the candidate and recomputes them.",
+    "false_actionable is established only on the three test-only rows, where the run emitted no findings at all; elsewhere it is not established: `ripr check --json` carries no actionability decision, and a gap-decision ledger built from it (`ripr reports gap-ledger --check-output`) was blocked with 0 records.",
+    "Row-slices were defined by probe ids of the historical binary @89ac42442, which the current analyzer does not reproduce; judgments bind to the anchored behavior (file, line, expression) and name the rows they cover.",
+    "Swarm-repository rows stay scope proposed_unauthorized in the selection; they were only read and tested locally from public commits."
+  ],
+  "judgments": [
+    {
+      "case_id": "p1744-quiet-test-only",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/output/doctor.rs:1019-1031 const SHIM_PROBE_MAX_LAUNCH_ATTEMPTS and tests::probe_published_tool_with_command, inside #[cfg(test)] mod tests (doctor.rs:563-564 to EOF)",
+        "activation": "none: no production path; the helper is called only from mod tests (doctor.rs:727, :992)",
+        "propagation": "none reaches production; the change raises a test-harness retry ceiling",
+        "observer": "none needed",
+        "oracle": "none needed",
+        "target": "not applicable",
+        "limitation": "none"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "no_production_behavior",
+          "confidence": "high",
+          "evidence": [
+            "whole diff inside #[cfg(test)] mod tests, doctor.rs:563-564 through EOF :1180"
+          ]
+        },
+        {
+          "role": "assembler-check",
+          "judgment": "no_production_behavior",
+          "confidence": "high",
+          "evidence": [
+            "git diff -U0 16e09900 e4a2072b: both hunks (@@ -1008 +1009, @@ -1020 +1031) report context `mod tests`; doctor.rs:563 is #[cfg(test)]"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "0 probes, 0 findings; outcome partial_with_limitations only from 19 unrelated TypeScript test-extraction limitations",
+        "false_actionable": false,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "A test-only diff has no production behavior to discriminate; this control says nothing about analyzer recall elsewhere."
+      ]
+    },
+    {
+      "case_id": "p1731-quiet-test-only",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/cli/commands/gate.rs:229-239 struct TempRootGuard + Drop, and the rewritten gate_command_writes_blocked_report_before_error (:427), all inside #[cfg(test)] mod tests (:222-223 to EOF :479); production gate() unchanged",
+        "activation": "none in production",
+        "propagation": "the guard only removes temp directories on drop; no product sink",
+        "observer": "assert_eq!(ambient_after, stale) (~:476) checks test isolation, not product behavior",
+        "oracle": "not applicable",
+        "target": "not applicable",
+        "limitation": "none"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "no_production_behavior",
+          "confidence": "high",
+          "evidence": [
+            "TempRootGuard and the test rewrite sit inside #[cfg(test)] mod tests, gate.rs:222-479"
+          ]
+        },
+        {
+          "role": "assembler-check",
+          "judgment": "no_production_behavior",
+          "confidence": "high",
+          "evidence": [
+            "git diff -U0 731ef1b5 2ad07c0b: all six hunks report context `mod tests`; gate.rs:222 is #[cfg(test)]"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "0 probes, 0 findings; outcome partial_with_limitations only from unrelated TypeScript limitations",
+        "false_actionable": false,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "A test-only diff has no production behavior to discriminate; this control says nothing about analyzer recall elsewhere."
+      ]
+    },
+    {
+      "case_id": "p1732-quiet-test-only",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "xtask/src/reports/eval_sweep_refresh.rs:3883-3899 test refresh_candidate_validates_through_eval_sweep_check inside #[cfg(test)] mod python_eval_sweep_refresh (:2515-2516 to EOF); plus .github/workflows/windows-advisory.yml comments and `if: always()` on two summary steps",
+        "activation": "none in production Rust",
+        "propagation": "the workflow edit changes CI step scheduling only; no Rust source reads windows-advisory.yml (grep: 0 hits)",
+        "observer": "none",
+        "oracle": "not applicable",
+        "target": "not applicable",
+        "limitation": "the CI YAML change is real but outside any Rust test's reach; it is CI behavior, not product behavior"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "no_production_behavior",
+          "confidence": "high",
+          "evidence": [
+            "eval_sweep_refresh.rs:3897 copy is inside #[cfg(test)] mod python_eval_sweep_refresh (:2515); windows-advisory.yml unread by any Rust source"
+          ]
+        },
+        {
+          "role": "assembler-check",
+          "judgment": "no_production_behavior",
+          "confidence": "high",
+          "evidence": [
+            "git diff -U0 58756ee2 d89980a5: the Rust hunk reports context `mod python_eval_sweep_refresh`; the other hunks are in .github/workflows/windows-advisory.yml"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "0 probes, 0 findings; the xtask test file is also skipped by the xtask source-role rule",
+        "false_actionable": false,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "A test-only diff has no production behavior to discriminate; this control says nothing about analyzer recall elsewhere.",
+        "The CI workflow edit is not judged as product behavior."
+      ]
+    },
+    {
+      "case_id": "s3866-doctor-packet-subprocess-limit",
+      "expected_direction": "should_limit",
+      "terminal": "confirmed_should_limit",
+      "structural": {
+        "owner": "crates/ripr/src/cli/commands/doctor.rs:113-125 print_doctor_start_here_guidance; predicate root.join(\"target/ripr/reports/start-here.md\").is_file() at :119",
+        "activation": "cli_smoke doctor_reports_missing_config_defaults (:5622, no file), doctor_reports_present_start_here_packet (:5644, file written), doctor_reports_directory_squatting_packet_path_as_not_generated (:5665, directory at path)",
+        "propagation": "predicate -> println! -> child stdout -> Output.stdout",
+        "observer": "the three doctor_* cli_smoke tests",
+        "oracle": "strong: branch-exclusive suffix assertions with positive and negative on each side (:5634-5635, :5657-5658, :5674-5675)",
+        "target": "aligned: the suffixes occur only at doctor.rs:120/:123",
+        "limitation": "run_ripr / spawn_command (crates/ripr/tests/cli_smoke.rs:22-25, ~44-58) spawn env!(\"CARGO_BIN_EXE_ripr\") with Command::output(); no Rust call edge from test to owner; activation also crosses a filesystem fixture (std::fs::write of start-here.md read by is_file())"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "limited",
+          "confidence": "high",
+          "evidence": [
+            "runtime-discriminated by three doctor_* spawn tests; static binding breaks at cli_smoke.rs:24 spawn and the start-here.md filesystem handoff"
+          ]
+        },
+        {
+          "role": "static-test-first",
+          "judgment": "limited",
+          "confidence": "high",
+          "evidence": [
+            "traced test -> run_ripr spawn -> execute.rs:44 -> doctor.rs:65 -> owner; `cargo test -p ripr --test cli_smoke doctor_reports_` at head 099f85c: 7 passed"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "doctor.rs:119 predicate weakly_exposed with a boundary-test repair suggestion and stop reason fixture_opaque; no static limit named for the subprocess boundary",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": false
+      },
+      "non_claims": [
+        "Runtime discrimination is established by the named cli_smoke tests; this row claims only that static analysis cannot bind those tests to the owner, not that the behavior lacks tests."
+      ]
+    },
+    {
+      "case_id": "s3956-pilot-baseline-file-limit",
+      "expected_direction": "should_limit",
+      "terminal": "confirmed_should_limit",
+      "structural": {
+        "owner": "crates/ripr/src/cli/commands/pilot.rs:32-70 write_pilot_repo_exposure_json; branch `if pilot_budget_truncated` at :42, flag from apply_pilot_seam_budget(..).is_some() at :169",
+        "activation": "pilot_snapshot_is_the_agent_verify_baseline (cli_smoke.rs:8073, default budget, false arm); pilot_snapshot_truncated_by_the_seam_budget_is_not_a_verify_baseline (:8176, RIPR_PILOT_SEAM_BUDGET=1, true arm, precondition asserted)",
+        "propagation": "chosen writer -> target/ripr/pilot/repo-exposure.json -> test read_to_string + serde",
+        "observer": "the two pilot_snapshot_* cli_smoke tests",
+        "oracle": "strong: presence/absence of /artifact/content_sha256 (:8092, :8224), plus agent verify summary (:8159, :8164)",
+        "target": "aligned: the artifact key is decided only by which writer the branch calls",
+        "limitation": "run_ripr / spawn_command (crates/ripr/tests/cli_smoke.rs:22-25, ~44-58) spawn env!(\"CARGO_BIN_EXE_ripr\") with Command::output(); no Rust call edge from test to owner; activation also crosses the RIPR_PILOT_SEAM_BUDGET env var (std::env::var, seam_inventory.rs:1062-1068) and the output file is read back by path"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "limited",
+          "confidence": "high",
+          "evidence": [
+            "runtime-discriminated on both arms; boundary = spawn + env var + output-file side channel"
+          ]
+        },
+        {
+          "role": "static-test-first",
+          "judgment": "limited",
+          "confidence": "high",
+          "evidence": [
+            "traced both tests through spawn_command env merge; `cargo test -p ripr --test cli_smoke pilot_snapshot_` at head 1d4f7e52 with its own target dir: 2 passed"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "pilot.rs:42 infection_unknown with stop reason fixture_opaque: the analyzer withholds credit at the opaque boundary, though it names the fixture rather than the subprocess/env boundary",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": true
+      },
+      "non_claims": [
+        "Runtime discrimination is established by the named cli_smoke tests; this row claims only that static analysis cannot bind those tests to the owner, not that the behavior lacks tests.",
+        "limitation_correct records that the analyzer limited instead of crediting or gapping; the named limit kind differs from rust_subprocess_binary_reach_unresolved."
+      ]
+    },
+    {
+      "case_id": "s2864-fast-mode-notice-limit",
+      "expected_direction": "should_limit",
+      "terminal": "confirmed_should_limit",
+      "structural": {
+        "owner": "crates/ripr/src/cli/commands/check.rs:302-307 `if input.mode == app::Mode::Fast { eprintln!(..) }`, moved from the --mode argv arm to after apply_to_check_input (:255) and before the gap-ledger / repo-exposure early returns",
+        "activation": "check_fast_mode_notice_* cli_smoke tests: config-derived mode (ripr.toml), later --mode wins, repeated flag, repo-scoped early returns",
+        "propagation": "eprintln! -> child stderr -> Output.stderr",
+        "observer": "the four check_fast_mode_notice_* tests (cli_smoke.rs:7662, :7690, :7721, :7755)",
+        "oracle": "strong: presence/absence/count of FAST_MODE_NOOP_NOTICE on stderr",
+        "target": "aligned: the notice text is emitted only at this eprintln on the check path",
+        "limitation": "run_ripr / spawn_command (crates/ripr/tests/cli_smoke.rs:22-25, ~44-58) spawn env!(\"CARGO_BIN_EXE_ripr\") with Command::output(); no Rust call edge from test to owner; the config-derived case also crosses ripr.toml -> load_for_root -> apply_to_check_input"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "limited",
+          "confidence": "high",
+          "evidence": [
+            "runtime-discriminated by stderr assertions; boundary = spawn at cli_smoke.rs:24 plus config merge"
+          ]
+        },
+        {
+          "role": "static-test-first",
+          "judgment": "limited",
+          "confidence": "high",
+          "evidence": [
+            "every emission-site mutant considered flips at least one assertion; `cargo test -p ripr --test cli_smoke check_fast_mode_notice` at head c864308: 4 passed"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "check.rs:302 weakly_exposed with a boundary-test repair suggestion and stop reason fixture_opaque; no static limit named for the subprocess boundary",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": false
+      },
+      "non_claims": [
+        "Runtime discrimination is established by the named cli_smoke tests; this row claims only that static analysis cannot bind those tests to the owner, not that the behavior lacks tests."
+      ]
+    },
+    {
+      "case_id": "p1741-helper-rows-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "crates/ripr/src/edit_cage.rs:506-520 agent_attributable_delta: `changes` built by filtering operational paths (:518) and `comparable: delta.comparable` (:511)",
+        "activation": "same-diff unit test agent_delta_ignores_operational_churn_but_binds_agent_surface (edit_cage.rs:~2670) feeds a delta with operational and agent paths",
+        "propagation": "the returned delta is read directly by the test",
+        "observer": "agent_delta_ignores_operational_churn_but_binds_agent_surface",
+        "oracle": "strong for `changes` (exact filtered set, :2687); partial for `comparable` (asserts true only, :2686)",
+        "target": "aligned: the test is about this helper",
+        "limitation": "none; the test only ever feeds comparable: true, so a constant-true pass-through of the anchored field construction survives"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "filter/`changes` rows discriminated by the same-diff test; `comparable: delta.comparable` alone only weakly discriminated (no input with comparable: false)"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "H3 (:518 filter disabled) caught by the same-diff test (edit_cage 36/37); H2 (:511 comparable: false) caught; H1 (:511 comparable: true) survives edit_cage 37, repair_attempt 18, cli_smoke agent_repair_phases 1"
+          ]
+        }
+      ],
+      "disagreement": {
+        "summary": "Both reviews gave the row the verdict discriminated on its filter behavior, and both recorded that `comparable: delta.comparable` (:511) survives a constant-true mutant (H1). The frozen row anchors the whole agent_attributable_delta owner, and its selection reason credits the field_construction probes that include :511.",
+        "resolution": "Resolved to confirmed_should_gap by the H1 runtime survivor (Codex review on #4280). A confirmed quiet row needs every non-equivalent sub-behavior of its anchored owner discriminated; the missing discriminator is an input with comparable: false."
+      },
+      "reference_outcome": {
+        "observation": "edit_cage.rs:511 exposed via direct_owner_call; :510 and :512 weakly_exposed. The :511 exposed credit is stronger than runtime supports (H1 constant-true survives), and the filter rows are under-credited as weak; row-level credit is judged against the gap terminal, so the weak filter rows are not counted as under-credit",
+        "false_actionable": null,
+        "false_exposed": true,
+        "under_credit": false,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The filter behavior (:518) and comparable: false (H2) are discriminated; the gap is the constant-true pass-through alone."
+      ]
+    },
+    {
+      "case_id": "p1741-pair-rows-gap",
+      "expected_direction": "should_gap",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "crates/ripr/src/app/repair_attempt.rs:217-238 receipt_binding: agent_attributable_delta(baseline.policy(), &delta) feed at :217 and `let agent_matches = sha256_bytes(&agent_delta_bytes) == after.delta_sha256;` at :225 with the tampered/stale and older-binary refusals",
+        "activation": "only public caller cli/commands/agent.rs:293 (`ripr agent receipt`); reached by cli_smoke agent_repair_phases_materialize_snapshots_and_verify_json through a process spawn",
+        "propagation": "binding result -> receipt refusal message or accepted receipt JSON on child stdout",
+        "observer": "cli_smoke agent_repair_phases_materialize_snapshots_and_verify_json observes only the accept path; the claimed lsp gap-rejection test (lsp/tests.rs:13199) and python_repair_verification write-failed test (:1747) never reach receipt_binding",
+        "oracle": "accept path strong end-to-end; refusal path absent: no test asserts the \"tampered or stale\" or \"older binary\" messages (grep)",
+        "target": "claimed observers misaligned (token-level); the integration test is aligned but accept-only",
+        "limitation": "the only reaching test spawns the binary; no in-process test calls receipt_binding"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "medium",
+          "evidence": [
+            "accept path of :225 and the :217 feed discriminated by cli_smoke agent_repair_phases_materialize_snapshots_and_verify_json; neither claimed observer; older-binary branch and #1738 re-invocation not discriminated"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "M1 (:225 agent_matches forced true: drift accepted) survives all of 1+1+18+37+1+16 tests run; M2 (`!=`) and M3 (full delta at :217) caught only by the cli_smoke accept-path test"
+          ]
+        }
+      ],
+      "disagreement": {
+        "summary": "static-source judged the predicate discriminated (medium) because the accept-path integration test kills `!=` and the full-delta feed; runtime-mutation found that disabling the binding check entirely (M1) survives every test run",
+        "resolution": "Resolved to confirmed_should_gap by the M1 runtime survivor: the behavior the change adds, refusing a receipt whose agent delta drifted, has no discriminating test; the static reading covered only the accept path."
+      },
+      "reference_outcome": {
+        "observation": "repair_attempt.rs:225 infection_unknown, :217 static_unknown, :227/:236/:238 weakly_exposed: no row credited exposed",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The gap is the refusal of agent-delta drift; the accept path is discriminated by one subprocess test.",
+        "No claim about which repair test would be sufficient."
+      ]
+    },
+    {
+      "case_id": "p1706-wiring-rows-gap",
+      "expected_direction": "should_gap",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "crates/ripr/src/analysis/language/python.rs:465 and crates/ripr/src/analysis/language/typescript/mod.rs:298 calls to dedup_finding_probe_ids(&mut unique_findings) in the adapters",
+        "activation": "any python or typescript analysis with repeated probe ids; no test constructs that input through the adapters",
+        "propagation": "deduplicated ids -> findings -> JSON/human output",
+        "observer": "none: the helper's own unit test calls it directly; no adapter test asserts id uniqueness",
+        "oracle": "absent for the wiring",
+        "target": "not applicable",
+        "limitation": "none: plain in-process call"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "no test observes that either adapter calls the helper; helper test dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence bypasses the adapters"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "WP (python.rs:465 call removed) and WT (typescript/mod.rs:298 call removed) each survive the helper test 1, python 273, typescript 282, full ripr lib 5250, cli_smoke/immutable_candidate_falsifier/python_repair_attempt 200/11/25; xtask fixtures/goldens not run"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "both call sites exposed: python.rs call_deletion probe via 8 weak_token_substring/low relations; typescript/mod.rs call_deletion probe via same_test_file oracles from output/outcome/mod.rs. Neither credited observer reaches the call",
+        "false_actionable": null,
+        "false_exposed": true,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "A golden or fixture observer (xtask fixtures/goldens) was not run and stays not_established; the false_exposed label is against the ripr lib and integration suites."
+      ]
+    },
+    {
+      "case_id": "p1745-wedge-rows-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "xtask/src/windows_advisory.rs:431 `outcome.stuck.remove(&name);` in parse_log (:422)",
+        "activation": "completed_test_clears_earlier_stuck_notice (:1578) feeds a stuck notice followed by the test's completion line",
+        "propagation": "RunOutcome.stuck returned by parse_log, read directly",
+        "observer": "completed_test_clears_earlier_stuck_notice",
+        "oracle": "strong: assert!(parsed.stuck.is_empty()) (:1582)",
+        "target": "aligned: the test is about this owner",
+        "limitation": "none"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "completed_test_clears_earlier_stuck_notice discriminates the remove; stuck_notice_parses_as_stuck_never_failed does not (its test never completes)"
+          ]
+        },
+        {
+          "role": "assembler-runtime",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "W1 (:431 remove deleted): `cargo test -p xtask windows_advisory` 28 passed, 1 failed (completed_test_clears_earlier_stuck_notice)"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "windows_advisory.rs:431 exposed via same_test_file (run with the frozen production_like_targets opt-in)",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": false,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "Structural judgment only; no runtime mutation adequacy or population rate is claimed."
+      ]
+    },
+    {
+      "case_id": "p1745-catalog-row-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "xtask/src/command.rs:684 command_catalog() usage literal for windows-advisory-summary, adding `[--nofeatures-log <path> --nofeatures-status <path>]` (mirrored in known_commands() :376; notes text :689)",
+        "activation": "command_catalog_check_accepts_current_catalog (xtask/src/tests.rs:28498) iterates every catalog entry",
+        "propagation": "catalog entry -> command_catalog_violations (main.rs:2053) and help_message / help_entries_for_query (command.rs:327-357)",
+        "observer": "command_catalog_check_accepts_current_catalog",
+        "oracle": "structural only: compares the root token (first whitespace word), writes non-empty, mutability validity and ordering; the order lookup skips an entry whose full string misses (main.rs:2116)",
+        "target": "same entity (the catalog), but no test quotes the usage or notes text (grep over xtask tests: 0 hits)",
+        "limitation": "none: the observer is insensitive, not blocked"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "a suffix revert keeps the root token and is skipped by the order lookup; no test pins the usage text"
+          ]
+        },
+        {
+          "role": "assembler-runtime",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "C1 (:684 reverted to the base literal, drifting from :376): full `cargo test -q -p xtask` 2357 passed, 8 failed; none on the catalog path: 7 python_judged_panel_replay tests (which also failed under the unrelated W2 mutant at windows_advisory.rs:314) and the known root-only unreadable_subtree test"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "command.rs:684 exposed via weak token relations, stronger than the expected weakly_exposed; the credited catalog test cannot fail on the changed text",
+        "false_actionable": null,
+        "false_exposed": true,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The selection's product policy keeps text-only catalog changes at weak with no repair (EffortlessMetrics/ripr#1752 item 3); this row judges discrimination only and does not overrule that policy on actionability.",
+        "The departure is the structural answer to the ripr question: no current test would notice the usage text being wrong."
+      ]
+    },
+    {
+      "case_id": "p1617-dispatch-rows-gap",
+      "expected_direction": "should_gap",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "xtask/src/dispatch.rs:106-110 execute arm `XtaskCommand::SourcePromotion(args) if source_promotion_network_policy_resolution_handles(&args) => source_promotion_network_policy_resolution(&args)`; guard at reports/source_promotion_network_policy_resolution.rs:75",
+        "activation": "none: dispatch::execute is called in tests only with RepoContractReport (tests.rs:23884), a fixed report list without SourcePromotion (tests.rs:27867) and RustRepairTrustReport (dispatch.rs:254); command.rs:2190 builds SourcePromotion through parse only",
+        "propagation": "no route from any test into the arm",
+        "observer": "none; the module's own tests call reconcile/parse_policy directly and never dispatch",
+        "oracle": "absent for the arm",
+        "target": "claimed observers (xtask tests.rs generic tests, verification_contracts, release files) execute the dispatcher or share tokens but never take the arm",
+        "limitation": "none: match-guard dispatch is plain static code"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "no test constructs a dispatched SourcePromotion command; the dispatcher-exercising tests never take the new arm"
+          ]
+        },
+        {
+          "role": "assembler-runtime",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "D1 (dispatch.rs:106-110 arm deleted, so resolve-network-policy falls through to source_promotion_verify): full `cargo test -q -p xtask` at head 8d3ee48f, 2283 passed, 8 failed, none on the dispatch path (the same 7 python_judged_panel_replay tests and the root-only unreadable_subtree test that failed under unrelated mutants in p1745)"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "dispatch.rs:106 call_deletion exposed via owner_named_test advisory_commands_are_listed_but_never_executed and weak token relations; no credited observer takes the arm (run with the frozen production_like_targets opt-in)",
+        "false_actionable": null,
+        "false_exposed": true,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "Discrimination of the resolve-network-policy module's internals by its own unit tests is not judged here; the gap is the dispatch wiring."
+      ]
+    },
+    {
+      "case_id": "p1745-triple-rows-gap",
+      "expected_direction": "should_gap",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "xtask/src/windows_advisory.rs parse_log (:422) stuck-set logic at the frozen anchor: `outcome.stuck.remove(&name)` (:431), `outcome.stuck.insert(name)` (:442) and the stuck_test_line return value (:480-485); the three historical rows (return_value:02424e3e, call_deletion:07e82ab8/9778b858) are bound to this behavior, not to their probe ids",
+        "activation": "completed_test_clears_earlier_stuck_notice (:1578) and stuck_notice_parses_as_stuck_never_failed (:1539) feed stuck notices with and without completion lines",
+        "propagation": "RunOutcome.stuck returned by parse_log, read directly",
+        "observer": "stuck_notice_parses_as_stuck_never_failed (insert, return value) and completed_test_clears_earlier_stuck_notice (remove); the claimed a_conditional_issue_may_not_name_two_destinations (policy/release_targets/tests.rs:521) is an unrelated release-manifest rule with 0 windows_advisory references",
+        "oracle": "strong: parsed.stuck.contains(<exact name>) (:1544) and parsed.stuck.is_empty() (:1582)",
+        "target": "the credited observer is misaligned (token-level); the discriminating tests are aligned same-file tests",
+        "limitation": "none for parse_log; the run() partial branch (:313-314) prints through print! to stdout, which no test captures"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "medium",
+          "evidence": [
+            "stuck_test_line return and insert discriminated by stuck_notice_parses_as_stuck_never_failed, remove by completed_test_clears_earlier_stuck_notice; the claimed observer discriminates none; row mapping medium because the historical probe ids are underspecified"
+          ]
+        },
+        {
+          "role": "assembler-runtime",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "W1 (:431 remove deleted) caught by completed_test_clears_earlier_stuck_notice; W3 (:442 insert deleted) and W4 (:484 stuck_test_line returns None) caught by stuck_notice_parses_as_stuck_never_failed; each `cargo test -p xtask windows_advisory` 28 passed, 1 failed",
+            "W2 (:314 print of render_partial deleted) survives windows_advisory 29/29 and the full xtask suite (failures only in unrelated python_judged_panel tests); only caller of run() is dispatch.rs:44"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "windows_advisory.rs:431 and :442 exposed, :484 weakly_exposed; :314 (run() partial print, outside the anchored owner) exposed although no test observes it",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": true,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The historical false-exposed finding was about the credited observer (wrong observer, right outcome); this row judges the behavior, which same-file tests discriminate.",
+        "The run() partial print at :314 is a real residual gap outside the anchored parse_log owner; it is reported, not judged as this row."
+      ]
+    },
+    {
+      "case_id": "p1617-command-rows-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "xtask/src/command.rs:1259-1266 new command_entry(\"source-promotion resolve-network-policy ...\", \"mutating\", <writes>, false, false, <notes>), mirrored in known_commands() :442",
+        "activation": "command_catalog_check_accepts_current_catalog (tests.rs:28148) iterates every entry",
+        "propagation": "catalog -> command_catalog_violations (main.rs:1838)",
+        "observer": "command_catalog_check_accepts_current_catalog; command_catalog_ci_enforced_flags_match_repo_workflows (tests.rs:28443) for the ci flag",
+        "oracle": "structural only: catches empty writes, an invalid mutability string, external_state_mutating without judgment, misordering; the root token source-promotion is shared with other entries, so deleting the entry leaves no root diff",
+        "target": "same owner (the catalog), generic check; no test names resolve-network-policy",
+        "limitation": "none: the observer is insensitive, not blocked"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "weakly_discriminated",
+          "confidence": "medium",
+          "evidence": [
+            "entry deletion, reclassification to another valid mutability, and text changes pass the catalog check"
+          ]
+        },
+        {
+          "role": "assembler-runtime",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "K1 (:1261 \"mutating\" -> \"report_only\"): `cargo test -p xtask command_catalog` 19+1 passed",
+            "K2 (entry :1259-1266 deleted): `cargo test -p xtask command` 152+3 passed"
+          ]
+        }
+      ],
+      "disagreement": {
+        "summary": "static-source judged the entry weakly discriminated because malformed-value mutants are caught; runtime showed deletion and reclassification both survive",
+        "resolution": "Resolved to confirmed_should_gap by the K1 and K2 survivors: the claimed exact oracle does not fail on a missing or reclassified entry, which is the selection's own required_discriminator."
+      },
+      "reference_outcome": {
+        "observation": "command.rs:1259 and :1261 exposed via direct_owner_call, :1260 exposed via weak tokens; the credited catalog test passes with the entry deleted or reclassified",
+        "false_actionable": null,
+        "false_exposed": true,
+        "under_credit": null,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "Malformed-value mutants (empty writes, invalid mutability) are discriminated; the gap is the entry's presence and its mutating classification."
+      ]
+    },
+    {
+      "case_id": "p1706-helper-rows-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/analysis/probes/ids.rs:116-138 dedup_finding_probe_ids: repeat counting, `.{count}` suffix, Finding.id rebind and evidence source_id rebind",
+        "activation": "same-diff dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence (ids.rs:260) passes two findings sharing an id plus one distinct id",
+        "propagation": "the helper edits the slice in place; the test reads it back",
+        "observer": "dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence",
+        "oracle": "strong: exact assert_eq! on the suffixed probe id and Finding.id (:331-339), evidence contains source_id=...2, first occurrence unsuffixed, uniqueness count (:362)",
+        "target": "aligned: same-diff test of this owner",
+        "limitation": "none; `finding.id == old` (:126) is always true in the fixture, but every production Finding constructor sets id from the probe id (classifier/finding.rs:67 at the case head), so a constant-true guard is equivalent there"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "exact oracles on id, Finding.id and evidence; only the always-true fixture guard at :126 is residual"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "D1 (:124 `.` -> `-` suffix) caught by the same-diff test, full lib 5249/5250 (only that test fails); D2 evidence rebind off, D3 Finding.id rebind off, D4 `> 1` -> `> 2` each caught by the same test"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "ids.rs:125-133 exposed, credited only through weak token relations rather than the same-diff test: right outcome, wrong observer",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": false,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The observer the reference credited is not the discriminating test; this row labels the outcome only."
+      ]
+    },
+    {
+      "case_id": "p1705-headline-rows-gap",
+      "expected_direction": "should_gap",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/output/markdown.rs is_compound_bash_command (:165-251), the fail-closed shell-expansion guard reached through powershell_command: double-quoted `$` (:190), unquoted `$` (:223), `>` shape (:209-217), `#`/`~` word-start, glob/brace/paren/`@` arms and the default `_ => return true` (:245)",
+        "activation": "same-diff powershell_command_withholds_shell_expansion_forms (:393) feeds 17 expansion forms ({a,b}, $HOME, *.rs, a?b, ~/report, --% data, second redirect ...); the modified ..._escapes_embedded_quotes (:382) feeds an unbalanced quote",
+        "propagation": "guard -> powershell_command returns None -> no PowerShell variant rendered",
+        "observer": "powershell_command_withholds_shell_expansion_forms; the credited scattered observers (agent_status, agent_review_summary, pr_summary/json, pilot, first_pr, agent_workflow, cli_smoke) feed only allowlisted or pre-existing compound forms and pass at base and head",
+        "oracle": "strong: exact assert_eq!(powershell_command(command), None) per form (:411-415) with positive quoted-data controls (:418-428)",
+        "target": "the credited scattered observers are misaligned (token-level); the same-diff test is aligned",
+        "limitation": "none; several arms (:223, :224, :231-235) are equivalent to the default at :245, and the `||` at :215 has no one-sided-space input"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "discriminated by the same-diff withholds test and the modified escapes_embedded_quotes test, not by the scattered observers; the :215 `||` -> `&&` flip has no discriminating input"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "G1 (:190 `$` arm -> {}), G2 (:190 reverted to base `$(` only) and G3 (:223 `$` arm -> {}) each caught by powershell_command_withholds_shell_expansion_forms alone (full lib 5248/5249); the 7 outside-markdown powershell tests, actionable_gaps_report_rejects_compound_verify_command and cli_smoke 200/200 pass under every guard mutant"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "markdown.rs:190 weakly_exposed; the reference run credits no row to the aligned same-diff test",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": true,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The historical gap reading was about the credited scattered observers (wrong observer); the guard itself is discriminated by the same-diff test.",
+        "The one-sided `>` spacing branch (:215) is a residual undiscriminated sub-behavior and is not judged as this row."
+      ]
+    },
+    {
+      "case_id": "p1705-headline-survivor-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/output/markdown.rs:190 `'$' => return true,` in the double-quoted branch of is_compound_bash_command (base: `'$' if next == Some('(')`)",
+        "activation": "powershell_command_withholds_shell_expansion_forms feeds `cargo test \"prefix $HOME suffix\"` and `cargo test \"$HOME\"`",
+        "propagation": "without the arm, `$` falls to the double-quoted `_ => {}` and powershell_command returns Some(command)",
+        "observer": "powershell_command_withholds_shell_expansion_forms",
+        "oracle": "strong: exact None (:411-415)",
+        "target": "aligned: the double-quoted branch defaults to accept, so this arm is not redundant",
+        "limitation": "none"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "deleting or reverting :190 makes powershell_command return Some for the $HOME inputs"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "G1 (:190 -> {}) and G2 (:190 reverted to base) caught by powershell_command_withholds_shell_expansion_forms (markdown.rs:413); markdown 15/16, full lib 5248/5249"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "markdown.rs:190 weakly_exposed rather than exposed through the aligned same-diff test",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": true,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "Structural judgment only; no runtime mutation adequacy or population rate is claimed."
+      ]
+    },
+    {
+      "case_id": "p1705-passthrough-rows-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "crates/ripr/src/output/markdown.rs:242-244 allowlist passthrough arm `_ if ch.is_alphanumeric() || ch.is_ascii_whitespace() || matches!(ch, '.' | '/' | '_' | '-' | ':') => {}` inside is_compound_bash_command, not markdown_text (markdown.rs:23 is unchanged)",
+        "activation": "powershell_command_quotes_the_default_unquoted_redirect_target (:365) and siblings feed alphanumerics, space, `.`, `/`, `-`; first_pr.rs start_here_markdown_offers_verify_and_agent_packet_powershell_variants (:1935) feeds `:`; no test feeds an unquoted `_`",
+        "propagation": "a character failing the passthrough hits `_ => return true` (:245), so powershell_command returns None and the translated line disappears",
+        "observer": "the powershell_command_* tests and the first_pr powershell-variant tests; the claimed markdown_text_escapes_backslashes (:272) only calls markdown_text",
+        "oracle": "strong: exact assert_eq!(powershell_command(..), Some(<translated>)) (:366-371)",
+        "target": "the claimed observer is misaligned (same file, token-level); the discriminating tests are aligned",
+        "limitation": "none; the `_` member has no activating input"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "arm and its `.`, `/`, `-`, `:`, alphanumeric and whitespace members discriminated; `_` not; the claimed observer never reaches the arm"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "T1 (drop ':') caught by start_here_markdown_offers_verify_and_agent_packet_powershell_variants and first_successful_pr_fixture_corpus_matches_expected_outputs (full lib 5247/5249); T2 (drop the whole matches! clause) fails 10/16 markdown.rs tests and ~21 lib tests; markdown_text_escapes_backslashes passes under both"
+          ]
+        }
+      ],
+      "disagreement": {
+        "summary": "Both reviews gave the row the verdict discriminated, and static-source recorded that the `_` member of the anchored matches! expression has no activating input. The frozen anchor is that expression (markdown.rs:244), `_` included.",
+        "resolution": "Resolved to confirmed_should_gap (Codex review on #4280). A confirmed quiet row needs every non-equivalent sub-behavior of its anchored expression discriminated. Dropping `_` makes an unquoted underscore take the default `return true` arm, and no test feeds one."
+      },
+      "reference_outcome": {
+        "observation": "markdown.rs:242 weakly_exposed / infection_unknown and :244 weakly_exposed on every row. The weak class fits the `_` residual, but the credited same-file observer does not reach the arm",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": false,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The arm and its `.`, `/`, `-`, `:`, alphanumeric and whitespace members are discriminated (T1, T2); the gap is the `_` member alone. No mutant dropping `_` was run; its survival is inferred from the absence of an activating input."
+      ]
+    },
+    {
+      "case_id": "s3759-match-arm-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/analysis/classify/reveal.rs:220 `let match_arm_literals = if matches!(probe.family, ProbeFamily::MatchArm) {` gating match-arm literal observation, and the guarded-arm hold at :228",
+        "activation": "same-diff integration file crates/ripr/tests/match_arm_pattern_identity.rs feeds match-arm fixtures with literal inputs, raw strings, embedded arrows and guards",
+        "propagation": "gate -> literal observation -> reveal classification of the probe",
+        "observer": "match_arm_pattern_identity.rs tests (e.g. exact_literal_input_and_result_certify_the_same_match_arm, a_matching_literal_does_not_bypass_the_changed_arm_guard)",
+        "oracle": "strong: exact classification asserts on the analyzed fixture",
+        "target": "aligned: the integration file is about this owner; the 71 same-file reveal.rs unit tests do not discriminate the gate",
+        "limitation": "none; the lexer escape and char-literal sub-branches are not discriminated (static)"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "core :220 gate and guard discriminated by match_arm_pattern_identity.rs (:135, :334); escape and char-literal sub-branches not"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "R1 (:220 gate disabled) fails 4 of 13 integration tests; R2 (:228 guarded-arm hold disabled) fails 1 of 13; reveal unit 71/71 and full lib 5250/5250 pass both"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "reveal.rs:220 and :228 weakly_exposed (:222/:224 static_unknown); the reference credits token-related unit tests rather than the integration file",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": true,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "Only the core gate and one guard were mutated; the other ~140 changed reveal.rs rows are sampled statically, not runtime-controlled."
+      ]
+    },
+    {
+      "case_id": "s3755-aligned-rows-quiet",
+      "expected_direction": "should_stay_quiet",
+      "terminal": "confirmed_should_stay_quiet",
+      "structural": {
+        "owner": "crates/ripr/src/analysis/probes/classify/parameters.rs:14 parameter_declaration_shape and parameter_line_span (:70), called from parser_probe_shapes_for_changed_line (classify.rs:83-90): StaticUnknown family result, comma-trimmed span, SelfParam arm and the classify.rs unsafe-boundary coexistence",
+        "activation": "same-diff parameter_boundary_tests module (7 tests) feeds parameter-only lines, typed receivers, unsafe parameters and commented parameters through probe classification",
+        "propagation": "declaration shape -> probe family/span -> classified probes read by the tests",
+        "observer": "parameter_boundary_tests (:43, :119, :142) plus the same-file parameters::tests",
+        "oracle": "strong: exact family, byte coordinates and shape counts",
+        "target": "aligned: same-diff tests of this owner",
+        "limitation": "none"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "core call and push (classify.rs:83-89), SelfParam arm, trivia handling, comma exclusion and the StaticUnknown family discriminated by the boundary module"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "S5 (family -> FieldConstruction) and S4 (comma trimming off) fail 4 boundary and 2 parameters::tests tests; S6 (classify.rs coexistence -> is_empty) fails unsafe_parameter_retains_both_declaration_and_boundary_identity; full lib 5222-5227/5228"
+          ]
+        }
+      ],
+      "disagreement": null,
+      "reference_outcome": {
+        "observation": "parameters.rs 18 exposed and 19 weakly_exposed, classify.rs:83 exposed; the exposed rows cite token-related tests from other modules rather than the boundary module",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": false,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "Right outcome, wrong observer on most exposed rows; the observer link is not judged here."
+      ]
+    },
+    {
+      "case_id": "s3755-weak-rows-gap",
+      "expected_direction": "should_gap",
+      "terminal": "confirmed_should_gap",
+      "structural": {
+        "owner": "crates/ripr/src/analysis/probes/classify/parameters.rs:14 parameter_declaration_shape and parameter_line_span (:70), called from parser_probe_shapes_for_changed_line (classify.rs:83-90): refusal guards (lexical fallback :19, exact current-line equality :27, fn-only parameter list :44-47, parse-error refusal) and span-walk returns (:80, :89)",
+        "activation": "same-file parameters::tests (4 tests, also in the diff) feed lexical-fallback, mismatched-line, non-fn and parse-error inputs; the boundary module feeds the accept paths",
+        "propagation": "guard -> None -> no declaration shape -> lexical fallback family",
+        "observer": "parameters::tests parameter_shape_requires_current_parser_owned_source and parameter_shape_rejects_non_fn_context_and_shared_body",
+        "oracle": "strong: exact None / shape asserts",
+        "target": "aligned: same-diff unit tests of this owner (not the claimed boundary module)",
+        "limitation": "none; the FieldConstruction gate (:20) has no discriminating input: a parameter line the lexical rule does not call field-shaped (`&self,`, or a type path with `::`) is refused only by that gate. The other residuals (:27 is_empty, :44 ParamList continue, :89 multiline return, classify.rs:83 -> true) are near-equivalent by static reading"
+      },
+      "reviews": [
+        {
+          "role": "static-source",
+          "judgment": "discriminated",
+          "confidence": "medium",
+          "evidence": [
+            "majority of branches discriminated by the same-diff modules; residual undiscriminated rows look near-equivalent, inferred statically"
+          ]
+        },
+        {
+          "role": "runtime-mutation",
+          "judgment": "discriminated",
+          "confidence": "high",
+          "evidence": [
+            "S1 (:19 lexical-fallback guard off), S2 (:27 equality off), S3 (fn-only check off) and S7 (parse-error refusal off) each survive parameter_boundary_tests 7/7 but fail parameters::tests; no mutant passed the full lib (5228)"
+          ]
+        },
+        {
+          "role": "assembler-runtime",
+          "judgment": "not_discriminated",
+          "confidence": "high",
+          "evidence": [
+            "S8 (:20 `|| !classify_changed_line(..).contains(&FieldConstruction)` removed) survives parameter tests 27/27 and the full lib 5228/5228 at 745402ab; S9 (:27 `text.is_empty() ||` removed) survives the parameter tests 27/27 and is equivalent (an empty line is not field-shaped, so the :20 gate already refuses it)"
+          ]
+        }
+      ],
+      "disagreement": {
+        "summary": "static-source and runtime-mutation gave the row the verdict discriminated, leaving the residual rows as near-equivalent by static reading. After the Codex review on #4280, assembler-runtime mutated the :20 FieldConstruction gate, and that mutant survives the full lib.",
+        "resolution": "Resolved to confirmed_should_gap by the S8 survivor. The gate is not equivalent: lexical.rs has_field_shape rejects `&self,` and any line containing `::`, so without the gate those parameter lines in an unsafe fn gain a declaration shape. A confirmed quiet row needs every non-equivalent sub-behavior of its anchored owner discriminated."
+      },
+      "reference_outcome": {
+        "observation": "parameters.rs refusal and span rows mostly weakly_exposed or static_unknown; the reference credits neither same-diff module. The weak class fits the gap terminal",
+        "false_actionable": null,
+        "false_exposed": false,
+        "under_credit": false,
+        "limitation_correct": null
+      },
+      "non_claims": [
+        "The majority of guards are discriminated by parameters::tests (S1, S2, S3, S7); the gap is the FieldConstruction gate alone.",
+        "The historical gap reading was about the unlinked same-diff observer; this row's gap is a different, undiscriminated guard.",
+        "The other residual rows are near-equivalent by static reading and were not mutated beyond S9."
+      ]
+    }
+  ]
+}

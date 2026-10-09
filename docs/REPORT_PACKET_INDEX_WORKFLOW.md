@@ -19,7 +19,7 @@ blocking by default.
 
 ## Start In GitHub
 
-In generated CI, start with the `Report packet index` section of the RIPR
+In generated CI, start with the `Uploaded review artifacts` section of the RIPR
 advisory summary when it exists. That section is the packet map, not the
 pass/fail authority.
 
@@ -28,14 +28,15 @@ The compact summary should show:
 - packet status: `pass`, `warn`, `fail`, or `incomplete`;
 - total entries, available entries, missing expected surfaces, warnings, and
   failures;
-- the `start_here` artifact, usually `pr-review-front-panel.md`;
+- the `start_here` artifact, usually `start-here.md` (falling back to
+  `pr-review-front-panel.md`);
 - the `gate_authority` artifact when a gate decision exists;
 - missing expected surface labels;
 - warning kinds;
 - the Markdown index body when `index.md` exists.
 
-If the section is absent, generated CI did not find any indexed RIPR artifacts
-to map. Generate a PR summary, front panel, gate decision, receipt, or other
+If the section says the summary was not generated, generated CI did not find
+any indexed RIPR artifacts to map. Generate a PR summary, front panel, gate decision, receipt, or other
 report first, then rerun the index.
 
 ## Generate Or Refresh The Index
@@ -139,7 +140,7 @@ only reports that the packet contains a failing or blocked surface.
 
 Maintainers use the index to judge packet health and adoption state:
 
-- confirm the front panel or first useful action is the start-here artifact;
+- confirm `start-here.md` or the front panel is the start-here artifact;
 - confirm gate decisions stay visible and separate from advisory summaries;
 - confirm baseline, acknowledgement, waiver, suppression, stale, warning, and
   missing-input states are not hidden;
@@ -249,7 +250,7 @@ report and the surrounding evidence packet.
   progress toward RIPR 0.
 - [Calibrated gate policy](CALIBRATED_GATE_POLICY.md) explains configured gate
   modes and why generated CI is advisory by default.
-- [CI strategy](CI.md#generated-github-workflow) describes generated workflow
+- [CI strategy](CI.md#copyable-ripr-advisory-workflow) describes generated workflow
   projection into GitHub summaries and artifacts.
 - [Output schema](OUTPUT_SCHEMA.md#report-packet-index) defines the JSON and
   Markdown contract.

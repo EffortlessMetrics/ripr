@@ -62,7 +62,16 @@
         "before_artifact_identity": { "type": "string", "minLength": 1 },
         "after_artifact_identity": { "type": "string", "minLength": 1 },
         "currentness": {
-          "enum": ["current", "dirty_worktree", "historical_noncurrent", "unavailable"]
+          "description": "Pair-level currentness of the compared before/after artifacts. This is the closed vocabulary the shared pair renderer emits (pair_currentness_label, crates/ripr/src/agent/artifact.rs); the schema and design corpus carry it verbatim so the design_only envelope cannot drift from the live producer. A pair with a dirty side names which side (`dirty_before`, `dirty_after`, `dirty_both`): `dirty_worktree` stays reserved for per-artifact evidence and never appears as a pair token. There is deliberately no `unavailable` token: per-artifact validation always classifies an artifact (current, dirty worktree, or historical) and refuses an unclassifiable artifact before pair rendering, so no production path could emit one.",
+          "enum": [
+            "current",
+            "historical_noncurrent",
+            "historical_before_current_after",
+            "current_before_historical_after",
+            "dirty_before",
+            "dirty_after",
+            "dirty_both"
+          ]
         }
       }
     },
@@ -296,7 +305,8 @@
         "stdout_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "stderr_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
         "currentness": {
-          "enum": ["current", "dirty_worktree", "historical_noncurrent", "unavailable"]
+          "description": "Repository currentness attached to the executed command. This is the closed vocabulary the live producer constructs (VerificationExecutionResultV1, crates/ripr/src/domain/verification_result.rs): a HEAD move during execution yields `historical_noncurrent`, a dirty worktree before or after execution yields `dirty_worktree`, and an unmoved clean pair yields `current`. There is deliberately no `unavailable` token: no production path constructs one — the result validator rejects it — so the schema must not claim it.",
+          "enum": ["current", "dirty_worktree", "historical_noncurrent"]
         },
         "duration_ms": { "type": "integer", "minimum": 0 },
         "exit_signal": { "type": ["integer", "null"] },

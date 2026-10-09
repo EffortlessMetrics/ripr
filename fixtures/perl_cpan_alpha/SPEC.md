@@ -43,3 +43,8 @@ The dynamic-dispatch pattern (`$obj->$method()`) produces a named limitation
 - Emit a public repair packet without the shared validator passing.
 - Crash or abort the whole report on any of the three outcomes.
 - Credit a weak oracle as `exposed` without the shared validator.
+
+These ordinary diff stimuli declare exactly the old/new body lines they carry.
+They are not malformed-input controls: missing-adapter and dynamic-dispatch
+limitations remain distinct from declared-span truncation. The top-level golden
+diff and the three producer variants preserve their source bodies and coordinates.

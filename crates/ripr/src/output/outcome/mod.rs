@@ -14,7 +14,6 @@ mod path;
 mod render_json;
 mod review;
 
-use markdown::md_escape;
 pub(crate) use markdown::render_targeted_test_outcome_md;
 pub(crate) use path::display_path;
 use path::normalize_report_path;
@@ -72,6 +71,10 @@ pub(crate) struct StaticSeamRecord {
     oracle_kind: String,
     oracle_strength: String,
     observed_values: Vec<String>,
+    /// False when the source rendered a bounded projection of the values
+    /// (check JSON `observed_values_total`), so a value missing from the list
+    /// may still be present and value-level deltas are not established.
+    observed_values_complete: bool,
     missing_discriminators: Vec<String>,
     evidence_source: String,
     evidence_path: BTreeMap<String, StaticEvidenceStage>,
@@ -120,6 +123,10 @@ struct TargetedOutcomeEvidenceDelta<'a> {
 pub(crate) struct TargetedTestOutcomeReport {
     before_path: String,
     after_path: String,
+    /// The repository head each compared snapshot reports, when it carries
+    /// one (#6031). A head-carrying pair that disagrees renders the
+    /// mismatch in the receipt itself instead of leaving it on stderr only.
+    heads: OutcomeHeadIdentity,
     before_counts: BTreeMap<String, usize>,
     after_counts: BTreeMap<String, usize>,
     moved: Vec<TargetedTestOutcomeMovement>,
@@ -127,6 +134,35 @@ pub(crate) struct TargetedTestOutcomeReport {
     regressed: Vec<TargetedTestOutcomeMovement>,
     new: Vec<TargetedTestOutcomeSeam>,
     removed: Vec<TargetedTestOutcomeSeam>,
+}
+
+/// The repository-head identity of the compared snapshot pair, as the
+/// artifacts themselves report it (`artifact.repository.head`).
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct OutcomeHeadIdentity {
+    pub(crate) before_repository_head: Option<String>,
+    pub(crate) after_repository_head: Option<String>,
+}
+
+impl OutcomeHeadIdentity {
+    /// `Some(false)` is the cross-head pair: both artifacts carry a full
+    /// head SHA and they differ, so reported movement may include changes
+    /// other than the one being measured. `None` means at least one
+    /// artifact carries no head (the `ripr pilot` snapshot shape), so the
+    /// comparison cannot confirm same-repository provenance either way.
+    pub(crate) fn head_match(&self) -> Option<bool> {
+        match (&self.before_repository_head, &self.after_repository_head) {
+            (Some(before), Some(after)) => Some(before == after),
+            _ => None,
+        }
+    }
+
+    fn from_snapshots(before_json: &str, after_json: &str) -> Self {
+        Self {
+            before_repository_head: snapshot_repository_head(before_json),
+            after_repository_head: snapshot_repository_head(after_json),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -192,9 +228,10 @@ pub(crate) fn targeted_test_outcome_report_from_json(
     before_path: String,
     after_path: String,
 ) -> Result<TargetedTestOutcomeReport, String> {
+    let heads = OutcomeHeadIdentity::from_snapshots(before_json, after_json);
     let before = parse_repo_exposure_static_seams(before_json)?;
     let after = parse_repo_exposure_static_seams(after_json)?;
-    build_targeted_test_outcome_report(&before, &after, before_path, after_path)
+    build_targeted_test_outcome_report(&before, &after, before_path, after_path, heads)
 }
 
 /// Compare explicit static before evidence with current targeted-rerun facts.
@@ -218,6 +255,7 @@ pub(crate) fn targeted_rerun_movement_from_json(
             oracle_kind: "unknown".to_string(),
             oracle_strength: "unknown".to_string(),
             observed_values: Vec::new(),
+            observed_values_complete: true,
             missing_discriminators: Vec::new(),
             evidence_source: "targeted_rerun_current".to_string(),
             evidence_path: BTreeMap::new(),
@@ -321,6 +359,7 @@ fn parse_rerun_before_static_seams(json: &str) -> Result<Vec<StaticSeamRecord>, 
                     oracle_kind: "unknown".to_string(),
                     oracle_strength: "unknown".to_string(),
                     observed_values: Vec::new(),
+                    observed_values_complete: true,
                     missing_discriminators: Vec::new(),
                     evidence_source: "targeted_rerun_before".to_string(),
                     evidence_path: BTreeMap::new(),
@@ -389,6 +428,7 @@ fn parse_repo_exposure_seams(seams: &[Value]) -> Result<Vec<StaticSeamRecord>, S
                 "observed_values",
                 observed_value_strings,
             ),
+            observed_values_complete: true,
             missing_discriminators: evidence_record_values_or_legacy(
                 evidence_record,
                 seam,
@@ -408,12 +448,19 @@ fn parse_repo_exposure_seams(seams: &[Value]) -> Result<Vec<StaticSeamRecord>, S
 }
 
 fn parse_check_output_findings(findings: &[Value]) -> Result<Vec<StaticSeamRecord>, String> {
-    let mut records = Vec::new();
-    for finding in findings {
-        let Some(record) = static_seam_record_from_check_finding(finding) else {
-            continue;
-        };
-        records.push(record);
+    let records: Vec<StaticSeamRecord> = findings
+        .iter()
+        .filter_map(static_seam_record_from_check_finding)
+        .collect();
+    // Check-output findings are matched by canonical gap id. When a snapshot
+    // has findings but none carries one (Rust `ripr check --json` today), an
+    // empty comparison would read as "nothing moved"; refuse instead so the
+    // receipt cannot hide real movement.
+    if records.is_empty() && !findings.is_empty() {
+        return Err(format!(
+            "check-output snapshot has {} finding(s) but none carries a canonical gap id, so `ripr outcome` cannot match them; for Rust, capture both snapshots with `ripr check --format repo-exposure-json` instead; preview-language findings (Python, TypeScript) without a canonical gap id have no comparable outcome receipt",
+            findings.len()
+        ));
     }
     Ok(records)
 }
@@ -427,7 +474,9 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
             &["python_repair_card", "canonical_gap_id"],
             &["typescript_repair_packet", "canonical_gap_id"],
         ],
-    )?;
+    )
+    .map(str::to_string)
+    .or_else(|| typescript_finding_gap_id(finding))?;
     let canonical_gap = finding
         .get("canonical_gap")
         .filter(|value| value.is_object());
@@ -462,7 +511,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
     let missing_discriminators = missing_discriminator_strings(finding);
 
     Some(StaticSeamRecord {
-        seam_id: canonical_gap_id.to_string(),
+        seam_id: canonical_gap_id,
         seam_kind: canonical_gap
             .and_then(|gap| optional_json_string(Some(gap), "behavior_kind"))
             .unwrap_or_else(|| seam_kind.to_string()),
@@ -472,6 +521,7 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
         oracle_kind,
         oracle_strength,
         observed_values,
+        observed_values_complete: finding.get("observed_values_total").is_none(),
         missing_discriminators,
         evidence_source: "check_output_finding".to_string(),
         evidence_path,
@@ -479,11 +529,35 @@ fn static_seam_record_from_check_finding(finding: &Value) -> Option<StaticSeamRe
     })
 }
 
+/// A TypeScript finding carries its canonical gap id only inside
+/// `typescript_repair_packet`, which is emitted only while the finding is
+/// repair-ready. A gap that a new test closed reads `exposed` and has no
+/// packet, so without this fallback it would drop out of the after snapshot
+/// and read as removed instead of closed (#4690). The packet derives the id
+/// from the finding id alone (`typescript_canonical_gap_id`), so deriving it
+/// here yields the same id on both sides of a comparison. An
+/// unsupported-syntax diagnostic names no analyzed behavior, so it is never
+/// promoted to a comparable gap.
+fn typescript_finding_gap_id(finding: &Value) -> Option<String> {
+    if finding.get("language").and_then(Value::as_str) != Some("typescript") {
+        return None;
+    }
+    if finding.get("static_limit_kind").and_then(Value::as_str) == Some("unsupported_syntax") {
+        return None;
+    }
+    let id = finding
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| id.starts_with("probe:") && !id.contains("_unsupported_syntax:"))?;
+    Some(crate::output::typescript_packet_projection::typescript_canonical_gap_id(id))
+}
+
 fn build_targeted_test_outcome_report(
     before: &[StaticSeamRecord],
     after: &[StaticSeamRecord],
     before_path: String,
     after_path: String,
+    heads: OutcomeHeadIdentity,
 ) -> Result<TargetedTestOutcomeReport, String> {
     let before_by_id = targeted_outcome_seams_by_id(before, "before")?;
     let after_by_id = targeted_outcome_seams_by_id(after, "after")?;
@@ -520,6 +594,7 @@ fn build_targeted_test_outcome_report(
     Ok(TargetedTestOutcomeReport {
         before_path,
         after_path,
+        heads,
         before_counts: targeted_outcome_class_counts(before),
         after_counts: targeted_outcome_class_counts(after),
         moved,
@@ -584,10 +659,19 @@ fn targeted_test_outcome_movement(
     let propagate_delta = stage_delta(before, after, "propagate");
     let observe_delta = stage_delta(before, after, "observe");
     let discriminate_delta = stage_delta(before, after, "discriminate");
-    let observed_values_added =
-        string_values_added(&before.observed_values, &after.observed_values);
-    let observed_values_removed =
-        string_values_removed(&before.observed_values, &after.observed_values);
+    // A bounded projection on either side cannot say which values appeared
+    // or disappeared: a changed value may sit outside the rendered subset,
+    // and a new value can displace one that is still present. Report no
+    // value-level delta rather than a wrong one.
+    let values_comparable = before.observed_values_complete && after.observed_values_complete;
+    let (observed_values_added, observed_values_removed) = if values_comparable {
+        (
+            string_values_added(&before.observed_values, &after.observed_values),
+            string_values_removed(&before.observed_values, &after.observed_values),
+        )
+    } else {
+        (Vec::new(), Vec::new())
+    };
     let missing_discriminators_resolved = string_values_removed(
         &before.missing_discriminators,
         &after.missing_discriminators,
@@ -614,7 +698,12 @@ fn targeted_test_outcome_movement(
         related_test_delta,
     };
     let evidence_delta = targeted_outcome_evidence_delta(before, after, &delta_inputs);
-    let no_movement_reason = no_movement_reason(direction, &evidence_delta, &evidence_source);
+    let no_movement_reason = no_movement_reason(
+        direction,
+        &evidence_delta,
+        &evidence_source,
+        values_comparable,
+    );
     TargetedTestOutcomeMovement {
         seam_id: before.seam_id.clone(),
         seam_kind: before.seam_kind.clone(),
@@ -694,36 +783,25 @@ fn targeted_outcome_evidence_delta(
 
     for (stage, stage_delta) in EVIDENCE_STAGES.iter().zip(delta.stage_deltas.iter()) {
         if let Some(stage_delta) = stage_delta {
-            deltas.push(format!(
-                "{} evidence moved from {} to {}",
-                stage,
-                optional_delta_value(stage_delta.before_state.as_deref()),
-                optional_delta_value(stage_delta.after_state.as_deref())
-            ));
+            deltas.push(stage_delta_line(stage, stage_delta));
         }
     }
 
     for value in delta.missing_discriminators_resolved {
         deltas.push(format!(
             "missing discriminator no longer reported: {}",
-            md_escape(value)
+            value
         ));
     }
     for value in delta.missing_discriminators_reopened {
-        deltas.push(format!(
-            "new missing discriminator reported: {}",
-            md_escape(value)
-        ));
+        deltas.push(format!("new missing discriminator reported: {}", value));
     }
 
     for value in delta.observed_values_added {
-        deltas.push(format!("new observed value: {}", md_escape(value)));
+        deltas.push(format!("new observed value: {}", value));
     }
     for value in delta.observed_values_removed {
-        deltas.push(format!(
-            "previous observed value absent: {}",
-            md_escape(value)
-        ));
+        deltas.push(format!("previous observed value absent: {}", value));
     }
 
     if let Some(oracle_delta) = delta.oracle_strength_delta {
@@ -1085,9 +1163,39 @@ fn no_movement_reason(
     direction: &str,
     evidence_delta: &[String],
     evidence_source: &str,
+    values_comparable: bool,
 ) -> Option<String> {
-    (direction == "unchanged" && evidence_delta.is_empty())
-        .then(|| format!("grip class and {evidence_source} evidence were unchanged"))
+    if direction != "unchanged" || !evidence_delta.is_empty() {
+        return None;
+    }
+    // A capped value list hides value-level movement, so it cannot vouch
+    // that the evidence was unchanged.
+    Some(if values_comparable {
+        format!("grip class and {evidence_source} evidence were unchanged")
+    } else {
+        format!(
+            "grip class and {evidence_source} evidence were unchanged; observed-value movement is unknown because a value list was capped"
+        )
+    })
+}
+
+/// One human line for a stage whose evidence changed. A stage can change
+/// without its state moving (its confidence or summary did), and "moved from
+/// yes to yes" would claim movement that did not happen.
+fn stage_delta_line(stage: &str, delta: &TargetedTestOutcomeStageDelta) -> String {
+    let before = optional_delta_value(delta.before_state.as_deref());
+    let after = optional_delta_value(delta.after_state.as_deref());
+    if before != after {
+        return format!("{stage} evidence moved from {before} to {after}");
+    }
+    let before_confidence = optional_delta_value(delta.before_confidence.as_deref());
+    let after_confidence = optional_delta_value(delta.after_confidence.as_deref());
+    if before_confidence != after_confidence {
+        return format!(
+            "{stage} evidence stayed {after}; its confidence moved from {before_confidence} to {after_confidence}"
+        );
+    }
+    format!("{stage} evidence stayed {after}; only its summary changed")
 }
 
 fn optional_delta_value(value: Option<&str>) -> &str {
@@ -1116,9 +1224,180 @@ fn json_scalar_as_usize(value: &Value) -> Option<usize> {
     }
 }
 
+/// The repository head a snapshot reports, when it carries one.
+///
+/// `repo_exposure_artifact_metadata` writes `artifact.repository.head` from
+/// `git rev-parse HEAD`, keeping it only when it is a full Git object name and
+/// substituting a placeholder otherwise. This asks the producer's own
+/// [`is_full_sha`](crate::agent::artifact::is_full_sha) rather than comparing
+/// against that placeholder's spelling, so today's `"unavailable"` and any
+/// later sentinel are both read as an absent head instead of being reported as
+/// a commit.
+///
+/// Snapshots written without artifact identity (the plain
+/// `write_repo_exposure_json` path, which is what `ripr pilot` emits) have no
+/// `artifact` key at all.
+fn snapshot_repository_head(snapshot: &str) -> Option<String> {
+    /// Just enough of the artifact envelope to read the head, so this does
+    /// not hold a second full `Value` for a document the report path has
+    /// already parsed.
+    #[derive(serde::Deserialize)]
+    struct HeadEnvelope {
+        artifact: Option<ArtifactIdentity>,
+    }
+    #[derive(serde::Deserialize)]
+    struct ArtifactIdentity {
+        repository: Option<RepositoryIdentity>,
+    }
+    #[derive(serde::Deserialize)]
+    struct RepositoryIdentity {
+        head: Option<String>,
+    }
+
+    serde_json::from_str::<HeadEnvelope>(snapshot)
+        .ok()?
+        .artifact?
+        .repository?
+        .head
+        .map(|head| head.trim().to_string())
+        .filter(|head| crate::agent::artifact::is_full_sha(head))
+}
+
+/// The stderr disclosure `ripr outcome` prints beside the comparison (#1942).
+///
+/// The comparison itself matches seams and findings by id in every case; what
+/// changes is what can be said about the two snapshots' provenance. Before
+/// this was derived, the line claimed unconditionally that "the before/after
+/// artifacts do not carry a head SHA", which is false for any snapshot written
+/// through the artifact-identity path: `ripr check --format
+/// repo-exposure-json` carries a full head SHA. A disclosure that understates
+/// the evidence actually present is as misleading as one that overstates it,
+/// and it asks the reader to re-establish by hand something the artifacts
+/// already answer.
+///
+/// Equal heads are the ordinary case for an uncommitted repair, so they are
+/// reported as agreement rather than as a problem; the worktree may still have
+/// moved between the two snapshots, which is why this does not claim the trees
+/// were identical.
+pub(crate) fn head_provenance_disclosure(before: &str, after: &str) -> String {
+    match (
+        snapshot_repository_head(before),
+        snapshot_repository_head(after),
+    ) {
+        (Some(before_head), Some(after_head)) if before_head == after_head => format!(
+            "ripr outcome: comparison matches seams/findings by id; both snapshots report repository head {before_head}, so they are from the same commit (the working tree may still differ between them)."
+        ),
+        (Some(before_head), Some(after_head)) => format!(
+            "ripr outcome: comparison matches seams/findings by id; the snapshots report different repository heads (before {before_head}, after {after_head}), so reported movement may include changes other than the one you are measuring."
+        ),
+        _ => "ripr outcome: comparison matches seams/findings by id only; at least one of the before/after artifacts does not carry a head SHA, so ensure both snapshots are from the same repository and adjacent commits.".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn snapshot_with_head(head: Option<&str>) -> String {
+        match head {
+            Some(head) => serde_json::json!({
+                "schema_version": "0.3",
+                "artifact": { "repository": { "root": "/w", "head": head } },
+            }),
+            // The shape `ripr pilot` writes: no artifact identity at all.
+            None => serde_json::json!({ "schema_version": "0.3" }),
+        }
+        .to_string()
+    }
+
+    /// The disclosure must follow the artifacts. The three arms are the whole
+    /// value domain, and the negative that matters is that no arm keeps the
+    /// pre-#3963 claim that the artifacts carry no head when they do.
+    #[test]
+    fn head_disclosure_reports_matching_heads_instead_of_claiming_none_exist() {
+        let head = "2bd22c0b0718157870e2e78c9a70b9da1c9c1b21";
+        let line = head_provenance_disclosure(
+            &snapshot_with_head(Some(head)),
+            &snapshot_with_head(Some(head)),
+        );
+        assert!(line.contains(head), "the head must be named: {line}");
+        assert!(
+            line.contains("same commit"),
+            "matching heads must be reported as agreement: {line}"
+        );
+        assert!(
+            !line.contains("do not carry a head SHA")
+                && !line.contains("does not carry a head SHA"),
+            "must not claim the artifacts lack a head they carry: {line}"
+        );
+    }
+
+    #[test]
+    fn head_disclosure_names_both_heads_when_they_differ() {
+        let before = "1111111111111111111111111111111111111111";
+        let after = "2222222222222222222222222222222222222222";
+        let line = head_provenance_disclosure(
+            &snapshot_with_head(Some(before)),
+            &snapshot_with_head(Some(after)),
+        );
+        assert!(
+            line.contains(before) && line.contains(after),
+            "both heads must be named so the reader can see the gap: {line}"
+        );
+        assert!(
+            line.contains("may include changes other than"),
+            "differing heads must warn that movement is not attributable: {line}"
+        );
+    }
+
+    /// The original warning is kept exactly where it is true, and `pilot`'s
+    /// own repo-exposure artifact is that case.
+    #[test]
+    fn head_disclosure_keeps_the_warning_when_either_side_has_no_head() {
+        for (before, after) in [
+            (None, None),
+            (Some("3333333333333333333333333333333333333333"), None),
+            (None, Some("3333333333333333333333333333333333333333")),
+        ] {
+            let line =
+                head_provenance_disclosure(&snapshot_with_head(before), &snapshot_with_head(after));
+            assert!(
+                line.contains("does not carry a head SHA"),
+                "a missing head must keep the warning ({before:?}, {after:?}): {line}"
+            );
+        }
+    }
+
+    /// `repo_exposure_artifact_metadata` substitutes a placeholder when
+    /// `git rev-parse HEAD` fails. Treating one as a head would print "both
+    /// snapshots report repository head unavailable".
+    ///
+    /// The cases beyond today's `"unavailable"` are the point: the reader asks
+    /// the producer's `is_full_sha` rather than matching that one spelling, so
+    /// a renamed sentinel, a short SHA, or a non-hex value is still an absent
+    /// head. A reader coupled to the string would pass every line below the
+    /// first.
+    #[test]
+    fn head_disclosure_treats_a_placeholder_as_no_head() {
+        for placeholder in [
+            "unavailable",
+            "not_available",
+            "none",
+            "2bd22c0b",
+            "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "2bd22c0b0718157870e2e78c9a70b9da1c9c1b2",
+        ] {
+            let line = head_provenance_disclosure(
+                &snapshot_with_head(Some(placeholder)),
+                &snapshot_with_head(Some(placeholder)),
+            );
+            assert!(
+                line.contains("does not carry a head SHA")
+                    && !line.contains(&format!("head {placeholder}")),
+                "{placeholder:?} is not a Git object name and must read as an absent head: {line}"
+            );
+        }
+    }
 
     #[test]
     fn targeted_test_outcome_report_buckets_seam_movement() -> Result<(), String> {
@@ -1147,6 +1426,7 @@ mod tests {
             &after,
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
         assert_eq!(report.moved.len(), 1);
         assert_eq!(report.moved[0].seam_id, "seam-moved");
@@ -1189,6 +1469,7 @@ mod tests {
             &after,
             "target/ripr/before.json".to_string(),
             "target/ripr/after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
 
         let json = render_targeted_test_outcome_json(&report)?;
@@ -1267,6 +1548,7 @@ mod tests {
             &after,
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
 
         let json = render_json::render_agent_verify_json_with_currentness(
@@ -1497,6 +1779,150 @@ mod tests {
         Ok(())
     }
 
+    fn check_json_with_values(
+        classification: &str,
+        values: &[&str],
+        total: Option<usize>,
+    ) -> String {
+        let total = total
+            .map(|total| format!(r#""observed_values_total": {total},"#))
+            .unwrap_or_default();
+        let values = values
+            .iter()
+            .map(|value| format!(r#"{{"value": "{value}"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "findings": [
+    {{
+      "id": "probe:src_discount.py:2:python_preview",
+      "canonical_gap_id": "gap:python:src/discount.py:apply_discount:predicate_boundary",
+      "canonical_gap": {{"id": "gap:python:src/discount.py:apply_discount:predicate_boundary", "language": "python", "file": "src/discount.py", "owner": "apply_discount", "behavior_kind": "predicate_boundary"}},
+      "classification": "{classification}",
+      "probe": {{"family": "predicate", "file": "src/discount.py", "line": 2}},
+      "observed_values": [{values}],
+      {total}
+      "missing_discriminators": [],
+      "related_tests": []
+    }}
+  ]
+}}"#
+        )
+    }
+
+    #[test]
+    fn targeted_test_outcome_reports_no_value_delta_across_a_capped_value_list()
+    -> Result<(), String> {
+        // Both sides render a bounded subset of more than the cap. The subsets
+        // differ only because a value moved outside the rendered window, so a
+        // subset diff would invent an added and a removed value.
+        let before = check_json_with_values("weakly_exposed", &["a", "b"], Some(40));
+        let after = check_json_with_values("exposed", &["a", "c"], Some(40));
+        let report = targeted_test_outcome_report_from_json(
+            &before,
+            &after,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+        assert_eq!(report.moved.len(), 1);
+        assert!(report.moved[0].observed_values_added.is_empty());
+        assert!(report.moved[0].observed_values_removed.is_empty());
+
+        // One capped side is enough to make the comparison unsound.
+        let uncapped_before = check_json_with_values("weakly_exposed", &["a", "b"], None);
+        let report = targeted_test_outcome_report_from_json(
+            &uncapped_before,
+            &after,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+        assert!(report.moved[0].observed_values_added.is_empty());
+        assert!(report.moved[0].observed_values_removed.is_empty());
+
+        // Control: complete lists on both sides still report the delta.
+        let uncapped_after = check_json_with_values("exposed", &["a", "c"], None);
+        let report = targeted_test_outcome_report_from_json(
+            &uncapped_before,
+            &uncapped_after,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+        assert_eq!(report.moved[0].observed_values_added, vec!["c".to_string()]);
+        assert_eq!(
+            report.moved[0].observed_values_removed,
+            vec!["b".to_string()]
+        );
+
+        // Unchanged class with a capped list must not claim unchanged evidence.
+        let capped = check_json_with_values("weakly_exposed", &["a", "b"], Some(40));
+        let report = targeted_test_outcome_report_from_json(
+            &capped,
+            &capped,
+            "before-check.json".to_string(),
+            "after-check.json".to_string(),
+        )?;
+        assert_eq!(report.unchanged.len(), 1);
+        assert!(
+            report.unchanged[0]
+                .no_movement_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("observed-value movement is unknown")),
+            "{:?}",
+            report.unchanged[0].no_movement_reason
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn targeted_test_outcome_refuses_check_json_without_canonical_gap_ids() {
+        // Shape of Rust `ripr check --json`: findings carry a probe id but no
+        // canonical gap id, so nothing is comparable across snapshots.
+        let before = r#"{"schema_version":"0.2","findings":[{"id":"probe:src_lib.rs:predicate:37a3a415","classification":"weakly_exposed","probe":{"id":"probe:src_lib.rs:predicate:37a3a415","file":"src/lib.rs","line":8,"family":"predicate"}}]}"#;
+        let after = before.replace("weakly_exposed", "exposed");
+        let result = targeted_test_outcome_report_from_json(
+            before,
+            &after,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        );
+        assert!(
+            matches!(&result, Err(message) if message.contains("none carries a canonical gap id")
+                && message.contains("--format repo-exposure-json")),
+            "expected a refusal, got {result:?}"
+        );
+
+        // Preview-language findings without canonical ids are refused too,
+        // and the message must not send them to repo exposure, which carries
+        // no Python or TypeScript seams.
+        let python = r#"{"schema_version":"0.2","findings":[{"id":"probe:src_discount.py:2:python_preview","classification":"weakly_exposed"}]}"#;
+        let result = targeted_test_outcome_report_from_json(
+            python,
+            python,
+            "before.json".to_string(),
+            "after.json".to_string(),
+        );
+        assert!(
+            matches!(&result, Err(message) if message.contains("preview-language findings (Python, TypeScript)")
+                && message.contains("no comparable outcome receipt")),
+            "expected a preview-language refusal, got {result:?}"
+        );
+
+        let empty = r#"{"schema_version":"0.2","findings":[]}"#;
+        assert!(
+            targeted_test_outcome_report_from_json(
+                empty,
+                empty,
+                "before.json".to_string(),
+                "after.json".to_string(),
+            )
+            .is_ok(),
+            "a snapshot with no findings is still a valid empty comparison"
+        );
+    }
+
     #[test]
     fn targeted_test_outcome_from_typescript_packet_json_matches_canonical_gap_ids()
     -> Result<(), String> {
@@ -1596,6 +2022,77 @@ mod tests {
         assert_eq!(movement.gap_movement, "closed");
         assert_eq!(movement.evidence_source, "check_output_finding");
         Ok(())
+    }
+
+    fn typescript_check_json(classification: &str, packet: bool) -> String {
+        let id = "probe:src_pricing.ts:typescript_preview:17445ecf";
+        let mut finding = serde_json::json!({
+            "id": id,
+            "classification": classification,
+            "probe": {"family": "predicate", "file": "src/pricing.ts", "line": 4},
+            "related_tests": [],
+            "language": "typescript",
+            "language_status": "preview"
+        });
+        if packet {
+            finding["typescript_repair_packet"] = serde_json::json!({
+                "canonical_gap_id": "gap:typescript:typescript_preview:17445ecf",
+                "repair_kind": "AddBoundaryAssertion"
+            });
+        }
+        serde_json::json!({"schema_version": "0.2", "tool": "ripr", "findings": [finding]})
+            .to_string()
+    }
+
+    #[test]
+    fn typescript_gap_closed_without_a_packet_reads_as_moved_not_removed() -> Result<(), String> {
+        // #4690: `ripr check` emits `typescript_repair_packet` only while the
+        // finding is repair-ready, so the exposed finding after the new test
+        // carries no packet. It must still match the packet's id.
+        for before_has_packet in [true, false] {
+            let report = targeted_test_outcome_report_from_json(
+                &typescript_check_json("weakly_exposed", before_has_packet),
+                &typescript_check_json("exposed", false),
+                "before-check.json".to_string(),
+                "after-check.json".to_string(),
+            )?;
+            assert!(
+                report.removed.is_empty() && report.new.is_empty(),
+                "packet before: {before_has_packet}; removed {:?}, new {:?}",
+                report.removed,
+                report.new
+            );
+            assert_eq!(report.moved.len(), 1);
+            let movement = &report.moved[0];
+            assert_eq!(
+                movement.seam_id,
+                "gap:typescript:typescript_preview:17445ecf"
+            );
+            assert_eq!(movement.gap_movement, "closed");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn typescript_unsupported_syntax_diagnostic_is_not_a_comparable_gap() {
+        let diagnostic = serde_json::json!({
+            "id": "probe:src_price.ts:typescript_preview_unsupported_syntax:abcd1234",
+            "classification": "static_unknown",
+            "static_limit_kind": "unsupported_syntax",
+            "language": "typescript"
+        });
+        assert_eq!(typescript_finding_gap_id(&diagnostic), None);
+        let mut unlabeled = diagnostic.clone();
+        unlabeled["static_limit_kind"] = Value::Null;
+        assert_eq!(typescript_finding_gap_id(&unlabeled), None);
+        let predicate = serde_json::json!({
+            "id": "probe:src_price.ts:typescript_preview:abcd1234",
+            "language": "typescript"
+        });
+        assert_eq!(
+            typescript_finding_gap_id(&predicate).as_deref(),
+            Some("gap:typescript:typescript_preview:abcd1234")
+        );
     }
 
     #[test]
@@ -1999,6 +2496,7 @@ mod tests {
             &[],
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         );
         assert!(matches!(result, Err(message) if message.contains("duplicate seam_id `same`")));
     }
@@ -2059,6 +2557,7 @@ mod tests {
             &after,
             "before.json".to_string(),
             "after.json".to_string(),
+            OutcomeHeadIdentity::default(),
         )?;
 
         let json = render_targeted_test_outcome_json(&report)?;
@@ -2184,6 +2683,32 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn stage_delta_line_never_reports_movement_between_equal_states() {
+        let delta = |before: &str, after: &str, before_conf: &str, after_conf: &str| {
+            TargetedTestOutcomeStageDelta {
+                before_state: Some(before.to_string()),
+                after_state: Some(after.to_string()),
+                before_confidence: Some(before_conf.to_string()),
+                after_confidence: Some(after_conf.to_string()),
+                before_summary: Some("before".to_string()),
+                after_summary: Some("after".to_string()),
+            }
+        };
+        assert_eq!(
+            stage_delta_line("reach", &delta("weak", "yes", "low", "low")),
+            "reach evidence moved from weak to yes"
+        );
+        assert_eq!(
+            stage_delta_line("reach", &delta("yes", "yes", "low", "high")),
+            "reach evidence stayed yes; its confidence moved from low to high"
+        );
+        assert_eq!(
+            stage_delta_line("reach", &delta("yes", "yes", "high", "high")),
+            "reach evidence stayed yes; only its summary changed"
+        );
+    }
+
     fn targeted_static_seam(id: &str, grip_class: &str) -> StaticSeamRecord {
         StaticSeamRecord {
             seam_id: id.to_string(),
@@ -2194,6 +2719,7 @@ mod tests {
             oracle_kind: "exact_value".to_string(),
             oracle_strength: "unknown".to_string(),
             observed_values: Vec::new(),
+            observed_values_complete: true,
             missing_discriminators: Vec::new(),
             evidence_source: "legacy_fields".to_string(),
             evidence_path: BTreeMap::new(),
@@ -2206,5 +2732,98 @@ mod tests {
             before_content_sha256: format!("sha256:{}", "b".repeat(64)),
             after_content_sha256: format!("sha256:{}", "c".repeat(64)),
         }
+    }
+    // --- #6031: the JSON receipt carries the pair's head/repository identity
+    // and the cross-head mismatch as typed fields ---
+
+    fn snapshot_json_with_head(head: Option<&str>) -> String {
+        let head_field = match head {
+            Some(head) => format!(r#""head": "{head}""#),
+            None => r#""head": "unavailable""#.to_string(),
+        };
+        format!(
+            r#"{{ "schema_version": "0.2", "artifact": {{ "repository": {{ "root": "/w", {head_field} }} }}, "seams": [{{ "seam_id": "seam-a", "kind": "predicate_boundary", "file": "src/pricing.rs", "line": 3, "grip_class": "weakly_gripped" }}] }}"#
+        )
+    }
+
+    /// A cross-head pair (two different repositories or a stale checkout) must
+    /// name the mismatch in the receipt itself: `inputs.before_repository_head`,
+    /// `inputs.after_repository_head`, `inputs.head_match = false`, plus the
+    /// markdown head line and the reviewer-may-believe sentence. stderr alone
+    /// was the only mismatch signal before #6031.
+    #[test]
+    fn outcome_receipt_carries_head_identity_and_names_the_cross_head_mismatch()
+    -> Result<(), String> {
+        let before = "1111111111111111111111111111111111111111";
+        let after = "2222222222222222222222222222222222222222";
+        let report = targeted_test_outcome_report_from_json(
+            &snapshot_json_with_head(Some(before)),
+            &snapshot_json_with_head(Some(after)),
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        let json: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("outcome JSON should parse: {err}"))?;
+        assert_eq!(json["inputs"]["before_repository_head"], before);
+        assert_eq!(json["inputs"]["after_repository_head"], after);
+        assert_eq!(json["inputs"]["head_match"], false);
+
+        let markdown = render_targeted_test_outcome_md(&report);
+        assert!(markdown.contains(before) && markdown.contains(after));
+        assert!(
+            markdown.contains("spans different heads"),
+            "the markdown head line must state the mismatch: {markdown}"
+        );
+        assert!(
+            json["review_receipt"]["reviewer_may_believe"]
+                .as_array()
+                .is_some_and(|items| items.iter().any(|item| item.as_str().is_some_and(
+                    |text| text.contains("different repository heads")
+                        && text.contains(before)
+                        && text.contains(after)
+                ))),
+            "the reviewer-may-believe section must carry the mismatch in-band"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn outcome_receipt_reports_matching_heads_as_agreement() -> Result<(), String> {
+        let head = "2bd22c0b0718157870e2e78c9a70b9da1c9c1b21";
+        let report = targeted_test_outcome_report_from_json(
+            &snapshot_json_with_head(Some(head)),
+            &snapshot_json_with_head(Some(head)),
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        let json: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("outcome JSON should parse: {err}"))?;
+        assert_eq!(json["inputs"]["head_match"], true);
+        let markdown = render_targeted_test_outcome_md(&report);
+        assert!(
+            markdown.contains("both snapshots report"),
+            "matching heads are reported as agreement, not as a warning: {markdown}"
+        );
+        Ok(())
+    }
+
+    /// Pilot-written snapshots carry no head: the typed fields stay null and the
+    /// receipt says it cannot confirm, never claiming a match.
+    #[test]
+    fn outcome_receipt_treats_a_headless_pair_as_unconfirmed() -> Result<(), String> {
+        let report = targeted_test_outcome_report_from_json(
+            &snapshot_json_with_head(None),
+            &snapshot_json_with_head(None),
+            "before.json".to_string(),
+            "after.json".to_string(),
+        )?;
+        let json: Value = serde_json::from_str(&render_targeted_test_outcome_json(&report)?)
+            .map_err(|err| format!("outcome JSON should parse: {err}"))?;
+        assert!(json["inputs"]["before_repository_head"].is_null());
+        assert!(json["inputs"]["after_repository_head"].is_null());
+        assert!(json["inputs"]["head_match"].is_null());
+        let markdown = render_targeted_test_outcome_md(&report);
+        assert!(markdown.contains("neither snapshot carries a head SHA"));
+        Ok(())
     }
 }

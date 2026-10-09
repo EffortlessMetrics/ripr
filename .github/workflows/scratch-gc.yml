@@ -15,6 +15,10 @@ name: Scratch GC
 # with a workflow-level group the pools shared one queue slot (#3274). This is a
 # GitHub-Actions-level sweep (one runner per pool per fire), not a per-host
 # daemon — see #1058 for host-level disk guards.
+#
+# Scratch trees are reclaimed by ownership and liveness, not age (#3841): the
+# shared .github/actions/ci-scratch-lease authority deletes a per-run tree only
+# while holding the flock lease of a terminal job this repository owns.
 
 on:
   schedule:
@@ -54,9 +58,27 @@ jobs:
       cancel-in-progress: false
     timeout-minutes: 15
     steps:
-      - name: Reclaim scratch and report disk
+      # A dedicated path keeps this sparse checkout out of the build
+      # workspace: checkout implies `--filter=blob:none` for sparse checkouts
+      # and leaves the promisor config behind, which would turn the
+      # `fetch-depth: 0` rust-gates checkout on the same runner into a blobless
+      # partial clone. rust-gates' own checkout cleans this directory away.
+      - uses: actions/checkout@v6
+        with:
+          path: .ci-scratch-gc
+          sparse-checkout: .github/actions/ci-scratch-lease
+          persist-credentials: false
+
+      # #3841: reclaim only terminal trees this repository owns, through the
+      # same flock lease authority as the inline rust-gates.yml reclaim. A live
+      # lease, or any unknown/foreign entry, is skipped regardless of age.
+      - name: Reclaim terminal scratch
+        uses: ./.ci-scratch-gc/.github/actions/ci-scratch-lease
+        with:
+          mode: reclaim
+
+      - name: Trim sccache and report disk
         run: |
-          find /mnt/ci-scratch/cargo-home /mnt/ci-scratch/target /mnt/ci-scratch/tmp -mindepth 1 -maxdepth 1 -mmin +45 -exec rm -rf {} + 2>/dev/null || true
           find /mnt/ci-cache/sccache -type f -mmin +1440 -delete 2>/dev/null || true
           { echo '```'; echo "pool: ${{ matrix.pool }}"; du -sh /mnt/ci-scratch/* /mnt/ci-cache/* 2>/dev/null | sort -rh | head -20 || true; df -h / /mnt/ci-scratch 2>/dev/null || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           ci-disk-guard /mnt/ci-scratch 35 || echo "::warning::/mnt/ci-scratch below 35G free after scheduled GC on ${{ matrix.pool }}"

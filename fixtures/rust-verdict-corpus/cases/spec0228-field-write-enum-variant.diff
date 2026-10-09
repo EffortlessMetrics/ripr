@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c5fdd42..0a83114 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -15,7 +15,7 @@ impl Job {
+     }
+ 
+     pub fn finish(&mut self) {
+-        self.state = JobState::Done;
++        self.state = (JobState::Done);
+     }
+ }
+ 

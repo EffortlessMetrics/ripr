@@ -1,0 +1,30 @@
+//! RIPR-SPEC-0225 acceptance example 7.
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Config {
+    pub retries: u32,
+    pub name: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config { retries: 4, name: String::new() }
+    }
+}
+
+pub fn build(n: u32) -> Config {
+    Config {
+        retries: n + 1,
+        name: "x".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_config() {
+        assert_eq!(build(3), Config { name: "x".into(), ..Config::default() });
+    }
+}

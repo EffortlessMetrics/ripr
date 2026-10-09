@@ -39,15 +39,17 @@
         "threshold": "high_confidence_new_gap"
       },
       "repair_route": {
+        "analysis_outcome_command": "ripr check --root . --base main --mode draft --format json > <cwd>/target/ripr/workflow/analysis-outcome.json",
         "authority_boundary": "static_ripr_evidence_only",
         "canonical_gap_id": "gap:dedf923a13a00573",
         "changed_behavior": "amount >= discount_threshold",
         "changed_owner": "pricing::discounted_total",
         "classification": "weakly_gripped",
-        "inspection_command": "ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > target/ripr/workflow/agent-brief.json",
+        "inspection_command": "ripr agent brief --root . --seam-id 8f7fa8644fd12280 --json > <cwd>/target/ripr/workflow/agent-brief.json",
         "limitation": null,
         "missing_discriminator": "amount == discount_threshold",
         "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 8f7fa8644fd12280 --json --out target/ripr/reports/agent-receipt.json",
+        "repair_command": "ripr agent repair --root . --seam-id 8f7fa8644fd12280 --phase before",
         "repair_target": {
           "file": "tests/pricing.rs",
           "kind": "related_test",
@@ -56,7 +58,7 @@
         },
         "seam_id": "8f7fa8644fd12280",
         "test_intent": "Write one focused Rust test for amount == discount_threshold. Place it in tests/pricing.rs near above_threshold_gets_discount. Do not change production code. Preserve existing fixture style. Verify with ripr agent verify.",
-        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json"
+        "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > <cwd>/target/ripr/workflow/agent-verify.json"
       },
       "seam_id": "8f7fa8644fd12280",
       "severity": "warning",
@@ -97,6 +99,17 @@
   "root": ".",
   "schema_version": "0.1",
   "status": "acknowledged",
+  "subject": {
+    "analyzer_version": "0.0.0+pinned-golden-analyzer-version",
+    "inputs": {
+      "labels_json": {
+        "content_hash": "sha256:f9cb8507e17ca5b3907c2c69e92d62e36de3b98326f028157c368dd32ae09892"
+      },
+      "pr_guidance": {
+        "content_hash": "sha256:9ba7e23ea2aab45403f8f38327d0196fb309b671b6f78b612f753902cd59bf7a"
+      }
+    }
+  },
   "summary": {
     "acknowledged": 1,
     "advisory": 0,

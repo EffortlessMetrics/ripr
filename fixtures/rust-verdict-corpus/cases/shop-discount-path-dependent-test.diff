@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..6024355 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn rebate(total: i64) -> i64 {
+ }
+ 
+ pub fn discount(total: i64) -> i64 {
+-    total - 5
++    -5 + total
+ }
+ 
+ pub trait Price {

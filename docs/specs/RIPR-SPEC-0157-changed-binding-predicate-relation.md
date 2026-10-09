@@ -124,7 +124,7 @@ generic syntax reason.
 `analysis/probes/diff.rs` `changed_binding_initializer_retargets_to_predicate_use`,
 `shadowed_binding_initializer_keeps_static_unknown`,
 `retarget_skips_predicate_lines_that_are_changed`;
-`analysis/language/rust.rs`
+`analysis/language/rust/mod.rs`
 `diff_analysis_retargets_changed_binding_to_predicate_use`,
 `diff_analysis_keeps_value_propagation_limitation_for_macro_guarded_use`;
 fixtures `binding_predicate_{equality_boundary,positions,two_uses,scope_controls}`.
@@ -146,7 +146,7 @@ fixtures `binding_predicate_{equality_boundary,positions,two_uses,scope_controls
 
 - `analysis/probes/binding_predicate.rs` — the typed relation.
 - `analysis/probes/diff.rs` — retarget in `probes_for_file_with_relations`.
-- `analysis/language/rust.rs` — evidence attach; #3271 stays fallback.
+- `analysis/language/rust/probes.rs` — evidence attach; #3271 stays fallback.
 
 ## Metrics
 

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 6f1b81e..b926ba5 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub struct Config {
+ 
+ pub fn build(n: u32) -> Config {
+     Config {
+-        retries: Retries(n + 1),
++        retries: Retries(1 + n),
+         name: "x".into(),
+     }
+ }

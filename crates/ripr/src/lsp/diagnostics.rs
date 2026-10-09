@@ -5,7 +5,10 @@ use super::gap_artifacts::{
     validate_workspace_gap_artifact_report,
 };
 use super::state::{AnalysisSnapshot, HarnessFactsOnSnapshot, RefreshMetadata};
-use super::uri::{absolute_join, display_path, file_uri_for_path, path_from_file_uri};
+use super::uri::{
+    CappedArtifactRead, absolute_join, display_path, file_uri_for_path, path_from_file_uri,
+    read_artifact_capped,
+};
 use crate::agent::command_specs::{command_display_is_nonblank, command_displays_are_complete};
 use crate::analysis::ClassifiedSeam;
 use crate::analysis::cancellation::AnalysisCancellationToken;
@@ -13,8 +16,9 @@ use crate::analysis::inventory_classified_seams_at_with_config;
 use crate::analysis::seams::SeamGripClass;
 use crate::analysis_outcome::AnalysisOutcome;
 use crate::app::causal_projection::{CausalDeltaArtifact, insert_canonical_delta_fields};
-use crate::app::check_workspace_worktree_with_config;
+use crate::app::check_workspace_worktree_with_sources_open_rust_paths_and_progress;
 use crate::config::{ConfigSeverity, LspDiagnosticProfile, SeverityConfig};
+use crate::core_error::CoreError;
 #[cfg(test)]
 use crate::domain::RelatedTest;
 use crate::domain::{DiagnosticWitness, ExposureClass, Finding, LanguageId, LanguageStatus};
@@ -27,7 +31,6 @@ use crate::output::preview_actionability::{
 };
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 #[cfg(test)]
@@ -115,21 +118,32 @@ pub(super) fn canonicalize_diagnostic_batches(
 /// the CLI/report alignment layer. Findings without that identity remain
 /// individual report items; LSP must not invent a semantic grouping key.
 pub(super) fn canonical_finding_groups(findings: &[Finding]) -> Vec<(Finding, Vec<Finding>)> {
-    let mut grouped = BTreeMap::<String, Vec<Finding>>::new();
+    canonical_group_members(findings)
+        .into_iter()
+        .map(|(primary, members)| (primary.clone(), members.into_iter().cloned().collect()))
+        .collect()
+}
+
+/// Borrowing form of [`canonical_finding_groups`]: the same grouping key,
+/// primary selection, and ordering without cloning the findings, so count
+/// and class summaries can read the same group structure the listing and
+/// publishing paths see.
+pub(super) fn canonical_group_members(findings: &[Finding]) -> Vec<(&Finding, Vec<&Finding>)> {
+    let mut grouped = BTreeMap::<String, Vec<&Finding>>::new();
     for finding in findings {
         let key = finding
             .canonical_gap
             .as_ref()
             .map(|gap| format!("canonical:{}", gap.id))
             .unwrap_or_else(|| format!("raw:{}", finding.id));
-        grouped.entry(key).or_default().push(finding.clone());
+        grouped.entry(key).or_default().push(finding);
     }
 
     grouped
         .into_values()
         .filter_map(|mut group| {
-            group.sort_by_key(finding_primary_sort_key);
-            let primary = group.first().cloned()?;
+            group.sort_by_key(|finding| finding_primary_sort_key(finding));
+            let primary = *group.first()?;
             Some((primary, group))
         })
         .collect()
@@ -201,6 +215,11 @@ pub(super) fn add_canonical_group_data(
                         "line": test.line,
                         "oracle_kind": test.oracle_kind.as_str(),
                         "oracle_strength": test.oracle_strength.as_str(),
+                        "miss": test.miss.map(|miss| miss.as_str()),
+                        "why": crate::output::related_test_miss::related_test_miss_reason(
+                            test,
+                            &finding.activation.missing_discriminators,
+                        ),
                     }))
                     .collect::<Vec<_>>(),
                 "evidence": finding.evidence,
@@ -302,6 +321,35 @@ pub(super) fn canonical_group_has_mixed_classes(raw_findings: &[Finding]) -> boo
         > 1
 }
 
+/// Profile, encoding, and producer-owned ranges for one finding diagnostic
+/// projection. Bundled so the grouping function stays under the arity gate.
+pub(super) struct FindingDiagnosticProjection<'a> {
+    pub profile: LspDiagnosticProfile,
+    pub position_encoding: &'a PositionEncodingKind,
+    pub origins: &'a crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    pub causal_projection: Option<&'a CausalDeltaArtifact>,
+}
+
+impl<'a> FindingDiagnosticProjection<'a> {
+    pub(super) fn new(
+        profile: LspDiagnosticProfile,
+        position_encoding: &'a PositionEncodingKind,
+        origins: &'a crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ) -> Self {
+        Self {
+            profile,
+            position_encoding,
+            origins,
+            causal_projection: None,
+        }
+    }
+
+    fn with_causal(mut self, causal_projection: Option<&'a CausalDeltaArtifact>) -> Self {
+        self.causal_projection = causal_projection;
+        self
+    }
+}
+
 #[cfg(test)]
 pub(super) fn finding_diagnostics_by_uri(
     root: &Path,
@@ -315,9 +363,12 @@ pub(super) fn finding_diagnostics_by_uri(
         findings,
         severity,
         is_full_run,
-        LspDiagnosticProfile::Full,
-        causal_projection,
-        &PositionEncodingKind::UTF16,
+        FindingDiagnosticProjection::new(
+            LspDiagnosticProfile::Full,
+            &PositionEncodingKind::UTF16,
+            &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+        )
+        .with_causal(causal_projection),
     )
 }
 
@@ -326,13 +377,11 @@ pub(super) fn finding_diagnostics_by_uri_with_profile(
     findings: &[Finding],
     severity: &SeverityConfig,
     is_full_run: bool,
-    profile: LspDiagnosticProfile,
-    causal_projection: Option<&CausalDeltaArtifact>,
-    position_encoding: &PositionEncodingKind,
+    projection: FindingDiagnosticProjection<'_>,
 ) -> Result<BTreeMap<Uri, Vec<Diagnostic>>, String> {
     let mut grouped = BTreeMap::<Uri, Vec<Diagnostic>>::new();
     for (primary, raw_findings) in canonical_finding_groups(findings) {
-        if !finding_is_visible_in_profile(profile, &primary) {
+        if !finding_is_visible_in_profile(projection.profile, &primary) {
             continue;
         }
         let path = absolute_finding_path(root, &primary);
@@ -341,8 +390,9 @@ pub(super) fn finding_diagnostics_by_uri_with_profile(
             root,
             &primary,
             severity,
-            causal_projection,
-            position_encoding,
+            projection.causal_projection,
+            projection.position_encoding,
+            projection.origins,
         );
         // Producer authority: reaching this point means the finding passed
         // `finding_is_visible_in_profile`. The delivery budget consumes this
@@ -723,43 +773,64 @@ pub(super) fn workspace_diagnostics_with_config(
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
 ) -> Result<WorkspaceDiagnostics, String> {
+    workspace_diagnostics_with_config_and_open_rust_paths(
+        root,
+        config,
+        defer_seam_inventory,
+        &Default::default(),
+    )
+}
+
+pub(super) fn workspace_diagnostics_with_config_and_open_rust_paths(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+) -> Result<WorkspaceDiagnostics, String> {
+    workspace_diagnostics_with_config_and_open_rust_paths_and_progress(
+        root,
+        config,
+        defer_seam_inventory,
+        open_rust_index_paths,
+        None,
+    )
+}
+
+/// Progress-sink-bearing variant of
+/// [`workspace_diagnostics_with_config_and_open_rust_paths`]. The LSP
+/// work-done bridge (#4811) observes the same producer-owned stage
+/// boundaries through this path; the sink is advisory and cannot change
+/// the diagnostics result.
+pub(super) fn workspace_diagnostics_with_config_and_open_rust_paths_and_progress(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    progress_sink: Option<&dyn crate::app::AnalysisProgressSink>,
+) -> Result<WorkspaceDiagnostics, String> {
     let input = config.check_input(root);
     // Saved-workspace authority (#3183): editor refreshes analyze the live
     // tracked working tree, including staged and unstaged bytes that the
     // client has persisted, through the same canonical path as
     // `ripr check --worktree`. Document quarantine remains the independent
     // authority that prevents unsaved buffers from being served as current.
-    let output = match check_workspace_worktree_with_config(input, config.repo_config()) {
-        Ok(output) => output,
-        // #2303: a git invocation that exceeded the configured cooperative
-        // deadline commits a limited snapshot (zero findings, one typed
-        // failed `diff` outcome) instead of dropping the refresh with no
-        // snapshot. ONLY the named timeout error converts; every other
-        // analysis failure keeps the pre-#2303 no-snapshot path.
-        Err(err) if crate::git::is_git_invocation_timeout(&err) => {
-            return Ok(git_timeout_limited_diagnostics(
-                root,
-                config,
-                defer_seam_inventory,
-                err,
-            ));
-        }
-        // #2299: a diff that exceeds the fail-closed scope guard commits a
-        // limited snapshot carrying ONE workspace-scoped warning diagnostic
-        // (plus the typed failed `diff` outcome) instead of dropping the
-        // refresh with no snapshot, so the editor user sees the limitation
-        // in-surface. ONLY the named guard error converts; the CLI keeps the
-        // non-zero exit and unchanged error text.
-        Err(err) if crate::analysis::is_diff_scope_oversized(&err) => {
-            return Ok(oversized_diff_limited_diagnostics(
-                root,
-                config,
-                defer_seam_inventory,
-                err,
-            ));
-        }
-        Err(err) => return Err(format!("workspace analysis failed: {err}")),
-    };
+    let (output, origins, consumed_sources) =
+        match check_workspace_worktree_with_sources_open_rust_paths_and_progress(
+            input,
+            config.repo_config(),
+            open_rust_index_paths,
+            progress_sink,
+        ) {
+            Ok(pair) => pair,
+            Err(err) => {
+                return workspace_analysis_error_diagnostics(
+                    root,
+                    config,
+                    defer_seam_inventory,
+                    err,
+                );
+            }
+        };
     let root = output.root;
     let base = output.base;
     let analysis_outcome = output.analysis_outcome;
@@ -928,9 +999,12 @@ pub(super) fn workspace_diagnostics_with_config(
         &findings,
         config.repo_config().severity(),
         is_full_run,
-        config.diagnostic_profile,
-        causal_projection.as_ref(),
-        &config.position_encoding,
+        FindingDiagnosticProjection::new(
+            config.diagnostic_profile,
+            &config.position_encoding,
+            &origins,
+        )
+        .with_causal(causal_projection.as_ref()),
     )?;
 
     let classified_seams = raw_seams
@@ -1004,6 +1078,7 @@ pub(super) fn workspace_diagnostics_with_config(
         .collect();
     let snapshot = AnalysisSnapshot {
         root,
+        rust_consumed_sources: consumed_sources,
         input_identity: None,
         base,
         mode,
@@ -1016,6 +1091,7 @@ pub(super) fn workspace_diagnostics_with_config(
         gap_artifact_rejections: gap_artifact_report.rejections,
         harness_facts,
         diagnostics_by_uri,
+        diagnostic_uri_index: None,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope,
@@ -1073,16 +1149,25 @@ fn should_project_gap_records(
 }
 
 /// Run workspace diagnostics with a token installed for synchronous analysis
-/// checkpoints. The ordinary entry point remains token-free for CLI and test
-/// callers that are not owned by an LSP refresh.
+/// checkpoints and an optional producer progress sink for the work-done
+/// stage bridge (#4811). The ordinary entry point remains token-free for
+/// CLI and test callers that are not owned by an LSP refresh.
 pub(super) fn workspace_diagnostics_with_config_and_cancellation(
     root: &Path,
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
     cancellation: &AnalysisCancellationToken,
+    open_rust_index_paths: &std::collections::BTreeSet<std::path::PathBuf>,
+    progress_sink: Option<&dyn crate::app::AnalysisProgressSink>,
 ) -> Result<WorkspaceDiagnostics, String> {
     crate::analysis::cancellation::with_token(cancellation, || {
-        workspace_diagnostics_with_config(root, config, defer_seam_inventory)
+        workspace_diagnostics_with_config_and_open_rust_paths_and_progress(
+            root,
+            config,
+            defer_seam_inventory,
+            open_rust_index_paths,
+            progress_sink,
+        )
     })
 }
 
@@ -1097,21 +1182,55 @@ pub(super) fn workspace_diagnostics_with_config_and_cancellation(
 /// route. The shared run-status derivation turns the degraded component into
 /// `limited` (no new run-status string). Pure so the conversion contract is
 /// testable without a hung git.
+fn workspace_analysis_error_diagnostics(
+    root: &Path,
+    config: &LspAnalysisConfig,
+    defer_seam_inventory: bool,
+    error: CoreError,
+) -> Result<WorkspaceDiagnostics, String> {
+    // #2303 / #4859: the current tuple-bearing check reaches this guard
+    // before any Display boundary. Context preserves the timeout family.
+    if error.is_git_invocation_timeout() {
+        return Ok(git_timeout_limited_diagnostics(
+            root,
+            config,
+            defer_seam_inventory,
+            error,
+        ));
+    }
+    // Oversized-diff and cancellation retain their existing String owners.
+    let message = error.to_string();
+    if crate::analysis::is_diff_scope_oversized(&message) {
+        return Ok(oversized_diff_limited_diagnostics(
+            root,
+            config,
+            defer_seam_inventory,
+            message,
+        ));
+    }
+    Err(error.with_context("workspace analysis failed").into())
+}
+
 fn git_timeout_limited_diagnostics(
     root: &Path,
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
-    message: String,
+    error: CoreError,
 ) -> WorkspaceDiagnostics {
+    let kind = error
+        .git_invocation_timeout_kind()
+        .unwrap_or(crate::git::GIT_INVOCATION_TIMEOUT_PREFIX);
+    let message = error.to_string();
     let component_outcomes = vec![ComponentOutcome::failed(
         AnalysisComponent::Diff,
-        crate::git::GIT_INVOCATION_TIMEOUT_PREFIX,
+        kind,
         message,
         false,
         "retry ripr.refreshDiagnostics",
     )];
     let snapshot = AnalysisSnapshot {
         root: root.to_path_buf(),
+        rust_consumed_sources: Default::default(),
         input_identity: None,
         base: config.base_ref.clone(),
         mode: config.mode.clone(),
@@ -1132,6 +1251,7 @@ fn git_timeout_limited_diagnostics(
             HarnessFactsOnSnapshot::UnavailableLimitedRun
         },
         diagnostics_by_uri: BTreeMap::new(),
+        diagnostic_uri_index: None,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope: None,
@@ -1153,8 +1273,18 @@ fn git_timeout_limited_diagnostics(
 /// derivation turns the degraded component into `limited` (no new
 /// run-status string). The diagnostic message is the guard error's first
 /// line, already bounded and carrying the actual counts and split guidance.
-/// Pure so the conversion contract is testable without an oversized diff.
-fn oversized_diff_limited_diagnostics(
+/// The warning is published through the ordinary batch channel: the batches
+/// are the authority and `diagnostics_by_uri` is derived from them, so the
+/// publication invariant checked by `prepare_refresh_transaction`
+/// (`snapshot.diagnostics_by_uri == diagnostics_by_uri_from_batches`) holds
+/// by construction (#4325). The producer also stamps the ordinary
+/// `delivery_eligible` signal on the warning (the same producer-owned stamp
+/// profile-admitted findings carry), because the delivery budget admits only
+/// explicit producer signals and fails closed on missing data — without the
+/// stamp the warning would be profile-filtered out of both the push
+/// publication and the pull report (#4325). Pure so the conversion contract
+/// is testable without an oversized diff.
+pub(super) fn oversized_diff_limited_diagnostics(
     root: &Path,
     config: &LspAnalysisConfig,
     defer_seam_inventory: bool,
@@ -1167,29 +1297,43 @@ fn oversized_diff_limited_diagnostics(
         false,
         "split the diff or raise the guarded budget as the diagnostic message names",
     )];
-    let mut diagnostics_by_uri = BTreeMap::new();
-    if let Ok(root_uri) = super::uri::file_uri_for_path(root) {
-        let first_line = message.lines().next().unwrap_or(&message);
-        let bounded_message: String = first_line.chars().take(500).collect();
-        diagnostics_by_uri.insert(
-            root_uri,
-            vec![Diagnostic {
-                range: tower_lsp_server::ls_types::Range::default(),
-                severity: Some(DiagnosticSeverity::WARNING),
-                code: Some(NumberOrString::String(
-                    super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
-                )),
-                code_description: None,
-                source: Some("ripr".to_string()),
-                message: bounded_message,
-                related_information: None,
-                tags: None,
-                data: None,
-            }],
-        );
-    }
+    let batches = match super::uri::file_uri_for_path(root) {
+        Ok(root_uri) => {
+            let first_line = message.lines().next().unwrap_or(&message);
+            let bounded_message: String = first_line.chars().take(500).collect();
+            canonicalize_diagnostic_batches(vec![DiagnosticBatch {
+                uri: root_uri,
+                diagnostics: vec![Diagnostic {
+                    range: tower_lsp_server::ls_types::Range::default(),
+                    severity: Some(DiagnosticSeverity::WARNING),
+                    code: Some(NumberOrString::String(
+                        super::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE.to_string(),
+                    )),
+                    code_description: None,
+                    source: Some("ripr".to_string()),
+                    message: bounded_message,
+                    related_information: None,
+                    tags: None,
+                    // Producer authority (RIPR-SPEC-0126), same stamp as
+                    // profile-admitted findings: the delivery budget reads
+                    // this explicit signal after the gap/seam/preview
+                    // authorities and fails closed without it, so the
+                    // governed code alone admits nothing.
+                    data: Some(serde_json::json!({
+                        "delivery_eligible": true,
+                    })),
+                }],
+            }])
+        }
+        Err(_) => Vec::new(),
+    };
+    let diagnostics_by_uri = batches
+        .iter()
+        .map(|batch| (batch.uri.clone(), batch.diagnostics.clone()))
+        .collect();
     let snapshot = AnalysisSnapshot {
         root: root.to_path_buf(),
+        rust_consumed_sources: Default::default(),
         input_identity: None,
         base: config.base_ref.clone(),
         mode: config.mode.clone(),
@@ -1210,16 +1354,14 @@ fn oversized_diff_limited_diagnostics(
             HarnessFactsOnSnapshot::UnavailableLimitedRun
         },
         diagnostics_by_uri,
+        diagnostic_uri_index: None,
         delivery_selection: None,
         seams_deferred: defer_seam_inventory,
         partial_scope: None,
         component_outcomes,
         out_of_scope_test_file_findings: 0,
     };
-    WorkspaceDiagnostics {
-        snapshot,
-        batches: Vec::new(),
-    }
+    WorkspaceDiagnostics { snapshot, batches }
 }
 
 /// Compute the run status from findings, gap-artifact rejections, and the
@@ -1269,10 +1411,12 @@ pub(super) fn derive_run_status_with_outcome(
     component_outcomes: &[ComponentOutcome],
     analysis_outcome: Option<&AnalysisOutcome>,
 ) -> &'static str {
-    if rejections
-        .iter()
-        .any(|r| matches!(r, GapArtifactRejection::StaleArtifact))
-    {
+    if rejections.iter().any(|r| {
+        matches!(
+            r,
+            GapArtifactRejection::StaleArtifact | GapArtifactRejection::StaleSubject(_)
+        )
+    }) {
         return "stale";
     }
     if !rejections.is_empty() {
@@ -1311,28 +1455,72 @@ fn cache_component_outcome(rejections: &[GapArtifactRejection]) -> ComponentOutc
         .into_iter()
         .collect::<Vec<_>>()
         .join("|");
-    let kind = if rejections
+    let stale_subject = rejections.iter().find_map(|r| match r {
+        GapArtifactRejection::StaleSubject(path) => Some(path.as_str()),
+        _ => None,
+    });
+    let unverifiable_subject = rejections.iter().find_map(|r| match r {
+        GapArtifactRejection::UnverifiableSubject(reason) => Some(*reason),
+        _ => None,
+    });
+    if rejections
         .iter()
         .any(|r| matches!(r, GapArtifactRejection::StaleArtifact))
     {
-        "stale_artifact"
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "stale_artifact",
+            format!("gap artifact rejections: {kinds}"),
+            true,
+            "run ripr check to regenerate gap artifacts",
+        )
+    } else if let Some(path) = stale_subject {
+        // #4544: the artifact describes other file contents (a branch switch,
+        // edit, or commit since it was written); its gaps are withheld.
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "stale_subject",
+            format!(
+                "gap artifact rejections: {kinds}; {path} changed since the gap artifacts were written"
+            ),
+            true,
+            SOURCE_SUBJECT_RECOVERY,
+        )
+    } else if let Some(reason) = unverifiable_subject {
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "unverifiable_subject",
+            format!(
+                "gap artifact rejections: {kinds}; {reason}: the gap artifacts cannot be matched to the current source files"
+            ),
+            true,
+            SOURCE_SUBJECT_RECOVERY,
+        )
     } else {
-        "gap_artifact_rejected"
-    };
-    ComponentOutcome::limited(
-        AnalysisComponent::Cache,
-        kind,
-        format!("gap artifact rejections: {kinds}"),
-        true,
-        "run ripr check to regenerate gap artifacts",
-    )
+        ComponentOutcome::limited(
+            AnalysisComponent::Cache,
+            "gap_artifact_rejected",
+            format!("gap artifact rejections: {kinds}"),
+            true,
+            "run ripr check to regenerate gap artifacts",
+        )
+    }
 }
+
+/// Recovery route for a gap artifact whose `source_subject` stamp no longer
+/// matches, or cannot be matched to, the workspace files (#4544).
+const SOURCE_SUBJECT_RECOVERY: &str = "regenerate the gap artifacts for the current source: ripr reports gap-ledger (gap-decision-ledger.json) or cargo xtask lane1-evidence-audit (actionable-gaps.json)";
 
 /// Read, validate, and parse the gap decision ledger once per refresh so the
 /// typed component outcome and the diagnostic projection share a single
 /// interpretation (#1939, #1997). Returns the parsed records when the ledger
 /// is usable plus the outcome to record on the snapshot; an absent ledger is
 /// a normal state and records no outcome.
+/// Recovery route for a ledger whose `source_subject` stamp no longer
+/// matches, or cannot be matched to, the workspace files (#4544).
+const SOURCE_SUBJECT_LEDGER_RECOVERY: &str =
+    "regenerate the gap decision ledger for the current source with ripr reports gap-ledger";
+
 fn load_gap_ledger_records(
     root: &Path,
     enabled_languages: &[LanguageId],
@@ -1351,13 +1539,15 @@ fn load_gap_ledger_records(
         )
     };
     let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
-    let contents = match fs::read_to_string(&ledger_path) {
-        Ok(contents) => contents,
-        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return (None, None),
-        Err(err) => {
+    let contents = match read_artifact_capped(&ledger_path) {
+        CappedArtifactRead::Contents(contents) => contents,
+        // An absent ledger is a normal state and records no outcome.
+        CappedArtifactRead::Missing => return (None, None),
+        CappedArtifactRead::Unusable => {
             return failed(
                 "gap_ledger_read_failed",
-                format!("gap diagnostics skipped: read failed: {err}"),
+                "gap diagnostics skipped: ledger read failed or exceeds the artifact size limit"
+                    .to_string(),
             );
         }
     };
@@ -1382,6 +1572,34 @@ fn load_gap_ledger_records(
                 "gap diagnostics skipped: artifact is not a gap decision ledger".to_string(),
             );
         }
+        Err(GapArtifactRejection::StaleSubject(path)) => {
+            return (
+                None,
+                Some(ComponentOutcome::failed(
+                    AnalysisComponent::GapLedger,
+                    "stale_subject",
+                    format!(
+                        "gap diagnostics withheld: {path} changed since the gap decision ledger was written"
+                    ),
+                    true,
+                    SOURCE_SUBJECT_LEDGER_RECOVERY,
+                )),
+            );
+        }
+        Err(GapArtifactRejection::UnverifiableSubject(reason)) => {
+            return (
+                None,
+                Some(ComponentOutcome::failed(
+                    AnalysisComponent::GapLedger,
+                    "unverifiable_subject",
+                    format!(
+                        "gap diagnostics withheld: {reason}: the gap decision ledger cannot be matched to the current source files"
+                    ),
+                    true,
+                    SOURCE_SUBJECT_LEDGER_RECOVERY,
+                )),
+            );
+        }
         Err(rejection) => {
             return failed(
                 rejection.as_str(),
@@ -1392,7 +1610,10 @@ fn load_gap_ledger_records(
             );
         }
     }
-    match crate::output::gap_decision_ledger::parse_gap_records_json(&contents) {
+    // #4287: typed recovery binds to the workspace root, not the server's
+    // process working directory.
+    match crate::output::gap_decision_ledger::parse_gap_records_json_for_root(&contents, Some(root))
+    {
         Ok(records) => (
             Some((ledger_path, records)),
             Some(ComponentOutcome::complete(AnalysisComponent::GapLedger)),
@@ -1424,11 +1645,13 @@ fn git_timeout_error_converts_to_a_committed_limited_snapshot() -> Result<(), St
     // replacement for the pre-#2303 no-snapshot path. Pure conversion: no
     // hung git required.
     let config = LspAnalysisConfig::default();
-    let message = "git_invocation_timeout: git -C /workspace [\"diff\", \"--unified=0\", \
-                   \"origin/main...HEAD\"] exceeded the 30000ms deadline (process terminated)"
-        .to_string();
+    let error = CoreError::git_invocation_timeout(
+        "git -C /workspace [\"diff\", \"--unified=0\", \"origin/main...HEAD\"]",
+        30000,
+        true,
+    );
     let diagnostics =
-        git_timeout_limited_diagnostics(Path::new("/workspace"), &config, false, message);
+        workspace_analysis_error_diagnostics(Path::new("/workspace"), &config, false, error)?;
 
     if !diagnostics.snapshot.findings.is_empty() {
         return Err("a timed-out diff load must commit zero findings".to_string());
@@ -1506,23 +1729,174 @@ fn git_timeout_error_converts_to_a_committed_limited_snapshot() -> Result<(), St
 #[cfg(test)]
 #[test]
 fn non_timeout_analysis_errors_are_not_converted() -> Result<(), String> {
-    // #2303: the conversion guard matches ONLY the named timeout prefix; an
-    // ordinary analysis failure (missing base ref, parse error) keeps the
-    // pre-#2303 no-snapshot `Err` path.
+    // #2303 / #4859: the conversion guard matches ONLY the typed timeout
+    // variant; a lookalike Display prefix, wrapped Message, or ordinary
+    // analysis failure keeps the pre-#2303 no-snapshot `Err` path.
     for lookalike in [
-        "workspace analysis failed: git diff failed: fatal: ambiguous argument",
-        "agit_invocation_timeout: forged prefix must not match",
-        "could not resolve a default base (no origin/main, origin/master, or local main/master found)",
+        CoreError::message("workspace analysis failed: git diff failed: fatal: ambiguous argument"),
+        CoreError::message("agit_invocation_timeout: forged prefix must not match"),
+        CoreError::message("analysis_cancelled: Superseded"),
+        CoreError::message("git_invocation_timeout: forged").with_context("outer"),
+        CoreError::message("git_invocation_timeout: forged prefix must not match"),
+        CoreError::message(
+            "could not resolve a default base (no origin/main, origin/master, or local main/master found)",
+        ),
     ] {
-        if crate::git::is_git_invocation_timeout(lookalike) {
+        if workspace_analysis_error_diagnostics(
+            Path::new("/workspace"),
+            &LspAnalysisConfig::default(),
+            false,
+            lookalike.clone(),
+        )
+        .is_ok()
+        {
             return Err(format!("non-timeout error matched the guard: {lookalike}"));
         }
     }
-    if !crate::git::is_git_invocation_timeout(
-        "git_invocation_timeout: git -C /x [\"diff\"] exceeded the 1ms deadline (process terminated)",
-    ) {
+    let named = CoreError::git_invocation_timeout("git -C /x [\"diff\"]", 1, true);
+    if !named.is_git_invocation_timeout() {
         return Err("the named timeout error must match the guard".to_string());
     }
+    let wrapped = named.clone().with_context("workspace analysis failed");
+    if !wrapped.is_git_invocation_timeout() {
+        return Err("wrapping a typed timeout must not lose the kind".to_string());
+    }
+    if wrapped
+        .to_string()
+        .starts_with(crate::core_error::GIT_INVOCATION_TIMEOUT_KIND)
+    {
+        return Err(
+            "wrapped Display must not start with the legacy prefix; prefix matching would miss it"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn cancelled_refresh_is_named_by_the_token_not_the_error_text() -> Result<(), String> {
+    // #4860: an LSP refresh whose token is aborted before analysis returns an
+    // error, and the backend must classify it as cancellation. Drive the
+    // real token-owned refresh entry over a real repository, then show the
+    // decision comes from the token's observed abort: prefix-matching the
+    // returned text is not what makes it a cancellation.
+    use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken};
+    let root = crate::lsp::tests::unique_lsp_test_root("cancelled-refresh-token")?;
+    let git = |args: &[&str]| crate::lsp::tests::run_lsp_scope_git(root.path(), args);
+    git(&["init"])?;
+    git(&["config", "user.email", "ripr@example.invalid"])?;
+    git(&["config", "user.name", "RIPR Test"])?;
+    std::fs::write(
+        root.path().join("lib.rs"),
+        "pub fn gate() -> bool {\n    true\n}\n",
+    )
+    .map_err(|error| format!("write fixture: {error}"))?;
+    git(&["add", "lib.rs"])?;
+    git(&["commit", "-m", "base"])?;
+    std::fs::write(
+        root.path().join("lib.rs"),
+        "pub fn gate() -> bool {\n    false\n}\n",
+    )
+    .map_err(|error| format!("write change: {error}"))?;
+    let config = LspAnalysisConfig {
+        base_ref: Some("HEAD".to_string()),
+        ..LspAnalysisConfig::default()
+    };
+
+    // Control: a live token completes and records no observed abort.
+    let live = AnalysisCancellationToken::new();
+    workspace_diagnostics_with_config_and_cancellation(
+        root.path(),
+        &config,
+        false,
+        &live,
+        &Default::default(),
+        None,
+    )?;
+    if live.observed_abort().is_some() {
+        return Err("a completed refresh must not record an observed abort".to_string());
+    }
+
+    let token = AnalysisCancellationToken::new();
+    if !token.cancel(AnalysisAbortKind::DeadlineExceeded) {
+        return Err("a fresh token must accept the deadline abort".to_string());
+    }
+    let Err(error) = workspace_diagnostics_with_config_and_cancellation(
+        root.path(),
+        &config,
+        false,
+        &token,
+        &Default::default(),
+        None,
+    ) else {
+        return Err("a deadline-aborted refresh must not publish a snapshot".to_string());
+    };
+    if token.observed_abort() != Some(AnalysisAbortKind::DeadlineExceeded) {
+        return Err(format!(
+            "the refresh must observe the deadline abort, got {:?} for {error}",
+            token.observed_abort()
+        ));
+    }
+    // The refresh wraps the abort ("workspace analysis failed: analysis
+    // cancelled: DeadlineExceeded"), so the retired `starts_with` predicate
+    // read this real deadline abort as an ordinary analysis failure.
+    if error != "workspace analysis failed: analysis cancelled: DeadlineExceeded" {
+        return Err(format!("public wording must stay unchanged: {error}"));
+    }
+    if error.starts_with("analysis cancelled:") {
+        return Err("the fixture no longer discriminates prefix matching".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn wrapped_timeout_still_converts_to_the_named_kind() -> Result<(), String> {
+    // Control 4: structured context around a real timeout must not lose
+    // the #2811 kind. Prefix matching on Display would miss this case.
+    let config = LspAnalysisConfig::default();
+    let error = CoreError::git_invocation_timeout("git -C /workspace [\"diff\"]", 30000, true)
+        .with_context("workspace analysis failed");
+    let diagnostics =
+        workspace_analysis_error_diagnostics(Path::new("/workspace"), &config, false, error)?;
+    let Some(outcome) = diagnostics.snapshot.component_outcomes.first() else {
+        return Err("expected the failed diff outcome".to_string());
+    };
+    if outcome.kind != Some("git_invocation_timeout") {
+        return Err(format!(
+            "wrapped timeout must still project git_invocation_timeout, got {:?}",
+            outcome.kind
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+#[test]
+fn real_git_stderr_timeout_words_do_not_convert_to_a_snapshot() -> Result<(), String> {
+    let root = std::env::current_dir().map_err(|error| error.to_string())?;
+    let args = ["cat-file", "-t", "git_invocation_timeout: forged deadline"];
+    let output = crate::git::run_git_output_with_deadline(&root, &args, None)?;
+    assert!(
+        !output.status.success(),
+        "the control must be a nonzero Git exit"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("git_invocation_timeout"),
+        "Git stderr must carry the lookalike words"
+    );
+    let error = match crate::git::run_git(&root, &args) {
+        Err(error) => error,
+        Ok(_) => return Err("the invalid Git object unexpectedly succeeded".into()),
+    };
+    assert!(matches!(&error, CoreError::Message(_)));
+    let result =
+        workspace_analysis_error_diagnostics(&root, &LspAnalysisConfig::default(), false, error);
+    assert!(
+        result.is_err(),
+        "stderr words must not commit a timeout snapshot"
+    );
     Ok(())
 }
 
@@ -1544,8 +1918,34 @@ fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warnin
     if !diagnostics.snapshot.findings.is_empty() {
         return Err("an oversized diff must commit zero findings".to_string());
     }
-    if !diagnostics.batches.is_empty() {
-        return Err("an oversized diff must publish no diagnostic batches".to_string());
+    // #4325: the publication invariant checked by
+    // `prepare_refresh_transaction` must hold by construction — the snapshot
+    // map is exactly what the publish batches derive.
+    if diagnostics.snapshot.diagnostics_by_uri
+        != super::backend::diagnostics_by_uri_from_batches(&diagnostics.batches)
+    {
+        return Err(
+            "the oversized snapshot must satisfy the publication invariant by construction"
+                .to_string(),
+        );
+    }
+    if diagnostics.batches.len() != 1 {
+        return Err(format!(
+            "expected exactly one publish batch, got {}",
+            diagnostics.batches.len()
+        ));
+    }
+    let root_uri = super::uri::file_uri_for_path(Path::new("/workspace"))
+        .map_err(|err| format!("root URI construction failed: {err}"))?;
+    let batch = &diagnostics.batches[0];
+    if batch.uri != root_uri {
+        return Err("expected the publish batch anchored at the workspace root URI".to_string());
+    }
+    if batch.diagnostics.len() != 1 {
+        return Err(format!(
+            "expected exactly one diagnostic in the publish batch, got {}",
+            batch.diagnostics.len()
+        ));
     }
     if diagnostics.snapshot.diagnostics_by_uri.len() != 1 {
         return Err(format!(
@@ -1553,8 +1953,6 @@ fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warnin
             diagnostics.snapshot.diagnostics_by_uri.len()
         ));
     }
-    let root_uri = super::uri::file_uri_for_path(Path::new("/workspace"))
-        .map_err(|err| format!("root URI construction failed: {err}"))?;
     let Some(list) = diagnostics.snapshot.diagnostics_by_uri.get(&root_uri) else {
         return Err("expected the warning anchored at the workspace root URI".to_string());
     };
@@ -1587,6 +1985,20 @@ fn oversized_diff_error_converts_to_a_committed_limited_snapshot_with_one_warnin
         return Err(format!(
             "expected the guard kind and actual counts, got {:?}",
             diagnostic.message
+        ));
+    }
+    // #4325: the producer stamps the ordinary delivery-eligibility signal so
+    // the delivery budget admits the warning; the governed code alone admits
+    // nothing (the budget fails closed on missing data).
+    if diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("delivery_eligible"))
+        != Some(&serde_json::Value::Bool(true))
+    {
+        return Err(format!(
+            "the scope-guard disclosure must carry the producer delivery signal: {:?}",
+            diagnostic.data
         ));
     }
     if diagnostics.snapshot.component_outcomes.len() != 1 {
@@ -1635,15 +2047,32 @@ fn repo_scope_and_wrapped_guard_errors_do_not_convert() -> Result<(), String> {
         "repo_scope_oversized: 900 indexed files exceed the repo guard",
         "workspace analysis failed: diff_scope_oversized: wrapped must not match",
         "adiff_scope_oversized: forged prefix must not match",
+        "diff_scope_oversizedness: unrelated failure",
+        "diff_scope_oversized_metadata: unrelated failure",
+        "diff_scope_oversized",
+        "diff_scope_oversized : invalid delimiter",
+        "diff_scope_oversized\n: invalid delimiter",
+        "diff_scope_oversized\r\n: invalid delimiter",
+        " diff_scope_oversized: not raw",
+        "\ndiff_scope_oversized: not raw",
+        "ripr: diff_scope_oversized: wrapped",
+        "git_invocation_timeout: a different guard",
+        "review_guidance_oversized: a different guard",
     ] {
         if crate::analysis::is_diff_scope_oversized(lookalike) {
             return Err(format!("non-guard error matched the guard: {lookalike}"));
         }
     }
-    if !crate::analysis::is_diff_scope_oversized(
+    for error in [
         "diff_scope_oversized: 900 indexed Rust files exceed the 800-file guard",
-    ) {
-        return Err("the named guard error must match the guard".to_string());
+        "diff_scope_oversized:	900 indexed files",
+        "diff_scope_oversized:\n900 indexed files",
+    ] {
+        if !crate::analysis::is_diff_scope_oversized(error) {
+            return Err(format!(
+                "the named guard error must match the guard: {error:?}"
+            ));
+        }
     }
     Ok(())
 }
@@ -1797,7 +2226,11 @@ fn gap_record_diagnostic_message(record: &GapRecord) -> String {
         .as_ref()
         .and_then(|route| non_empty(&route.route_kind))
         .unwrap_or("InspectGap");
-    let mut message = format!("ripr gap: {kind}; repair route: {route}");
+    let mut message = if route == "InspectGap" {
+        format!("ripr gap: {kind}; Hover the highlighted code to inspect the static evidence.")
+    } else {
+        format!("ripr gap: {kind}; repair route: {route}")
+    };
     if let Some(route) = &record.repair_route {
         if let Some(changed) = route.changed_behavior.as_deref().and_then(non_empty) {
             message.push_str(&format!("; changed behavior: {changed}"));
@@ -2091,7 +2524,14 @@ pub(super) fn diagnostic_for_finding_with_config(
     finding: &Finding,
     config: &SeverityConfig,
 ) -> Diagnostic {
-    diagnostic_for_finding_with_causal(root, finding, config, None, &PositionEncodingKind::UTF16)
+    diagnostic_for_finding_with_causal(
+        root,
+        finding,
+        config,
+        None,
+        &PositionEncodingKind::UTF16,
+        &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+    )
 }
 
 fn diagnostic_for_finding_with_causal(
@@ -2100,6 +2540,7 @@ fn diagnostic_for_finding_with_causal(
     config: &SeverityConfig,
     causal_projection: Option<&CausalDeltaArtifact>,
     position_encoding: &PositionEncodingKind,
+    origins: &crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 ) -> Diagnostic {
     let file = display_repo_path(root, &finding.probe.location.file);
     let owner = finding
@@ -2197,7 +2638,7 @@ fn diagnostic_for_finding_with_causal(
         }
     }
     Diagnostic {
-        range: diagnostic_range_for_finding(finding, position_encoding),
+        range: diagnostic_range_for_finding(root, finding, position_encoding, origins),
         severity: lsp_severity(config.for_exposure(&finding.class)),
         code: Some(NumberOrString::String(
             super::diagnostic_catalog::finding_code(&finding.class),
@@ -2212,23 +2653,97 @@ fn diagnostic_for_finding_with_causal(
 }
 
 fn diagnostic_range_for_finding(
+    root: &Path,
     finding: &Finding,
     position_encoding: &PositionEncodingKind,
+    origins: &crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
 ) -> Range {
+    if let Some(origin) = origins.for_finding(finding) {
+        // Numeric-only: a stored record, including coarse refusals, is not
+        // replaced by a saved-line search. Absent maps keep the heuristic.
+        return crate::lsp::position::range_from_encoded_origin(origin, position_encoding);
+    }
     let line = finding.probe.location.line.saturating_sub(1) as u32;
     let column = finding.probe.location.column;
-    crate::lsp::position::expression_span_range(
+    let saved_line = saved_line_for_finding(root, finding);
+    crate::lsp::position::expression_span_range_on_saved_line(
         line,
         column,
         &finding.probe.expression,
         position_encoding,
+        saved_line.as_deref(),
     )
+}
+
+fn saved_line_for_finding(root: &Path, finding: &Finding) -> Option<String> {
+    let path = absolute_finding_path(root, finding);
+    let contents = std::fs::read_to_string(path).ok()?;
+    let line_index = finding.probe.location.line.saturating_sub(1);
+    contents.lines().nth(line_index).map(str::to_owned)
 }
 
 fn related_information_for_finding(
     root: &Path,
     finding: &Finding,
 ) -> Option<Vec<DiagnosticRelatedInformation>> {
+    let mut related = fix_site_related_information(root, finding)
+        .into_iter()
+        .collect::<Vec<_>>();
+    related.extend(examined_test_related_information(root, finding));
+    (!related.is_empty()).then_some(related)
+}
+
+/// Editor rows for the first examined tests that miss the change (#5344), so
+/// a click opens the test the finding is about and the message says why it
+/// does not catch the change.
+const MAX_EXAMINED_TEST_ROWS: usize = 3;
+
+fn examined_test_related_information(
+    root: &Path,
+    finding: &Finding,
+) -> Vec<DiagnosticRelatedInformation> {
+    let mut seen = Vec::new();
+    finding
+        .related_tests
+        .iter()
+        // One row per test: a test with several assertion rows is one place
+        // to open.
+        .filter(|test| {
+            let key = (&test.name, &test.file, test.line);
+            let fresh = !seen.contains(&key);
+            if fresh {
+                seen.push(key);
+            }
+            fresh
+        })
+        .filter_map(|test| {
+            let why = crate::output::related_test_miss::related_test_miss_reason(
+                test,
+                &finding.activation.missing_discriminators,
+            )?;
+            let uri = file_uri_for_path(&absolute_join(root, &test.file)).ok()?;
+            Some(DiagnosticRelatedInformation {
+                location: Location {
+                    uri,
+                    range: crate::lsp::position::line_span_range(
+                        test.line.saturating_sub(1) as u32,
+                    ),
+                },
+                message: format!(
+                    "Related test `{}` {}: {why}",
+                    test.name,
+                    crate::output::related_test_miss::related_test_miss_label(test)
+                ),
+            })
+        })
+        .take(MAX_EXAMINED_TEST_ROWS)
+        .collect()
+}
+
+fn fix_site_related_information(
+    root: &Path,
+    finding: &Finding,
+) -> Option<DiagnosticRelatedInformation> {
     let witness = DiagnosticWitness::from_finding(finding)?;
     let fix_site = witness.fix_site.as_ref()?;
     let path = absolute_join(root, Path::new(&fix_site.file));
@@ -2242,7 +2757,7 @@ fn related_information_for_finding(
         .current_oracle
         .as_deref()
         .map_or_else(String::new, |oracle| format!(": {oracle}"));
-    Some(vec![DiagnosticRelatedInformation {
+    Some(DiagnosticRelatedInformation {
         location: Location {
             uri,
             range: crate::lsp::position::line_span_range(line),
@@ -2251,7 +2766,7 @@ fn related_information_for_finding(
             "Fix site: related test `{}` has {} {} oracle{}",
             fix_site.test_name, fix_site.oracle_strength, fix_site.oracle_kind, oracle
         ),
-    }])
+    })
 }
 
 #[cfg(test)]
@@ -2273,7 +2788,30 @@ fn lsp_severity(severity: ConfigSeverity) -> Option<DiagnosticSeverity> {
 fn lsp_message(finding: &Finding) -> String {
     let reconciled = reconcile_next_step(finding);
     let base = if reconciled.is_empty() {
-        format!("{} static RIPR exposure", finding.class.as_str())
+        let explanation = match &finding.class {
+            crate::domain::ExposureClass::Exposed => {
+                "A test appears to observe the changed behavior"
+            }
+            crate::domain::ExposureClass::WeaklyExposed => {
+                "Related tests may not distinguish the changed behavior"
+            }
+            crate::domain::ExposureClass::ReachableUnrevealed => {
+                "A test reaches the change without observing its effect"
+            }
+            crate::domain::ExposureClass::NoStaticPath => {
+                "No static test path to this change was found"
+            }
+            crate::domain::ExposureClass::InfectionUnknown => {
+                "The changed value could not be traced"
+            }
+            crate::domain::ExposureClass::PropagationUnknown => {
+                "The changed effect could not be traced to a test"
+            }
+            crate::domain::ExposureClass::StaticUnknown => {
+                "Static analysis could not classify this change"
+            }
+        };
+        format!("{explanation}. Hover the highlighted code to inspect the static evidence.")
     } else {
         reconciled
     };
@@ -2335,8 +2873,9 @@ fn absolute_finding_path(root: &Path, finding: &Finding) -> PathBuf {
 /// Split diff-analysis findings into the production scope the LSP publishes
 /// and the out-of-scope tail it must not pin as line-local diagnostics.
 ///
-/// The scope predicate is the producer-owned source-role model (#3285) —
-/// the same authority the CLI seeding surface and the seam inventory use —
+/// The scope predicate is the producer-owned `seeds_diff_probes` rule
+/// (#3285) — the exact authority the CLI diff seeding uses, so a changed
+/// `xtask/` or `build.rs` finding the CLI reports is not dropped here —
 /// not a parallel LSP-only test-path matcher. It is
 /// applied only to Rust anchors (`.rs`); other languages keep their own
 /// adapter-owned test-file handling. Paths are relativized against the
@@ -2366,6 +2905,20 @@ fn partition_out_of_scope_test_file_findings(
         root,
         config.analysis().test_harnesses(),
     );
+    // #4435: the same module-tree evidence the diff loop records for the
+    // changed files, computed for the finding anchors.
+    let anchors = findings
+        .iter()
+        .map(|finding| {
+            let file = &finding.probe.location.file;
+            file.strip_prefix(root).unwrap_or(file).to_path_buf()
+        })
+        .collect::<Vec<_>>();
+    crate::analysis::apply_module_graph_evidence(
+        root,
+        &mut context,
+        anchors.iter().map(|path| path.as_path()),
+    );
     let mut scoped = Vec::with_capacity(findings.len());
     let mut out_of_scope = 0usize;
     for finding in findings {
@@ -2392,7 +2945,7 @@ fn finding_anchor_is_out_of_scope_rust_path(
     } else {
         file.as_path()
     };
-    !crate::analysis::classify_with(relative, context).seeds_production_findings()
+    !crate::analysis::seeds_diff_probes(relative, context)
 }
 
 #[cfg(test)]
@@ -2409,6 +2962,7 @@ mod seam_diagnostic_tests {
     use crate::analysis::test_grip_evidence::TestGripEvidence;
     use crate::domain::{Confidence, StageEvidence, StageState};
     use crate::output::gap_decision_ledger::{GapAnchor, GapRepairRoute, ProjectionEligibility};
+    use std::fs;
 
     fn stage(state: StageState) -> StageEvidence {
         StageEvidence::new(state, Confidence::Medium, "test stage")
@@ -2437,6 +2991,7 @@ mod seam_diagnostic_tests {
             discriminate: stage(StageState::Weak),
             observed_values: Vec::new(),
             missing_discriminators: Vec::new(),
+            new_test_target: None,
         };
         ClassifiedSeam {
             seam,
@@ -2684,13 +3239,58 @@ mod seam_diagnostic_tests {
                 diagnostic.severity
             ));
         }
-        if !diagnostic.message.contains("repair route: InspectGap")
+        if !diagnostic.message.contains("Hover the highlighted code")
+            || diagnostic.message.contains("code action")
+            || diagnostic.message.contains("repair route: InspectGap")
             || !diagnostic.message.contains("preview advisory evidence")
         {
             return Err(format!(
                 "unexpected preview gap diagnostic message: {}",
                 diagnostic.message
             ));
+        }
+        let hover = crate::lsp::hover::diagnostic_hover_response(&diagnostic);
+        let tower_lsp_server::ls_types::HoverContents::Markup(content) = hover.contents else {
+            return Err("expected rendered gap hover".to_string());
+        };
+        assert!(content.value.contains(&record.canonical_gap_id));
+        assert!(content.value.contains("inspect_only"));
+        assert_eq!(hover.range, Some(diagnostic.range));
+        let params = tower_lsp_server::ls_types::CodeActionParams {
+            text_document: tower_lsp_server::ls_types::TextDocumentIdentifier {
+                uri: "file:///repo/src/pricing.rs"
+                    .parse::<Uri>()
+                    .map_err(|error| error.to_string())?,
+            },
+            range: diagnostic.range,
+            context: tower_lsp_server::ls_types::CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        for enhanced in [false, true] {
+            let mut initialize = tower_lsp_server::ls_types::InitializeParams::default();
+            if enhanced {
+                initialize.capabilities.experimental = Some(serde_json::json!({
+                    "riprEditor": {"version": "0.11.0", "commands": ["ripr.copyContext"]}
+                }));
+            }
+            let profile = crate::lsp::client_features::ClientFeatureProfile::from_initialize_params(
+                &initialize,
+            );
+            assert_eq!(
+                profile.supports_client_command("ripr.copyContext"),
+                enhanced
+            );
+            let actions = crate::lsp::actions::code_action_response(&params, None, &profile);
+            assert_eq!(
+                actions.len(),
+                1,
+                "route-less gap has only the refresh action"
+            );
         }
         Ok(())
     }
@@ -2827,6 +3427,81 @@ mod seam_diagnostic_tests {
         fs::remove_dir_all(&root)
             .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
         Ok(())
+    }
+
+    /// #4287: the LSP loader binds typed recovery to its workspace root, not
+    /// the server's process working directory. The workspace is a temp
+    /// directory, so the process working directory (the crate root under
+    /// test) differs from it; a regeneration display bound to the workspace
+    /// keeps its typed route, while the process-directory and legacy-only
+    /// parse paths gain none.
+    #[test]
+    fn load_gap_ledger_records_binds_typed_routes_to_the_workspace_root() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let result = (|| {
+            let cwd = std::env::current_dir().map_err(|err| err.to_string())?;
+            if crate::agent::loop_commands::bound_root_path(&root)
+                == crate::agent::loop_commands::bound_root_path(&cwd)
+            {
+                return Err("the workspace must differ from the process working directory".into());
+            }
+            let workspace = crate::agent::loop_commands::bound_root(&root.to_string_lossy());
+            let display = crate::agent::loop_commands::check_repo_exposure_command(
+                &workspace,
+                "instant",
+                "target/ripr/reports/repo-exposure.json",
+            );
+            let mut record = gap_record(true);
+            record.regeneration_commands = vec![display.clone()];
+            let contents = gap_ledger_json(vec![record]).to_string();
+            fs::write(root.join(DEFAULT_GAP_DECISION_LEDGER_OUT), &contents)
+                .map_err(|err| format!("write ledger failed: {err}"))?;
+
+            let (records, _) = load_gap_ledger_records(&root, &[LanguageId::Rust]);
+            let Some((_, records)) = records else {
+                return Err("a usable ledger must return its records".to_string());
+            };
+            let typed = records[0]
+                .command_specs
+                .as_ref()
+                .map(|specs| specs.regeneration.clone())
+                .unwrap_or_default();
+            if typed.len() != 1
+                || !typed[0].args.windows(2).any(|pair| pair == ["--root", "."])
+                || typed[0].expected_writes
+                    != vec!["target/ripr/reports/repo-exposure.json".to_string()]
+            {
+                return Err(format!(
+                    "a workspace-bound display must keep its typed route: {display} -> {typed:?}"
+                ));
+            }
+
+            // The same ledger parsed against the process working directory,
+            // and on the legacy-only path, stays legacy-string-only.
+            let untyped = |records: Vec<GapRecord>| {
+                records[0].regeneration_commands == vec![display.clone()]
+                    && records[0]
+                        .command_specs
+                        .as_ref()
+                        .is_none_or(|specs| specs.regeneration.is_empty())
+            };
+            if !untyped(crate::output::gap_decision_ledger::parse_gap_records_json(
+                &contents,
+            )?) {
+                return Err("the process-directory parse must not bind a foreign root".into());
+            }
+            if !untyped(
+                crate::output::gap_decision_ledger::parse_gap_records_json_for_root(
+                    &contents, None,
+                )?,
+            ) {
+                return Err("the legacy-only parse must not recover typed routes".into());
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
     }
 
     #[test]
@@ -3004,7 +3679,17 @@ mod seam_diagnostic_tests {
         }
     }
 
+    /// A ledger stamped as the producer stamps it (#4544). The fixture files
+    /// are absent under every test root, so the stamp records `null` digests
+    /// and stays current until a test creates one of them.
     fn gap_ledger_json(records: Vec<GapRecord>) -> serde_json::Value {
+        crate::output::gap_source_subject::with_source_subject_for_test(
+            Path::new("/ripr-absent-fixture-root"),
+            unstamped_gap_ledger_json(records),
+        )
+    }
+
+    fn unstamped_gap_ledger_json(records: Vec<GapRecord>) -> serde_json::Value {
         serde_json::json!({
             "schema_version": "0.1",
             "tool": "ripr",
@@ -3013,6 +3698,160 @@ mod seam_diagnostic_tests {
             "root": ".",
             "records": records,
         })
+    }
+
+    fn write_file(path: &Path, contents: &str) -> Result<(), String> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+        }
+        fs::write(path, contents).map_err(|err| format!("write {} failed: {err}", path.display()))
+    }
+
+    fn published_gap_diagnostics(root: &Path) -> usize {
+        let mut grouped = std::collections::BTreeMap::new();
+        append_gap_record_diagnostics(root, &[LanguageId::Rust], &mut grouped);
+        grouped.values().map(Vec::len).sum()
+    }
+
+    fn ledger_outcome(root: &Path) -> Result<ComponentOutcome, String> {
+        load_gap_ledger_records(root, &[LanguageId::Rust])
+            .1
+            .ok_or_else(|| "a present ledger must record an outcome".to_string())
+    }
+
+    /// #4544: the ledger's `source_subject` stamp gates projection. Unchanged
+    /// files publish the gap; an edited anchor file, a deleted related test,
+    /// or a ledger without a stamp publishes nothing and discloses a typed
+    /// outcome that names the regeneration command.
+    #[test]
+    fn gap_ledger_source_subject_gates_diagnostic_projection() -> Result<(), String> {
+        let root = temp_gap_root()?;
+        let result = (|| {
+            let anchor = root.join("src/pricing.rs");
+            let related_test = root.join("tests/pricing.rs");
+            write_file(&anchor, "pub fn discount(amount: u64) -> u64 { amount }\n")?;
+            write_file(&related_test, "#[test]\nfn discount_threshold() {}\n")?;
+            let ledger_path = root.join(DEFAULT_GAP_DECISION_LEDGER_OUT);
+            let stamped = crate::output::gap_source_subject::with_source_subject_for_test(
+                &root,
+                unstamped_gap_ledger_json(vec![gap_record(true)]),
+            );
+            let stamped_paths = stamped["source_subject"]["files"]
+                .as_array()
+                .map(|files| {
+                    files
+                        .iter()
+                        .map(|file| file["path"].as_str().unwrap_or_default().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            if stamped_paths != ["src/pricing.rs", "tests/pricing.rs"] {
+                return Err(format!("unexpected stamped paths: {stamped_paths:?}"));
+            }
+            write_file(&ledger_path, &stamped.to_string())?;
+
+            // Unchanged files: the gap is still published.
+            if published_gap_diagnostics(&root) != 1 {
+                return Err("an unchanged workspace must publish the gap".to_string());
+            }
+            if ledger_outcome(&root)?.state.as_str() != "complete" {
+                return Err("an unchanged workspace must keep a complete outcome".to_string());
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if !report.rejections.is_empty() {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+
+            // Anchor file edited (a branch switch or edit): withheld as stale.
+            write_file(
+                &anchor,
+                "pub fn discount(amount: u64) -> u64 { amount + 1 }\n",
+            )?;
+            if published_gap_diagnostics(&root) != 0 {
+                return Err("an edited anchor file must withhold the gap".to_string());
+            }
+            let outcome = ledger_outcome(&root)?;
+            if outcome.kind != Some("stale_subject")
+                || !outcome.is_degraded()
+                || outcome.recovery != Some(SOURCE_SUBJECT_LEDGER_RECOVERY)
+                || !SOURCE_SUBJECT_LEDGER_RECOVERY.contains("ripr reports gap-ledger")
+            {
+                return Err(format!("unexpected stale-subject outcome: {outcome:?}"));
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if report.rejections
+                != vec![GapArtifactRejection::StaleSubject(
+                    "src/pricing.rs".to_string(),
+                )]
+            {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+            if derive_run_status(&[], &report.rejections, &[], false, false, &[]) != "stale" {
+                return Err("a stale subject must make the run stale".to_string());
+            }
+            let cache = cache_component_outcome(&report.rejections);
+            if cache.kind != Some("stale_subject")
+                || cache.recovery != Some(SOURCE_SUBJECT_RECOVERY)
+            {
+                return Err(format!("unexpected cache outcome: {cache:?}"));
+            }
+
+            // Restoring the stamped bytes makes the ledger current again, so
+            // the check is content identity, not a timestamp.
+            write_file(&anchor, "pub fn discount(amount: u64) -> u64 { amount }\n")?;
+            if published_gap_diagnostics(&root) != 1 {
+                return Err("restored stamped content must publish the gap again".to_string());
+            }
+
+            // Related test file deleted: withheld as stale.
+            fs::remove_file(&related_test)
+                .map_err(|err| format!("remove related test failed: {err}"))?;
+            if published_gap_diagnostics(&root) != 0 {
+                return Err("a deleted related test must withhold the gap".to_string());
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if report.rejections
+                != vec![GapArtifactRejection::StaleSubject(
+                    "tests/pricing.rs".to_string(),
+                )]
+            {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+
+            // A ledger from an older build carries no stamp: unverifiable.
+            write_file(&related_test, "#[test]\nfn discount_threshold() {}\n")?;
+            write_file(
+                &ledger_path,
+                &unstamped_gap_ledger_json(vec![gap_record(true)]).to_string(),
+            )?;
+            if published_gap_diagnostics(&root) != 0 {
+                return Err("an unstamped ledger must not be projected as current".to_string());
+            }
+            let outcome = ledger_outcome(&root)?;
+            if outcome.kind != Some("unverifiable_subject") || !outcome.is_degraded() {
+                return Err(format!("unexpected unstamped outcome: {outcome:?}"));
+            }
+            let report = validate_workspace_gap_artifact_report(&root, &[LanguageId::Rust]);
+            if report.rejections
+                != vec![GapArtifactRejection::UnverifiableSubject(
+                    "source_subject_missing",
+                )]
+            {
+                return Err(format!("unexpected rejections: {:?}", report.rejections));
+            }
+            if derive_run_status(&[], &report.rejections, &[], false, false, &[]) != "cache_limited"
+            {
+                return Err("an unverifiable subject must limit the run".to_string());
+            }
+            if cache_component_outcome(&report.rejections).kind != Some("unverifiable_subject") {
+                return Err("the cache outcome must name the unverifiable subject".to_string());
+            }
+            Ok(())
+        })();
+        fs::remove_dir_all(&root)
+            .map_err(|err| format!("remove temp root {} failed: {err}", root.display()))?;
+        result
     }
 
     #[test]
@@ -3161,7 +4000,7 @@ mod seam_diagnostic_tests {
         }
 
         let spec = crate::agent::command_specs::report_regeneration_command_spec_from_display(
-            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md",
+            "ripr reports gap-ledger --repo-exposure repo.json --out ledger.json --out-md ledger.md", std::path::Path::new(".")
         )
         .ok_or("canonical gap-ledger route was not recoverable")?;
         let (value, error) = regeneration_specs_payload(std::slice::from_ref(&spec));
@@ -3203,6 +4042,7 @@ mod seam_diagnostic_tests {
             oracle_strength: crate::domain::OracleStrength::Weak,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
 
         let path = absolute_related_test_path(Path::new("/repo"), &test);
@@ -3220,10 +4060,58 @@ mod seam_diagnostic_tests {
             oracle_strength: crate::domain::OracleStrength::Weak,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         };
 
         let path = absolute_related_test_path(Path::new("/repo"), &test);
         assert_eq!(path, Path::new("/tmp/workspace/tests/pricing.rs"));
+    }
+
+    #[test]
+    fn partition_drops_anchors_no_module_tree_reaches() -> Result<(), String> {
+        // #4435: the editor partition consults the same module-tree
+        // evidence as the diff loop, so an orphan anchor is out of scope
+        // and a declared module stays published.
+        let root = temp_gap_root()?;
+        for (path, text) in [
+            (
+                "Cargo.toml",
+                "[package]\nname='shop'\nversion='0.1.0'\nedition='2021'\n",
+            ),
+            ("src/lib.rs", "pub mod used;\n"),
+            ("src/used.rs", ""),
+            ("src/unused.rs", ""),
+        ] {
+            let path = root.join(path);
+            if let Some(parent) = path.parent() {
+                fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+            }
+            fs::write(&path, text).map_err(|err| err.to_string())?;
+        }
+        let findings = ["src/used.rs", "src/unused.rs"]
+            .into_iter()
+            .map(|file| {
+                let mut finding = crate::lsp::tests::sample_finding();
+                finding.probe.location.file = root.join(file);
+                finding
+            })
+            .collect::<Vec<_>>();
+
+        let (scoped, out_of_scope) = partition_out_of_scope_test_file_findings(
+            &root,
+            &crate::config::RiprConfig::default(),
+            findings,
+        );
+
+        assert_eq!(out_of_scope, 1);
+        assert_eq!(
+            scoped
+                .iter()
+                .map(|finding| finding.probe.location.file.clone())
+                .collect::<Vec<_>>(),
+            vec![root.join("src/used.rs")]
+        );
+        fs::remove_dir_all(&root).map_err(|err| err.to_string())
     }
 }
 
@@ -3292,6 +4180,7 @@ mod diagnostic_policy_tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: Vec::new(),
             recommended_next_step: None,
             language: None,
@@ -3436,9 +4325,11 @@ mod diagnostic_policy_tests {
             &[finding],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Actionable,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Actionable,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         if !grouped.is_empty() {
             return Err("actionable profile published an exposed finding".to_string());
@@ -3451,9 +4342,11 @@ mod diagnostic_policy_tests {
             &[unknown],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Actionable,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Actionable,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         if !grouped.is_empty() {
             return Err("actionable profile published a static unknown".to_string());
@@ -3478,6 +4371,7 @@ mod diagnostic_policy_tests {
             oracle_strength: OracleStrength::Strong,
             relation_reason: None,
             relation_confidence: None,
+            miss: None,
         });
 
         let grouped = finding_diagnostics_by_uri_with_profile(
@@ -3485,9 +4379,11 @@ mod diagnostic_policy_tests {
             &[finding],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Actionable,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Actionable,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         if grouped.values().flatten().count() != 1 {
             return Err("actionable profile dropped a concrete producer-backed route".to_string());
@@ -3527,6 +4423,7 @@ mod diagnostic_policy_tests {
                 oracle_strength: OracleStrength::Strong,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             });
             finding
         };
@@ -3557,9 +4454,11 @@ mod diagnostic_policy_tests {
             &[finding],
             &SeverityConfig::default(),
             true,
-            LspDiagnosticProfile::Full,
-            None,
-            &PositionEncodingKind::UTF16,
+            FindingDiagnosticProjection::new(
+                LspDiagnosticProfile::Full,
+                &PositionEncodingKind::UTF16,
+                &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+            ),
         )?;
         let diagnostic = grouped
             .values()
@@ -3593,9 +4492,11 @@ mod diagnostic_policy_tests {
                 std::slice::from_ref(&finding),
                 &SeverityConfig::default(),
                 true,
-                LspDiagnosticProfile::Full,
-                None,
-                encoding,
+                FindingDiagnosticProjection::new(
+                    LspDiagnosticProfile::Full,
+                    encoding,
+                    &crate::analysis::diagnostic_origin::RustDiagnosticOrigins::default(),
+                ),
             )?;
             let diagnostic = grouped
                 .values()
@@ -4243,6 +5144,7 @@ mod lsp_next_step_parity_tests {
                 "typescript_oracle_confidence: high".to_string(),
                 "typescript_oracle_evidence_ref: tests/discount.test.ts:3".to_string(),
                 "missing_discriminator: amount == threshold".to_string(),
+                "typescript_boundary_parameters: parameter=amount;index=0;operand=threshold;operand_index=1".to_string(),
             ],
             missing: Vec::new(),
             flow_sinks: Vec::new(),
@@ -4255,6 +5157,7 @@ mod lsp_next_step_parity_tests {
                 }],
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: vec![RelatedTest {
                 name: "applyDiscount applies discount when amount meets threshold".to_string(),
                 file: PathBuf::from("tests/discount.test.ts"),
@@ -4264,6 +5167,7 @@ mod lsp_next_step_parity_tests {
                 oracle: Some("expect(result).toBeGreaterThan(50)".to_string()),
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             }],
             recommended_next_step: Some(
                 "TypeScript preview advisory: add or strengthen a focused assertion for missing discriminator `amount == threshold`; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.".to_string(),
@@ -4288,6 +5192,55 @@ mod lsp_next_step_parity_tests {
             "TypeScript preview advisory: add or strengthen a focused assertion; no actionable repair packet is emitted until verify, receipt, and edit-boundary fields are available.".to_string(),
         );
         f
+    }
+
+    #[test]
+    fn unwitnessed_finding_fallback_explains_class_and_inspection() -> Result<(), String> {
+        let mut finding = complete_ts_finding();
+        finding.class = crate::domain::ExposureClass::NoStaticPath;
+        finding.recommended_next_step = None;
+        finding.language = None;
+        finding.language_status = None;
+        finding.activation.missing_discriminators.clear();
+        finding.related_tests.clear();
+        let diagnostic = super::diagnostic_for_finding(std::path::Path::new("/repo"), &finding);
+        assert_eq!(
+            diagnostic.message,
+            "No static test path to this change was found. Hover the highlighted code to inspect the static evidence."
+        );
+        let hover = crate::lsp::hover::finding_hover_response(&finding, &diagnostic);
+        let tower_lsp_server::ls_types::HoverContents::Markup(content) = hover.contents else {
+            return Err("expected rendered finding hover".to_string());
+        };
+        assert!(content.value.contains(&finding.id));
+        assert!(content.value.contains("no_static_path"));
+        assert_eq!(hover.range, Some(diagnostic.range));
+        let params = tower_lsp_server::ls_types::CodeActionParams {
+            text_document: tower_lsp_server::ls_types::TextDocumentIdentifier {
+                uri: "file:///repo/src/discount.ts"
+                    .parse::<tower_lsp_server::ls_types::Uri>()
+                    .map_err(|error| error.to_string())?,
+            },
+            range: diagnostic.range,
+            context: tower_lsp_server::ls_types::CodeActionContext {
+                diagnostics: vec![diagnostic],
+                only: None,
+                trigger_kind: None,
+            },
+            work_done_progress_params: Default::default(),
+            partial_result_params: Default::default(),
+        };
+        let actions = crate::lsp::actions::code_action_response(
+            &params,
+            None,
+            &crate::lsp::client_features::ClientFeatureProfile::unsupported(),
+        );
+        assert_eq!(
+            actions.len(),
+            1,
+            "standard clients cannot run the copy-context action"
+        );
+        Ok(())
     }
 
     /// PARITY: complete packet → LSP diagnostic message must NOT contain the
@@ -4389,6 +5342,7 @@ mod delivery_tests {
             .collect::<Result<BTreeMap<_, _>, _>>()?;
         Ok(AnalysisSnapshot {
             root: PathBuf::from(root),
+            rust_consumed_sources: Default::default(),
             input_identity: None,
             base: Some("origin/main".to_string()),
             mode: crate::app::Mode::Draft,
@@ -4401,6 +5355,7 @@ mod delivery_tests {
             gap_artifact_rejections: Vec::new(),
             harness_facts: HarnessFactsOnSnapshot::NotRegistered,
             diagnostics_by_uri,
+            diagnostic_uri_index: None,
             delivery_selection: None,
             seams_deferred: false,
             partial_scope: None,
@@ -4461,6 +5416,73 @@ mod delivery_tests {
         }
         if workspace_diagnostic_result_id(&first) == workspace_diagnostic_result_id(&second) {
             return Err("workspace result ID ignored the changed document".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_result_ids_ignore_refresh_clock_and_attempt_snapshot_handle() -> Result<(), String>
+    {
+        let mut first = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![diagnostic("same", 4)])],
+        )?;
+        first.refresh.generated_at = std::time::SystemTime::UNIX_EPOCH;
+        first.refresh.duration = Some(std::time::Duration::from_millis(1));
+        first.refresh.snapshot_id = None;
+        let mut second = first.clone();
+        second.refresh.generated_at = std::time::SystemTime::now();
+        second.refresh.duration = Some(std::time::Duration::from_secs(9));
+        second.refresh.snapshot_id = Some("attempt:refresh:9".to_string());
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        if document_diagnostic_result_id(&first, &uri)
+            != document_diagnostic_result_id(&second, &uri)
+        {
+            return Err(
+                "refresh clock or attempt snapshot_id entered the document result ID".to_string(),
+            );
+        }
+        if workspace_diagnostic_result_id(&first) != workspace_diagnostic_result_id(&second) {
+            return Err(
+                "refresh clock or attempt snapshot_id entered the workspace result ID".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diagnostic_result_ids_change_for_message_only_and_profile_changes() -> Result<(), String> {
+        let first = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![diagnostic("same", 4)])],
+        )?;
+        let mut message_changed = diagnostic("same", 4);
+        message_changed.message = "diagnostic same but wording changed".to_string();
+        let second = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![message_changed])],
+        )?;
+        let mut profile_changed = snapshot_for_identity(
+            "/workspace",
+            &[("file:///workspace/src/lib.rs", vec![diagnostic("same", 4)])],
+        )?;
+        profile_changed.diagnostic_profile = LspDiagnosticProfile::Actionable;
+        let uri = "file:///workspace/src/lib.rs"
+            .parse::<Uri>()
+            .map_err(|err| format!("parse URI failed: {err}"))?;
+        if document_diagnostic_result_id(&first, &uri)
+            == document_diagnostic_result_id(&second, &uri)
+        {
+            return Err("message-only change must invalidate the document result ID".to_string());
+        }
+        if document_diagnostic_result_id(&first, &uri)
+            == document_diagnostic_result_id(&profile_changed, &uri)
+        {
+            return Err(
+                "diagnostic profile change must invalidate the document result ID".to_string(),
+            );
         }
         Ok(())
     }

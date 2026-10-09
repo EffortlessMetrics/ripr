@@ -17,7 +17,55 @@ const EXCLUSION_REASONS: [&str; 7] = [
     "verification_failed",
     "no_current_behavior_change",
 ];
-const OBSERVATION_CLASSIFICATIONS: [&str; 2] = ["new_exclusion", "duplicate_observation"];
+const OBSERVATION_CLASSIFICATIONS: [&str; 3] = [
+    "new_exclusion",
+    "duplicate_observation",
+    "selected_opportunity",
+];
+const FORBIDDEN_CORPUS_SUMMARY_KEYS: [&str; 3] = ["route_yield", "repair_success", "route_ladder"];
+const ROUTE_CHANNELS: [&str; 2] = ["cli", "editor"];
+const ROUTE_UNITS: [&str; 2] = ["opportunity", "repository_observation"];
+const ELIGIBILITY_STATES: [&str; 3] = ["admitted", "rejected", "not_observed"];
+const FOCUSED_TEST_RESULTS: [&str; 4] = ["passed", "failed", "not_run", "not_observed"];
+const EARLIEST_STOPS: [&str; 14] = [
+    "unsupported_or_incomplete_input",
+    "analysis_timeout",
+    "no_canonical_gap",
+    "missing_discriminator",
+    "missing_related_test",
+    "ambiguous_or_unsafe_target",
+    "missing_fix_site",
+    "missing_verify_route",
+    "stale_or_wrong_identity",
+    "artifact_archaeology_required",
+    "client_or_install_failure",
+    "infrastructure_tempfail",
+    "not_proven",
+    "not_observed",
+];
+const ROUTE_BOOL_FIELDS: [&str; 9] = [
+    "analysis_completed",
+    "canonical_gap_identified",
+    "complete_route_admitted",
+    "packet_ready",
+    "attempt_authorized",
+    "attempt_started",
+    "attempt_finished",
+    "correct_route_reviewed",
+    "artifact_archaeology",
+];
+const ROUTE_STRING_FIELDS: [&str; 10] = [
+    "opportunity_id",
+    "channel",
+    "cohort_id",
+    "analyzer_generation",
+    "unit",
+    "canonical_eligibility",
+    "earliest_stop",
+    "static_movement",
+    "focused_test_result",
+    "repair_attempt_id",
+];
 const REQUIRED_ROUTE_FIELDS: [&str; 19] = [
     "attempt_id",
     "repository",
@@ -59,8 +107,298 @@ fn read_corpus(path: &Path) -> Result<Value, String> {
     serde_json::from_str(&body).map_err(|error| format!("parse {}: {error}", path.display()))
 }
 
+fn measurable_ratio(numerator: u64, denominator: u64, unit: &str) -> Value {
+    if denominator == 0 {
+        json!({
+            "status": "not_measurable",
+            "numerator": Value::Null,
+            "denominator": 0,
+            "unit": unit,
+            "display": "not_measurable"
+        })
+    } else {
+        json!({
+            "status": "measured",
+            "numerator": numerator,
+            "denominator": denominator,
+            "unit": unit,
+            "display": format!("{numerator}/{denominator}")
+        })
+    }
+}
+
+fn route_object(value: &Value) -> Option<&Value> {
+    value.get("route").filter(|route| !route.is_null())
+}
+
+fn route_str<'a>(observation: &'a Value, field: &str) -> Option<&'a str> {
+    route_object(observation)?
+        .get(field)?
+        .as_str()
+        .filter(|value| !value.is_empty())
+}
+
+fn route_bool(observation: &Value, field: &str) -> Option<bool> {
+    route_object(observation)?.get(field)?.as_bool()
+}
+
+fn opportunity_identity(observation: &Value) -> String {
+    if let Some(opportunity_id) = route_str(observation, "opportunity_id") {
+        return format!("opportunity:{opportunity_id}");
+    }
+    let repository = observation
+        .get("repository")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let sha = observation
+        .get("analyzed_head_sha")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let candidate = observation
+        .get("canonical_candidate_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    format!("identity:{repository}|{sha}|{candidate}")
+}
+
+fn selected_opportunity_key(observation: &Value) -> String {
+    let opportunity = opportunity_identity(observation);
+    match route_str(observation, "cohort_id") {
+        Some(cohort) => format!("{opportunity}|cohort:{cohort}"),
+        None => format!("{opportunity}|cohort:historical"),
+    }
+}
+
+fn normalize_earliest_stop(reason: &str, explicit: Option<&str>) -> String {
+    if let Some(stop) = explicit
+        && EARLIEST_STOPS.contains(&stop)
+    {
+        return stop.to_string();
+    }
+    if reason == "analysis_timeout" {
+        "analysis_timeout".to_string()
+    } else {
+        "not_observed".to_string()
+    }
+}
+
+fn observation_is_complete_route(observation: &Value) -> bool {
+    route_bool(observation, "complete_route_admitted").unwrap_or(false)
+        && route_str(observation, "canonical_eligibility") != Some("rejected")
+}
+
+fn focused_test_bucket(result: &str) -> Option<&'static str> {
+    match result {
+        "passed" => Some("passed"),
+        "failed" => Some("failed"),
+        "not_run" => Some("not_run"),
+        _ => None,
+    }
+}
+
+fn focused_test_rank(result: &str) -> u8 {
+    match result {
+        "failed" => 3,
+        "not_run" => 2,
+        "passed" => 1,
+        _ => 0,
+    }
+}
+
+fn merge_focused_test(current: &mut Option<String>, incoming: Option<&str>) {
+    let Some(incoming) = incoming else {
+        return;
+    };
+    let Some(bucket) = focused_test_bucket(incoming) else {
+        return;
+    };
+    if current.as_deref().map(focused_test_rank).unwrap_or(0) < focused_test_rank(bucket) {
+        *current = Some(bucket.to_string());
+    }
+}
+
+fn merge_archaeology(current: &mut Option<bool>, incoming: Option<bool>) {
+    match (*current, incoming) {
+        (_, None) => {}
+        (_, Some(true)) => *current = Some(true),
+        (None | Some(false), Some(false)) => *current = Some(false),
+        (Some(true), Some(false)) => {}
+    }
+}
+
+fn case_selected_opportunity_key(case: &Value) -> String {
+    let repository = case.get("repository").and_then(Value::as_str).unwrap_or("");
+    let sha = case
+        .get("analyzed_head_sha")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let gap = case
+        .get("canonical_gap_id")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    format!("identity:{repository}|{sha}|{gap}|cohort:historical")
+}
+
+fn observation_identity_matches_case(observation: &Value, case: &Value) -> bool {
+    observation.get("repository") == case.get("repository")
+        && observation.get("analyzed_head_sha") == case.get("analyzed_head_sha")
+}
+
+fn linked_case_opportunity_key(
+    case: &Value,
+    observations: &[&Value],
+    validation_errors: &mut Vec<String>,
+) -> String {
+    let attempt_id = case.get("attempt_id").and_then(Value::as_str).unwrap_or("");
+    let named = observations
+        .iter()
+        .copied()
+        .filter(|observation| route_str(observation, "repair_attempt_id") == Some(attempt_id))
+        .collect::<Vec<_>>();
+    if named.is_empty() {
+        return case_selected_opportunity_key(case);
+    }
+    for observation in &named {
+        if !observation_identity_matches_case(observation, case) {
+            validation_errors.push(format!(
+                "repair_attempt_id {attempt_id} does not match observation repository and analyzed head"
+            ));
+        }
+    }
+    let matching_keys = named
+        .iter()
+        .filter(|observation| observation_identity_matches_case(observation, case))
+        .map(|observation| selected_opportunity_key(observation))
+        .collect::<BTreeSet<_>>();
+    if matching_keys.len() == 1
+        && let Some(key) = matching_keys.iter().next()
+    {
+        return key.clone();
+    }
+    if matching_keys.len() > 1 {
+        validation_errors.push(format!(
+            "repair_attempt_id {attempt_id} names multiple selected opportunities"
+        ));
+    }
+    case_selected_opportunity_key(case)
+}
+
+fn normalize_ladder(ladder: &mut OpportunityLadder) {
+    if !ladder.analysis_completed {
+        ladder.canonical_gap_identified = false;
+    }
+    if !ladder.canonical_gap_identified {
+        ladder.complete_route = false;
+    }
+    if !ladder.complete_route {
+        ladder.attempt_authorized = false;
+    }
+    if !ladder.attempt_authorized {
+        ladder.attempt_started = false;
+    }
+    if !ladder.attempt_started {
+        ladder.attempt_finished = false;
+    }
+    if !ladder.attempt_finished {
+        ladder.static_improved_or_closed = false;
+    }
+}
+
+#[derive(Default)]
+struct OpportunityLadder {
+    analysis_completed: bool,
+    canonical_gap_identified: bool,
+    complete_route: bool,
+    attempt_authorized: bool,
+    attempt_started: bool,
+    attempt_finished: bool,
+    static_improved_or_closed: bool,
+    artifact_archaeology: Option<bool>,
+    correct_route_reviewed: bool,
+    focused_test: Option<String>,
+    earliest_stop: String,
+    channels: BTreeSet<String>,
+    cohort: String,
+}
+
+fn absorb_observation(ladder: &mut OpportunityLadder, observation: &Value) {
+    ladder.analysis_completed |= route_bool(observation, "analysis_completed").unwrap_or(false);
+    ladder.canonical_gap_identified |=
+        route_bool(observation, "canonical_gap_identified").unwrap_or(false);
+    ladder.complete_route |= observation_is_complete_route(observation);
+    ladder.attempt_authorized |= route_bool(observation, "attempt_authorized").unwrap_or(false);
+    ladder.attempt_started |= route_bool(observation, "attempt_started").unwrap_or(false);
+    ladder.attempt_finished |= route_bool(observation, "attempt_finished").unwrap_or(false);
+    if matches!(
+        route_str(observation, "static_movement"),
+        Some("improved" | "closed")
+    ) {
+        ladder.static_improved_or_closed = true;
+    }
+    merge_archaeology(
+        &mut ladder.artifact_archaeology,
+        route_bool(observation, "artifact_archaeology"),
+    );
+    ladder.correct_route_reviewed |=
+        route_bool(observation, "correct_route_reviewed").unwrap_or(false);
+    merge_focused_test(
+        &mut ladder.focused_test,
+        route_str(observation, "focused_test_result"),
+    );
+    if let Some(channel) = route_str(observation, "channel") {
+        ladder.channels.insert(channel.to_string());
+    }
+    if ladder.cohort.is_empty() {
+        ladder.cohort = route_str(observation, "cohort_id")
+            .unwrap_or("historical")
+            .to_string();
+    }
+    let stop = normalize_earliest_stop(
+        observation
+            .get("reason")
+            .and_then(Value::as_str)
+            .unwrap_or(""),
+        route_str(observation, "earliest_stop"),
+    );
+    if ladder.earliest_stop.is_empty() || ladder.earliest_stop == "not_observed" {
+        ladder.earliest_stop = stop;
+    }
+}
+
+fn absorb_case(ladder: &mut OpportunityLadder, case: &Value) {
+    ladder.analysis_completed = true;
+    ladder.canonical_gap_identified = true;
+    ladder.complete_route = true;
+    ladder.attempt_authorized = true;
+    ladder.attempt_started = true;
+    ladder.attempt_finished = true;
+    if matches!(
+        case.get("movement").and_then(Value::as_str),
+        Some("improved" | "closed")
+    ) {
+        ladder.static_improved_or_closed = true;
+    }
+    merge_archaeology(
+        &mut ladder.artifact_archaeology,
+        case.get("artifact_archaeology").and_then(Value::as_bool),
+    );
+    merge_focused_test(
+        &mut ladder.focused_test,
+        case.get("verification_result").and_then(Value::as_str),
+    );
+}
+
 fn build_report(corpus: &Value) -> Value {
     let mut validation_errors = Vec::new();
+    if let Some(object) = corpus.as_object() {
+        for key in FORBIDDEN_CORPUS_SUMMARY_KEYS {
+            if object.contains_key(key) {
+                validation_errors.push(format!(
+                    "hand-edited derived total `{key}` cannot enter trusted success counts"
+                ));
+            }
+        }
+    }
     let schema_ok = corpus.get("schema_version").and_then(Value::as_str) == Some("0.1");
     let kind_ok = corpus.get("kind").and_then(Value::as_str) == Some("rust_repair_trust_corpus");
     if !schema_ok {
@@ -186,6 +524,7 @@ fn build_report(corpus: &Value) -> Value {
     let mut missing_route_fields = BTreeMap::<String, usize>::new();
     let mut attempts_with_limitations = 0usize;
     let mut attempts_with_call_presence_limitations = 0usize;
+    let mut valid_case_rows = Vec::new();
 
     for (index, case) in cases.iter().enumerate() {
         let prefix = format!("cases[{index}]");
@@ -208,6 +547,7 @@ fn build_report(corpus: &Value) -> Value {
         }
         if errors.is_empty() {
             eligible_attempts += 1;
+            valid_case_rows.push(case);
             let repository = case
                 .get("repository")
                 .and_then(Value::as_str)
@@ -274,6 +614,7 @@ fn build_report(corpus: &Value) -> Value {
     }
 
     let mut valid_exclusions = 0usize;
+    let mut seen_canonical_candidate_ids = BTreeMap::<String, usize>::new();
     for (index, exclusion) in exclusions.iter().enumerate() {
         let prefix = format!("exclusions[{index}]");
         let mut errors = exclusion_errors(exclusion, &authorized_repositories);
@@ -286,6 +627,20 @@ fn build_report(corpus: &Value) -> Value {
         }
         if !id.is_empty() && case_ids.contains(id) {
             errors.push(format!("exclusion id {id} collides with an attempt id"));
+        }
+        if let Some(candidate_id) = exclusion
+            .get("canonical_candidate_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|candidate_id| !candidate_id.is_empty())
+        {
+            if let Some(first) = seen_canonical_candidate_ids.get(candidate_id) {
+                errors.push(format!(
+                    "canonical_candidate_id {candidate_id} duplicates exclusions[{first}]"
+                ));
+            } else {
+                seen_canonical_candidate_ids.insert(candidate_id.to_string(), index);
+            }
         }
         if errors.is_empty() {
             valid_exclusions += 1;
@@ -311,6 +666,7 @@ fn build_report(corpus: &Value) -> Value {
     let mut duplicate_timeout_observations = 0usize;
     let mut observation_classification_counts = BTreeMap::<String, usize>::new();
     let mut observation_ids = BTreeSet::new();
+    let mut valid_observation_rows = Vec::new();
     let timeout_exclusion_count = exclusion_reason_counts
         .get("analysis_timeout")
         .copied()
@@ -333,6 +689,7 @@ fn build_report(corpus: &Value) -> Value {
         }
         if errors.is_empty() {
             valid_observations += 1;
+            valid_observation_rows.push(observation);
             if let Some(repository) = observation.get("repository").and_then(Value::as_str) {
                 repository_names.insert(repository.to_string());
             }
@@ -358,6 +715,126 @@ fn build_report(corpus: &Value) -> Value {
             }
         }
     }
+
+    let mut opportunity_ladders = BTreeMap::<String, OpportunityLadder>::new();
+    for observation in &valid_observation_rows {
+        let key = selected_opportunity_key(observation);
+        absorb_observation(opportunity_ladders.entry(key).or_default(), observation);
+    }
+    for case in &valid_case_rows {
+        let key =
+            linked_case_opportunity_key(case, &valid_observation_rows, &mut validation_errors);
+        absorb_case(opportunity_ladders.entry(key).or_default(), case);
+    }
+    for ladder in opportunity_ladders.values_mut() {
+        normalize_ladder(ladder);
+    }
+
+    let selected_opportunities = opportunity_ladders.len() as u64;
+    let analysis_completed = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.analysis_completed)
+        .count() as u64;
+    let canonical_behavior_or_gap_identified = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.canonical_gap_identified)
+        .count() as u64;
+    let complete_routes_admitted = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.complete_route)
+        .count() as u64;
+    let attempts_authorized_or_eligible = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.attempt_authorized)
+        .count() as u64;
+    let attempts_started = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.attempt_started)
+        .count() as u64;
+    let attempts_finished = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.attempt_finished)
+        .count() as u64;
+    let static_improved_or_closed = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.static_improved_or_closed)
+        .count() as u64;
+    let correct_routes_reviewed = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.complete_route && ladder.correct_route_reviewed)
+        .count() as u64;
+    let archaeology_observed = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.complete_route && ladder.artifact_archaeology.is_some())
+        .count() as u64;
+    let completion_without_archaeology = opportunity_ladders
+        .values()
+        .filter(|ladder| ladder.complete_route && ladder.artifact_archaeology == Some(false))
+        .count() as u64;
+    let mut earliest_stop_counts = BTreeMap::<String, usize>::new();
+    for ladder in opportunity_ladders.values() {
+        if ladder.complete_route {
+            continue;
+        }
+        let stop = if ladder.earliest_stop.is_empty() {
+            "not_observed"
+        } else {
+            ladder.earliest_stop.as_str()
+        };
+        *earliest_stop_counts.entry(stop.to_string()).or_default() += 1;
+    }
+    let mut channel_observation_counts = BTreeMap::<String, usize>::new();
+    for observation in &valid_observation_rows {
+        if let Some(channel) = route_str(observation, "channel") {
+            *channel_observation_counts
+                .entry(channel.to_string())
+                .or_default() += 1;
+        }
+    }
+    let cohort_count = opportunity_ladders
+        .values()
+        .map(|ladder| {
+            if ladder.cohort.is_empty() {
+                "historical"
+            } else {
+                ladder.cohort.as_str()
+            }
+        })
+        .collect::<BTreeSet<_>>()
+        .len() as u64;
+    let mut focused_test_execution = BTreeMap::<&str, u64>::new();
+    for key in ["passed", "failed", "not_run", "not_observed"] {
+        focused_test_execution.insert(key, 0);
+    }
+    for ladder in opportunity_ladders.values() {
+        if let Some(bucket) = ladder.focused_test.as_deref().and_then(focused_test_bucket) {
+            *focused_test_execution.entry(bucket).or_default() += 1;
+        } else {
+            *focused_test_execution.entry("not_observed").or_default() += 1;
+        }
+    }
+    let repair_success_numerator =
+        (*movements.get("improved").unwrap_or(&0) + *movements.get("closed").unwrap_or(&0)) as u64;
+    let route_yield = measurable_ratio(
+        complete_routes_admitted,
+        selected_opportunities,
+        "complete_routes / selected_opportunities",
+    );
+    let repair_success = measurable_ratio(
+        repair_success_numerator,
+        eligible_attempts as u64,
+        "improved_or_closed / eligible_attempts",
+    );
+    let correct_routes = measurable_ratio(
+        correct_routes_reviewed,
+        complete_routes_admitted,
+        "independently_reviewed_correct / complete_routes",
+    );
+    let completion_without_hidden_help = measurable_ratio(
+        completion_without_archaeology,
+        archaeology_observed,
+        "completed_without_artifact_archaeology / complete_routes_with_observed_archaeology",
+    );
 
     let mut movement_counts = Map::new();
     for movement in MOVEMENTS {
@@ -429,7 +906,7 @@ fn build_report(corpus: &Value) -> Value {
         limitations.push("no_real_rust_attempts_recorded".to_string());
     }
 
-    json!({
+    let mut report = json!({
         "schema_version": "0.1",
         "report": "rust-repair-trust",
         "status": status,
@@ -489,9 +966,50 @@ fn build_report(corpus: &Value) -> Value {
             "This report measures route evidence, not developers or agents.",
             "It is not runtime mutation evidence, coverage evidence, or a correctness proof.",
             "Synthetic fixtures and preview-language cases do not satisfy the Rust corpus threshold.",
-            "A faster rerun without selected-scope parity is limited."
+            "A faster rerun without selected-scope parity is limited.",
+            "Observations are not attempts; zero eligible attempts makes repair success not_measurable."
         ]
-    })
+    });
+    if let Some(object) = report.as_object_mut() {
+        object.insert(
+            "unique_opportunity_count".to_string(),
+            Value::from(selected_opportunities),
+        );
+        object.insert("cohort_count".to_string(), Value::from(cohort_count));
+        object.insert(
+            "channel_observation_counts".to_string(),
+            json!(channel_observation_counts),
+        );
+        object.insert(
+            "earliest_stop_counts".to_string(),
+            json!(earliest_stop_counts),
+        );
+        object.insert(
+            "route_ladder".to_string(),
+            json!({
+                "selected_opportunities": selected_opportunities,
+                "analysis_completed": analysis_completed,
+                "canonical_behavior_or_gap_identified": canonical_behavior_or_gap_identified,
+                "complete_routes_admitted": complete_routes_admitted,
+                "attempts_authorized_or_eligible": attempts_authorized_or_eligible,
+                "attempts_started": attempts_started,
+                "attempts_finished": attempts_finished,
+                "static_improved_or_closed": static_improved_or_closed
+            }),
+        );
+        object.insert("route_yield".to_string(), route_yield);
+        object.insert("repair_success".to_string(), repair_success);
+        object.insert("correct_routes".to_string(), correct_routes);
+        object.insert(
+            "completion_without_hidden_help".to_string(),
+            completion_without_hidden_help,
+        );
+        object.insert(
+            "focused_test_execution".to_string(),
+            json!(focused_test_execution),
+        );
+    }
+    report
 }
 
 fn case_errors(case: &Value, authorized_repositories: &BTreeSet<String>) -> Vec<String> {
@@ -737,6 +1255,106 @@ fn observation_errors(
     } else if duplicate_of.is_some() {
         errors.push("duplicate_of is only valid for duplicate observations".to_string());
     }
+    if let Some(route) = observation.get("route") {
+        errors.extend(route_field_errors(route));
+    }
+    errors
+}
+
+fn route_field_errors(route: &Value) -> Vec<String> {
+    let mut errors = Vec::new();
+    let Some(object) = route.as_object() else {
+        errors.push("route must be an object".to_string());
+        return errors;
+    };
+    for key in object.keys() {
+        if !ROUTE_STRING_FIELDS.contains(&key.as_str())
+            && !ROUTE_BOOL_FIELDS.contains(&key.as_str())
+        {
+            errors.push(format!("route field {key} is not in the route vocabulary"));
+        }
+    }
+    for field in ROUTE_STRING_FIELDS {
+        match object.get(field) {
+            None => {}
+            Some(Value::String(value)) if !value.is_empty() => {}
+            Some(_) => errors.push(format!("route.{field} must be a non-empty string")),
+        }
+    }
+    for field in ROUTE_BOOL_FIELDS {
+        match object.get(field) {
+            None | Some(Value::Bool(_)) => {}
+            Some(_) => errors.push(format!("route.{field} must be a boolean")),
+        }
+    }
+    if let Some(channel) = object.get("channel").and_then(Value::as_str)
+        && !ROUTE_CHANNELS.contains(&channel)
+    {
+        errors.push(format!(
+            "route.channel {channel} is not in the channel vocabulary"
+        ));
+    }
+    if let Some(unit) = object.get("unit").and_then(Value::as_str)
+        && !ROUTE_UNITS.contains(&unit)
+    {
+        errors.push(format!("route.unit {unit} is not in the unit vocabulary"));
+    }
+    if let Some(eligibility) = object.get("canonical_eligibility").and_then(Value::as_str)
+        && !ELIGIBILITY_STATES.contains(&eligibility)
+    {
+        errors.push(format!(
+            "route.canonical_eligibility {eligibility} is not in the eligibility vocabulary"
+        ));
+    }
+    if let Some(stop) = object.get("earliest_stop").and_then(Value::as_str)
+        && !EARLIEST_STOPS.contains(&stop)
+    {
+        errors.push(format!(
+            "route.earliest_stop {stop} is not in the earliest-stop vocabulary"
+        ));
+    }
+    if let Some(movement) = object.get("static_movement").and_then(Value::as_str)
+        && movement != "not_observed"
+        && !MOVEMENTS.contains(&movement)
+    {
+        errors.push(format!(
+            "route.static_movement {movement} is not in the movement vocabulary"
+        ));
+    }
+    if let Some(result) = object.get("focused_test_result").and_then(Value::as_str)
+        && !FOCUSED_TEST_RESULTS.contains(&result)
+    {
+        errors.push(format!(
+            "route.focused_test_result {result} is not in the focused-test vocabulary"
+        ));
+    }
+    const STAGE_IMPLICATIONS: [(&str, &str); 6] = [
+        ("canonical_gap_identified", "analysis_completed"),
+        ("complete_route_admitted", "analysis_completed"),
+        ("complete_route_admitted", "canonical_gap_identified"),
+        ("attempt_authorized", "complete_route_admitted"),
+        ("attempt_started", "attempt_authorized"),
+        ("attempt_finished", "attempt_started"),
+    ];
+    for (downstream, upstream) in STAGE_IMPLICATIONS {
+        if object.get(downstream) == Some(&Value::Bool(true))
+            && object.get(upstream) == Some(&Value::Bool(false))
+        {
+            errors.push(format!(
+                "route.{downstream} cannot be true while route.{upstream} is false"
+            ));
+        }
+    }
+    if matches!(
+        object.get("static_movement").and_then(Value::as_str),
+        Some("improved" | "closed")
+    ) && object.get("attempt_finished") == Some(&Value::Bool(false))
+    {
+        errors.push(
+            "route.static_movement improved/closed cannot be claimed while route.attempt_finished is false"
+                .to_string(),
+        );
+    }
     errors
 }
 
@@ -795,6 +1413,76 @@ fn markdown_report(report: &Value) -> String {
     body.push_str(&format!(
         "- Attempts supplied: {attempt_count}\n- Eligible attempts: {eligible}\n- Observed runs: {observation_count}\n- Exclusions supplied: {exclusion_count}\n- Valid/unique exclusions: {valid_exclusion_count} / {unique_exclusion_count}\n- Duplicate observations: {duplicate_observation_count}\n- Timeout observations: {timeout_observation_count}\n- Repositories supplied: {repository_count}\n- Authorized repositories: {authorized}\n\n"
     ));
+    body.push_str("## Route-yield ladder\n\n");
+    if let Some(ladder) = report.get("route_ladder") {
+        body.push_str(&format!(
+            "- Selected opportunities: {}\n- Analysis completed: {}\n- Canonical behavior/gap identified: {}\n- Complete routes admitted: {}\n- Attempts authorized/eligible: {}\n- Attempts started: {}\n- Attempts finished: {}\n- Static improved/closed: {}\n",
+            ladder
+                .get("selected_opportunities")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("analysis_completed")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("canonical_behavior_or_gap_identified")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("complete_routes_admitted")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("attempts_authorized_or_eligible")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("attempts_started")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("attempts_finished")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+            ladder
+                .get("static_improved_or_closed")
+                .and_then(Value::as_u64)
+                .unwrap_or(0),
+        ));
+    }
+    let route_yield_display = report
+        .pointer("/route_yield/display")
+        .and_then(Value::as_str)
+        .unwrap_or("not_measurable");
+    let repair_success_display = report
+        .pointer("/repair_success/display")
+        .and_then(Value::as_str)
+        .unwrap_or("not_measurable");
+    let route_yield_unit = report
+        .pointer("/route_yield/unit")
+        .and_then(Value::as_str)
+        .unwrap_or("complete_routes / selected_opportunities");
+    let repair_success_unit = report
+        .pointer("/repair_success/unit")
+        .and_then(Value::as_str)
+        .unwrap_or("improved_or_closed / eligible_attempts");
+    body.push_str(&format!(
+        "- Route yield: `{route_yield_display}` ({route_yield_unit})\n- Repair success: `{repair_success_display}` ({repair_success_unit})\n"
+    ));
+    if let Some(stops) = report
+        .get("earliest_stop_counts")
+        .and_then(Value::as_object)
+    {
+        body.push_str("- Earliest stops:\n");
+        for (reason, count) in stops {
+            body.push_str(&format!(
+                "  - `{reason}`: {}\n",
+                count.as_u64().unwrap_or(0)
+            ));
+        }
+    }
+    body.push('\n');
     body.push_str("## Movement\n\n| Movement | Count |\n| --- | ---: |\n");
     if let Some(counts) = report.get("movement_counts").and_then(Value::as_object) {
         for movement in MOVEMENTS {
@@ -897,8 +1585,11 @@ fn markdown_report(report: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_report, markdown_report};
+    use super::{build_report, markdown_report, rust_repair_trust_report_value_at};
     use serde_json::{Value, json};
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn valid_attempt(
         attempt_id: &str,
@@ -1070,9 +1761,9 @@ mod tests {
         .map_err(|error| format!("parse corpus fixture: {error}"))?;
         let report = build_report(&corpus);
         for (field, expected) in [
-            ("observation_count", 25),
+            ("observation_count", 28),
             ("unique_exclusion_count", 24),
-            ("duplicate_observation_count", 1),
+            ("duplicate_observation_count", 4),
             ("timeout_observation_count", 6),
             ("eligible_attempt_count", 0),
             ("repository_count", 3),
@@ -1086,8 +1777,11 @@ mod tests {
                 "eleven follow-up/pilot observations must map to new exclusions".to_string(),
             );
         }
-        if report["observation_classification_counts"]["duplicate_observation"] != 1 {
-            return Err("the repeated #747 observation must remain a duplicate".to_string());
+        if report["observation_classification_counts"]["duplicate_observation"] != 4 {
+            return Err(
+                "the repeated #747 observation plus three post-#2933 FieldConstruction reruns must remain duplicates"
+                    .to_string(),
+            );
         }
         Ok(())
     }
@@ -1127,12 +1821,276 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn duplicate_observations_require_valid_exclusion_targets() -> Result<(), String> {
-        let mut corpus: Value = serde_json::from_str(include_str!(
+    fn live_corpus() -> Result<Value, String> {
+        serde_json::from_str(include_str!(
             "../../../metrics/rust-repair-trust/corpus.json"
         ))
-        .map_err(|error| format!("parse corpus fixture: {error}"))?;
+        .map_err(|error| format!("parse corpus fixture: {error}"))
+    }
+
+    fn fieldconstruction_pilot_exclusion<'a>(
+        corpus: &'a Value,
+        exclusion_id: &str,
+    ) -> Result<&'a Value, String> {
+        corpus
+            .get("exclusions")
+            .and_then(Value::as_array)
+            .and_then(|exclusions| {
+                exclusions.iter().find(|exclusion| {
+                    exclusion.get("exclusion_id").and_then(Value::as_str) == Some(exclusion_id)
+                })
+            })
+            .ok_or_else(|| format!("missing exclusion {exclusion_id}"))
+    }
+
+    fn duplicate_observation_from_exclusion(
+        exclusion: &Value,
+        observation_id: &str,
+        reason: &str,
+    ) -> Result<Value, String> {
+        let exclusion_id = exclusion
+            .get("exclusion_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "exclusion_id required".to_string())?;
+        let repository = exclusion
+            .get("repository")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "repository required".to_string())?;
+        let analyzed_head_sha = exclusion
+            .get("analyzed_head_sha")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "analyzed_head_sha required".to_string())?;
+        let source_ref = exclusion
+            .get("source_ref")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "source_ref required".to_string())?;
+        let canonical_candidate_id = exclusion
+            .get("canonical_candidate_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "canonical_candidate_id required".to_string())?;
+        Ok(json!({
+            "observation_id": observation_id,
+            "repository": repository,
+            "analyzed_head_sha": analyzed_head_sha,
+            "source_ref": source_ref,
+            "canonical_candidate_id": canonical_candidate_id,
+            "reason": reason,
+            "evidence_ref": format!("metrics/rust-repair-trust/{observation_id}.json"),
+            "classification": "duplicate_observation",
+            "duplicate_of": exclusion_id,
+            "claim_boundary": "identity-matched rerun is not a new exclusion or attempt"
+        }))
+    }
+
+    #[test]
+    fn fieldconstruction_identity_reruns_do_not_inflate_cases_or_exclusions() -> Result<(), String>
+    {
+        let mut corpus = live_corpus()?;
+        let baseline = build_report(&corpus);
+        let baseline_unique = baseline["unique_exclusion_count"]
+            .as_u64()
+            .ok_or_else(|| "unique_exclusion_count must be a number".to_string())?;
+        let baseline_duplicates = baseline["duplicate_observation_count"]
+            .as_u64()
+            .ok_or_else(|| "duplicate_observation_count must be a number".to_string())?;
+        let baseline_timeouts = baseline["timeout_observation_count"]
+            .as_u64()
+            .ok_or_else(|| "timeout_observation_count must be a number".to_string())?;
+        let identities = [
+            (
+                "ripr-1580-static-limitation",
+                "identity-control-ripr-1580",
+                "analysis_timeout",
+            ),
+            (
+                "ub-772-static-limitation",
+                "identity-control-ub-772",
+                "no_current_behavior_change",
+            ),
+            (
+                "ub-744-static-limitation",
+                "identity-control-ub-744",
+                "analysis_timeout",
+            ),
+        ];
+        let mut added_timeout_duplicates = 0u64;
+        for (exclusion_id, observation_id, reason) in identities {
+            let exclusion = fieldconstruction_pilot_exclusion(&corpus, exclusion_id)?.clone();
+            let observation =
+                duplicate_observation_from_exclusion(&exclusion, observation_id, reason)?;
+            if reason == "analysis_timeout" {
+                added_timeout_duplicates += 1;
+            }
+            corpus
+                .get_mut("observations")
+                .and_then(Value::as_array_mut)
+                .ok_or_else(|| "observations must be an array".to_string())?
+                .push(observation);
+        }
+
+        let report = build_report(&corpus);
+        if report["unique_exclusion_count"] != baseline_unique {
+            return Err(format!(
+                "identity-matched reruns must not add exclusions: {}",
+                report["unique_exclusion_count"]
+            ));
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err(
+                "identity-matched reruns must not enter the attempt denominator".to_string(),
+            );
+        }
+        if corpus.get("cases").and_then(Value::as_array).map(Vec::len) != Some(0) {
+            return Err("identity-matched reruns must not inflate cases".to_string());
+        }
+        if report["duplicate_observation_count"].as_u64() != Some(baseline_duplicates + 3) {
+            return Err(format!(
+                "three identity-matched reruns must count as duplicates: {}",
+                report["duplicate_observation_count"]
+            ));
+        }
+        if report["timeout_observation_count"].as_u64()
+            != Some(baseline_timeouts + added_timeout_duplicates)
+        {
+            return Err(format!(
+                "timeout duplicate observations must increment timeout count without new exclusions: {}",
+                report["timeout_observation_count"]
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn mismatched_head_cannot_be_a_duplicate_of_an_existing_exclusion() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let exclusion =
+            fieldconstruction_pilot_exclusion(&corpus, "ripr-1580-static-limitation")?.clone();
+        let mut observation = duplicate_observation_from_exclusion(
+            &exclusion,
+            "identity-control-ripr-1580-wrong-head",
+            "analysis_timeout",
+        )?;
+        // Sibling #1581 head is authorized for ripr-swarm observation, but it is
+        // not the #1580 FieldConstruction identity.
+        observation["analyzed_head_sha"] = json!("86fbe048eeedd0eeb6090db96355791c40b3486b");
+
+        corpus
+            .get_mut("observations")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "observations must be an array".to_string())?
+            .push(observation);
+
+        let report = build_report(&corpus);
+        if report["duplicate_observation_count"]
+            != build_report(&live_corpus()?)["duplicate_observation_count"]
+        {
+            return Err("mismatched head must not count as a duplicate observation".to_string());
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors.iter().filter_map(Value::as_str).any(|error| {
+            error.contains("duplicate observation does not match exclusion ripr-1580-static-limitation field analyzed_head_sha")
+        }) {
+            return Err(format!("missing mismatched-head duplicate error: {errors:?}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn second_exclusion_for_the_same_canonical_candidate_is_rejected() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let baseline_unique = build_report(&corpus)["unique_exclusion_count"]
+            .as_u64()
+            .ok_or_else(|| "unique_exclusion_count must be a number".to_string())?;
+        let mut duplicate =
+            fieldconstruction_pilot_exclusion(&corpus, "ub-772-static-limitation")?.clone();
+        duplicate["exclusion_id"] = json!("identity-control-ub-772-duplicate-exclusion");
+        duplicate["reason"] = json!("no_current_behavior_change");
+        corpus
+            .get_mut("exclusions")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "exclusions must be an array".to_string())?
+            .push(duplicate);
+
+        let report = build_report(&corpus);
+        if report["unique_exclusion_count"].as_u64() != Some(baseline_unique) {
+            return Err(format!(
+                "duplicate canonical identity must not inflate unique exclusions: {}",
+                report["unique_exclusion_count"]
+            ));
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err(
+                "duplicate canonical identity must not enter the attempt denominator".to_string(),
+            );
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors.iter().filter_map(Value::as_str).any(|error| {
+            error.contains("canonical_candidate_id EffortlessMetrics/ub-review#772 duplicates")
+        }) {
+            return Err(format!(
+                "missing duplicate canonical-candidate error: {errors:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn in_place_exclusion_reason_update_keeps_identity_and_denominator() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let baseline = build_report(&corpus);
+        let exclusions = corpus
+            .get_mut("exclusions")
+            .and_then(Value::as_array_mut)
+            .ok_or_else(|| "exclusions must be an array".to_string())?;
+        let exclusion = exclusions
+            .iter_mut()
+            .find(|exclusion| {
+                exclusion.get("exclusion_id").and_then(Value::as_str)
+                    == Some("ripr-1580-static-limitation")
+            })
+            .ok_or_else(|| "missing ripr-1580 exclusion".to_string())?;
+        exclusion["reason"] = json!("analysis_timeout");
+        exclusion["evidence_ref"] = json!("metrics/rust-repair-trust/post-2933-ripr-1580.json");
+
+        let report = build_report(&corpus);
+        if report["unique_exclusion_count"] != baseline["unique_exclusion_count"] {
+            return Err("in-place identity update must not add an exclusion".to_string());
+        }
+        if report["exclusion_count"] != baseline["exclusion_count"] {
+            return Err("in-place identity update must keep the same exclusion_id row".to_string());
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err("in-place identity update must not invent an attempt".to_string());
+        }
+        if report["exclusion_reason_counts"]["analysis_timeout"].as_u64()
+            != baseline["exclusion_reason_counts"]["analysis_timeout"]
+                .as_u64()
+                .map(|count| count + 1)
+        {
+            return Err(
+                "updated reason must move the existing exclusion into the new bucket".to_string(),
+            );
+        }
+        if report["exclusion_reason_counts"]["static_limitation_no_repair_packet"].as_u64()
+            != baseline["exclusion_reason_counts"]["static_limitation_no_repair_packet"]
+                .as_u64()
+                .map(|count| count.saturating_sub(1))
+        {
+            return Err("updated reason must leave the prior bucket".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_observations_require_valid_exclusion_targets() -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        let baseline_duplicates = build_report(&corpus)["duplicate_observation_count"]
+            .as_u64()
+            .ok_or_else(|| "duplicate_observation_count must be a number".to_string())?;
         let exclusions = corpus
             .get_mut("exclusions")
             .and_then(Value::as_array_mut)
@@ -1150,7 +2108,12 @@ mod tests {
         let duplicate_source = corpus
             .get("observations")
             .and_then(Value::as_array)
-            .and_then(|observations| observations.get(5))
+            .and_then(|observations| {
+                observations.iter().find(|observation| {
+                    observation.get("observation_id").and_then(Value::as_str)
+                        == Some("follow-up-ub-747-duplicate")
+                })
+            })
             .cloned()
             .ok_or_else(|| "expected duplicate observation fixture".to_string())?;
         let mut duplicate = duplicate_source;
@@ -1163,7 +2126,7 @@ mod tests {
             .push(duplicate);
 
         let report = build_report(&corpus);
-        if report["duplicate_observation_count"] != 1 {
+        if report["duplicate_observation_count"].as_u64() != Some(baseline_duplicates) {
             return Err("duplicate of an invalid exclusion must not count".to_string());
         }
         let errors = report["validation_errors"]
@@ -1309,6 +2272,1018 @@ mod tests {
             || !markdown.contains("Status: `complete`")
         {
             return Err("Markdown must expose complete status and CallPresence metric".to_string());
+        }
+        Ok(())
+    }
+
+    const RIPR_REPO: &str = "EffortlessMetrics/ripr-swarm";
+    const PERL_REPO: &str = "EffortlessMetrics/perl-lsp-swarm";
+    const UB_REPO: &str = "EffortlessMetrics/ub-review";
+    const RIPR_HEAD: &str = "86fbe048eeedd0eeb6090db96355791c40b3486b";
+    const PERL_HEAD: &str = "968464954e5da8e69a0b6b55de8ac349056924f6";
+    const UB_HEAD: &str = "217633ca232120a021c7dc975973abdcb5056d39";
+
+    fn blank_authorized_corpus() -> Result<Value, String> {
+        let mut corpus = live_corpus()?;
+        corpus["cases"] = json!([]);
+        corpus["exclusions"] = json!([]);
+        corpus["observations"] = json!([]);
+        Ok(corpus)
+    }
+
+    fn observation_row(
+        observation_id: &str,
+        repository: &str,
+        sha: &str,
+        candidate: &str,
+        reason: &str,
+        classification: &str,
+    ) -> Value {
+        json!({
+            "observation_id": observation_id,
+            "repository": repository,
+            "analyzed_head_sha": sha,
+            "source_ref": format!("test:{observation_id}"),
+            "canonical_candidate_id": candidate,
+            "reason": reason,
+            "evidence_ref": format!("target/ripr/{observation_id}.json"),
+            "classification": classification,
+            "claim_boundary": "fixture observation for route-yield ladder proof"
+        })
+    }
+
+    fn three_unrouted_observations() -> Vec<Value> {
+        vec![
+            observation_row(
+                "obs-ripr",
+                RIPR_REPO,
+                RIPR_HEAD,
+                "EffortlessMetrics/ripr-swarm#1581",
+                "static_limitation_no_repair_packet",
+                "new_exclusion",
+            ),
+            observation_row(
+                "obs-perl",
+                PERL_REPO,
+                PERL_HEAD,
+                "EffortlessMetrics/perl-lsp-swarm#4022",
+                "analysis_timeout",
+                "new_exclusion",
+            ),
+            observation_row(
+                "obs-ub",
+                UB_REPO,
+                UB_HEAD,
+                "EffortlessMetrics/ub-review#772",
+                "static_limitation_no_repair_packet",
+                "new_exclusion",
+            ),
+        ]
+    }
+
+    fn report_from_public_entry(corpus: &Value) -> Result<Value, String> {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("clock: {error}"))?
+            .as_nanos();
+        let path: PathBuf = std::env::temp_dir().join(format!(
+            "ripr-rust-repair-trust-{}-{stamp}.json",
+            std::process::id()
+        ));
+        let body = serde_json::to_string_pretty(corpus)
+            .map_err(|error| format!("serialize temp corpus: {error}"))?;
+        fs::write(&path, body).map_err(|error| format!("write {}: {error}", path.display()))?;
+        let report = rust_repair_trust_report_value_at(&path);
+        let _ = fs::remove_file(&path);
+        report
+    }
+
+    fn require_measured_ratio(
+        value: &Value,
+        field: &str,
+        numerator: u64,
+        denominator: u64,
+        unit: &str,
+    ) -> Result<(), String> {
+        let ratio = value
+            .get(field)
+            .ok_or_else(|| format!("{field} must be present"))?;
+        if ratio.get("status").and_then(Value::as_str) != Some("measured") {
+            return Err(format!(
+                "{field}.status must be measured, got {}",
+                ratio.get("status").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if ratio.get("numerator").and_then(Value::as_u64) != Some(numerator) {
+            return Err(format!(
+                "{field}.numerator must be {numerator}, got {}",
+                ratio.get("numerator").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if ratio.get("denominator").and_then(Value::as_u64) != Some(denominator) {
+            return Err(format!(
+                "{field}.denominator must be {denominator}, got {}",
+                ratio.get("denominator").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if ratio.get("unit").and_then(Value::as_str) != Some(unit) {
+            return Err(format!(
+                "{field}.unit must be {unit}, got {}",
+                ratio.get("unit").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        let display = format!("{numerator}/{denominator}");
+        if ratio.get("display").and_then(Value::as_str) != Some(display.as_str()) {
+            return Err(format!(
+                "{field}.display must be {display}, got {}",
+                ratio.get("display").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        Ok(())
+    }
+
+    fn require_not_measurable(value: &Value, field: &str, denominator: u64) -> Result<(), String> {
+        let ratio = value
+            .get(field)
+            .ok_or_else(|| format!("{field} must be present"))?;
+        if ratio.get("status").and_then(Value::as_str) != Some("not_measurable") {
+            return Err(format!(
+                "{field}.status must be not_measurable, got {}",
+                ratio.get("status").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if !ratio.get("numerator").is_some_and(Value::is_null) {
+            return Err(format!(
+                "{field}.numerator must be null when not measurable, got {}",
+                ratio.get("numerator").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if ratio.get("denominator").and_then(Value::as_u64) != Some(denominator) {
+            return Err(format!(
+                "{field}.denominator must be {denominator}, got {}",
+                ratio.get("denominator").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if ratio.get("display").and_then(Value::as_str) != Some("not_measurable") {
+            return Err(format!(
+                "{field}.display must be not_measurable, got {}",
+                ratio.get("display").cloned().unwrap_or(Value::Null)
+            ));
+        }
+        if ratio.get("rate").and_then(Value::as_f64).is_some() {
+            return Err(format!("{field} must not invent a numeric rate"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_observations_keep_route_yield_and_repair_success_unmeasurable() -> Result<(), String> {
+        let corpus = blank_authorized_corpus()?;
+        let report = report_from_public_entry(&corpus)?;
+        require_not_measurable(&report, "route_yield", 0)?;
+        require_not_measurable(&report, "repair_success", 0)?;
+        if report["route_ladder"]["selected_opportunities"] != 0 {
+            return Err("empty observations must select zero opportunities".to_string());
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err("empty corpus must keep zero eligible attempts".to_string());
+        }
+        let markdown = markdown_report(&report);
+        if markdown.contains("0%") || markdown.contains("100%") {
+            return Err(format!(
+                "empty corpus markdown must not invent a percentage: {markdown}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn three_observations_without_a_complete_route_are_zero_of_three_not_attempts()
+    -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        corpus["observations"] = Value::Array(three_unrouted_observations());
+        let report = report_from_public_entry(&corpus)?;
+        if report["valid_observation_count"] != 3 {
+            return Err(format!(
+                "setup must retain three valid observations, got {}",
+                report["valid_observation_count"]
+            ));
+        }
+        if report["eligible_attempt_count"] != 0 {
+            return Err("observations must not become eligible attempts".to_string());
+        }
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            3,
+            "complete_routes / selected_opportunities",
+        )?;
+        require_not_measurable(&report, "repair_success", 0)?;
+        if report["route_ladder"]["selected_opportunities"] != 3
+            || report["route_ladder"]["complete_routes_admitted"] != 0
+            || report["route_ladder"]["attempts_authorized_or_eligible"] != 0
+        {
+            return Err(format!(
+                "ladder must keep 3 selected opportunities, 0 routes, 0 attempts: {}",
+                report["route_ladder"]
+            ));
+        }
+        let markdown = markdown_report(&report);
+        if !markdown.contains("`0/3`") {
+            return Err(format!("markdown must show route yield 0/3: {markdown}"));
+        }
+        if !markdown.contains("not_measurable") {
+            return Err(format!(
+                "markdown must keep repair success unmeasurable: {markdown}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn three_observations_do_not_inherit_exclusion_rows_as_the_route_denominator()
+    -> Result<(), String> {
+        let mut corpus = live_corpus()?;
+        corpus["cases"] = json!([]);
+        corpus["observations"] = Value::Array(three_unrouted_observations());
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            3,
+            "complete_routes / selected_opportunities",
+        )?;
+        if report["exclusion_count"].as_u64().unwrap_or(0) < 3 {
+            return Err(
+                "setup must keep historical exclusions so they cannot be the 3".to_string(),
+            );
+        }
+        if report["route_yield"]["denominator"] == report["exclusion_count"] {
+            return Err("route yield must not use exclusion_count as its denominator".to_string());
+        }
+        require_not_measurable(&report, "repair_success", 0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn live_corpus_counts_unique_observations_not_attempts_for_route_yield() -> Result<(), String> {
+        let report = report_from_public_entry(&live_corpus()?)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            12,
+            "complete_routes / selected_opportunities",
+        )?;
+        require_not_measurable(&report, "repair_success", 0)?;
+        if report["eligible_attempt_count"] != 0 {
+            return Err("live corpus must still have zero eligible attempts".to_string());
+        }
+        if report["route_yield"]["denominator"] == report["eligible_attempt_count"] {
+            return Err("route yield must not collapse onto the attempt denominator".to_string());
+        }
+        if report["route_yield"]["denominator"] == report["observation_count"] {
+            return Err("route yield must not reuse the mixed observation_count field".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn one_complete_route_without_edit_authorization_is_not_an_attempt() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-complete-route",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "selected_opportunity",
+        );
+        observation["reason"] = json!("no_current_behavior_change");
+        observation["route"] = json!({
+            "opportunity_id": "opt-complete-no-attempt",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": true,
+            "canonical_gap_identified": true,
+            "complete_route_admitted": true,
+            "packet_ready": true,
+            "canonical_eligibility": "admitted",
+            "attempt_authorized": false,
+            "attempt_started": false,
+            "attempt_finished": false,
+            "earliest_stop": "not_observed"
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            1,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        require_not_measurable(&report, "repair_success", 0)?;
+        require_not_measurable(&report, "completion_without_hidden_help", 0)?;
+        if report["route_ladder"]["attempts_authorized_or_eligible"] != 0
+            || report["route_ladder"]["attempts_started"] != 0
+            || report["eligible_attempt_count"] != 0
+        {
+            return Err(format!(
+                "an unauthorized complete route must not mint attempts: {}",
+                report["route_ladder"]
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn failed_focused_test_and_improved_static_evidence_stay_separate() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-attempted",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "verification_failed",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-improved-failed-test",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": true,
+            "canonical_gap_identified": true,
+            "complete_route_admitted": true,
+            "packet_ready": true,
+            "canonical_eligibility": "admitted",
+            "attempt_authorized": true,
+            "attempt_started": true,
+            "attempt_finished": true,
+            "static_movement": "improved",
+            "focused_test_result": "failed",
+            "repair_attempt_id": "attempt-improved-failed-test",
+            "earliest_stop": "not_observed"
+        });
+        corpus["observations"] = json!([observation]);
+        let mut attempt = valid_attempt(
+            "attempt-improved-failed-test",
+            RIPR_REPO,
+            "gap:opt-improved-failed-test",
+            1,
+            "improved",
+            Vec::new(),
+        );
+        attempt["analyzed_head_sha"] = json!(RIPR_HEAD);
+        attempt["verification_result"] = json!("failed");
+        corpus["cases"] = json!([attempt]);
+        let report = report_from_public_entry(&corpus)?;
+        if report["movement_counts"]["improved"] != 1 {
+            return Err("improved static movement must remain visible".to_string());
+        }
+        if report["focused_test_execution"]["failed"] != 1
+            || report["focused_test_execution"]["passed"] != 0
+        {
+            return Err(format!(
+                "failed focused test must stay separate from static movement: {}",
+                report["focused_test_execution"]
+            ));
+        }
+        require_measured_ratio(
+            &report,
+            "repair_success",
+            1,
+            1,
+            "improved_or_closed / eligible_attempts",
+        )?;
+        if report["repair_success"]["numerator"] == report["focused_test_execution"]["passed"] {
+            return Err(
+                "repair success must not be inferred from a passing focused test".to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn cli_and_editor_observations_of_one_opportunity_do_not_inflate_route_yield()
+    -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut cli = observation_row(
+            "obs-cli",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "selected_opportunity",
+        );
+        cli["route"] = json!({
+            "opportunity_id": "opt-shared",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "complete_route_admitted": false,
+            "focused_test_result": "failed",
+            "earliest_stop": "not_observed"
+        });
+        let mut editor = cli.clone();
+        editor["observation_id"] = json!("obs-editor");
+        editor["route"]["channel"] = json!("editor");
+        corpus["observations"] = json!([cli, editor]);
+        let report = report_from_public_entry(&corpus)?;
+        if report["valid_observation_count"] != 2 {
+            return Err("both channel observations must remain valid".to_string());
+        }
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        if report["channel_observation_counts"]["cli"] != 1
+            || report["channel_observation_counts"]["editor"] != 1
+        {
+            return Err(format!(
+                "channel evidence must stay visible: {}",
+                report["channel_observation_counts"]
+            ));
+        }
+        if report["focused_test_execution"]["failed"] != 1
+            || report["focused_test_execution"]["passed"] != 0
+            || report["focused_test_execution"]["not_observed"] != 0
+        {
+            return Err(format!(
+                "duplicate channel focused-test results must count once per opportunity: {}",
+                report["focused_test_execution"]
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn analyzer_rerun_keeps_distinct_cohorts_and_the_original_result() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut original = observation_row(
+            "obs-original",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "selected_opportunity",
+        );
+        original["route"] = json!({
+            "opportunity_id": "opt-shared",
+            "channel": "cli",
+            "cohort_id": "cohort-before-fix",
+            "analyzer_generation": "pre-fix",
+            "unit": "opportunity",
+            "complete_route_admitted": false,
+            "earliest_stop": "not_observed"
+        });
+        let mut rerun = original.clone();
+        rerun["observation_id"] = json!("obs-rerun");
+        rerun["route"]["cohort_id"] = json!("cohort-after-fix");
+        rerun["route"]["analyzer_generation"] = json!("post-fix");
+        rerun["route"]["complete_route_admitted"] = json!(true);
+        rerun["route"]["canonical_eligibility"] = json!("admitted");
+        rerun["route"]["analysis_completed"] = json!(true);
+        rerun["route"]["canonical_gap_identified"] = json!(true);
+        corpus["observations"] = json!([original, rerun]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            1,
+            2,
+            "complete_routes / selected_opportunities",
+        )?;
+        if report["cohort_count"] != 2 {
+            return Err(format!(
+                "distinct analyzer cohorts must remain two experiments: {}",
+                report["cohort_count"]
+            ));
+        }
+        if report["route_ladder"]["complete_routes_admitted"] != 1 {
+            return Err("the original failure must not be pooled into a 2/2 success".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn timeout_before_item_discovery_does_not_mint_a_gap_id() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-timeout",
+            PERL_REPO,
+            PERL_HEAD,
+            "EffortlessMetrics/perl-lsp-swarm#4022",
+            "analysis_timeout",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "repo-obs-perl-4022",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "repository_observation",
+            "analysis_completed": false,
+            "canonical_gap_identified": false,
+            "complete_route_admitted": false,
+            "earliest_stop": "analysis_timeout"
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        if report["route_ladder"]["canonical_behavior_or_gap_identified"] != 0 {
+            return Err("a timeout must not invent a canonical gap".to_string());
+        }
+        if report["earliest_stop_counts"]["analysis_timeout"] != 1 {
+            return Err(format!(
+                "timeout must remain the earliest stop: {}",
+                report["earliest_stop_counts"]
+            ));
+        }
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if errors
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|error| error.contains("gap:"))
+        {
+            return Err("timeout observations must not be forced through gap identity".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn legacy_static_limitation_is_not_relabelled_into_a_precise_stop() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        corpus["observations"] = json!([observation_row(
+            "obs-legacy",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "new_exclusion",
+        )]);
+        let report = report_from_public_entry(&corpus)?;
+        if report["earliest_stop_counts"]["not_observed"] != 1 {
+            return Err(format!(
+                "legacy static_limitation_no_repair_packet must stay not_observed, got {}",
+                report["earliest_stop_counts"]
+            ));
+        }
+        for forbidden in [
+            "missing_discriminator",
+            "missing_related_test",
+            "ambiguous_or_unsafe_target",
+            "missing_fix_site",
+        ] {
+            if report["earliest_stop_counts"]
+                .get(forbidden)
+                .and_then(Value::as_u64)
+                .unwrap_or(0)
+                != 0
+            {
+                return Err(format!("legacy rows must not be relabelled as {forbidden}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn packet_ready_rejected_by_canonical_eligibility_is_not_a_complete_route() -> Result<(), String>
+    {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-rejected-packet",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-rejected",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": true,
+            "canonical_gap_identified": true,
+            "complete_route_admitted": true,
+            "packet_ready": true,
+            "canonical_eligibility": "rejected",
+            "attempt_authorized": false,
+            "earliest_stop": "ambiguous_or_unsafe_target"
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        if report["route_ladder"]["complete_routes_admitted"] != 0 {
+            return Err("canonical eligibility rejection must veto packet-ready".to_string());
+        }
+        if report["earliest_stop_counts"]["ambiguous_or_unsafe_target"] != 1 {
+            return Err("the rejected eligibility stop must remain visible".to_string());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_ids_and_hand_edited_totals_cannot_enter_trusted_success_counts()
+    -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let first = observation_row(
+            "obs-dup",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "new_exclusion",
+        );
+        let duplicate = first.clone();
+        corpus["observations"] = json!([first, duplicate]);
+        corpus["route_yield"] = json!({
+            "status": "measured",
+            "numerator": 99,
+            "denominator": 99,
+            "unit": "invented",
+            "display": "99/99"
+        });
+        let report = report_from_public_entry(&corpus)?;
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        let errors = errors.iter().filter_map(Value::as_str).collect::<Vec<_>>();
+        if !errors
+            .iter()
+            .any(|error| error.contains("duplicate observation id obs-dup"))
+        {
+            return Err("duplicate observation ids must fail closed".to_string());
+        }
+        if !errors
+            .iter()
+            .any(|error| error.contains("hand-edited") && error.contains("route_yield"))
+        {
+            return Err(format!(
+                "hand-edited totals must be rejected, got {errors:?}"
+            ));
+        }
+        if report
+            .get("route_yield")
+            .and_then(|value| value.get("numerator"))
+            == Some(&json!(99))
+        {
+            return Err("hand-edited totals must not become the trusted numerator".to_string());
+        }
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        require_not_measurable(&report, "repair_success", 0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn timeout_reason_normalizes_exactly_and_does_not_require_a_gap() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        corpus["observations"] = json!([observation_row(
+            "obs-timeout-legacy",
+            PERL_REPO,
+            PERL_HEAD,
+            "EffortlessMetrics/perl-lsp-swarm#4022",
+            "analysis_timeout",
+            "new_exclusion",
+        )]);
+        let report = report_from_public_entry(&corpus)?;
+        if report["earliest_stop_counts"]["analysis_timeout"] != 1 {
+            return Err(format!(
+                "analysis_timeout is an exact historical mapping, got {}",
+                report["earliest_stop_counts"]
+            ));
+        }
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn unlinked_repeat_attempts_do_not_mint_attempt_id_opportunities() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let first = valid_attempt("attempt-1", RIPR_REPO, "gap:foo", 1, "improved", Vec::new());
+        let mut second = valid_attempt("attempt-2", RIPR_REPO, "gap:foo", 2, "closed", Vec::new());
+        second["analyzed_head_sha"] = first["analyzed_head_sha"].clone();
+        corpus["cases"] = json!([first, second]);
+        let report = report_from_public_entry(&corpus)?;
+        if report["eligible_attempt_count"] != 2 {
+            return Err("both eligible cases must remain counted attempts".to_string());
+        }
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            1,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        require_measured_ratio(
+            &report,
+            "repair_success",
+            2,
+            2,
+            "improved_or_closed / eligible_attempts",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn cross_repository_attempt_link_cannot_complete_the_wrong_opportunity() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-ripr",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "static_limitation_no_repair_packet",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-ripr",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "complete_route_admitted": false,
+            "repair_attempt_id": "attempt-perl",
+            "earliest_stop": "not_observed"
+        });
+        let mut attempt = valid_attempt(
+            "attempt-perl",
+            PERL_REPO,
+            "gap:perl",
+            1,
+            "improved",
+            Vec::new(),
+        );
+        attempt["analyzed_head_sha"] = json!(PERL_HEAD);
+        corpus["observations"] = json!([observation]);
+        corpus["cases"] = json!([attempt]);
+        let report = report_from_public_entry(&corpus)?;
+        if report["valid_observation_count"] != 1 {
+            return Err("the unmatched observation must remain a selected opportunity".to_string());
+        }
+        if report["eligible_attempt_count"] != 1 {
+            return Err("the perl case must remain an eligible attempt".to_string());
+        }
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            1,
+            2,
+            "complete_routes / selected_opportunities",
+        )?;
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors.iter().filter_map(Value::as_str).any(|error| {
+            error.contains("repair_attempt_id attempt-perl")
+                && error.contains("repository")
+                && error.contains("analyzed head")
+        }) {
+            return Err(format!(
+                "cross-repository attempt links must be rejected, got {errors:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn finished_attempt_without_a_start_cannot_enter_the_trusted_ladder() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-unstarted-finish",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "no_current_behavior_change",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-unstarted",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": false,
+            "attempt_started": false,
+            "attempt_finished": true
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|error| error.contains("attempt_finished") && error.contains("attempt_started"))
+        {
+            return Err(format!(
+                "explicit stage contradictions must be rejected, got {errors:?}"
+            ));
+        }
+        if report["valid_observation_count"] != 0
+            || report["route_ladder"]["selected_opportunities"] != 0
+            || report["route_ladder"]["attempts_finished"] != 0
+        {
+            return Err(format!(
+                "contradictory stages must not enter trusted counts: {}",
+                report["route_ladder"]
+            ));
+        }
+        require_not_measurable(&report, "route_yield", 0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn improved_static_movement_without_a_finished_attempt_is_not_ladder_success()
+    -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-unattempted-improved",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "no_current_behavior_change",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-unattempted",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": true,
+            "canonical_gap_identified": true,
+            "complete_route_admitted": true,
+            "canonical_eligibility": "admitted",
+            "attempt_authorized": false,
+            "attempt_started": false,
+            "attempt_finished": false,
+            "static_movement": "improved"
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        let errors = report["validation_errors"]
+            .as_array()
+            .ok_or_else(|| "validation_errors must be an array".to_string())?;
+        if !errors
+            .iter()
+            .filter_map(Value::as_str)
+            .any(|error| error.contains("static_movement") && error.contains("attempt_finished"))
+        {
+            return Err(format!(
+                "unattempted static improvement must be rejected, got {errors:?}"
+            ));
+        }
+        if report["route_ladder"]["static_improved_or_closed"] != 0
+            || report["eligible_attempt_count"] != 0
+        {
+            return Err(format!(
+                "unattempted improvement must not count as ladder success: {}",
+                report["route_ladder"]
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn omitted_archaeology_cannot_count_as_help_free_completion() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-unknown-help",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "no_current_behavior_change",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-unknown-help",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": true,
+            "canonical_gap_identified": true,
+            "complete_route_admitted": true,
+            "canonical_eligibility": "admitted",
+            "attempt_authorized": false
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            1,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        require_not_measurable(&report, "completion_without_hidden_help", 0)?;
+        Ok(())
+    }
+
+    #[test]
+    fn observed_absent_archaeology_is_help_free_completion() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut observation = observation_row(
+            "obs-help-free",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "no_current_behavior_change",
+            "selected_opportunity",
+        );
+        observation["route"] = json!({
+            "opportunity_id": "opt-help-free",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "analysis_completed": true,
+            "canonical_gap_identified": true,
+            "complete_route_admitted": true,
+            "canonical_eligibility": "admitted",
+            "artifact_archaeology": false,
+            "attempt_authorized": false
+        });
+        corpus["observations"] = json!([observation]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "completion_without_hidden_help",
+            1,
+            1,
+            "completed_without_artifact_archaeology / complete_routes_with_observed_archaeology",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn conflicting_channel_focused_tests_fail_closed_to_failed() -> Result<(), String> {
+        let mut corpus = blank_authorized_corpus()?;
+        let mut cli = observation_row(
+            "obs-cli-pass",
+            RIPR_REPO,
+            RIPR_HEAD,
+            "EffortlessMetrics/ripr-swarm#1581",
+            "verification_failed",
+            "selected_opportunity",
+        );
+        cli["route"] = json!({
+            "opportunity_id": "opt-conflict",
+            "channel": "cli",
+            "cohort_id": "cohort-a",
+            "unit": "opportunity",
+            "focused_test_result": "passed"
+        });
+        let mut editor = cli.clone();
+        editor["observation_id"] = json!("obs-editor-fail");
+        editor["route"]["channel"] = json!("editor");
+        editor["route"]["focused_test_result"] = json!("failed");
+        corpus["observations"] = json!([cli, editor]);
+        let report = report_from_public_entry(&corpus)?;
+        require_measured_ratio(
+            &report,
+            "route_yield",
+            0,
+            1,
+            "complete_routes / selected_opportunities",
+        )?;
+        if report["focused_test_execution"]["failed"] != 1
+            || report["focused_test_execution"]["passed"] != 0
+        {
+            return Err(format!(
+                "conflicting channel tests must fail closed: {}",
+                report["focused_test_execution"]
+            ));
         }
         Ok(())
     }

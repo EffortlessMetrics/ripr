@@ -20,9 +20,9 @@ use crate::analysis_outcome::{
 use crate::app::{CheckInput, CheckOutput, Mode};
 use crate::config::RiprConfig;
 use crate::domain::{
-    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, MissingDiscriminatorFact,
-    OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest, RevealEvidence,
-    RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
+    ActivationEvidence, Confidence, DeltaKind, ExposureClass, Finding, LanguageId, LanguageStatus,
+    MissingDiscriminatorFact, OracleKind, OracleStrength, Probe, ProbeFamily, ProbeId, RelatedTest,
+    RevealEvidence, RiprEvidence, SourceLocation, StageEvidence, StageState, Summary,
 };
 use std::path::PathBuf;
 
@@ -62,6 +62,7 @@ fn finding(class: ExposureClass, related: Vec<RelatedTest>) -> Finding {
         flow_sinks: Vec::new(),
         activation: ActivationEvidence::default(),
         stop_reasons: Vec::new(),
+        related_tests_matched_total: None,
         related_tests: related,
         recommended_next_step: None,
         language: None,
@@ -86,6 +87,7 @@ fn related_test(name: &str, file: &str, line: usize) -> RelatedTest {
         oracle_strength: OracleStrength::Weak,
         relation_reason: None,
         relation_confidence: None,
+        miss: None,
     }
 }
 
@@ -104,6 +106,8 @@ fn check_output(findings: Vec<Finding>) -> CheckOutput {
         language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
+        untracked_working_tree_source_paths: Vec::new(),
+        unlinked_python_tests: None,
         suppression: None,
         analysis_outcome: None,
         partial_scope: None,
@@ -156,10 +160,19 @@ fn classified_seam(class: SeamGripClass) -> ClassifiedSeam {
                 reason: "producer identified the equality boundary as missing".to_string(),
                 flow_sink: None,
             }],
+            new_test_target: None,
         },
         seam,
         class,
     }
+}
+
+fn preview_finding(class: ExposureClass, language: LanguageId) -> Finding {
+    let mut finding = finding(class, vec![]);
+    finding.language = Some(language);
+    finding.language_status = Some(LanguageStatus::Preview);
+    finding.source_currentness = crate::domain::SourceCurrentness::CandidateCurrent;
+    finding
 }
 
 #[test]
@@ -174,6 +187,145 @@ fn badge_summary_counts_weakly_exposed_reachable_unrevealed_and_no_static_path()
 
     assert_eq!(summary.counts.unsuppressed_exposure_gaps, 3);
     assert_eq!(summary.message, "3");
+}
+
+/// #6761: a candidate-current preview finding is visible in the analyzed
+/// denominator but is not calibrated RIPR 0 gap debt. The authority is
+/// `language_status = preview`, so Python, TypeScript, and Perl share the
+/// exclusion without a language-name table in the badge.
+#[test]
+fn candidate_current_preview_gaps_are_excluded_from_calibrated_ripr_zero() {
+    let output = check_output(vec![
+        preview_finding(ExposureClass::WeaklyExposed, LanguageId::Python),
+        preview_finding(ExposureClass::ReachableUnrevealed, LanguageId::TypeScript),
+        preview_finding(ExposureClass::NoStaticPath, LanguageId::Perl),
+    ]);
+
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.counts.unknowns, 0);
+    assert_eq!(summary.counts.analyzed_findings, 3);
+    assert_eq!(summary.message, "0");
+    assert_eq!(summary.status, BadgeStatus::Pass);
+    assert_eq!(summary.color, "brightgreen");
+}
+
+/// #6761 negative control: a candidate-current Rust gap still counts, even
+/// when the same report also carries preview gap findings.
+#[test]
+fn candidate_current_rust_gap_still_counts_beside_preview_findings() {
+    let rust_gap = finding(ExposureClass::WeaklyExposed, vec![]);
+    let output = check_output(vec![
+        rust_gap,
+        preview_finding(ExposureClass::WeaklyExposed, LanguageId::Python),
+    ]);
+
+    let summary = ripr_badge_summary(&output, BadgePolicy::default());
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.counts.analyzed_findings, 2);
+    assert_eq!(summary.message, "1");
+    assert_eq!(summary.status, BadgeStatus::Warn);
+}
+
+/// #6761: preview unknowns must not inflate the headline when
+/// `include_unknowns` is on. Native `counts.unknowns` still discloses them.
+/// A Rust unknown still counts toward both the audit field and the headline.
+#[test]
+fn preview_unknowns_are_excluded_from_calibrated_unknown_headline() {
+    let policy = BadgePolicy {
+        include_unknowns: true,
+        fail_on_nonzero: true,
+        ..BadgePolicy::default()
+    };
+
+    let preview_only = check_output(vec![preview_finding(
+        ExposureClass::InfectionUnknown,
+        LanguageId::Python,
+    )]);
+    let preview_summary = ripr_badge_summary(&preview_only, policy.clone());
+    assert_eq!(preview_summary.counts.unknowns, 1);
+    assert_eq!(preview_summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(preview_summary.message, "0");
+    assert_eq!(preview_summary.status, BadgeStatus::Pass);
+
+    let rust_unknown = check_output(vec![finding(ExposureClass::InfectionUnknown, vec![])]);
+    let rust_summary = ripr_badge_summary(&rust_unknown, policy.clone());
+    assert_eq!(rust_summary.counts.unknowns, 1);
+    assert_eq!(rust_summary.message, "1");
+    assert_eq!(rust_summary.status, BadgeStatus::Fail);
+
+    let mixed = check_output(vec![
+        preview_finding(ExposureClass::StaticUnknown, LanguageId::TypeScript),
+        finding(ExposureClass::PropagationUnknown, vec![]),
+    ]);
+    let mixed_summary = ripr_badge_summary(&mixed, policy);
+    assert_eq!(mixed_summary.counts.unknowns, 2);
+    assert_eq!(mixed_summary.message, "1");
+    assert_eq!(mixed_summary.status, BadgeStatus::Fail);
+}
+
+/// #6761: native badge JSON must still show a preview unknown Finding while
+/// the calibrated RIPR 0 headline stays zero.
+#[test]
+fn preview_unknown_remains_visible_in_native_badge_json_with_zero_headline() {
+    let policy = BadgePolicy {
+        include_unknowns: true,
+        fail_on_nonzero: true,
+        ..BadgePolicy::default()
+    };
+    let summary = ripr_badge_summary(
+        &check_output(vec![preview_finding(
+            ExposureClass::InfectionUnknown,
+            LanguageId::Perl,
+        )]),
+        policy,
+    );
+    let json = render_native_json(&summary);
+
+    assert!(json.contains("\"message\": \"0\""), "{json}");
+    assert!(json.contains("\"unknowns\": 1"), "{json}");
+    assert!(json.contains("\"unsuppressed_exposure_gaps\": 0"), "{json}");
+    assert!(json.contains("\"analyzed_findings\": 1"), "{json}");
+    assert!(json.contains("\"status\": \"pass\""), "{json}");
+}
+
+/// Default policy (`include_unknowns = false`) leaves a candidate-current
+/// Rust unknown in `counts.unknowns` and out of the headline. A zero
+/// headline with nonzero unknowns is therefore not a preview inference.
+#[test]
+fn default_policy_rust_unknown_is_visible_but_not_headline() {
+    let summary = ripr_badge_summary(
+        &check_output(vec![finding(ExposureClass::InfectionUnknown, vec![])]),
+        BadgePolicy::default(),
+    );
+
+    assert!(!summary.policy.include_unknowns);
+    assert_eq!(summary.counts.unknowns, 1);
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.message, "0");
+    assert_eq!(summary.status, BadgeStatus::Pass);
+
+    let json = render_native_json(&summary);
+    assert!(json.contains("\"include_unknowns\": false"), "{json}");
+    assert!(json.contains("\"unknowns\": 1"), "{json}");
+    assert!(json.contains("\"message\": \"0\""), "{json}");
+}
+
+/// Language name without `language_status = preview` is not the badge
+/// authority. A Python-tagged finding that omitted preview status still
+/// counts, so a later producer bug cannot be papered over by a language
+/// table in this renderer.
+#[test]
+fn language_name_without_preview_status_still_counts_as_a_gap() {
+    let mut python_tagged = finding(ExposureClass::WeaklyExposed, vec![]);
+    python_tagged.language = Some(LanguageId::Python);
+
+    let summary = ripr_badge_summary(&check_output(vec![python_tagged]), BadgePolicy::default());
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.message, "1");
 }
 
 #[test]
@@ -922,6 +1074,30 @@ fn ripr_plus_include_unknowns_policy_adds_both_unknown_axes_to_headline() {
     assert_eq!(summary.message, "7");
 }
 
+/// Preview unknowns stay in `counts.unknowns` for ripr+ too, but
+/// `include_unknowns` still must not promote them into the RIPR 0 headline.
+#[test]
+fn ripr_plus_preview_unknowns_do_not_inflate_include_unknowns_headline() {
+    let policy = BadgePolicy {
+        include_unknowns: true,
+        fail_on_nonzero: true,
+        ..BadgePolicy::default()
+    };
+    let summary = ripr_plus_badge_summary(
+        &check_output(vec![preview_finding(
+            ExposureClass::InfectionUnknown,
+            LanguageId::Python,
+        )]),
+        TestEfficiencyBadgeSummary::default(),
+        policy,
+    );
+
+    assert_eq!(summary.counts.unknowns, 1);
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.message, "0");
+    assert_eq!(summary.status, BadgeStatus::Pass);
+}
+
 // -------- suppressions wiring --------
 
 use super::{
@@ -1023,6 +1199,56 @@ fn ripr_badge_with_suppressions_moves_matched_findings_into_suppressed_bucket() 
     assert_eq!(summary.counts.suppressed_exposure_gaps, 1);
     assert_eq!(summary.message, "2");
     assert!(summary.warnings.is_empty());
+}
+
+/// #6761: a suppression that names a present preview finding is a valid
+/// advisory exception, not a stale unmatched selector. It also must not
+/// inflate `suppressed_exposure_gaps` — that bucket is calibrated RIPR 0.
+#[test]
+fn preview_suppression_is_not_an_unmatched_or_calibrated_gap() {
+    let mut preview = preview_finding(ExposureClass::WeaklyExposed, LanguageId::Python);
+    preview.id = "probe:py:1".to_string();
+    let rust = finding_at_id("probe:rs:1", ExposureClass::WeaklyExposed);
+    let output = check_output(vec![preview, rust]);
+    let suppressions = vec![exposure_suppression("probe:py:1", None)];
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &suppressions,
+        "2026-05-03",
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 1);
+    assert_eq!(summary.counts.suppressed_exposure_gaps, 0);
+    assert_eq!(summary.counts.analyzed_findings, 2);
+    assert!(
+        summary.warnings.is_empty(),
+        "preview suppression must not look stale: {:?}",
+        summary.warnings
+    );
+}
+
+/// A selector that matches no present finding, preview or otherwise, still
+/// warns. Swallowing unmatched warnings would hide real stale policy.
+#[test]
+fn unmatched_suppression_still_warns_beside_a_preview_finding() {
+    let mut preview = preview_finding(ExposureClass::WeaklyExposed, LanguageId::Python);
+    preview.id = "probe:py:1".to_string();
+    let output = check_output(vec![preview]);
+    let suppressions = vec![exposure_suppression("probe:missing", None)];
+
+    let summary = ripr_badge_summary_with_suppressions(
+        &output,
+        &suppressions,
+        "2026-05-03",
+        BadgePolicy::default(),
+    );
+
+    assert_eq!(summary.counts.unsuppressed_exposure_gaps, 0);
+    assert_eq!(summary.warnings.len(), 1);
+    assert!(summary.warnings[0].contains("probe:missing"));
+    assert!(summary.warnings[0].contains("did not match any current finding"));
 }
 
 #[test]
@@ -1658,11 +1884,14 @@ fn check_output_with_preview_advisory(
             language: language.to_string(),
             file_count: 1,
             sample_paths: vec![format!("src/foo.{language}")],
+            javascript_file_count: 0,
             enabled,
         }],
         language_runs: Vec::new(),
         no_scope_provided: false,
         unanalyzed_working_tree: false,
+        untracked_working_tree_source_paths: Vec::new(),
+        unlinked_python_tests: None,
         suppression: None,
         analysis_outcome: None,
         partial_scope: None,

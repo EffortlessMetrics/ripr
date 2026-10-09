@@ -16,6 +16,21 @@ pub(crate) struct FilePolicyAllowEntry {
     pub(crate) reason: Option<String>,
     pub(crate) generated_by: Option<String>,
     pub(crate) covered_by: Option<Vec<String>>,
+    pub(crate) covered_by_unix: Option<Vec<String>>,
+    pub(crate) covered_by_windows: Option<Vec<String>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum FilePolicyHost {
+    Unix,
+    Windows,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct FilePolicyTestCommand {
+    pub(crate) line: usize,
+    pub(crate) command: String,
+    pub(crate) host: Option<FilePolicyHost>,
 }
 
 #[derive(Debug)]
@@ -170,6 +185,18 @@ pub(crate) struct Capability {
 pub(crate) struct MarkdownLink {
     pub(crate) line: usize,
     pub(crate) target: String,
+}
+
+/// The repository-local halves of a Markdown link target.
+///
+/// A link may name a document, a heading inside the document that contains the
+/// link, or both, so each half is optional and at least one is always present.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct LocalMarkdownTarget {
+    /// The document the link names, or `None` when it points into its own.
+    pub(crate) path: Option<String>,
+    /// The `#fragment` the link names, or `None` when it names no heading.
+    pub(crate) fragment: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index e475799..ad2394a 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -17,7 +17,7 @@ pub fn is_visible(hidden: bool) -> bool {
+ }
+ 
+ pub fn should_retry(timed_out: bool, attempts_left: bool) -> bool {
+-    timed_out && attempts_left
++    attempts_left && timed_out
+ }
+ 
+ #[cfg(test)]

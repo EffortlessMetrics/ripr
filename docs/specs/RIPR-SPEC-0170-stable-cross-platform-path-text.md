@@ -83,7 +83,7 @@ the three characters `%FF` renders as `%25FF`.
   symbol identity so distinct raw-byte files keep distinct owners.
 - `crates/ripr/src/app/check_artifact.rs` renders non-UTF-8 finding paths
   through the projection at the artifact boundary.
-- `crates/ripr/src/analysis/language/rust.rs`,
+- `crates/ripr/src/analysis/language/rust/mod.rs`,
   `crates/ripr/src/analysis/probes/ids.rs`, and
   `crates/ripr/src/output/path.rs` consume that projection for their existing
   textual identity/rendering surfaces.

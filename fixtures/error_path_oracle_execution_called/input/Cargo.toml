@@ -1,0 +1,4 @@
+[package]
+name = "error_path_oracle_execution_called"
+version = "0.1.0"
+edition = "2024"

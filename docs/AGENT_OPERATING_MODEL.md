@@ -47,6 +47,24 @@ Cross-lane attention is normally required only when:
 A behind-only branch needs no action. The affected lane owns its conflict
 resolution and focused re-proof when a real interaction appears.
 
+The governing issue or accepted contract and one-sentence acceptance delta
+identify a coherent claim. Once published, its PR and exact head identify the
+current candidate; an explicit parent PR identifies a stack, while a proposed
+replacement names its predecessor. Only an accepted winner establishes
+supersession. The candidate identifies operational
+ownership, not correctness, review readiness, merge eligibility, release
+membership, or completion of the issue's remaining acceptance. Distinct accepted
+slices of one parent issue may have distinct candidates. Different paths do not
+make two implementations of the same slice independent.
+
+When a replacement becomes the accepted winner, record a disposition for the
+losing PR or branch in the same reconciliation pass: close it, park it with a
+named reason, or narrow it to acceptance the winner did not cover. Record the
+winner and preserved residual in the issue or PR. An absent or ambiguous
+relationship requires reconciliation; do not infer safe parallelism or
+supersession from changed paths. An unrelated move of `main` does not change
+candidate ownership.
+
 ---
 
 ## Goal loop

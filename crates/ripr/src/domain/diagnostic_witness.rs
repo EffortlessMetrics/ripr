@@ -70,7 +70,14 @@ impl DiagnosticWitness {
             return None;
         }
 
-        let best_test = best_related_test(&finding.related_tests);
+        // The analyzer's suggested repair test, when it is one of the
+        // related tests, is the fix site: `check`, `explain` and the repair
+        // card already name it, so every surface points at the same test.
+        // Tests listed only as examined misses (#5344) supplied no oracle and
+        // are never a fix site: a fix site claims "this test runs the change
+        // and has this oracle".
+        let best_test = suggested_related_test(finding)
+            .or_else(|| best_related_test(finding.oracle_related_tests()));
         // `observed_values` is finding-wide and does not identify the
         // selected related test.  Do not guess an assertion location by
         // matching text; the test's own line remains the only producer-owned
@@ -136,7 +143,10 @@ impl DiagnosticWitness {
             missing_discriminators: finding.activation.missing_discriminators.clone(),
             fix_site,
             suggested_assertion: None,
-            explain_command: format!("ripr explain --root . {}", finding.id),
+            explain_command: format!(
+                "ripr explain --root . {}",
+                crate::agent::loop_commands::shell_arg(&finding.id)
+            ),
             confidence: DiagnosticConfidence {
                 value: finding.confidence.is_finite().then_some(finding.confidence),
                 basis: "static_only".to_string(),
@@ -146,8 +156,31 @@ impl DiagnosticWitness {
     }
 }
 
-fn best_related_test(related_tests: &[RelatedTest]) -> Option<&RelatedTest> {
-    related_tests.iter().max_by(|left, right| {
+fn suggested_related_test(finding: &Finding) -> Option<&RelatedTest> {
+    let evidence = |prefix: &str| {
+        finding
+            .evidence
+            .iter()
+            .find_map(|line| line.strip_prefix(prefix))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    };
+    let name = evidence("suggested_test_name: ")?;
+    // The file, when the producer names one, disambiguates same-named tests.
+    let file = evidence("suggested_test_file: ");
+    let mut matches = finding.oracle_related_tests().filter(|test| {
+        test.name == name
+            && file.is_none_or(|file| test.file.to_string_lossy().replace('\\', "/") == file)
+    });
+    let first = matches.next()?;
+    // Two related tests with the same identity are ambiguous: fall back.
+    matches.next().is_none().then_some(first)
+}
+
+fn best_related_test<'a>(
+    related_tests: impl Iterator<Item = &'a RelatedTest>,
+) -> Option<&'a RelatedTest> {
+    related_tests.max_by(|left, right| {
         left.oracle_strength
             .rank()
             .cmp(&right.oracle_strength.rank())
@@ -229,6 +262,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             },
             RelatedTest {
                 name: "rejects_boundary_in_other_fixture".to_string(),
@@ -239,6 +273,7 @@ mod tests {
                 oracle_strength: OracleStrength::Weak,
                 relation_reason: None,
                 relation_confidence: None,
+                miss: None,
             },
         ];
 
@@ -273,10 +308,158 @@ mod tests {
         Ok(())
     }
 
+    /// RC walk (py-pricing): `check` and the repair card named
+    /// `test_discount_far_above_threshold` while the context witness named the
+    /// first strong related test. The suggested repair test is the fix site
+    /// when it is one of the related tests; otherwise the ranking decides.
+    #[test]
+    fn fix_site_follows_the_suggested_repair_test() {
+        let related = |name: &str, line: usize| RelatedTest {
+            name: name.to_string(),
+            file: PathBuf::from("tests/test_pricing.py"),
+            line,
+            oracle: Some(format!("assert {name}()")),
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+            miss: None,
+        };
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount == DISCOUNT_THRESHOLD".to_string(),
+            reason: "no related input at the boundary".to_string(),
+            flow_sink: None,
+        }];
+        finding.related_tests = vec![
+            related("test_no_discount_below_threshold", 4),
+            related("test_discount_far_above_threshold", 8),
+        ];
+        let fix_test = |finding: &Finding| {
+            DiagnosticWitness::from_finding(finding)
+                .and_then(|witness| witness.fix_site)
+                .map(|site| site.test_name)
+        };
+        let ranked = fix_test(&finding);
+
+        finding.evidence =
+            vec!["suggested_test_name: test_discount_far_above_threshold".to_string()];
+        assert_eq!(
+            fix_test(&finding).as_deref(),
+            Some("test_discount_far_above_threshold")
+        );
+        finding.evidence =
+            vec!["suggested_test_name: test_no_discount_below_threshold".to_string()];
+        assert_eq!(
+            fix_test(&finding).as_deref(),
+            Some("test_no_discount_below_threshold")
+        );
+        // A suggestion that names no related test falls back to the ranking.
+        finding.evidence = vec!["suggested_test_name: test_new_boundary".to_string()];
+        assert_eq!(fix_test(&finding), ranked);
+    }
+
+    /// #5344 review: a test listed only because ripr examined it (none of its
+    /// assertions matched the change) is not a fix site, even when it is the
+    /// only related test or the suggested one.
+    #[test]
+    fn an_examined_miss_is_never_the_fix_site() -> Result<(), String> {
+        let miss = RelatedTest {
+            name: "check_runs".to_string(),
+            file: PathBuf::from("tests/run.rs"),
+            line: 4,
+            oracle: Some("assert_eq!(names.len(), 2);".to_string()),
+            oracle_kind: OracleKind::Unknown,
+            oracle_strength: OracleStrength::None,
+            relation_reason: None,
+            relation_confidence: None,
+            miss: Some(crate::domain::RelatedTestMiss::AssertionNotObserving),
+        };
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::ReachableUnrevealed;
+        finding.related_tests = vec![miss];
+        finding.evidence = vec!["suggested_test_name: check_runs".to_string()];
+        let witness = DiagnosticWitness::from_finding(&finding)
+            .ok_or("a reachable_unrevealed finding builds a witness")?;
+        assert!(witness.fix_site.is_none(), "{:?}", witness.fix_site);
+        assert!(
+            witness
+                .limitations
+                .iter()
+                .any(|limitation| limitation.kind == "fix_site_unavailable"),
+            "{:?}",
+            witness.limitations
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fix_site_matches_the_suggested_test_by_file_and_name() {
+        let related = |file: &str, line: usize| RelatedTest {
+            name: "test_boundary".to_string(),
+            file: PathBuf::from(file),
+            line,
+            oracle: None,
+            oracle_kind: OracleKind::ExactValue,
+            oracle_strength: OracleStrength::Strong,
+            relation_reason: None,
+            relation_confidence: None,
+            miss: None,
+        };
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.activation.missing_discriminators = vec![MissingDiscriminatorFact {
+            value: "amount == DISCOUNT_THRESHOLD".to_string(),
+            reason: "no related input at the boundary".to_string(),
+            flow_sink: None,
+        }];
+        finding.related_tests = vec![related("tests/test_a.py", 4), related("tests/test_b.py", 8)];
+        let fix_file = |finding: &Finding| {
+            DiagnosticWitness::from_finding(finding)
+                .and_then(|witness| witness.fix_site)
+                .map(|site| site.file)
+        };
+        for file in ["tests/test_a.py", "tests/test_b.py"] {
+            finding.evidence = vec![
+                "suggested_test_name: test_boundary".to_string(),
+                format!("suggested_test_file: {file}"),
+            ];
+            assert_eq!(fix_file(&finding).as_deref(), Some(file));
+        }
+    }
+
     #[test]
     fn exposed_finding_without_missing_fact_does_not_become_a_gap_witness() {
         let finding = sample_finding();
         assert!(DiagnosticWitness::from_finding(&finding).is_none());
+    }
+
+    #[test]
+    fn explain_command_quotes_a_finding_id_that_embeds_a_hostile_path() -> Result<(), String> {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        finding.id = "probe:src_we ird_it's;x.rs:predicate:ec6d6f91".to_string();
+        let witness = DiagnosticWitness::from_finding(&finding)
+            .ok_or_else(|| "sample finding should produce a witness".to_string())?;
+        assert_eq!(
+            witness.explain_command,
+            "ripr explain --root . 'probe:src_we ird_it'\\''s;x.rs:predicate:ec6d6f91'"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn explain_command_leaves_a_plain_finding_id_bare() -> Result<(), String> {
+        let mut finding = sample_finding();
+        finding.class = ExposureClass::WeaklyExposed;
+        let witness = DiagnosticWitness::from_finding(&finding)
+            .ok_or_else(|| "sample finding should produce a witness".to_string())?;
+        assert_eq!(
+            witness.explain_command,
+            "ripr explain --root . probe:pricing:88:error_path"
+        );
+        Ok(())
     }
 
     fn sample_finding() -> Finding {
@@ -315,6 +498,7 @@ mod tests {
             flow_sinks: Vec::new(),
             activation: ActivationEvidence::default(),
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: Vec::new(),
             recommended_next_step: None,
             language: None,

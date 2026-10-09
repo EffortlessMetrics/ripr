@@ -65,6 +65,14 @@ through the reverse path-dependency adjacency:
 - the diff-index scope cap keeps its fail-closed behavior unchanged, and the
   expansion counts toward it: a diff whose dependent reach pushes the index
   over the cap fails closed with `diff_scope_oversized` exactly as before;
+- two bounds govern a large selection (#5450). `RIPR_MAX_DIFF_INDEX_FILES`
+  (default 10,000) is the memory guard and the only one that refuses.
+  `RIPR_DIFF_NARROW_INDEX_FILES` (default 1,200, clamped to the guard) is a
+  time bound: Draft/Fast narrows dependent packages only when the full
+  selection exceeds it, and reach widening stops at it with a named
+  limitation, never a refusal. Narrowing keeps the changed packages whole,
+  so a changed-package core over the guard is refused before its index is
+  built;
 - changed files that match no layout heuristic — custom Cargo target paths
   such as `[lib] path = "lib/core.rs"` or `[[bin]] path = "bin/tool.rs"`
   (#3616 review) — are attributed to the nearest discovered manifest
@@ -153,10 +161,13 @@ schema. No registry or external dependency resolution.
 - `crates/ripr/src/analysis/workspace/select.rs::tests::dependent_packages_enter_draft_and_fast_selection`
 - `crates/ripr/src/analysis/workspace/select.rs::tests::empty_dependent_roots_reproduce_the_unchanged_selection`
 - `crates/ripr/src/analysis/workspace/select.rs::tests::dependent_roots_do_not_change_non_narrowing_selections`
-- `crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_reaches_path_dependent_tests_through_the_dependency_edge`
-- `crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge`
-- `crates/ripr/src/analysis/language/rust.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies`
-- `crates/ripr/src/analysis/language/rust.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_reaches_path_dependent_tests_through_the_dependency_edge`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_stays_narrow_without_the_path_dependency_edge`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::instant_mode_does_not_expand_scope_through_path_dependencies`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::draft_diff_scope_expands_custom_target_files_to_their_path_dependents`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::auto_narrows_at_the_threshold_and_refuses_at_the_guard`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::auto_refuses_a_core_over_the_guard_before_building_it`
+- `crates/ripr/src/analysis/language/rust/mod.rs::tests::diff_narrow_index_files_never_exceeds_the_hard_limit`
 
 ## Implementation Mapping
 
@@ -168,7 +179,7 @@ schema. No registry or external dependency resolution.
   `PathDependencyScopeExpansion`, package-root/manifest identity mapping
 - `crates/ripr/src/analysis/workspace/select.rs` —
   `select_rust_files_for_mode_with_dependent_packages`
-- `crates/ripr/src/analysis/language/rust.rs` — Draft/Fast gating,
+- `crates/ripr/src/analysis/language/rust/mod.rs` — Draft/Fast gating,
   unattributed-file collection, disclosure emission, selection wiring
 
 ## Metrics

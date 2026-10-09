@@ -81,6 +81,29 @@
       "reason": "The front panel should show the top focused-test action first when a PR-local seam is line-placeable."
     },
     {
+      "id": "repair_start",
+      "scenario": "fresh PR whose review card carries the repair start",
+      "inputs": {
+        "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/exact-line/comments.json",
+        "first_action": "fixtures/boundary_gap/expected/first-useful-action/repair-start/first-useful-action.json"
+      },
+      "expected_report": "fixtures/boundary_gap/expected/pr-review-front-panel/repair-start/pr-review-front-panel.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/pr-review-front-panel/repair-start/pr-review-front-panel.md",
+      "expected": {
+        "status": "advisory",
+        "top_issue_state": "actionable",
+        "policy_state": "new_policy_eligible",
+        "placement": "changed_line",
+        "movement_state": "unknown",
+        "coverage_grip_state": "not_available",
+        "new_policy_eligible": 1,
+        "baseline_resolved": 0,
+        "blocking_candidates": 0,
+        "warnings": 0
+      },
+      "reason": "When the review card carries the repair start (named only past the fail-closed repair-packet flip), the front panel leads with that exact command instead of synthesizing a workflow start from the seam id."
+    },
+    {
       "id": "summary_only",
       "scenario": "recommendation is useful but not safely line-placeable",
       "inputs": {

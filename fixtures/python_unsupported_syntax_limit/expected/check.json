@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_unsupported_syntax_limit/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":1,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:37cff58994f2ff5348891151411342b66dc8fd7ee347eb863a80e157b2a55cd6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:37cff58994f2ff5348891151411342b66dc8fd7ee347eb863a80e157b2a55cd6","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -34,7 +33,7 @@
       "evidence_path": ["reach yes: 1 related Python test(s) found for owner `make_mapper`", "infection unknown: Static limit `unsupported_syntax` prevents a safe Python infection claim.", "propagation unknown: Static limit `unsupported_syntax` prevents a safe Python propagation claim.", "observation yes: Strongest extracted Python oracle kind: `exact_value` (rank 5)", "discriminator unknown: Static limit `unsupported_syntax` prevents a safe Python discriminator claim.", "related test tests/test_mapper.py:4 test_make_mapper_adds_two uses strong exact value oracle: assert make_mapper()(1) == 3"],
       "flow_sinks": [
       ],
-      "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "test_verify_command: pytest tests/test_mapper.py::test_make_mapper_adds_two (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
+      "evidence": ["owner: make_mapper", "owner_kind: function", "static_limit unsupported_syntax: changed line uses lambda syntax", "test_framework: pytest (test_make_mapper_adds_two)", "test_verify_command: python -m pytest tests/test_mapper.py::test_make_mapper_adds_two (test_make_mapper_adds_two)", "related_test_relation: syntactic_call (test_make_mapper_adds_two)", "test_oracle: exact_value strong (test_make_mapper_adds_two)"],
       "missing": ["Static limit `unsupported_syntax`: the changed line uses a Python syntax shape this preview adapter does not model precisely yet."],
       "assertion_texts": {
       },
@@ -84,5 +83,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/mapper.py","digest":"sha256:31227ca472e9302afaeafb8d396739e550074c1c9e1de5c76f027d6e1849414a"}]}
 }

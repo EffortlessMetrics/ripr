@@ -1,0 +1,8 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 0000000..1111111 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -1,2 +1,2 @@
+ def is_large(total):
+-    return total >= 100
++    return total > 100

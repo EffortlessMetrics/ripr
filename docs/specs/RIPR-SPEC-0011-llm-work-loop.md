@@ -39,10 +39,37 @@ The status report should:
 - report each required artifact as present or missing;
 - recover `seam_id` from receipt, verify, packet, or brief JSON when possible;
 - emit a next command for every missing artifact;
-- surface the first missing command as `next_command`;
+- select `next_command` by the repair-attempt-first order below (#3906), which
+  falls back to the first missing command only when no repair attempt applies;
 - warn when timestamps suggest `agent verify` is older than a before/after
   snapshot or `agent receipt` is older than `agent verify`;
 - keep all language advisory and static.
+
+General inventory continuation and missing-artifact commands bind the selected
+root from its native filesystem spelling. UTF-8 Unix directory names containing
+a literal backslash must select that directory when pasted from another working
+directory, including awaiting/after, failed/open-gap restart and missing-receipt
+commands. Windows retains separator presentation. Report-only display text is
+separate from this command identity (#6313).
+
+If receipt issuance cannot find the default workflow verify artifact, its
+producer hint uses the native canonical selected root and preserves the
+requested relative or absolute output locator. Pasting the hint from another
+directory must write the artifact that the refused receipt selected, including
+when a UTF-8 Unix directory name contains a literal backslash. A custom missing
+verify path has no known snapshot pair and emits no workflow producer hint.
+The refusal and receipt evidence boundaries remain unchanged (#6684).
+
+With an absolute selected root that has no literal Unix backslash in its name,
+`agent start --out` preserves a custom workflow directory's native UTF-8 Unix
+filename characters in manifest locators,
+artifact inventory and generated commands. Both relative and absolute `--out`
+inputs must address that same physical directory when the emitted snapshot,
+verify, receipt and regeneration commands run from another working directory.
+A literal backslash or shell quote must not select a slash-normalized decoy.
+Windows retains separator presentation. This does not qualify arbitrary
+relative-root invocations, workflow root spellings containing a literal Unix
+backslash, or change missing custom-input recovery (#6809).
 
 The loop command templates are centralized in one internal module before the
 workflow manifest is introduced. That module owns the current workflow artifact
@@ -100,6 +127,14 @@ Receipt provenance records:
 - selected `seam_id`, before class, after class, and movement;
 - explicit static boundary flags.
 
+Receipt `provenance.repo_root`, before/after/verify artifact paths and
+`inputs.agent_verify_json` preserve native UTF-8 Unix filename characters for
+later reopening. Fields that omit one leading `./` keep that omission;
+before/after provenance paths retain their existing leading `./` behavior.
+Canonical root equality, containment, content hashes and currentness admission
+remain mandatory. A different slash-path checkout cannot inherit the receipt's
+authority (#6313).
+
 `ripr agent review-summary --root .` reads existing artifacts and emits a
 compact Markdown packet for PR review. `--json` emits the schema `0.1` JSON
 contract. The command joins agent status, workflow, receipt, operator cockpit,
@@ -116,6 +151,13 @@ The review summary should answer:
 - what command should run next when the loop is incomplete;
 - what the reviewer should inspect;
 - which static limits remain.
+
+The executable status command embedded in a review-summary surface uses the
+native selected root for both its `--root` argument and anchored redirect.
+It shares command authority with the top-level continuation even though the
+report's `root` field and analysis-outcome presentation key retain display
+formatting. Unix literal filename backslashes remain distinct from Windows
+separators (#6313).
 
 ## JSON Shape
 
@@ -156,6 +198,7 @@ The status report uses schema version `0.1`:
     "reason": "agent packet artifact is missing",
     "command": "ripr agent packet --root . --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
   },
+  "test_run": null,
   "warnings": []
 }
 ```
@@ -246,11 +289,11 @@ next-action guidance are present:
   },
   "summary": {
     "remaining_gap": "No remaining static gap is named by this receipt; inspect the current seam packet if review needs final assertion detail.",
-    "next_recommendation": "Keep the focused test and attach this receipt with the agent verify JSON.",
+    "next_recommendation": "Run the focused test with the project's test command and keep it only if it passes; ripr compared static evidence and did not run it. Then attach this receipt with the agent verify JSON.",
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review.",
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
       "safe_to_merge": false
     }
   }
@@ -262,7 +305,7 @@ selected seam movement in the saved `agent verify` JSON:
 
 | Movement | `next_action.kind` | Guidance |
 | --- | --- | --- |
-| `improved` | `improved` | Keep the focused test and include the receipt in review. |
+| `improved` | `improved` | Run the focused test and keep it only if it passes; ripr did not run it. Then include the receipt in review. |
 | `changed` | `changed` | Inspect the evidence delta and strengthen the discriminator named by the packet. |
 | `regressed` | `regressed` | Revisit the test or code change before merge. |
 | `unchanged` | `unchanged` | Add the missing discriminator or stronger assertion named by the packet. |
@@ -298,7 +341,7 @@ The agent review summary uses schema version `0.1`:
     "next_action": {
       "kind": "improved",
       "summary": "Static grip improved.",
-      "recommended_action": "Keep the focused test and include this receipt in review."
+      "recommended_action": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review."
     }
   },
   "next_command": null,
@@ -308,7 +351,7 @@ The agent review summary uses schema version `0.1`:
     "headline": "Review packet is ready for seam 67fc764ba37d77bd.",
     "what_changed": "Static movement is improved (weakly_gripped -> strongly_gripped).",
     "evidence": "Review target/ripr/reports/agent-receipt.json with target/ripr/workflow/agent-verify.json.",
-    "remaining": "Keep the focused test and include this receipt in review.",
+    "remaining": "Run the focused test and keep it only if it passes; ripr did not run it. Then include this receipt in review.",
     "reviewer_should_inspect": [
       "target/ripr/reports/agent-receipt.json",
       "target/ripr/workflow/agent-verify.json"
@@ -323,6 +366,123 @@ The agent review summary uses schema version `0.1`:
 }
 ```
 
+## Amendment (#3906): next command selection
+
+The legacy rule "first missing artifact" sent a user with a prepared repair
+attempt back into the manual snapshot loop, sent a fresh workspace to a Bash
+redirect into `target/ripr/workflow/` before that directory existed, and sent
+a failed attempt to `ripr agent receipt`. `ripr agent status` now also reads
+`target/ripr/repair-attempts/*/attempt.json` through the attempt authority
+(`app::repair_attempt::inventory_repair_attempts`, the same validation the
+after phase applies) and selects `next_command` in this order:
+
+1. **Unreadable inventory.** If any attempt manifest fails validation, select
+   nothing and warn `repair_attempt_unreadable`, naming the attempt.
+2. **Resume.** Exactly one attempt in `awaiting_edit` whose after phase would
+   evaluate the current `HEAD` as the attempt's: its recorded `next_command`
+   (`--attempt <id> --phase after`), step `repair_attempt_after`. Status asks
+   the attempt authority's head rule
+   (`app::repair_attempt::after_phase_head_admission`), the same one the after
+   phase applies: the prepared head, or for an ordinary attempt a commit that
+   descends from it (a focused test committed between the phases). A
+   trust-bound attempt needs the exact prepared head.
+3. **Ambiguous.** More than one such attempt: select nothing and warn
+   `ambiguous_repair_attempts`, listing each attempt's command. Status never
+   picks the newest (docs/REPAIR_ATTEMPT.md).
+4. **Head unknown.** `HEAD` cannot be read, so rules 2 and 3 match no
+   attempt. If any attempt is `awaiting_edit`, select nothing and warn
+   `repair_attempt_head_unknown` rather than restarting its seam.
+5. **Restart.** Group attempts by seam. A seam with a `ready_to_finish`
+   attempt is finished. A seam whose attempts all ended (`failed`, `stale`,
+   `incomparable`), were prepared at another `HEAD`, or never left `prepared`
+   is open. (Refined below: a `ready_to_finish` attempt finishes its seam only
+   through the receipt issued for it.) An ordinary attempt "prepared at
+   another `HEAD`" is one whose `HEAD` no longer descends from its prepared
+   head; its reason repeats the after phase's recovery (`git reset --soft
+   <prepared-head>` then the attempt's after command) before the new-attempt
+   route. Exactly one open seam: `ripr agent repair --root <root> --seam-id
+   <seam> --phase before`, step `repair_attempt_before`. Several: select
+   nothing and warn `multiple_open_repair_seams`, listing each start command.
+6. **Legacy loop.** Otherwise the first missing artifact's command, with two
+   refusals. With no known seam the next command is `ripr pilot --root
+   <root>` (step `select_seam`), never a `<seam-id>` placeholder, except
+   that a complete pilot summary whose top seam recorded no repair start
+   (`next.repair_command: null`) selects nothing and warns
+   `pilot_found_no_repair_target`: rerunning pilot would rank the same seam
+   again, so the warning names the hand step (a test in the seam's own
+   crate) instead. Likewise a complete pilot summary that ranked no seam,
+   recorded no repair card (`python_first_use` absent, `null`, or status
+   `no_python_findings` or `no_repair_cards`; `analysis_unavailable` is not
+   this fact), routed the code to `ripr check` (`language_routes.state:
+   required` with a recorded route command) and recorded no repair start
+   selects nothing and warns `pilot_routed_to_check_no_repair_target`, for
+   any routed language. For an enabled route the warning names the recorded
+   check command and the hand step (add or strengthen a test, then rerun
+   that check); for a route with `enabled: false` it names the enable step
+   (add the language to `[languages] enabled` in `ripr.toml`) instead. It
+   also says to rerun pilot if the workspace changed since that run. A
+   timed-out, missing or unreadable summary still routes to pilot. When the
+   first missing artifact's directory does not exist and the seam is known,
+   the next command starts a repair attempt, which writes the workflow
+   artifacts itself, instead of redirecting into the missing directory.
+
+`status` is `incomplete` whenever a next command is selected. The JSON report
+adds `repair_attempts` (`attempt_id`, `seam_id`, `state`, `head_current`,
+`disposition`, `manifest`, `command`); `missing_commands` keeps its legacy
+meaning. `ripr agent review-summary` carries the same `next_command`.
+
+### Refinement: the attempt's outcome, not only its state
+
+`ready_to_finish` means the edit cage admitted the edit; it does not mean the
+gap closed. Status reads the workflow receipt against each `ready_to_finish`
+attempt, matching the receipt's `repair_attempt` binding (attempt ID, after
+`HEAD`, delta and packet digests) to the attempt's after verdict, and
+interprets it through the receipt owner (`output::agent_receipt`):
+
+- `advisory` with movement `improved`: `finished`. Status words it as static
+  grip improved (receipt advisory), not as a closed gap. The loop is
+  `complete` only when the current `HEAD` is the head the attempt's after
+  phase recorded (which may descend from its prepared head); otherwise a
+  `repair_receipt_stale` warning names both heads.
+- movement `unchanged`, `changed`, or `regressed`, whatever the receipt
+  status: `gap_open`. The seam is open, and rule 5 starts a new attempt whose
+  reason names the receipt status, movement, staleness, and the receipt's own
+  next action.
+- anything else (an `invalid` or `incomplete` improved receipt, a new or
+  resolved seam, or no receipt issued for the attempt): `unconfirmed`. The seam
+  is not restarted and a `repair_receipt_unconfirmed` warning says why.
+- the attempt retained a terminal receipt: status reads that attempt-local
+  artifact (hashes, path, and after-verdict binding) even when the
+  compatibility file now holds another attempt's receipt. Replacing, deleting,
+  or corrupting `target/ripr/reports/agent-receipt.json` does not change the
+  retained reading.
+- a declared attempt-local receipt is missing, digest-mismatched, path-escaped,
+  or bound to a different after verdict: `receipt.unavailable` is true and the
+  reading is `unconfirmed`. Status does not fall back to another attempt's
+  compatibility receipt.
+- a legacy manifest with no `terminal_artifacts` whose workflow receipt is bound
+  to another attempt: the workflow keeps one compatibility receipt, so a later
+  attempt's after phase superseded this attempt's. `receipt.superseded_by` names
+  that attempt; the reading is `unconfirmed`, because the earlier outcome cannot
+  be reconstructed, and the warning names the new-attempt command for the seam
+  in case its gap is still open.
+
+An after phase that refuses after selecting its attempt records the refusal on
+the attempt (`last_after_refusal`, owned by `app::repair_attempt`): the final
+error followed by the cause and recovery the after phase printed (for example
+the changed analysis inputs), bounded by the attempt authority. Rule 2 still
+resumes that attempt, but its reason names the refusal before repeating the
+command. The next after phase that reaches the durable finish clears it.
+
+Rerunning the after phase of an attempt that is no longer awaiting its edit is
+refused with the attempt's documented state, whether it finished or ended, the
+workflow receipt path, and the next step (`ripr agent status`, or a new
+`--phase before` while the gap is open).
+
+Recorded resume commands keep the `--root` spelling the before phase was given,
+because the manifest is the authority for that command (including the
+`--edit-authorized` suffix of trust-bound Python attempts).
+
 ## Required Evidence
 
 The first LLM work-loop slice requires:
@@ -332,8 +492,8 @@ The first LLM work-loop slice requires:
   packet, agent verify, and agent receipt;
 - recoverable seam identity when an existing artifact names one;
 - one missing-input command for every absent artifact;
-- `next_command` set to the first missing command, or `null` when no required
-  artifact is missing;
+- `next_command` selected by the #3906 order below, or `null` when nothing is
+  missing or when status cannot choose honestly;
 - stale-looking warnings for timestamp drift between verify and snapshots, and
   between receipt and verify;
 - output schema, traceability, capability, and campaign entries that point to
@@ -438,6 +598,18 @@ The LLM work loop must not:
 - No automatic edits, generated tests, runtime mutation execution, speculative
   LSP features, or new public crates are added.
 
+## Amendment (#4396): selected-root editor command copy
+
+The LSP action payload keeps `root: "."` as a portable role, while its
+copyable command binds the selected workspace as an absolute `--root`. The VS
+Code copy handler accepts a fixed agent-loop action only when its command body
+exactly matches the server template for the selected workspace (or its realpath)
+and an output redirect, when present, names the declared artifact under that
+**same** root spelling. Relative redirects, another workspace root, traversal,
+extra shell tokens, and ambiguous quoting fail closed. The separate gap command
+labels retain their own bounded legacy contract. Copying a command is advisory;
+it does not execute the command or grant edit authority.
+
 ## Test Mapping
 
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_reports_missing_artifacts_and_next_commands`
@@ -445,6 +617,15 @@ The LLM work loop must not:
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_recovers_seam_id_from_verify_packet_or_brief`
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_warns_when_verify_or_receipt_look_stale`
 - `crates/ripr/src/app/agent_status.rs::tests::agent_status_quotes_paths_with_spaces`
+- `crates/ripr/src/app/agent_status.rs::tests::agent_status_refuses_to_choose_between_open_seams`
+- `crates/ripr/src/app/agent_status.rs::tests::agent_status_does_not_restart_a_seam_that_finished`
+- `crates/ripr/src/app/agent_status.rs::tests::agent_status_never_redirects_into_a_missing_workflow_directory`
+- `crates/ripr/src/app/agent_status.rs::tests::agent_status_stops_when_pilot_routed_changed_code_to_check`
+- `crates/ripr/tests/cli_smoke.rs::agent_status_routes_a_fresh_workspace_to_pilot`
+- `crates/ripr/tests/cli_smoke.rs::agent_status_resumes_the_current_awaiting_repair_attempt`
+- `crates/ripr/tests/cli_smoke.rs::agent_status_resumes_only_the_current_attempt_and_refuses_to_guess`
+- `crates/ripr/tests/cli_smoke.rs::agent_status_restarts_a_failed_attempt_and_completes_a_finished_one`
+- `crates/ripr/tests/cli_smoke.rs::agent_status_selects_nothing_past_an_unreadable_attempt`
 - `crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_extracts_seam_and_commands`
 - `crates/ripr/src/app/agent_workflow.rs::tests::workflow_manifest_errors_when_brief_does_not_return_seam`
 - `crates/ripr/src/cli/agent.rs::tests::agent_status_parses_root_and_json`
@@ -455,6 +636,17 @@ The LLM work loop must not:
 - `crates/ripr/src/cli/commands.rs::tests::agent_start_rejects_missing_root_before_analysis`
 - `crates/ripr/src/agent/loop_commands.rs::tests::workflow_commands_match_existing_status_templates`
 - `crates/ripr/src/agent/loop_commands.rs::tests::editor_commands_match_existing_lsp_templates`
+- `crates/ripr/src/agent/loop_commands.rs::tests::anchored_redirect_target_roots_relative_outputs_at_root`
+- `crates/ripr/src/agent/loop_commands.rs::tests::bound_roots_render_absolute_and_relative_roots_stay_portable`
+- `crates/ripr/src/agent/loop_commands.rs::tests::bound_root_keeps_a_unix_backslash_directory_name`
+- `crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_awaiting_and_missing_commands_retain_literal_unix_root`
+- `crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_failed_restart_retains_literal_unix_root`
+- `crates/ripr/src/mcp/repair_root_tests.rs::durable_inventory_open_gap_restart_retains_literal_unix_root`
+- `crates/ripr/src/app/agent_status.rs::tests::pilot_select_command_binds_raw_and_bound_roots_once`
+- `crates/ripr/tests/generated_review_workflow.rs::generated_status_command_runs_from_a_foreign_working_directory`
+- `crates/ripr/src/lsp/tests.rs::agent_loop_command_payloads_stay_root_anchored_for_platform_roots`
+- `editors/vscode/test/suite/extension.test.ts::agent loop commands must equal the body the server renders from the payload (#4225)`
+- `editors/vscode/test/suite/extension.test.ts::real server surfaces seam diagnostic, hover provider, and agent actions`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_json_is_structured_and_advisory`
 - `crates/ripr/src/output/agent_workflow.rs::tests::workflow_markdown_lists_commands_and_boundaries`
 - `crates/ripr/src/output/agent_receipt.rs::tests::agent_receipt_json_selects_changed_seam`
@@ -471,6 +663,7 @@ The LLM work loop must not:
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_missing_artifact`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixture_pins_stale_artifact`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_llm_work_loop_review_summary_fixtures_pin_path_arguments`
+- `crates/ripr/src/app/agent_review_summary/root_tests.rs::review_summary_commands_retain_literal_unix_root_and_redirect`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_reports_missing_receipt_with_next_command`
 - `crates/ripr/src/app/agent_review_summary.rs::tests::agent_review_summary_markdown_names_review_focus_and_limits`
 - `crates/ripr/src/cli/agent.rs::tests::agent_review_summary_parses_root_json_and_human_default`
@@ -484,8 +677,14 @@ The LLM work loop must not:
 
 ## Implementation Mapping
 
+- `crates/ripr/src/cli/commands_agent_support.rs` shares native CLI identity-path
+  formatting and produces admitted receipt provenance; command dispatch in
+  `crates/ripr/src/cli/commands/agent.rs` reuses it for verify and receipt inputs.
+
 - `crates/ripr/src/app/agent_status.rs` builds and renders the report from
-  existing artifact files.
+  existing artifact files and the repair-attempt inventory.
+- `crates/ripr/src/app/repair_attempt.rs::inventory_repair_attempts` lists and
+  validates attempt manifests read-only for status.
 - `crates/ripr/src/app/agent_review_summary.rs` joins existing agent status,
   workflow, receipt, cockpit, repo exposure, optional LSP cockpit, and local
   CI artifact file state into review-summary JSON and Markdown.
@@ -494,6 +693,8 @@ The LLM work loop must not:
 - `crates/ripr/src/agent/loop_commands.rs` owns internal command and artifact
   templates for status, brief, LSP copy actions, pilot next commands, generated
   CI paths, and cockpit missing-input commands.
+- `editors/vscode/src/client.ts` validates copied LSP command templates against
+  the selected workspace root and artifact redirect before clipboard write.
 - `crates/ripr/src/agent/provenance.rs` hashes receipt artifacts with SHA-256.
 - `crates/ripr/src/cli/agent.rs` parses the status, start, and review-summary
   subcommands.
@@ -520,6 +721,26 @@ The LLM work loop must not:
   metrics.
 
 ## Metrics
+
+### Legacy repo-exposure refusal (#5115)
+
+If canonical artifact parsing fails, a JSON document with string schema_version,
+scope `repo`, an array of seams and no artifact envelope receives an explicit
+legacy/unknown-producer refusal. The diagnostic names the current RIPR contract
+and a selected-root regeneration command, writing `recovered.repo-exposure.json`
+directly within that root so no workflow directory must already exist. It names
+the affected input for replacement without treating a shared-consumer label as
+a CLI option. The selected root is bound at production for foreign-CWD replay.
+This diagnosis never accepts
+legacy evidence or authenticates an executable. Malformed/unrelated JSON and
+present-but-invalid envelopes retain canonical parsing errors. Existing current
+artifact commitment and root/currentness validation still govern acceptance.
+Recovery labels the Bash/Git Bash form and the PowerShell form translated by
+the existing Markdown command helper. If that helper refuses translation, the
+diagnostic labels the command Bash/Git Bash only and names PowerShell recovery
+as unavailable. Root apostrophes and dollar signs remain literal path text.
+Printed recovery still requires the current installed RIPR executable; this
+partial repair does not bind PATH or qualify installed binary substitution.
 
 - `agent_loop_status_available`
 - `agent_workflow_manifest_available`

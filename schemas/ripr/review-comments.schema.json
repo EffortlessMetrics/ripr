@@ -68,11 +68,19 @@
     "review_input": {
       "$ref": "#/$defs/review_input"
     },
+    "producer_review_input": {
+      "description": "Exact separately admitted compact producer packet on explicit fresh repair guidance; distinct from the live renderer projection.",
+      "$ref": "#/$defs/producer_review_input"
+    },
     "analysis_outcome": {
       "$ref": "#/$defs/analysis_outcome_projection"
     },
     "static_gap_fallback": {
       "$ref": "#/$defs/static_gap_fallback"
+    },
+    "inputs": {
+      "description": "Supplied-input disclosure. Present only on routes that consume an explicit artifact instead of rerunning diff analysis; `--gap-ledger` mode emits `inputs.gap_ledger`.",
+      "$ref": "#/$defs/inputs"
     },
     "causal_comparison": {
       "type": "object",
@@ -323,6 +331,16 @@
         "findings": { "type": "array" }
       }
     },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gap_ledger": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
     "static_gap_fallback": {
       "type": "object",
       "additionalProperties": false,
@@ -347,6 +365,104 @@
           }
         },
         "claim_boundary": { "type": "string", "minLength": 1 }
+      }
+    },
+    "producer_review_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "findings",
+        "projection_sha256",
+        "reviewed_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "ripr.review_input.v1"
+        },
+        "root": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root_identity": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head_sha": {
+          "type": "string",
+          "minLength": 1
+        },
+        "head_tree": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_diff_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "producer_check_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "check_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_complete": {
+          "type": "boolean"
+        },
+        "total_finding_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projected_finding_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projection_limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projection_truncated": {
+          "type": "boolean"
+        },
+        "projection_selection_policy": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_selection_policy_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projection_sha256": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_outcome": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/analysis_outcome_projection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "findings": {
+          "type": "array"
+        }
       }
     },
     "analysis_outcome_projection": {
@@ -532,6 +648,7 @@
             "diff_scope_oversized",
             "language_adapter_unavailable",
             "language_scope_unsupported",
+            "changed_file_absent_from_worktree",
             "producer_timeout",
             "producer_failure"
           ]
@@ -666,6 +783,20 @@
         "classified_seams_considered": {
           "type": "integer",
           "minimum": 0
+        },
+        "unevaluated_seams": {
+          "description": "Present only when seams on changed lines and in changed owner functions filled every review slot and the rest of the scope was not evaluated.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "absent_changed_files": {
+          "description": "Changed source files named by the diff that are not regular files in the working tree (sparse checkout or local delete). Present only when at least one such file was dropped.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
         "downstream_consumable": {
           "type": "boolean"
@@ -883,14 +1014,11 @@
       "additionalProperties": true,
       "required": [
         "id",
-        "seam_id",
         "canonical_gap_id",
         "dedupe_key",
         "kind",
         "grip_class",
         "severity",
-        "owner",
-        "seam",
         "source_location",
         "reason",
         "suggested_test",
@@ -901,7 +1029,15 @@
           "type": "string",
           "minLength": 1
         },
+        "source": {
+          "const": "gap_decision_ledger"
+        },
+        "gap_id": {
+          "type": "string",
+          "minLength": 1
+        },
         "seam_id": {
+          "description": "Seam source-locator identity. Required on diff-scoped cards. A gap-ledger card carries it only when its GapRecord has producer-owned seam identity; it is never synthesized from the gap, file or line.",
           "type": "string",
           "minLength": 1
         },
@@ -1006,6 +1142,119 @@
             "unknown"
           ]
         }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["source"],
+            "properties": { "source": { "const": "gap_decision_ledger" } }
+          },
+          "then": {
+            "required": ["gap_id", "repair_card"],
+            "properties": {
+              "placement": {
+                "properties": { "mode": { "const": "gap_record_anchor" } }
+              },
+              "repair_card": {
+                "$ref": "#/$defs/gap_repair_card"
+              }
+            }
+          },
+          "else": {
+            "required": ["seam_id", "owner", "seam"],
+            "properties": {
+              "suggested_test": {
+                "properties": {
+                  "recommended_file": { "type": "string" },
+                  "recommended_name": { "type": "string" }
+                }
+              },
+              "placement": {
+                "properties": {
+                  "mode": {
+                    "enum": [
+                      "exact_seam_line",
+                      "owner_function_changed_line",
+                      "same_file_changed_line"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "gap_repair_card": {
+      "description": "GapRecord-backed repair card carried by every `source: gap_decision_ledger` comment. Produced by output::review_comments::gap_record_comment_json.",
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "gap_kind",
+        "changed_behavior",
+        "why_this_matters",
+        "repair",
+        "repair_route",
+        "evidence_ids",
+        "verification_commands",
+        "verify_command",
+        "source_artifact",
+        "authority_boundary"
+      ],
+      "properties": {
+        "gap_kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "changed_behavior": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "why_this_matters": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repair": {
+          "type": "string",
+          "minLength": 1
+        },
+        "repair_route": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["route_kind"],
+          "properties": {
+            "route_kind": {
+              "type": "string"
+            }
+          }
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verification_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "verify_command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authority_boundary": {
+          "type": "string"
+        }
       }
     },
     "seam": {
@@ -1058,7 +1307,8 @@
           "enum": [
             "exact_seam_line",
             "owner_function_changed_line",
-            "same_file_changed_line"
+            "same_file_changed_line",
+            "gap_record_anchor"
           ]
         }
       }
@@ -1279,10 +1529,18 @@
           ]
         },
         "recommended_file": {
-          "type": "string"
+          "description": "Working-set cards always carry a string (`not_applicable` for non-actionable cards). Gap-ledger cards carry null when the supplied repair route names neither a target file nor a related test.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "recommended_name": {
-          "type": "string"
+          "description": "Working-set cards always carry a string. Gap-ledger cards carry null when the supplied repair route names no related test.",
+          "type": [
+            "string",
+            "null"
+          ]
         },
         "near_test": {
           "type": [
@@ -1342,41 +1600,93 @@
             "null"
           ],
           "minLength": 1
+        },
+        "analysis_outcome_command": {
+          "description": "Optional working-set card command that writes the static analysis outcome beside the persisted verify artifact before agent receipt. Not project-test execution or repair eligibility.",
+          "type": "string",
+          "minLength": 1
+        },
+        "repair_command": {
+          "description": "Present only on an actionable card whose seam passed the fail-closed repair-packet flip (#3906): the `ripr agent repair ... --phase before` command that starts the repair transaction.",
+          "type": "string",
+          "minLength": 1
         }
       }
     },
     "suppressed": {
       "type": "object",
-      "additionalProperties": false,
+      "description": "A suppressed recommendation. Diff-scoped renders emit the seam variant; `--gap-ledger` renders emit the gap variant, whose anchor fields are nullable because ledger records may lack an anchor.",
       "required": [
-        "seam_id",
-        "file",
-        "line",
         "reason",
         "message"
       ],
-      "properties": {
-        "seam_id": {
-          "type": "string",
-          "minLength": 1
+      "anyOf": [
+        {
+          "description": "Diff-scoped seam suppression.",
+          "additionalProperties": false,
+          "required": [
+            "seam_id",
+            "file",
+            "line"
+          ],
+          "properties": {
+            "seam_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "file": {
+              "type": "string",
+              "minLength": 1
+            },
+            "line": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
-        "file": {
-          "type": "string",
-          "minLength": 1
-        },
-        "line": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "reason": {
-          "type": "string",
-          "minLength": 1
-        },
-        "message": {
-          "type": "string",
-          "minLength": 1
+        {
+          "description": "Gap-ledger record suppression.",
+          "additionalProperties": false,
+          "required": [
+            "gap_id"
+          ],
+          "properties": {
+            "gap_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "file": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "line": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1
+            },
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "message": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
-      }
+      ]
     },
     "non_claims": {
       "type": "object",

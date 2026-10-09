@@ -56,8 +56,14 @@ pub(super) fn parse_options(args: &[String]) -> Result<Options, String> {
 
 pub(super) fn run(options: Options) -> Result<(), String> {
     ensure_command_root(&options.root, "swarm ingest")?;
-    let result_path = validate_result_path(&options.root, &options.result)?;
-    let contents = std::fs::read_to_string(&result_path).map_err(|err| {
+    let root = options.root.canonicalize().map_err(|err| {
+        format!(
+            "canonicalize swarm ingest root {} failed: {err}",
+            options.root.display()
+        )
+    })?;
+    let result_path = validate_result_path(&root, &options.result)?;
+    let contents = crate::bounded_input::read_to_string(&result_path).map_err(|err| {
         format!(
             "read swarm ingest --result {} failed: {err}",
             options.result.display()
@@ -66,18 +72,15 @@ pub(super) fn run(options: Options) -> Result<(), String> {
     let rendered = output::swarm_ingest::render_swarm_ingest_json(
         &contents,
         &output::outcome::display_path(&options.result),
+        &root,
     )?;
     print!("{rendered}");
     Ok(())
 }
 
+/// `root` must already be canonicalized: the forbidden-edit path comparison
+/// anchors absolute edited-path spellings against it (#5984).
 fn validate_result_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
-    let root = root.canonicalize().map_err(|err| {
-        format!(
-            "canonicalize swarm ingest root {} failed: {err}",
-            root.display()
-        )
-    })?;
     let candidate = if path.is_absolute() {
         path.to_path_buf()
     } else {
@@ -90,7 +93,7 @@ fn validate_result_path(root: &Path, path: &Path) -> Result<PathBuf, String> {
         )
     })?;
 
-    if !candidate.starts_with(&root) {
+    if !candidate.starts_with(root) {
         return Err(format!(
             "swarm ingest --result {} must stay under root {}",
             path.display(),

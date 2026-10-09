@@ -43,6 +43,7 @@
     "baseline_resolved": 0,
     "baseline_still_present": 0,
     "blocking_candidates": 0,
+    "count_source": "not_measured",
     "new_policy_eligible": 0,
     "ripr_zero_state": "unknown",
     "suppressed": 0,

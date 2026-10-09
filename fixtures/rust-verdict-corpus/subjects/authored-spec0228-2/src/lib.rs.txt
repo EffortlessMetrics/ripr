@@ -1,0 +1,39 @@
+pub struct Meter {
+    count: u32,
+    other: u32,
+}
+
+impl Meter {
+    pub fn new() -> Self {
+        Meter { count: 0, other: 0 }
+    }
+
+    pub fn advance(&mut self) {
+        self.count += 1;
+    }
+
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn other(&self) -> u32 {
+        self.other
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advance_reads_back_through_the_getter() {
+        let mut c = Meter::new();
+        c.advance();
+        assert_eq!(c.count(), 1);
+    }
+
+    #[test]
+    fn other_starts_at_zero() {
+        assert_eq!(Meter::new().other(), 0);
+    }
+}

@@ -61,7 +61,9 @@ make-work campaign.
 
 Every normal swarm slice should finish the same way:
 
-- open a same-repo PR with one clear purpose;
+- open a same-repo PR as Draft with one clear purpose, and mark it Ready once
+  the head is final (only Draft -> Ready starts `Ripr Rust Small Result`; a
+  push after Ready needs Draft -> Ready again, see `docs/CI.md`);
 - wait for `Ripr Rust Small Result` and any touched-surface checks;
 - merge only when clean and current;
 - remove generated residue, isolated targets, and stale local branches or
@@ -278,3 +280,56 @@ commits as one new opaque patch.
 The source repository CI remains the final release and publish proof. A green
 swarm route proves development readiness; it does not replace source release
 authority.
+
+### Conflict dispositions and historical integration evidence
+
+The 0.11 release-qualified promotion remains owned by [ripr#1768](https://github.com/EffortlessMetrics/ripr/issues/1768)
+and #1769–1773. The canonical source runbook owns its current admission,
+qualification, constructor and exact-head merge procedure. Engineering
+history synchronization has its own source-proof denominator and does not
+grant package qualification or publication acceptance.
+
+**Dispositions.** #1770 gives every conflict, both-sides change,
+authority-sensitive survivor and generated consequence exactly one
+disposition. The allowed values are:
+
+- `select_source_authority`
+- `select_swarm_authority`
+- `semantic_union`
+- `regenerate_from_accepted_inputs`
+- `retain_both_distinct`
+- `exclude_source_repository_authority`
+- `exclude_swarm_only_control`
+- `superseded_historical_evidence`
+- `blocked_unknown`
+
+Each row names its semantic reason. "Ours", "theirs", a newer timestamp, or a
+clean auto-merge is not a disposition. Lockfiles and generated outputs are
+regenerated from accepted inputs, never hand-edited.
+
+A change made outside the conflict markers is also a manifest row. For
+example, a struct field one side added may be missing from the other side's
+new constructor.
+
+**CHANGELOG.** Resolve `CHANGELOG.md` as a `semantic_union`: the source
+parent's sections plus the swarm parent's `Unreleased` entries, each entry
+exactly once, and no new version section. Folding `Unreleased` into the
+staged `0.11.0` section happens after `J`, in the source release-copy step
+(ripr#1466).
+
+**Cache generations.** When both parents advanced a cache schema generation
+with different semantics, the joined analyzer takes a new generation distinct
+from both. Otherwise a cache written by either parent would be read as
+current.
+
+Earlier Sep27 trial counts and Sep28/Oct1 dates were historical observations,
+not current frozen inputs. Recompute exact parents, ranges, survivors and
+conflicts for each sync. A prior trial or rerere replay is never a reviewed
+resolution, and a parent failure needs retained parent proof.
+
+A release-qualified back-sync remains a separate two-parent boundary.
+Use the [back-sync verifier](BACK_SYNC_VERIFIER.md) against exact retained
+inputs and current protected-policy evidence. A squash-only destination
+cannot transport a history-preserving join; report that policy incompatibility.
+This runbook supplies no authority to change protections, create tags, publish
+packages or perform a release.

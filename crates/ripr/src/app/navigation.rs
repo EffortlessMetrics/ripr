@@ -7,6 +7,8 @@ use std::path::Path;
 pub(crate) struct FindingNavigation {
     explain_prefix: String,
     context_prefix: String,
+    list_prefix: String,
+    stub_prefix: String,
 }
 
 impl FindingNavigation {
@@ -14,6 +16,8 @@ impl FindingNavigation {
         Self {
             explain_prefix: "ripr explain".to_string(),
             context_prefix: "ripr context".to_string(),
+            list_prefix: "ripr check".to_string(),
+            stub_prefix: "ripr agent stub".to_string(),
         }
     }
 
@@ -24,6 +28,34 @@ impl FindingNavigation {
     pub(crate) fn context_command(&self, selector: &str) -> String {
         format!("{} --at {}", self.context_prefix, shell_arg(selector))
     }
+
+    /// The one-step `ripr agent stub` route from a finding location to a
+    /// runnable test (#5355). It reads the working tree at the same root.
+    pub(crate) fn stub_command(&self, file: &str, line: usize) -> String {
+        format!(
+            "{} --at {}",
+            self.stub_prefix,
+            shell_arg(&format!("{file}:{line}"))
+        )
+    }
+
+    /// The `ripr check --json` command that lists finding ids for the same
+    /// scope (root, base or diff, `--worktree`, mode), so a selector miss
+    /// recovers against the analysis it asked about. Only meaningful for a
+    /// fresh scope: `ripr check` has no `--from`.
+    pub(crate) fn list_command(&self) -> String {
+        format!("{} --json", self.list_prefix)
+    }
+}
+
+/// The drill-in guidance the human surfaces print (#4321). The block must
+/// never vanish silently: every check, including a `--worktree` run without
+/// an artifact, prints sibling commands that replay its own input identity.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum FindingDrillIn {
+    /// Copy-pasteable `ripr explain` / `ripr context` commands that preserve
+    /// this run's input identity (`--worktree` included).
+    Commands(FindingNavigation),
 }
 
 /// Build sibling commands that preserve the input identity needed to replay a
@@ -34,6 +66,39 @@ pub(crate) fn finding_navigation(
     artifact_path: Option<&Path>,
     mode_explicit: bool,
 ) -> FindingNavigation {
+    finding_navigation_with_worktree(input, artifact_path, mode_explicit, false)
+}
+
+/// [`finding_navigation`] for a run that may have analyzed the working tree:
+/// `worktree` carries `--worktree` forward so the drill-in commands see the
+/// same uncommitted edits as the check that listed the finding.
+pub(crate) fn finding_navigation_with_worktree(
+    input: &CheckInput,
+    artifact_path: Option<&Path>,
+    mode_explicit: bool,
+    worktree: bool,
+) -> FindingNavigation {
+    let args = navigation_args(input, artifact_path, mode_explicit, worktree);
+    // `ripr check` has no `--from`: the listing always re-runs the original
+    // scope, even when the drill-in commands replay a written artifact.
+    let list_args = navigation_args(input, None, mode_explicit, worktree);
+    FindingNavigation {
+        explain_prefix: format!("ripr explain {args}"),
+        context_prefix: format!("ripr context {args}"),
+        list_prefix: format!("ripr check {list_args}"),
+        stub_prefix: format!(
+            "ripr agent stub --root {}",
+            shell_arg(&input.root.display().to_string())
+        ),
+    }
+}
+
+fn navigation_args(
+    input: &CheckInput,
+    artifact_path: Option<&Path>,
+    mode_explicit: bool,
+    worktree: bool,
+) -> String {
     let mut args = vec![format!(
         "--root {}",
         shell_arg(&input.root.display().to_string())
@@ -49,8 +114,13 @@ pub(crate) fn finding_navigation(
             "--diff {}",
             shell_arg(&diff_file.display().to_string())
         ));
-    } else if let Some(base) = input.base.as_deref() {
-        args.push(format!("--base {}", shell_arg(base)));
+    } else {
+        if let Some(base) = input.base.as_deref() {
+            args.push(format!("--base {}", shell_arg(base)));
+        }
+        if worktree {
+            args.push("--worktree".to_string());
+        }
     }
 
     if mode_explicit || input.mode != Mode::Draft {
@@ -72,11 +142,7 @@ pub(crate) fn finding_navigation(
         ));
     }
 
-    let args = args.join(" ");
-    FindingNavigation {
-        explain_prefix: format!("ripr explain {args}"),
-        context_prefix: format!("ripr context {args}"),
-    }
+    args.join(" ")
 }
 
 #[cfg(test)]
@@ -119,9 +185,50 @@ mod tests {
         );
     }
 
+    /// `check --worktree` lists findings from uncommitted edits; its drill-in
+    /// commands must analyze the same edits, not the committed history.
+    #[test]
+    fn finding_navigation_carries_worktree_scope_after_the_base() {
+        let input = CheckInput {
+            base: Some("HEAD".to_string()),
+            ..CheckInput::default()
+        };
+        let navigation = finding_navigation_with_worktree(&input, None, false, true);
+        assert_eq!(
+            navigation.explain_command("src/calc.py:5"),
+            "ripr explain --root . --base HEAD --worktree src/calc.py:5"
+        );
+        assert_eq!(
+            navigation.context_command("src/calc.py:5"),
+            "ripr context --root . --base HEAD --worktree --at src/calc.py:5"
+        );
+        // A selector miss lists ids from the same worktree scope.
+        assert_eq!(
+            navigation.list_command(),
+            "ripr check --root . --base HEAD --worktree --json"
+        );
+        // An artifact already records the worktree diff; `--from` wins.
+        let from_artifact =
+            finding_navigation_with_worktree(&input, Some(Path::new("wt.json")), false, true);
+        assert_eq!(
+            from_artifact.explain_command("probe:id"),
+            "ripr explain --root . --from wt.json probe:id"
+        );
+        // `ripr check` has no `--from`: the listing re-runs the worktree scope.
+        assert_eq!(
+            from_artifact.list_command(),
+            "ripr check --root . --base HEAD --worktree --json"
+        );
+    }
+
     #[test]
     fn finding_navigation_preserves_explicit_draft_mode() {
-        let input = CheckInput::default();
+        // #3952: the default carries no base, so name the base explicitly;
+        // the test pins mode preservation, not the old default.
+        let input = CheckInput {
+            base: Some("origin/main".to_string()),
+            ..CheckInput::default()
+        };
         let navigation = finding_navigation(&input, None, true);
 
         assert_eq!(

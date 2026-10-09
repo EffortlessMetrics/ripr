@@ -1,0 +1,105 @@
+tree f86563247db04c52e090e2b0420911db813de28b
+parent 863bb766d06a80d845852f3b03898ccc9c998926
+author Steven Zimmerman, CPA <15812269+EffortlessSteven@users.noreply.github.com> 1789326461 -0400
+committer GitHub <noreply@github.com> 1789326461 -0400
+gpgsig -----BEGIN PGP SIGNATURE-----
+ 
+ wsFcBAABCAAQBQJqpvR9CRC1aQ7uu5UhlAAArW4QAJfuDPF7zZBnZxgq6sQKl/a5
+ Q4kWZLpks8WxD9udhPSb92r7f9KsydvFC9NluMXsOMoT40TMsXVNdxpJQKAXp6qn
+ +cgbhZ2DESO8qdH5jOExYHW2v+y5zRipfJV8QFjVPLJX7hSrDo3irvdUpZaChMS7
+ j0RUk2CxF+MbSnzz+QpswbyWY0AcZQ6CHq0Ws6wRkf1ttyXhKhFxUkcV1vurHrYn
+ fHqHKs4s/HRkoMuCnI6dgFd7bcDUabcGxfSZlLa8uxBiNoSWYq0Z5X6xQSbE8RFu
+ rX/foCCKt+5lZuKSbVsBPZ1KF24CKqf3kafJFuRiI6+IJ/gbPJdqGwB2LpZWExsA
+ dW5TtOG1LKtg2Hvjk/Le5ksHcnUgT+Q7Dj9asua6XHWCtea9UBcEsvfs8K4JNjpj
+ dRqydqhYi5JaM0hVDuzM8n2JWoi+5Cz8zGqEIRJLONN0REkpjcqTkTFHPut9KWL3
+ amP8g5lQ9GkgzBzs334CVcPKSRyPGg8d3jNuLVWUDUBR7BQffkT/++hLUfjKjDMt
+ 8VszA1GRSPPHSf6Pw5Jixq8tFGuVtFPOrRJGCkT3gb5qZfZhVw++8fdQJWTSSiPG
+ QgHWzN+vw4uKF7rkSQ+LJXUsK0RZP/eRAME/HjDJt7lGz1Vbi9t/r7jfBrtuH3ua
+ JvOnAA/cMh6I1repPn4c
+ =JjzQ
+ -----END PGP SIGNATURE-----
+ 
+
+analysis(rust): parser-backed shadow facts for seam-callee defeat (#3727 slice A) (#3739)
+
+* feat(analysis): parser-backed shadow facts for seam-callee defeat (#3727 slice A)
+
+The wrapper-seam and guarded-match shadow scans relied on byte-level
+lexical scanners over masked bodies. This slice adds parser-produced
+body facts and routes both shadow consumers through one flag-law
+authority:
+
+- FunctionFact/TestFact gain nested_fn_names and let_bindings
+  (LetBindingFact { line, name }), produced by an ast::Fn/ast::LetStmt
+  descent in the rust-analyzer summarizer (ra.rs) and left empty by the
+  lexical fallback (parser-only, mirroring probe_shapes).
+- extract/shadow.rs gains the fact twins (fact_body_defines_callee_fn,
+  fact_body_let_shadow_line, extract_pattern_words) and ShadowAuthority:
+  parser-backed files decide from facts; fallback files (or files absent
+  from the index) run the byte scanners byte-identically. THE FLAG, not
+  set emptiness, is the discriminator.
+- Both consumers switch: the SeamCalleeCall relation
+  (classify/related_tests.rs) reads the test's fact fields when the file
+  is parser-backed, and the guarded Result match scanner gains
+  guarded_result_match_scan_with_shadow_authority driven by
+  extract_parser_oracles.
+- FILE_FACT_CACHE_SCHEMA_VERSION 1.7 -> 1.8: warm pre-extension caches
+  cannot serve parser-backed files without the fact fields (the flag law
+  would read them as real no-shadow).
+
+Zero classification drift: scanner-equivalent semantics at line
+granularity; goldens check passes untouched.
+
+* fix(analysis): close the synthetic shadow-fact wrapper and share the scan's coordinate base (#3739 review)
+
+The wrapper in shadow_facts_for_body_text opened 'fn ... {' but never
+closed it, so SourceFile::parse reported errors on every harness body and
+the fail-closed branch returned empty facts — parser-backed harness
+subjects then read 'no shadow' and a closure-local binding could
+impersonate the wrapper seam's callee (devin h0fZ1, codex h6Z9y, gemini
+h6ZRp, coderabbit h6cfM). The wrapper is now a complete fn item with the
+closing brace on its own line, leaving every body-relative offset intact.
+
+The parser facts fed to guarded_result_match_scan_with_shadow_authority
+used the fn-keyword line as their coordinate base while the scan's
+use-site offset counts 0-based lines from the top of function_text
+(attributes included). With attribute lines above the fn, a let AFTER a
+guarded match could suppress that earlier oracle (coderabbit h6cfG); the
+facts now share the scan text's base, matching what the lexical scanner
+over the same text decides.
+
+Regression tests: body_text_wrapper_produces_non_empty_facts_for_harness_
+bodies and parser_path_shadow_facts_share_the_scan_text_coordinate_base —
+both verified to fail against the pre-fix code.
+
+* fix(analysis): bump classified-seam cache generations for parser-backed shadow facts (#3739 review)
+
+The shadow-authority flag law changes classified-seam content on
+parser-backed files, but the PR only bumped the file-fact generation.
+The classified-seam cache loads BEFORE any file-fact rebuild — a warm hit
+returns classified seams without re-reading a single file — so a warm
+1.11 envelope would serve pre-#3727 shadow classification indefinitely
+(codex h6Z9w). The outer generation moves 1.11 -> 1.12, the sharded
+0.17 -> 0.18, and the compact 0.18 -> 0.19, following the same semantic
+transition pattern as every prior classification change.
+
+Tests: the version-pin test documents the new generations, and
+classified_generation_before_parser_backed_shadow_facts_is_a_miss seeds
+an envelope under the pre-#3727 generation with identical identity
+fields and proves the current key misses. The RIPR-SPEC-0175 policy
+impact records the classified-generation law.
+
+* test(analysis): make the shadow flag-law fixture reach the captured-call gate (#3739 review)
+
+The SHADOWING_TEST_SOURCE fixture used a bare read ('let r =
+try_parse_summary;'), which extract_call_facts never records as a call —
+the three flag-law tests passed vacuously, before either shadow authority
+ran (coderabbit h6ce-). The binding now initializes a closure and the
+fixture invokes it, so the exact-name call gate is reached and both the
+parser-backed and lexical authorities must defeat the admit.
+
+Also: extract_pattern_words clones and clears the accumulator instead of
+mem::take, keeping its capacity across words (gemini h6ZRu, output
+identical); docs/specs/README.md regains its '# Specs' header with the
+intended RIPR-SPEC-0175 index-row update moved to the actual index entry
+instead of prepended above the header (gemini h6ZRv, coderabbit h6cfV).

@@ -1,0 +1,40 @@
+{
+  "schema_version": "1.0",
+  "kind": "repair_card_budget_decision_receipt",
+  "decision": "RIPR-SPEC-0196",
+  "status": "ratified_synthetic_scope",
+  "ratified_defaults": {
+    "max_detail_items": 16,
+    "max_serialized_bytes": 65536,
+    "max_inline_detail_bytes": 4096,
+    "field_set": "RIPR-SPEC-0192 RepairCardV1 default fields, unchanged"
+  },
+  "evidence": {
+    "synthetic": {
+      "expectations": "metrics/repair-card-usability/ratified-expectations.json",
+      "report_command": "cargo xtask repair-card-usability-report",
+      "scope": "four deterministic synthetic fixture profiles measured in CI"
+    },
+    "real_attempts": {
+      "state": "not_measurable",
+      "denominator_authority": "metrics/rust-repair-trust/corpus.json (#1702/#1579 counting authority, reused, zero attempt cases at ratification time)",
+      "note": "Synthetic fixtures are reported separately and cannot ratify real usability; exclusions and observations stay in the denominator."
+    }
+  },
+  "limitations": [
+    "The ratification covers synthetic fixture profiles only; it makes no claim about real repair usability, route correctness, model behavior, or support readiness.",
+    "Wrong-target, missing-field, stale-action, stop-condition, and artifact-archaeology incident rates are not_measurable until the governed corpus carries attempt cases; no default field was removed on this evidence.",
+    "The synthetic profiles exercise one Rust predicate-boundary seam shape; other languages, seam kinds, and oversized witness payloads are not represented in the measured sample.",
+    "Provider, model, client, and attempt identities are execution telemetry of the future real-attempt measurement, not semantic product identity, and are not ranked here.",
+    "On the single-seam synthetic profiles the compact card wire is not smaller than the single-seam packet wire (both are small; the card carries its envelope, nine detail references, and digests). Card-vs-packet size is reported as a measurement (card_bytes_below_packet_bytes, packet_over_card_percent) and is not a ratification claim.",
+    "The synthetic profiles carry no admitted related-test target, so repair-route readiness stays closed and every measured card lacks a next action; actionable-route card wire sizes are not covered by this sample."
+  ],
+  "combinations_not_exercised": [
+    "Real governed repair attempts through installed CLI and packaged VS Code (#1702) and the wider #1579 corpora",
+    "LSP and MCP RepairCard presentation (#4668, #3089, #3090); only the CLI JSON and human shapes are measured",
+    "Cross-language and non-Rust seams in the synthetic profiles",
+    "Cards whose witness or limitation content approaches the 4 KiB inline bound or the 64 KiB wire bound",
+    "Oversized-detail overflow paths beyond the default budget envelope"
+  ],
+  "real_usability_ratification": "pending"
+}

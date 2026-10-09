@@ -16,8 +16,8 @@ Status: closed in documented scope on 2026-05-12. See
 
 The Lane 1 source-of-truth stack is defined in
 [docs/lanes/README.md](README.md). This tracker records the closed Evidence
-Accuracy Evaluation campaign; it does not make `.ripr/goals/active.toml` the
-whole product board.
+Accuracy Evaluation campaign; it does not replace the repo-wide execution state
+tracked in GitHub issues and PRs.
 
 ## Goal
 
@@ -56,9 +56,9 @@ Non-goals:
 - no mutation execution;
 - no score redefinition.
 
-Do not change `.ripr/goals/active.toml` for this lane unless the shared
-tracker explicitly makes Lane 1 active. The repo-wide active manifest may point
-at another lane without changing this Lane 1 plan.
+Live execution state is governed by GitHub issues, PRs, and worktree state per
+[Repository Tracking Model](../REPO_TRACKING_MODEL.md) (the former
+`.ripr/goals/active.toml` manifest was retired in #1701).
 
 For follow-on Lane 1 work, keep document responsibilities separate:
 

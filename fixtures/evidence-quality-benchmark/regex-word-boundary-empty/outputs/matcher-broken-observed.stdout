@@ -1,0 +1,2 @@
+wb_empty=false; notwb_empty=true; wb_a=[0..0, 1..1]; notwb_a=[]
+matcher_witness: 4 assertions passed

@@ -145,6 +145,142 @@ where
         == RequiresTest
 }
 
+/// Availability in a test build: `Some(true)` is enabled, `Some(false)`
+/// disabled, and `None` unestablished. Unlike the test-only role query,
+/// this evaluates `test = true` and empty Boolean combinators. Feature,
+/// target and custom atoms stay unknown; no host configuration is guessed.
+pub(crate) fn attribute_test_build_availability(attr_text: &str) -> Option<bool> {
+    let tokens: Vec<_> = positioned_tokens(attr_text)?
+        .into_iter()
+        .map(|positioned| positioned.token)
+        .collect();
+    let body = match tokens.as_slice() {
+        [
+            Token::Punct('#'),
+            Token::Punct('['),
+            body @ ..,
+            Token::Punct(']'),
+        ]
+        | [
+            Token::Punct('#'),
+            Token::Punct('!'),
+            Token::Punct('['),
+            body @ ..,
+            Token::Punct(']'),
+        ] => body,
+        _ => return None,
+    };
+    availability_attribute(body, 0).ok().flatten()
+}
+
+fn availability_attribute(tokens: &[Token], depth: usize) -> Result<Option<bool>, ()> {
+    if depth > MAX_PREDICATE_NESTING || !body_is_balanced(tokens) {
+        return Err(());
+    }
+    match tokens {
+        // Raw identifiers (and separated lookalikes) need lexical adjacency
+        // authority that this token projection does not retain. They may name
+        // cfg/cfg_attr, so never treat them as inert ordinary attributes.
+        [Token::Word(raw), Token::Punct('#'), ..] if raw == "r" => Err(()),
+        [
+            Token::Word(name),
+            Token::Punct('('),
+            inner @ ..,
+            Token::Punct(')'),
+        ] if name == "cfg" => availability_predicate(inner, depth + 1),
+        [
+            Token::Word(name),
+            Token::Punct('('),
+            inner @ ..,
+            Token::Punct(')'),
+        ] if name == "cfg_attr" => {
+            let parts = availability_arguments(inner)?;
+            let Some((condition, introduced)) = parts.split_first() else {
+                return Err(());
+            };
+            if introduced.is_empty() {
+                return Err(());
+            }
+            let condition = availability_predicate(condition, depth + 1)?;
+            let introduced = introduced
+                .iter()
+                .map(|part| availability_attribute(part, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?;
+            let introduced = availability_all(&introduced);
+            Ok(match condition {
+                Some(false) => Some(true),
+                Some(true) => introduced,
+                None if introduced == Some(true) => Some(true),
+                None => None,
+            })
+        }
+        [Token::Word(name), ..] if name == "cfg" || name == "cfg_attr" => Err(()),
+        // Ordinary attributes do not impose a configuration predicate.
+        _ => Ok(Some(true)),
+    }
+}
+
+fn availability_predicate(tokens: &[Token], depth: usize) -> Result<Option<bool>, ()> {
+    if depth > MAX_PREDICATE_NESTING || !body_is_balanced(tokens) {
+        return Err(());
+    }
+    match tokens {
+        [Token::Word(name)] if name == "test" => Ok(Some(true)),
+        [Token::Word(_)] | [Token::Word(_), Token::Punct('='), Token::Literal] => Ok(None),
+        [
+            Token::Word(name),
+            Token::Punct('('),
+            inner @ ..,
+            Token::Punct(')'),
+        ] => {
+            let parts = availability_arguments(inner)?;
+            let values = parts
+                .iter()
+                .map(|part| availability_predicate(part, depth + 1))
+                .collect::<Result<Vec<_>, _>>()?;
+            match name.as_str() {
+                "all" => Ok(availability_all(&values)),
+                "any" if values.contains(&Some(true)) => Ok(Some(true)),
+                "any" if values.iter().all(|value| *value == Some(false)) => Ok(Some(false)),
+                "any" => Ok(None),
+                "not" => match values.as_slice() {
+                    [value] => Ok(value.map(|enabled| !enabled)),
+                    _ => Err(()),
+                },
+                _ => Err(()),
+            }
+        }
+        _ => Err(()),
+    }
+}
+
+fn availability_all(values: &[Option<bool>]) -> Option<bool> {
+    if values.contains(&Some(false)) {
+        Some(false)
+    } else if values.iter().all(|value| *value == Some(true)) {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+/// Keep a trailing comma, but never silently discard an interior empty
+/// predicate. A malformed operand is distinct from an unknown valid atom.
+fn availability_arguments(tokens: &[Token]) -> Result<Vec<&[Token]>, ()> {
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut parts = split_top_level_commas(tokens);
+    if parts.last().is_some_and(|part| part.is_empty()) {
+        parts.pop();
+    }
+    if parts.iter().any(|part| part.is_empty()) {
+        Err(())
+    } else {
+        Ok(parts)
+    }
+}
+
 /// Splits one line (or joined continuation lines) at the end of its leading
 /// attribute, skipping strings, raw strings, and comments while matching
 /// brackets. Returns the attribute text (including `#`/`#![` and `]`) and
@@ -261,7 +397,8 @@ fn classify_predicate_at_depth(tokens: &[Token], depth: usize) -> CfgTestRequire
                 .map(|branch| classify_predicate_at_depth(branch, depth))
                 .collect();
             if branches.is_empty() {
-                // `cfg(all())` / `cfg(any())` are not well-formed Rust.
+                // Empty combinators do not establish a test-only role.
+                // Availability is a separate query: all() is true, any() false.
                 return Unknown;
             }
             match gate.as_str() {

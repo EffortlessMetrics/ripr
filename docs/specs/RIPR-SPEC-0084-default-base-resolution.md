@@ -21,6 +21,8 @@ Linked plan:
 Linked issues:
 
 - #1144 — bare `ripr check` errors raw when origin/main is absent
+- #4319 — `--base` beside `--diff` silently asserted on explain/context, and
+  `--diff -` at an attached prompt looked like a silent hang
 
 Linked PRs:
 
@@ -81,6 +83,13 @@ error is kept — it names the ref the user chose and is actionable. Silent
 substitution of an explicit ref would produce wrong findings without warning,
 which is worse than a clear error.
 
+The same resolution covers every command that diffs committed history
+(#3952): `ripr diff`, `ripr first-pr` and `ripr pr-evidence` resolve an
+omitted `--base` through `resolve_effective_base` rather than defaulting to
+`origin/main`. Where nothing resolves, `first-pr` and `pr-evidence` fail
+with the named message below and record no base; `first-pr` still writes its
+own recovery packet when the root is missing or is not a Git work tree.
+
 ### Default-base resolution order
 
 When base is `None`, the following candidates are tried in order. Each
@@ -106,12 +115,40 @@ returns a named, actionable `Err` rather than a raw git error or a silent
 empty result. The message is:
 
 ```
-could not resolve a default base (no origin/main, origin/master, or local main/master found). Pass `--base <ref>` to diff against a specific ref, or `--root . --mode fast` for a full-repo scan.
+could not resolve a default base (no origin/main, origin/master, or local main/master found).<context> Pass `--base <ref>` to diff against a specific ref, or run `ripr check --root . --format repo-exposure-md` for a full-repo scan.
 ```
+
+`<context>` is empty or one sentence naming the repository fact that
+explains the failure, checked in this order: HEAD has no commits yet; the
+clone is shallow and never fetched a base branch (name `git fetch
+--unshallow` and `fetch-depth: 0`); other branches exist (name up to five,
+never the current branch, with a `--base` example); the current branch is
+the only one. A Git probe that fails to run adds no context rather than a
+guessed cause.
 
 This message explicitly says the analysis did not run (unlike "No probes
 found", which means the analysis ran and found nothing). It names the
 problem and the two remediation paths.
+
+When an explicit or resolved base exists but `<base>...HEAD` has no merge
+base, the Git failure text is kept and followed by its cause: a shallow
+clone (repair: `git fetch --unshallow`, or `fetch-depth: 0` on
+`actions/checkout`) or unrelated histories (repair: a `--base` on HEAD's
+history). An explicit base that does not resolve in a shallow clone names
+the unshallow repair instead of `git fetch origin`.
+
+Commands that take both revisions (`diff`, `review-comments`) verify the
+head the same way: an unresolvable `--head` fails with ripr's named message
+and a `--head <ref>` repair, never git's `ambiguous argument` advice. They
+load `<base>...<head>` through the same pinned diff presentation as
+`check`, so repository `color.diff` or `diff.submodule` settings cannot
+empty or widen the changed-line set (#4538). A symlink section (mode
+`120000`) is a link target, not source text: the parser records no changed
+file or changed lines for the link path, keeps the regular-file half of a
+type change, and resumes normal parsing at the next file boundary (#4577).
+`first-pr` names the same
+no-merge-base cause and, in a shallow clone, offers `git fetch --unshallow`
+as its next command.
 
 ### Honesty bar
 
@@ -121,6 +158,49 @@ problem and the two remediation paths.
   — it says "could not resolve a base" (analysis did not run).
 - An explicit bad `--base X` keeps a clear git error (user chose that ref).
   Auto-resolution does NOT fire for explicit inputs.
+
+### Diff-input contracts (#4319)
+
+- On the fresh-run path, `ripr explain` and `ripr context` reject an
+  explicit `--base` combined with `--diff` at parse time, in either flag
+  order and before any pipeline run: the loader gives `--diff` precedence
+  and never validated `--base` beside it, so both flags silently analyzed
+  one input while appearing to assert the other. Beside `--from`, both
+  flags remain scope assertions verified against the recording
+  (RIPR-SPEC-0140) and do NOT conflict.
+- A `--diff -` command run with an attached terminal prints a one-line
+  stderr disclosure before the loader blocks on stdin, so the documented
+  `git diff origin/main | ripr check --diff -` right half alone no longer
+  looks like a silent hang. The disclosure is owned by the cli adapter
+  (`check`, `explain`, `context`), gated on `IsTerminal`; the analysis
+  loader stays silent so library callers of the public API never receive
+  CLI-branded stderr text, and piped, redirected, or captured stdin stays
+  byte-identical. A shared emitter test injects the terminal state and
+  captures the actual emission callback, pinning exactly one note for
+  terminal stdin and none for piped stdin or file sources. This observes
+  the production decision and emission path without assuming a PTY is
+  available. The real terminal-detection/stderr adapter still requires a
+  terminal spot-check; piped silence and successful JSON analysis are
+  pinned end-to-end by a subprocess test. Its stdin writer, child completion
+  and output drains share a 30-second deadline and the shared `OwnedProcess`
+  termination/reap authority. Forced early exit and stalled-child controls
+  exercise bounded write-error and timeout returns without unbounded thread
+  joins. Those controls alone do not independently witness fixture startup
+  or OS-level reaping; explicit owning cleanup is separately source-reviewed.
+
+### Default base equal to HEAD
+
+When no scope is given and the result is empty, `ripr check` resolves the
+default base and `HEAD` again after analysis. If each resolves to the same
+commit (typically a clone of a feature branch, where `origin/HEAD` tracks the
+checked-out branch), it writes one line to stderr stating that observation,
+that the empty result alone is not a clean pass, and naming `--base`. The two
+resolutions are later observations, not the analyzed snapshot, so the line
+does not attribute the cause of the analyzed range; stdout and JSON are
+unchanged.
+The warning is silent when either commit fails to resolve, when the commits
+differ, and whenever the scope is explicit (`--base`, `--diff`,
+`--candidate-tree`, `--worktree`).
 
 ### Non-claims
 
@@ -185,6 +265,22 @@ problem and the two remediation paths.
 - `crates/ripr/src/analysis/diff/load.rs::tests::resolve_default_base_returns_named_error_when_nothing_resolves`
 - `crates/ripr/src/analysis/diff/load.rs::tests::explicit_base_is_used_as_is_without_resolution`
 - `crates/ripr/src/analysis/diff/load.rs::tests::load_diff_from_file_returns_content`
+- `crates/ripr/tests/cli_smoke.rs::history_commands_resolve_the_default_base_without_origin`
+- `crates/ripr/tests/cli_smoke.rs::history_commands_without_a_resolvable_default_base_fail_named`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_missing_packet_recovers_without_a_resolvable_base`
+- `crates/ripr/tests/cli_smoke.rs::first_pr_check_recovery_write_resolves_the_default_base`
+- `crates/ripr/src/cli/commands/check.rs::tests::default_base_equal_to_head_is_named_and_distinct_commits_stay_silent`
+- `crates/ripr/tests/hostile_repos.rs::default_base_equal_to_head_is_called_out`
+- `crates/ripr/src/cli/parse.rs::tests::base_and_diff_conflict_error_names_the_command_and_both_flags`
+- `crates/ripr/src/cli/parse.rs::tests::attached_terminal_stdin_note_fires_only_for_a_terminal`
+- `crates/ripr/src/cli/parse.rs::tests::terminal_stdin_disclosure_emits_once_only_for_a_terminal_diff_source`
+- `crates/ripr/src/cli/commands.rs::tests::explain_rejects_base_and_diff_together_at_parse_time`
+- `crates/ripr/src/cli/commands.rs::tests::explain_keeps_base_and_diff_as_from_artifact_assertions`
+- `crates/ripr/src/cli/commands/context.rs::tests::context_rejects_base_and_diff_together_at_parse_time`
+- `crates/ripr/src/cli/commands/context.rs::tests::context_keeps_base_and_diff_as_from_artifact_assertions`
+- `crates/ripr/tests/cli_smoke.rs::check_diff_stdin_from_a_pipe_stays_silent_about_terminal_disclosure`
+- `crates/ripr/tests/cli_smoke.rs::stdin_probe_stalled_child_returns_bounded_timeout`
+- `crates/ripr/tests/cli_smoke.rs::stdin_probe_early_exit_returns_write_error`
 
 ## Implementation Mapping
 
@@ -193,6 +289,14 @@ problem and the two remediation paths.
   to call `resolve_default_base` when `base` is `None`.
 - `policy/process_allowlist.txt` — updated `Command::new` count for
   `load.rs` to cover the three production helpers plus test-module setup.
+- `crates/ripr/src/cli/parse.rs` (#4319) —
+  `attached_terminal_stdin_note` pure decision, the verbatim note const,
+  and the single `disclose_attached_terminal_stdin_read` emission site;
+  `base_with_diff_conflict_error` parse-time conflict phrasing.
+- `crates/ripr/src/cli/commands/check.rs`, `crates/ripr/src/cli/commands.rs`
+  (`explain`), `crates/ripr/src/cli/commands/context.rs` (#4319) — one thin
+  disclosure call each before dispatching a run that accepted `--diff -`,
+  and the parse-time `--base`+`--diff` conflict gate on the fresh path.
 
 ## CI Proof
 

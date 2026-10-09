@@ -34,6 +34,14 @@ const PERL_LSP_FACT_EXPORTER: &str = "perl-lsp";
 const PERL_LSP_FACT_EXPORT_SUBCOMMAND: &str = "ripr-facts";
 const UNRESOLVED_RELATION_CHANGE_ID: &str = "change:unresolved";
 
+/// Why a Perl run without a fact packet is `unavailable`, in user terms.
+fn missing_fact_packet_reason() -> String {
+    format!(
+        "language `perl` requires a fact packet: {}",
+        crate::domain::perl_fact_packet_guidance()
+    )
+}
+
 fn is_supported_perl_fact_exporter(name: &str) -> bool {
     matches!(
         name,
@@ -126,6 +134,14 @@ fn hex_sha256(bytes: &[u8]) -> String {
     hex_bytes(&digest)
 }
 
+/// Hex-encode a SHA-256 digest of the file at `path`, streamed so a
+/// packet-named source file is never buffered whole in memory (#4480).
+fn hex_sha256_file(path: &std::path::Path) -> std::io::Result<String> {
+    let mut hasher = Sha256::new();
+    std::io::copy(&mut std::fs::File::open(path)?, &mut hasher)?;
+    Ok(hex_bytes(&hasher.finalize()))
+}
+
 fn hex_bytes(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -179,13 +195,10 @@ impl LanguageAdapter for PerlAdapter {
         // Read the packet from the configured path. When absent, return empty
         // (the pipeline's non-abort contract records this as `unavailable`).
         let Some(ref facts_path) = options.perl_facts_path else {
-            return Err(
-                "language `perl` requires a fact packet; pass --perl-facts <path> (see Campaign 31 #1429)"
-                    .to_string(),
-            );
+            return Err(missing_fact_packet_reason());
         };
 
-        let packet_text = std::fs::read_to_string(facts_path).map_err(|err| {
+        let packet_text = crate::bounded_input::read_to_string(facts_path).map_err(|err| {
             format!(
                 "failed to read Perl fact packet `{}`: {err}",
                 facts_path.display()
@@ -230,6 +243,8 @@ impl LanguageAdapter for PerlAdapter {
             // for every non-Rust adapter (#3532).
             harness_projections: Vec::new(),
             limitations,
+            rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         })
     }
 
@@ -239,13 +254,10 @@ impl LanguageAdapter for PerlAdapter {
         _oracle_policy: &OraclePolicy,
     ) -> Result<LanguageRepoResult, String> {
         let Some(ref facts_path) = options.perl_facts_path else {
-            return Err(
-                "language `perl` requires a fact packet; pass --perl-facts <path> (see Campaign 31 #1429)"
-                    .to_string(),
-            );
+            return Err(missing_fact_packet_reason());
         };
 
-        let packet_text = std::fs::read_to_string(facts_path).map_err(|err| {
+        let packet_text = crate::bounded_input::read_to_string(facts_path).map_err(|err| {
             format!(
                 "failed to read Perl fact packet `{}`: {err}",
                 facts_path.display()
@@ -281,6 +293,8 @@ impl LanguageAdapter for PerlAdapter {
             // for every non-Rust adapter (#3532).
             harness_projections: Vec::new(),
             partial_reason,
+            rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         })
     }
 }
@@ -399,7 +413,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
         // from the production `file.path`. The test LINE is re-resolved from
         // the TestFact (PerlRelatedTestEvidence intentionally carries no
         // range), so the projection sees the real assertion location.
-        let related: Vec<RelatedTest> = related_evidence
+        let mut related: Vec<RelatedTest> = related_evidence
             .iter()
             .map(|ev| {
                 let test_line = packet
@@ -423,6 +437,7 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                         .unwrap_or(DomainOracleStrength::Unknown),
                     relation_reason: perl_relation_reason,
                     relation_confidence: perl_relation_confidence,
+                    miss: None,
                 }
             })
             .collect();
@@ -471,6 +486,25 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             }
         };
         let is_already_observed = class == ExposureClass::Exposed;
+        // RIPR-SPEC-0224 / #5498: on a weakly exposed finding from a
+        // complete, unblocked packet (a concrete discriminator is not
+        // required), a row whose own direct, strong exact, owner-targeted
+        // oracle earned the weak exposure but establishes no sink alignment
+        // says observation is unconfirmed.
+        // `related` maps `related_evidence` one to one and in order. Every
+        // other row keeps no miss: advisory, weak and unknown evidence is not
+        // an established per-test defect, and the finding-wide discriminator
+        // has no test identity to lend a row.
+        let packet_admitted = packet.packet_status == PacketStatus::Complete
+            && !class_blocked
+            && !actionability_blocked;
+        if class == ExposureClass::WeaklyExposed && packet_admitted {
+            for (row, ev) in related.iter_mut().zip(&related_evidence) {
+                if perl_row_observation_unconfirmed(packet, change, ev) {
+                    row.miss = Some(crate::domain::RelatedTestMiss::ObservationUnconfirmed);
+                }
+            }
+        }
 
         // Concrete discriminator gate (H1). A canonical repair gap requires a
         // concrete, packet-provided discriminator (`discriminator:` prefix on
@@ -531,6 +565,12 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
             "perl_target_test_shape: {}",
             change.behavior_hint.default_assertion_shape()
         ));
+        if static_limit_projection.missing_test_runner {
+            evidence.push(
+                "perl_missing_test_runner: the related Perl test runner is unavailable; static sink alignment does not verify execution"
+                    .to_string(),
+            );
+        }
         if is_already_observed && let Some(aligned) = sink_aligned_evidence.as_ref() {
             // The sink-aligned evidence explains the observation: which test +
             // oracle observes which changed sink. This is the "already-observed
@@ -668,8 +708,17 @@ fn packet_to_findings(packet: &PerlFactPacket) -> Vec<crate::domain::Finding> {
                 missing_discriminators,
             },
             stop_reasons: Vec::new(),
+            related_tests_matched_total: None,
             related_tests: related,
-            recommended_next_step: Some(if is_already_observed {
+            recommended_next_step: Some(if static_limit_projection.missing_test_runner {
+                if is_already_observed {
+                    "Make the related Perl test runner available and run the sink-aligned test to verify the static observation."
+                        .to_string()
+                } else {
+                    "Make the related Perl test runner available, then add a focused assertion for the changed behavior and verify it."
+                        .to_string()
+                }
+            } else if is_already_observed {
                 // H2: the change is already discriminated by an existing test.
                 // No new test is needed; this is maintainer end-state outcome #2.
                 "No test change needed — an existing test already observes the \
@@ -1142,10 +1191,10 @@ impl PerlFactPacket {
             if !on_disk.is_file() {
                 continue;
             }
-            let Ok(bytes) = std::fs::read(&on_disk) else {
+            let Ok(digest) = hex_sha256_file(&on_disk) else {
                 continue;
             };
-            let recomputed_digest = format!("sha256:{}", hex_sha256(&bytes));
+            let recomputed_digest = format!("sha256:{digest}");
             if file.digest != recomputed_digest {
                 return Err(format!(
                     "ingestion: stale digest for file `{}` (`{}`) — declared `{}` does not \
@@ -2812,6 +2861,22 @@ struct SinkAlignedObservation {
     test_name: String,
     observed_sink: String,
     oracle_shape: String,
+}
+
+/// Whether this row's own evidence earned the finding's weak exposure (a
+/// direct, reachable owner call whose linked oracle is strong, exact, in the
+/// same test and targets the changed owner) while the shared sink-alignment
+/// check establishes no alignment for it. Unequal sink text is only
+/// unconfirmed, never proof that the oracle observes another sink (#5498).
+fn perl_row_observation_unconfirmed(
+    packet: &PerlFactPacket,
+    change: &ChangeFact,
+    ev: &PerlRelatedTestEvidence,
+) -> bool {
+    ev.relation_kind == RelationKind::DirectOwnerCall
+        && ev.reachability_hint == ReachabilityHint::Reachable
+        && ev.class == ExposureClass::WeaklyExposed
+        && sink_aligned_observation(std::slice::from_ref(ev), change, packet).is_none()
 }
 
 /// H2 (Campaign 31): determine whether a related test's oracle observes the

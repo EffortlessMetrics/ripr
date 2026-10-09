@@ -313,7 +313,12 @@ analyzed root's `ripr.toml` presence), the input digests (packet, before
 snapshot), the declared edit surface (allowed and forbidden paths), the
 authorization, and the standing non-claims. The record carries no timestamps:
 equivalent preparation is byte-identical, and the manifest location is the
-declared telemetry.
+declared telemetry. Equivalence requires identical accepted packet and before
+snapshot bytes, configuration, analyzer, selection, and authorization inputs.
+Two fresh durable attempts have different exact continuations in their sealed
+packets and therefore different packet input digests, even for the same selected
+row. Each binding pins its own final packet bytes; attempt identity is never
+removed from the packet digest as telemetry.
 
 ### Apply phase (recording the applied edit)
 
@@ -491,6 +496,11 @@ no lifecycle state at all.
   tree, stale command packet, receipt immutability, rollback proof with head
   pin and worktree preservation, the latest-apply verification boundary).
   Listed in `.ripr/traceability.toml` under this spec.
+- `crates/ripr/src/app/python_repair_binding.rs::tests::dangling_ripr_toml_symlink_is_subject_config_not_defaults`
+  and
+  `crates/ripr/src/app/python_repair_verification.rs::python_repair_verification_semantics::dangling_ripr_toml_symlink_is_subject_config_not_defaults`
+  — a dangling `ripr.toml` is the subject config profile, not built-in
+  defaults.
 - `xtask/src/reports/python_repair_verification.rs::python_repair_verification_semantics`
   — the verification-receipt validator test module (the issue's example
   execution/movement pairs, every execution state, disposition agreement,

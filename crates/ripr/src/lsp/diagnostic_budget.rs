@@ -349,7 +349,74 @@ pub(crate) struct DiagnosticDeliverySelection {
     pub(crate) outcome: DiagnosticDeliveryOutcome,
 }
 
+/// Delivery-only omission for one document. Counts exclude profile-filtered
+/// evidence; those items were never eligible for this diagnostic profile.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DocumentDeliveryOmission {
+    pub(crate) scope: &'static str,
+    pub(crate) selected_count: usize,
+    pub(crate) omitted_count: usize,
+    pub(crate) total_count: usize,
+    pub(crate) count_budget: usize,
+    pub(crate) byte_budget: usize,
+    pub(crate) snapshot_profile_budget_identity: String,
+    pub(crate) complete_evidence_identity: String,
+    pub(crate) retrieval_route: String,
+}
+
 impl DiagnosticDeliverySelection {
+    /// Project the evaluator's exact omission membership, without inferring
+    /// missing items from the size of a rendered or published diagnostic list.
+    pub(crate) fn document_omissions(&self) -> BTreeMap<String, DocumentDeliveryOmission> {
+        let DiagnosticDeliveryOutcome::Applied {
+            result,
+            document_by_canonical_id,
+            ..
+        } = &self.outcome
+        else {
+            return BTreeMap::new();
+        };
+        let mut by_document = BTreeMap::new();
+        for item in &result.omitted {
+            if item.reason == OmittedDiagnosticReason::ProfileFiltered {
+                continue;
+            }
+            let Some(document) = document_by_canonical_id.get(&item.canonical_id) else {
+                continue;
+            };
+            let entry =
+                by_document
+                    .entry(document.clone())
+                    .or_insert_with(|| DocumentDeliveryOmission {
+                        scope: "document",
+                        selected_count: 0,
+                        omitted_count: 0,
+                        total_count: 0,
+                        count_budget: self.budget.max_items_per_document,
+                        byte_budget: self.budget.max_serialized_bytes,
+                        snapshot_profile_budget_identity: result
+                            .snapshot_profile_budget_identity
+                            .clone(),
+                        complete_evidence_identity: result.complete_evidence_identity.clone(),
+                        retrieval_route: result.continuation_or_inspect_route.clone(),
+                    });
+            entry.omitted_count += 1;
+            if item.reason != OmittedDiagnosticReason::DocumentItemLimit {
+                entry.scope = "workspace";
+                entry.count_budget = self.budget.max_items_per_workspace_response;
+            }
+        }
+        for item in &result.selected {
+            if let Some(entry) = by_document.get_mut(&item.document) {
+                entry.selected_count += 1;
+            }
+        }
+        for entry in by_document.values_mut() {
+            entry.total_count = entry.selected_count + entry.omitted_count;
+        }
+        by_document
+    }
+
     /// Compute the delivery selection for one snapshot's complete diagnostics.
     ///
     /// `snapshot_profile_identity` binds the selection to the snapshot input
@@ -816,6 +883,85 @@ mod tests {
             return Err(format!(
                 "ordinary eligibility or family precedence regressed: {items:?}"
             ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scope_guard_disclosure_delivers_only_through_the_producer_signal() -> Result<(), String> {
+        // #4325: the scope-guard warning reaches editors only through the
+        // producer-owned `delivery_eligible` stamp. The governed catalog code
+        // is an identity, not an eligibility authority: the same warning
+        // without the stamp — and any lookalike code — must stay
+        // profile-filtered and serve an empty delivered surface.
+        let uri = "file:///workspace"
+            .parse::<tower_lsp_server::ls_types::Uri>()
+            .map_err(|err| format!("parse test URI: {err}"))?;
+        let scope_code = crate::lsp::diagnostic_catalog::DIFF_SCOPE_OVERSIZED_CODE;
+        let with_code = |code: &str, stamped: bool| tower_lsp_server::ls_types::Diagnostic {
+            range: tower_lsp_server::ls_types::Range::default(),
+            severity: Some(tower_lsp_server::ls_types::DiagnosticSeverity::WARNING),
+            code: Some(tower_lsp_server::ls_types::NumberOrString::String(
+                code.to_string(),
+            )),
+            source: Some("ripr".to_string()),
+            message: "diff_scope_oversized: bounded guard message".to_string(),
+            data: stamped.then_some(serde_json::json!({ "delivery_eligible": true })),
+            ..Default::default()
+        };
+        let delivered_for = |diagnostic: tower_lsp_server::ls_types::Diagnostic| {
+            let diagnostics = std::collections::BTreeMap::from([(uri.clone(), vec![diagnostic])]);
+            let selection = DiagnosticDeliverySelection::evaluate(
+                &diagnostics,
+                &DiagnosticBudget::default(),
+                "snapshot:s1:profile:actionable",
+                "evidence:e1",
+            );
+            let served = selection.diagnostics_for_document(uri.as_str(), &diagnostics[&uri]);
+            (selection, served)
+        };
+
+        let (stamped_selection, stamped_served) = delivered_for(with_code(scope_code, true));
+        if stamped_served.len() != 1 {
+            return Err(format!(
+                "the producer-stamped scope-guard disclosure must deliver: {stamped_served:?}"
+            ));
+        }
+        let DiagnosticDeliveryOutcome::Applied { result, .. } = &stamped_selection.outcome else {
+            return Err("expected an applied delivery selection".to_string());
+        };
+        if result.selected.len() != 1 || !result.omitted.is_empty() {
+            return Err(format!(
+                "the stamped disclosure must be the one selected item: selected={:?}, omitted={:?}",
+                result.selected, result.omitted
+            ));
+        }
+
+        for (code, label) in [
+            (scope_code, "the governed code without the producer stamp"),
+            ("ripr-scope-diff-oversized-lookalike", "a lookalike code"),
+        ] {
+            let (selection, served) = delivered_for(with_code(code, false));
+            if !served.is_empty() {
+                return Err(format!("{label} must not deliver: {served:?}"));
+            }
+            let DiagnosticDeliveryOutcome::Applied { result, .. } = &selection.outcome else {
+                return Err("expected an applied delivery selection".to_string());
+            };
+            if result.eligible_items != 0 {
+                return Err(format!("{label} must not count as eligible: {result:?}"));
+            }
+            if result.selected.len() != 1
+                && result
+                    .omitted
+                    .iter()
+                    .any(|item| item.reason != OmittedDiagnosticReason::ProfileFiltered)
+            {
+                return Err(format!(
+                    "{label} must be omitted as profile-filtered, not budget-overflowed: {:?}",
+                    result.omitted
+                ));
+            }
         }
         Ok(())
     }

@@ -12,6 +12,10 @@ pub(crate) struct BaselineCreateReport {
     source_report: String,
     mode: String,
     reviewed: bool,
+    /// Repository/root identity carried by the source gate-decision report
+    /// (issue #1964). Preserved so a baseline entry stays interpretable when
+    /// the ledger moves; delta joins across roots are refused as stale.
+    root: Option<String>,
     entries: Vec<BaselineEntry>,
     skipped: BaselineCreateSkipped,
     warnings: Vec<String>,
@@ -29,6 +33,9 @@ struct BaselineEntry {
     gate_reason: Option<String>,
     evidence: BaselineEntryEvidence,
     review: BaselineEntryReview,
+    /// Copy of the report root on the entry itself, so one entry remains
+    /// interpretable if the ledger is ever split or relocated (issue #1964).
+    root: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -63,7 +70,22 @@ struct BaselineCreateSkipped {
     suppressed: usize,
     not_applicable: usize,
     malformed: usize,
+    /// Gate decisions that carried only a `path:line:static_class` fallback
+    /// identity. New baselines refuse fallback identity as primary authority
+    /// (issue #1964); these decisions are counted here, never written.
+    fallback_only: usize,
     other: usize,
+}
+
+/// Outcome of screening one gate decision for baseline creation (issue #1964).
+enum BaselineEntryOutcome {
+    /// Canonical or governed identity: written to the new baseline. Boxed:
+    /// the entry is hundreds of bytes and the sibling variants are tiny.
+    Entry(Box<BaselineEntry>),
+    /// Only a `path:line:static_class` fallback: refused, counted, warned.
+    FallbackOnly(String),
+    /// No stable identity at all: malformed, counted, warned.
+    Malformed,
 }
 
 pub(crate) fn baseline_create_report_from_gate_decision_json(
@@ -88,6 +110,7 @@ pub(crate) fn baseline_create_report_from_gate_decision_json(
         .and_then(Value::as_array)
         .ok_or_else(|| "gate-decision JSON missing decisions array".to_string())?;
     let mode = string_field(value.get("mode")).unwrap_or_else(|| "unknown".to_string());
+    let root = string_field(value.get("root"));
     let mut entries = Vec::new();
     let mut skipped = BaselineCreateSkipped::default();
     let mut warnings = Vec::new();
@@ -95,9 +118,23 @@ pub(crate) fn baseline_create_report_from_gate_decision_json(
     for decision in decisions {
         match decision.get("decision").and_then(Value::as_str) {
             Some("advisory" | "acknowledged" | "blocking") => {
-                match baseline_entry_from_decision(decision, created_at, source_report) {
-                    Some(entry) => entries.push(entry),
-                    None => {
+                match baseline_entry_from_decision(
+                    decision,
+                    created_at,
+                    source_report,
+                    root.as_deref(),
+                ) {
+                    BaselineEntryOutcome::Entry(entry) => entries.push(*entry),
+                    // REFUSAL (issue #1964): no new baseline entry is written
+                    // with fallback identity as primary authority. The refusal
+                    // is counted and loud, never silent.
+                    BaselineEntryOutcome::FallbackOnly(fallback) => {
+                        skipped.fallback_only += 1;
+                        warnings.push(format!(
+                            "refused baseline entry from fallback path/line/static_class identity `{fallback}` alone; supply a canonical or governed identity"
+                        ));
+                    }
+                    BaselineEntryOutcome::Malformed => {
                         skipped.malformed += 1;
                         warnings.push(
                             "skipped gate decision without a stable identity or fallback"
@@ -124,6 +161,7 @@ pub(crate) fn baseline_create_report_from_gate_decision_json(
         source_report: source_report.to_string(),
         mode,
         reviewed: false,
+        root,
         entries,
         skipped,
         warnings,
@@ -139,6 +177,7 @@ pub(crate) fn render_baseline_create_json(report: &BaselineCreateReport) -> Resu
         "source_report": report.source_report,
         "mode": report.mode,
         "reviewed": report.reviewed,
+        "root": report.root,
         "summary": {
             "entries": report.entries.len(),
             "included": report.entries.len(),
@@ -161,7 +200,8 @@ fn baseline_entry_from_decision(
     value: &Value,
     created_at: &str,
     source_report: &str,
-) -> Option<BaselineEntry> {
+    root: Option<&str>,
+) -> BaselineEntryOutcome {
     let path = string_field(value.pointer("/placement/path"));
     let line = value.pointer("/placement/line").and_then(Value::as_u64);
     let static_class = string_field(value.get("static_class"));
@@ -174,10 +214,19 @@ fn baseline_entry_from_decision(
         fallback: fallback_identity(path.as_deref(), line, static_class.as_deref()),
     };
     if !identity.has_stable_value() {
-        return None;
+        return BaselineEntryOutcome::Malformed;
+    }
+    // Canonical identities first, then governed seam identity where permitted
+    // (issue #1964). A `path:line:static_class` fallback alone is never
+    // primary authority for a new baseline entry.
+    if !identity.has_primary_authority() {
+        return match identity.fallback {
+            Some(fallback) => BaselineEntryOutcome::FallbackOnly(fallback),
+            None => BaselineEntryOutcome::Malformed,
+        };
     }
 
-    Some(BaselineEntry {
+    BaselineEntryOutcome::Entry(Box::new(BaselineEntry {
         identity,
         path,
         line,
@@ -199,7 +248,8 @@ fn baseline_entry_from_decision(
             review_after: None,
             source: Some(source_report.to_string()),
         },
-    })
+        root: root.map(ToOwned::to_owned),
+    }))
 }
 
 fn fallback_identity(
@@ -218,12 +268,18 @@ fn fallback_identity(
 
 impl BaselineIdentity {
     fn has_stable_value(&self) -> bool {
+        self.has_primary_authority() || self.fallback.is_some()
+    }
+
+    /// Canonical gap id first, then governed seam identity where explicitly
+    /// permitted (issue #1964). The legacy `path:line:static_class` fallback
+    /// is compatibility evidence only, never primary authority.
+    fn has_primary_authority(&self) -> bool {
         self.canonical_gap_id.is_some()
             || self.seam_id.is_some()
             || self.source_id.is_some()
             || self.id.is_some()
             || self.dedupe_key.is_some()
-            || self.fallback.is_some()
     }
 }
 
@@ -260,6 +316,7 @@ fn entry_json(entry: &BaselineEntry) -> Value {
         "path": entry.path,
         "line": entry.line,
         "static_class": entry.static_class,
+        "root": entry.root,
         "decision": entry.decision,
         "severity": entry.severity,
         "source": entry.source,
@@ -285,6 +342,7 @@ fn skipped_json(skipped: &BaselineCreateSkipped) -> Value {
         "suppressed": skipped.suppressed,
         "not_applicable": skipped.not_applicable,
         "malformed": skipped.malformed,
+        "fallback_only": skipped.fallback_only,
         "other": skipped.other,
     })
 }
@@ -402,10 +460,13 @@ mod tests {
     }
 
     #[test]
-    fn baseline_create_uses_fallback_identity_when_direct_ids_are_missing() -> Result<(), String> {
+    fn baseline_create_refuses_fallback_only_identity_as_primary_authority() -> Result<(), String> {
+        // Issue #1964: no new baseline entry is written with fallback identity
+        // as primary authority. The refusal is counted and loud, never silent.
         let json = r#"{
           "schema_version": "0.1",
           "mode": "visible-only",
+          "root": ".",
           "decisions": [
             {
               "decision": "advisory",
@@ -419,8 +480,42 @@ mod tests {
         let report =
             baseline_create_report_from_gate_decision_json("gate.json", "unix_ms:2", json)?;
         let rendered = render_baseline_create_json(&report)?;
-        assert!(rendered.contains("\"fallback\": \"src/pricing.rs:88:weakly_gripped\""));
+        assert!(rendered.contains("\"entries\": 0"));
+        assert!(rendered.contains("\"fallback_only\": 1"));
+        assert!(rendered.contains(
+            "refused baseline entry from fallback path/line/static_class identity `src/pricing.rs:88:weakly_gripped` alone"
+        ));
+        assert!(!rendered.contains("\"fallback\": \"src/pricing.rs:88:weakly_gripped\""));
+        Ok(())
+    }
+
+    #[test]
+    fn baseline_create_preserves_root_identity_on_report_and_entries() -> Result<(), String> {
+        // Issue #1964: repository/root identity travels with the new baseline
+        // so each entry stays interpretable and cross-root fallback joins can
+        // be refused downstream.
+        let json = r#"{
+          "schema_version": "0.1",
+          "mode": "visible-only",
+          "root": "/repo/acme",
+          "decisions": [
+            {
+              "decision": "advisory",
+              "id": "ripr-gate-rooted",
+              "seam_id": "rooted",
+              "static_class": "weakly_gripped",
+              "placement": {"path": "src/rooted.rs", "line": 3},
+              "evidence": {}
+            }
+          ]
+        }"#;
+
+        let report =
+            baseline_create_report_from_gate_decision_json("gate.json", "unix_ms:5", json)?;
+        let rendered = render_baseline_create_json(&report)?;
         assert!(rendered.contains("\"entries\": 1"));
+        assert!(rendered.contains("\"root\": \"/repo/acme\""));
+        assert!(rendered.contains("\"fallback\": \"src/rooted.rs:3:weakly_gripped\""));
         Ok(())
     }
 

@@ -24,10 +24,30 @@ pub(super) fn validate_agent_receipt_verify_path(
         root.join(path)
     };
     let candidate = candidate.canonicalize().map_err(|err| {
-        format!(
+        // #4307: name the producer, not just the missing file. The hint is
+        // built by the shared loop-command builder so it cannot drift from
+        // the workflow verify shape, and its redirect lands exactly where
+        // this receipt looked for its verify artifact (#3872 anchoring).
+        // The producer is only real for the workflow artifact the dispatch
+        // loop owns: a custom verify path's producing snapshot pair is
+        // unknowable at the receipt, and naming the workflow pair for it
+        // would steer the caller at a comparison they never asked for.
+        let failure = format!(
             "canonicalize agent receipt --verify-json {} failed: {err}",
             path.display()
-        )
+        );
+        let is_workflow_artifact =
+            candidate == root.join(crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT);
+        if !is_workflow_artifact {
+            return failure;
+        }
+        let producer = crate::agent::loop_commands::agent_verify_command(
+            &crate::agent::loop_commands::root_path_display(&root),
+            crate::agent::loop_commands::WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            crate::agent::loop_commands::WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(path.to_string_lossy().as_ref()),
+        );
+        format!("{failure}; produce it with: {producer}")
     })?;
 
     if !candidate.starts_with(&root) {
@@ -39,6 +59,13 @@ pub(super) fn validate_agent_receipt_verify_path(
     }
 
     Ok(candidate)
+}
+
+// These fields are re-opened as filesystem identity. Keep the existing one
+// leading `./` omission, but do not rewrite Unix filename backslashes.
+pub(super) fn agent_identity_path(path: &Path) -> String {
+    let rendered = crate::agent::loop_commands::root_path_display(path);
+    rendered.strip_prefix("./").unwrap_or(&rendered).to_string()
 }
 
 pub(super) fn build_agent_receipt_provenance(
@@ -60,13 +87,13 @@ pub(super) fn build_agent_receipt_provenance(
         "after_artifact",
     )?;
     let verify_artifact = output::agent_receipt::AgentReceiptArtifactProvenance {
-        path: output::outcome::display_path(verify_display_path),
+        path: agent_identity_path(verify_display_path),
         sha256: provenance::sha256_file(verify_path)?,
     };
 
     Ok(output::agent_receipt::AgentReceiptProvenance {
         ripr_version: env!("CARGO_PKG_VERSION").to_string(),
-        repo_root: output::outcome::display_path(root),
+        repo_root: agent_identity_path(root),
         config_fingerprint: agent_receipt_config_fingerprint(root)?,
         command_template_version: crate::agent::loop_commands::AGENT_LOOP_COMMAND_TEMPLATE_VERSION
             .to_string(),
@@ -86,7 +113,8 @@ fn agent_receipt_artifact_provenance(
 ) -> Result<output::agent_receipt::AgentReceiptArtifactProvenance, String> {
     let resolved = validate_agent_receipt_artifact_path(root, Path::new(display_path), role)?;
     Ok(output::agent_receipt::AgentReceiptArtifactProvenance {
-        path: display_path.replace('\\', "/"),
+        // Unlike the other receipt fields, these paths retained leading `./`.
+        path: crate::agent::loop_commands::root_path_display(Path::new(display_path)),
         sha256: provenance::sha256_file(&resolved).map_err(|err| {
             format!(
                 "hash agent receipt {output_name} {} failed: {err}",
@@ -132,7 +160,7 @@ fn validate_agent_receipt_artifact_path(
 
 fn agent_receipt_config_fingerprint(root: &Path) -> Result<Option<String>, String> {
     let path = root.join(CONFIG_FILE_NAME);
-    match std::fs::read_to_string(&path) {
+    match crate::bounded_input::read_to_string(&path) {
         Ok(text) => Ok(Some(config_fingerprint(&text))),
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(err) => Err(format!("read {} failed: {err}", path.display())),
@@ -181,26 +209,12 @@ pub(super) fn validate_agent_verify_snapshot_path(
     Ok(candidate)
 }
 
-/// Bound on agent verify snapshot inputs, checked from file metadata before
-/// reading. Real repo-exposure artifacts for large repositories can reach
-/// tens of megabytes; 256 MiB is far above any legitimate artifact while
-/// still failing closed on an unbounded input (#2921).
-const MAX_AGENT_VERIFY_SNAPSHOT_BYTES: u64 = 256 * 1024 * 1024;
-
+/// Agent verify snapshot inputs are read through the shared CLI input bound
+/// (#2921, #4480). The bound is enforced while reading: the earlier metadata
+/// pre-check saw length 0 for a character device such as `/dev/zero` and let
+/// the unbounded read run forever.
 pub(super) fn read_agent_verify_snapshot(path: &Path, label: &str) -> Result<String, String> {
-    let metadata = std::fs::metadata(path).map_err(|err| {
-        format!(
-            "read agent verify {label} snapshot {} failed: {err}",
-            output::outcome::display_path(path)
-        )
-    })?;
-    if metadata.len() > MAX_AGENT_VERIFY_SNAPSHOT_BYTES {
-        return Err(format!(
-            "agent verify {label} snapshot {} exceeds the {MAX_AGENT_VERIFY_SNAPSHOT_BYTES} byte input limit",
-            output::outcome::display_path(path)
-        ));
-    }
-    std::fs::read_to_string(path).map_err(|err| {
+    crate::bounded_input::read_to_string(path).map_err(|err| {
         format!(
             "read agent verify {label} snapshot {} failed: {err}",
             output::outcome::display_path(path)
@@ -301,6 +315,34 @@ pub(super) fn agent_brief_owners_for_lines(
         .into_iter()
         .map(|owner| AgentBriefChangedOwner::new(owner.file, owner.line, owner.owner))
         .collect()
+}
+
+/// Innermost and enclosing owner attribution for changed lines from one
+/// index build. PR review placement uses the enclosing list to decide whether
+/// a seam owner's span overlaps the diff (RIPR-SPEC-0012). A resolution error
+/// yields empty lists, so owner-span overlap stays unknown and review
+/// placement falls back to summary-only instead of a guessed line.
+pub(super) fn agent_brief_owner_attribution_for_lines(
+    root: &Path,
+    lines: &[AgentBriefLine],
+) -> (Vec<AgentBriefChangedOwner>, Vec<AgentBriefChangedOwner>) {
+    let owner_inputs = lines
+        .iter()
+        .map(|line| (line.file.clone(), line.line))
+        .collect::<Vec<_>>();
+    let Ok(ownership) = analysis::changed_line_ownership_for_lines(root, &owner_inputs) else {
+        return (Vec::new(), Vec::new());
+    };
+    let project = |owners: Vec<analysis::ChangedLineOwner>| {
+        owners
+            .into_iter()
+            .map(|owner| AgentBriefChangedOwner::new(owner.file, owner.line, owner.owner))
+            .collect::<Vec<_>>()
+    };
+    (
+        project(ownership.owners),
+        project(ownership.enclosing_owners),
+    )
 }
 
 /// Confine an agent-brief `--files` entry to the workspace (#2100): strip
@@ -528,6 +570,82 @@ mod tests {
         Ok(())
     }
 
+    /// #4307: a receipt whose verify artifact is missing must name its
+    /// producer, and the named producer's redirect must land exactly where
+    /// this receipt looked, so following the hint writes the looked-for file.
+    #[test]
+    fn missing_receipt_verify_error_names_the_producing_command() -> Result<(), String> {
+        let dir = ScratchDir::new("receipt-verify-missing");
+        let verify_input = crate::agent::loop_commands::WORKFLOW_AGENT_VERIFY_ARTIFACT;
+        let Err(err) = validate_agent_receipt_verify_path(&dir.path, Path::new(verify_input))
+        else {
+            return Err("a missing verify artifact must fail the receipt".to_string());
+        };
+        assert!(
+            err.contains(&format!(
+                "canonicalize agent receipt --verify-json {verify_input} failed"
+            )),
+            "error must name the missing receipt input: {err}"
+        );
+        let Some(producer) = err.split("produce it with: ").nth(1) else {
+            return Err("error must name the producing command".to_string());
+        };
+        assert!(
+            producer.contains("--before target/ripr/workflow/before.repo-exposure.json")
+                && producer.contains("--after target/ripr/workflow/after.repo-exposure.json"),
+            "producer must verify the workflow loop snapshots: {producer}"
+        );
+        let Some((route, redirect)) = producer.split_once(" > ") else {
+            return Err("producer must persist its output".to_string());
+        };
+        let redirect = redirect.trim_matches('\'').replace('\\', "/");
+        assert!(
+            route.starts_with("ripr agent verify ") && redirect.ends_with(verify_input),
+            "producer redirect {redirect} must land on the receipt input {verify_input}"
+        );
+        Ok(())
+    }
+
+    /// #4307 boundary: the producer hint is only real for the workflow
+    /// artifact the dispatch loop owns. A custom verify path's producing
+    /// snapshot pair is unknowable at the receipt, and naming the workflow
+    /// pair for it would steer the caller at a comparison they never asked
+    /// for (review thread on this PR).
+    #[test]
+    fn missing_custom_receipt_verify_error_names_no_unrelated_producer() -> Result<(), String> {
+        let dir = ScratchDir::new("receipt-verify-custom-missing");
+        let Err(err) =
+            validate_agent_receipt_verify_path(&dir.path, Path::new("comparisons/verify.json"))
+        else {
+            return Err("a missing custom verify artifact must fail the receipt".to_string());
+        };
+        assert!(
+            err.contains("canonicalize agent receipt --verify-json comparisons/verify.json failed"),
+            "error must name the missing receipt input: {err}"
+        );
+        assert!(
+            !err.contains("produce it with:")
+                && !err.contains("target/ripr/workflow/before.repo-exposure.json"),
+            "a custom path must not inherit the workflow producer hint: {err}"
+        );
+        Ok(())
+    }
+
+    /// #4480: a character device reports length 0, so the old metadata
+    /// pre-check let the unbounded read run forever on `/dev/zero`.
+    #[cfg(unix)]
+    #[test]
+    fn read_agent_verify_snapshot_refuses_endless_device() -> Result<(), String> {
+        let Err(error) = read_agent_verify_snapshot(Path::new("/dev/zero"), "before") else {
+            return Err("an endless device snapshot must be refused".to_string());
+        };
+        assert!(
+            error.contains("exceeds") && error.contains("byte input limit"),
+            "unexpected error: {error}"
+        );
+        Ok(())
+    }
+
     #[test]
     fn read_agent_verify_snapshot_rejects_oversized_input() -> Result<(), String> {
         let dir = ScratchDir::new("verify-oversize");
@@ -536,7 +654,7 @@ mod tests {
             .map_err(|err| format!("create oversize fixture: {err}"))?;
         // A sparse extension past the limit: cheap to create, and the
         // metadata check must reject before any bytes are read.
-        file.set_len(MAX_AGENT_VERIFY_SNAPSHOT_BYTES + 1)
+        file.set_len(crate::bounded_input::MAX_CLI_INPUT_BYTES + 1)
             .map_err(|err| format!("size oversize fixture: {err}"))?;
         let Err(error) = read_agent_verify_snapshot(&oversized, "before") else {
             return Err("an oversized snapshot must be rejected".to_string());

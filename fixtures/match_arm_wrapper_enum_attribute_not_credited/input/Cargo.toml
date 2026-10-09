@@ -1,0 +1,10 @@
+[package]
+name = "match_arm_wrapper_enum_attribute_not_credited_fixture"
+version = "0.0.0"
+edition = "2024"
+
+[dependencies]
+wrapper_binding_attribute_macros = { path = "fixture_macros" }
+
+[workspace]
+members = ["fixture_macros"]

@@ -1,0 +1,66 @@
+name: Public Proof Drift
+
+# Runs `cargo xtask public-proof --check`, which fails when docs/PUBLIC_PROOF.md
+# no longer matches its receipts, or when a receipt has drifted from the
+# in-repo output it was copied from (the dx scoreboard baseline, the verdict
+# corpus report, the corpus manifest). Advisory: the required Rust gate checks
+# the page against its receipts only, so a PR that moves a scoreboard or the
+# corpus does not fail required CI. This lane is how the page's lag is
+# surfaced. It runs nightly, on demand, and when a pull request that touches a
+# source, a receipt or the page is opened ready or leaves draft. A push after
+# that reruns it only through a draft-to-ready toggle. On failure the job
+# summary shows the changed page lines and the refresh commands.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 7 * * *"
+  pull_request:
+    types: [opened, ready_for_review]
+    paths:
+      - "metrics/dx-scoreboard/baseline.json"
+      - "fixtures/rust-verdict-corpus/expected/report.json"
+      - "benchmarks/rust_corpus/manifest.json"
+      - "metrics/public-proof/**"
+      - "docs/PUBLIC_PROOF.md"
+      - "xtask/src/public_proof.rs"
+      - ".github/workflows/public-proof.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-proof-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && !github.event.pull_request.draft)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      - name: Check the page and receipts against their sources
+        run: |
+          set -o pipefail
+          cargo xtask public-proof --check 2>&1 | tee "$RUNNER_TEMP/public-proof-check.txt"
+
+      - name: Show what drifted
+        if: failure()
+        run: |
+          {
+            echo "## Public proof page is stale"
+            echo
+            echo '```text'
+            tail -n 60 "$RUNNER_TEMP/public-proof-check.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

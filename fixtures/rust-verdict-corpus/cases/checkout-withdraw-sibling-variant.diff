@@ -1,0 +1,13 @@
+diff --git a/src/payment.rs b/src/payment.rs
+index 8482957..a923219 100644
+--- a/src/payment.rs
++++ b/src/payment.rs
+@@ -14,7 +14,7 @@ pub struct Wallet {
+ 
+ pub fn withdraw(wallet: &mut Wallet, amount: i64) -> Result<i64, PayError> {
+     if wallet.frozen {
+-        return Err(PayError::Frozen);
++        return Err::<i64, PayError>(PayError::Frozen);
+     }
+     if amount > wallet.balance {
+         return Err(PayError::Insufficient);

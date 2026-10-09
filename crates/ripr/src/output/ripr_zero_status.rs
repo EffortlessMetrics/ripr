@@ -1,4 +1,11 @@
+use super::first_pr::{ProofPathLabels, REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
 use super::gap_decision_ledger::{self, GapRecord};
+use super::gate::{
+    GATE_DECISION_KNOWN_STATUSES, GATE_STATUS_CONFIG_ERROR, blocked_producer_warnings,
+    discloses_blocked_producer_outcome, discloses_incomplete_analysis_outcome,
+    discloses_limited_findings_bound, discloses_limited_partial_scope,
+    incomplete_analysis_outcome_kind,
+};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -128,6 +135,12 @@ struct RepairRoute {
     suggested_test: Option<String>,
     related_test: Option<String>,
     verify_command: Option<String>,
+    /// The repair transaction's start (#3906), carried from the delta item's
+    /// `evidence_record.canonical_item.repair_command`. That record names it
+    /// only past the fail-closed repair-packet flip; zero status never builds
+    /// one from a seam id.
+    repair_command: Option<String>,
+    /// The carried repair start, or `None`. Never a synthesized `agent start`.
     agent_command: Option<String>,
     static_limitations: Vec<String>,
 }
@@ -140,6 +153,8 @@ struct DeltaParse {
     counts: DebtDeltaSummary,
     items: Vec<DeltaItem>,
     warnings: Vec<String>,
+    partial_denominator: bool,
+    counts_items_mismatch: bool,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -149,6 +164,7 @@ struct GapLedgerParse {
     ripr_zero_targets: usize,
     repair_routes: Vec<RepairRoute>,
     warnings: Vec<String>,
+    partial_denominator: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -183,6 +199,7 @@ struct EvidenceRecordRepairContext {
     suggested_test: Option<String>,
     related_test: Option<String>,
     verify_command: Option<String>,
+    repair_command: Option<String>,
     static_limitations: Vec<String>,
 }
 
@@ -214,6 +231,7 @@ struct ReviewMetadata {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 struct GateParse {
     blocking_candidates: usize,
+    failed: bool,
     warnings: Vec<String>,
 }
 
@@ -264,7 +282,14 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
             .to_string(),
     );
 
-    let status = if delta.status == ParseStatus::Loaded {
+    // A partial or contradictory denominator makes the report incomplete,
+    // even when every input parsed (#5251 Z2/Z3/Z4).
+    let partial_denominator = delta.partial_denominator || gap_ledger.partial_denominator;
+    let status = if delta.status == ParseStatus::Loaded
+        && !partial_denominator
+        && !delta.counts_items_mismatch
+        && !gate.failed
+    {
         "advisory"
     } else {
         "incomplete"
@@ -272,7 +297,14 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
     .to_string();
     let delta_visible_unresolved =
         delta.counts.still_present + delta.counts.new_policy_eligible + delta.counts.acknowledged;
-    let target_from_gap_ledger = gap_ledger.supplied && gap_ledger.status == ParseStatus::Loaded;
+    // A partial-denominator ledger (blocked, partial-scope, findings-bounded,
+    // or incomplete-outcome producer run) is disclosed but never selected as
+    // the target denominator: its zero would erase visible delta debt. The
+    // delta keeps the debt signal while the report stays incomplete (#6095
+    // review).
+    let target_from_gap_ledger = gap_ledger.supplied
+        && gap_ledger.status == ParseStatus::Loaded
+        && !gap_ledger.partial_denominator;
     let visible_unresolved = if target_from_gap_ledger {
         gap_ledger.ripr_zero_targets
     } else {
@@ -283,13 +315,21 @@ pub(crate) fn build_ripr_zero_status_report(input: RiprZeroStatusInput) -> RiprZ
     } else {
         "baseline_debt_delta"
     };
-    let state = if delta.status != ParseStatus::Loaded {
-        "unknown"
-    } else if visible_unresolved == 0
+    // Contradictory inputs can never yield a verdict, and a partial
+    // denominator or a failed gate evaluation can never yield bare achieved
+    // — but visible debt keeps its not_yet signal, disclosed by the parse
+    // warnings (#5251 Z2/Z3/Z4/Z5).
+    let all_clear = visible_unresolved == 0
         && delta.counts.stale == 0
         && delta.counts.invalid == 0
-        && delta.counts.missing_input == 0
+        && delta.counts.missing_input == 0;
+    let state = if delta.status != ParseStatus::Loaded
+        || delta.counts_items_mismatch
+        || (all_clear && partial_denominator)
+        || (all_clear && gate.failed)
     {
+        "unknown"
+    } else if all_clear {
         "achieved"
     } else {
         "not_yet"
@@ -427,11 +467,18 @@ pub(crate) fn render_ripr_zero_status_markdown(report: &RiprZeroStatusReport) ->
         if let Some(suggested) = route.suggested_test.as_deref() {
             out.push_str(&format!("  Suggested test: {suggested}\n"));
         }
-        if let Some(verify) = route.verify_command.as_deref() {
-            out.push_str(&format!("  Verify: {verify}\n"));
+        // #3906: a carried repair start leads; its after phase runs verify,
+        // so the verify command is the manual alternative. Without one it
+        // runs after the test edit.
+        if let Some(repair) = route.repair_command.as_deref() {
+            out.push_str(&format!("  Repair start: {repair}\n"));
+            out.push_str(&format!(
+                "  {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+            ));
         }
-        if let Some(agent) = route.agent_command.as_deref() {
-            out.push_str(&format!("  Agent: {agent}\n"));
+        if let Some(verify) = route.verify_command.as_deref() {
+            let labels = ProofPathLabels::for_repair_start(route.repair_command.is_some());
+            out.push_str(&format!("  {}: {verify}\n", labels.verify));
         }
         if let Some(limit) = route.static_limitations.first() {
             out.push_str(&format!("  Static limit: {limit}\n"));
@@ -509,24 +556,307 @@ fn parse_delta(path: &str, text: Result<String, String>) -> DeltaParse {
             ..DeltaParse::default()
         };
     }
+    // Fail closed on content-free input (#5251 Z1): a delta document without
+    // a delta section, or with a partial one, is not evidence of zero debt.
+    // Real `ripr baseline diff` output always carries all eight counts.
+    let Some(delta_section) = value.get("delta").and_then(Value::as_object) else {
+        return DeltaParse {
+            status: ParseStatus::Invalid,
+            warnings: vec![format!(
+                "required baseline debt delta input {path} has no delta section; an empty input is not evidence of zero debt"
+            )],
+            ..DeltaParse::default()
+        };
+    };
+    let mut missing_counts = Vec::new();
+    for key in [
+        "still_present",
+        "resolved",
+        "new_policy_eligible",
+        "acknowledged",
+        "suppressed",
+        "stale_baseline_entry",
+        "invalid_baseline_entry",
+        "missing_current_input",
+    ] {
+        if delta_section.get(key).is_none() {
+            missing_counts.push(key);
+        }
+    }
+    if !missing_counts.is_empty() {
+        return DeltaParse {
+            status: ParseStatus::Invalid,
+            warnings: vec![format!(
+                "required baseline debt delta input {path} has a partial delta section (missing counts: {}); partial counts are not evidence of zero debt",
+                missing_counts.join(", ")
+            )],
+            ..DeltaParse::default()
+        };
+    }
+    // Present-but-malformed counts fail closed too (#6095 review): a null,
+    // string, or negative count must never read as zero debt.
+    let mut malformed_counts = Vec::new();
+    for key in [
+        "still_present",
+        "resolved",
+        "new_policy_eligible",
+        "acknowledged",
+        "suppressed",
+        "stale_baseline_entry",
+        "invalid_baseline_entry",
+        "missing_current_input",
+    ] {
+        if validated_count(delta_section, key).is_none() {
+            malformed_counts.push(key);
+        }
+    }
+    if !malformed_counts.is_empty() {
+        return DeltaParse {
+            status: ParseStatus::Invalid,
+            warnings: vec![format!(
+                "required baseline debt delta input {path} has malformed counts ({}); counts must be valid nonnegative integers, and malformed counts are not evidence of zero debt",
+                malformed_counts.join(", ")
+            )],
+            ..DeltaParse::default()
+        };
+    }
+    // Present-but-malformed run-state disclosures fail closed (#6770
+    // review): a corrupt qualifier must never read as a complete
+    // denominator. Absence (or explicit null) is fine — complete runs
+    // carry no envelope — but a present envelope must hold the shape the
+    // shared predicates read. A future producer adding shapes extends both
+    // the predicates and this gate together.
+    let mut malformed_disclosures = Vec::new();
+    if let Some(outcome) = value.get("analysis_outcome")
+        && !outcome.is_null()
+        && !outcome.is_object()
+    {
+        malformed_disclosures.push("analysis_outcome");
+    }
+    if let Some(scope) = value.get("analysis_scope")
+        && !scope.is_null()
+        && !scope.is_object()
+    {
+        malformed_disclosures.push("analysis_scope");
+    }
+    if let Some(limitations) = value.get("run_limitations")
+        && !limitations.is_null()
+        && !limitations.is_array()
+    {
+        malformed_disclosures.push("run_limitations");
+    }
+    if let Some(status) = value.get("current_gate_status")
+        && !status.is_null()
+        && status.as_str().is_none_or(|text| {
+            text.trim().is_empty() || !GATE_DECISION_KNOWN_STATUSES.contains(&text)
+        })
+    {
+        malformed_disclosures.push("current_gate_status");
+    }
+    // Predicate-consumed members validate too (#6770 review): a well-typed
+    // envelope with corrupt members ({"analysis_complete": "false"}) would
+    // otherwise dodge the disclosure predicates and read as a complete
+    // denominator. Only members the shared predicates consume are gated;
+    // diagnostic-only positions (the outcome kind) keep their safe defaults.
+    if let Some(outcome) = value.get("analysis_outcome")
+        && let Some(complete) = outcome.get("analysis_complete")
+        && !complete.is_null()
+        && !complete.is_boolean()
+    {
+        malformed_disclosures.push("analysis_outcome.analysis_complete");
+    }
+    if let Some(scope) = value.get("analysis_scope")
+        && let Some(run_status) = scope.get("run_status")
+        && !run_status.is_null()
+        && run_status
+            .as_str()
+            .is_none_or(|text| text.trim().is_empty())
+    {
+        malformed_disclosures.push("analysis_scope.run_status");
+    }
+    if let Some(limitations) = value.get("run_limitations").and_then(Value::as_array)
+        && limitations.iter().any(|entry| {
+            if entry.is_null() {
+                return false;
+            }
+            let Some(entry) = entry.as_object() else {
+                return true;
+            };
+            // Blank discriminators are corrupt, not undisclosed: the
+            // predicates match exact vocabulary tokens, so a blank member
+            // would dodge disclosure and read as a complete denominator.
+            // Real entries always name non-blank run_status and category
+            // (output/json bounded-run contract), so an entry without a
+            // usable discriminator is likewise malformed.
+            let usable = |member: Option<&Value>| {
+                member
+                    .is_some_and(|value| value.as_str().is_some_and(|text| !text.trim().is_empty()))
+            };
+            let run_status = entry.get("run_status");
+            let category = entry.get("category");
+            run_status.is_some_and(|value| !value.is_null() && !usable(Some(value)))
+                || category.is_some_and(|value| !value.is_null() && !usable(Some(value)))
+                || (!usable(run_status) && !usable(category))
+        })
+    {
+        malformed_disclosures.push("run_limitations[]");
+    }
+    if !malformed_disclosures.is_empty() {
+        return DeltaParse {
+            status: ParseStatus::Invalid,
+            warnings: vec![format!(
+                "required baseline debt delta input {path} has malformed run-state disclosures ({}); a corrupt disclosure qualifier is not evidence of zero debt",
+                malformed_disclosures.join(", ")
+            )],
+            ..DeltaParse::default()
+        };
+    }
+    // Every count above validated as a real usize, so these reads are exact.
+    let still_present = usize_path(&value, &["delta", "still_present"]);
+    let resolved = usize_path(&value, &["delta", "resolved"]);
+    let new_policy_eligible = usize_path(&value, &["delta", "new_policy_eligible"]);
+    let acknowledged = usize_path(&value, &["delta", "acknowledged"]);
+    let suppressed = usize_path(&value, &["delta", "suppressed"]);
+    let stale = usize_path(&value, &["delta", "stale_baseline_entry"]);
+    let invalid = usize_path(&value, &["delta", "invalid_baseline_entry"]);
+    let missing_input = usize_path(&value, &["delta", "missing_current_input"]);
+    // Aggregates must not overflow: a wrapped sum would fabricate zero
+    // visible debt and `achieved` (or panic in checked builds), so
+    // overflowing counts fail closed as Invalid (#6095 review).
+    let new_sum = new_policy_eligible
+        .checked_add(acknowledged)
+        .and_then(|sum| sum.checked_add(suppressed));
+    let visible_sum = still_present
+        .checked_add(new_policy_eligible)
+        .and_then(|sum| sum.checked_add(acknowledged));
+    if new_sum.is_none() || visible_sum.is_none() {
+        return DeltaParse {
+            status: ParseStatus::Invalid,
+            warnings: vec![format!(
+                "required baseline debt delta input {path} has counts whose aggregates overflow; overflowing counts are not evidence of zero debt"
+            )],
+            ..DeltaParse::default()
+        };
+    }
     let counts = DebtDeltaSummary {
-        still_present: usize_path(&value, &["delta", "still_present"]),
-        resolved: usize_path(&value, &["delta", "resolved"]),
-        new: usize_path(&value, &["delta", "new_policy_eligible"])
-            + usize_path(&value, &["delta", "acknowledged"])
-            + usize_path(&value, &["delta", "suppressed"]),
-        new_policy_eligible: usize_path(&value, &["delta", "new_policy_eligible"]),
-        acknowledged: usize_path(&value, &["delta", "acknowledged"]),
-        suppressed: usize_path(&value, &["delta", "suppressed"]),
-        stale: usize_path(&value, &["delta", "stale_baseline_entry"]),
-        invalid: usize_path(&value, &["delta", "invalid_baseline_entry"]),
-        missing_input: usize_path(&value, &["delta", "missing_current_input"]),
+        still_present,
+        resolved,
+        // Validated non-overflowing above; parse_delta is the only
+        // constructor of nonzero counts, so downstream sums are safe.
+        new: new_sum.unwrap_or(0),
+        new_policy_eligible,
+        acknowledged,
+        suppressed,
+        stale,
+        invalid,
+        missing_input,
     };
     let items = value
         .get("items")
         .and_then(Value::as_array)
-        .map(|items| items.iter().map(delta_item_from_value).collect())
+        .map(|entries| {
+            entries
+                .iter()
+                .map(delta_item_from_value)
+                .collect::<Vec<DeltaItem>>()
+        })
         .unwrap_or_default();
+    // A partial-scope, findings-bounded, or otherwise incomplete producer
+    // denominator is disclosed, never silently counted (#5251 Z2). The
+    // predicates are the shared gate fail-closed vocabulary.
+    let mut warnings = warnings_from_value(&value);
+    let mut partial_denominator = false;
+    if discloses_limited_partial_scope(&value) {
+        partial_denominator = true;
+        warnings.push(format!(
+            "required baseline debt delta input {path} discloses a limited_partial_scope producer run; a partial denominator can never yield achieved"
+        ));
+    }
+    if discloses_limited_findings_bound(&value) {
+        partial_denominator = true;
+        warnings.push(format!(
+            "required baseline debt delta input {path} discloses a findings-bounded producer run; a bounded denominator can never yield achieved"
+        ));
+    }
+    if discloses_incomplete_analysis_outcome(&value) {
+        partial_denominator = true;
+        warnings.push(format!(
+            "required baseline debt delta input {path} discloses an incomplete analysis outcome ({}); an incomplete denominator can never yield achieved",
+            incomplete_analysis_outcome_kind(&value)
+        ));
+    }
+    // A failed current evaluation has no decisions (#6257 review): the delta
+    // propagates the gate status verbatim, and a config_error current is
+    // never a denominator, mirroring the gate-reader Z5 arm. Without this,
+    // a delta-only invocation would read the empty counts as all-clear.
+    if string_field(value.get("current_gate_status")).as_deref() == Some(GATE_STATUS_CONFIG_ERROR) {
+        partial_denominator = true;
+        warnings.push(format!(
+            "required baseline debt delta input {path} reports current gate status config_error; a failed evaluation can never yield achieved"
+        ));
+    }
+    // Counts and items must reconcile (#5251 Z3): the check below
+    // requires exact bucket cardinalities, since the producer aggregates
+    // counts from the emitted items.
+    let clear_counts_zero = counts.still_present == 0
+        && counts.new_policy_eligible == 0
+        && counts.acknowledged == 0
+        && counts.stale == 0
+        && counts.invalid == 0
+        && counts.missing_input == 0;
+    // The producer aggregates every bucket count from the emitted items, so
+    // in a faithful document each bucket cardinality equals its count
+    // exactly. Any deviation is a self-contradictory document, which cannot
+    // yield a verdict (#5251 Z3, #6095 review). Buckets outside the
+    // producer's eight carry no count to contradict, so they block
+    // `achieved` only when the counts would otherwise clear it: against
+    // visible debt the document is already `not_yet`. Historical `resolved`
+    // and accepted `suppressed` counts never mask them.
+    let mut bucket_items: BTreeMap<&str, usize> = BTreeMap::new();
+    let mut unknown_bucket_items = 0usize;
+    for item in &items {
+        match item.bucket.as_str() {
+            "still_present"
+            | "resolved"
+            | "new_policy_eligible"
+            | "acknowledged"
+            | "suppressed"
+            | "stale_baseline_entry"
+            | "invalid_baseline_entry"
+            | "missing_current_input" => {
+                *bucket_items.entry(item.bucket.as_str()).or_insert(0) += 1;
+            }
+            _ => {
+                unknown_bucket_items += 1;
+            }
+        }
+    }
+    let bucket_counts = [
+        ("still_present", counts.still_present),
+        ("resolved", counts.resolved),
+        ("new_policy_eligible", counts.new_policy_eligible),
+        ("acknowledged", counts.acknowledged),
+        ("suppressed", counts.suppressed),
+        ("stale_baseline_entry", counts.stale),
+        ("invalid_baseline_entry", counts.invalid),
+        ("missing_current_input", counts.missing_input),
+    ];
+    let mut counts_items_mismatch = false;
+    for (bucket, count) in bucket_counts {
+        let carried = bucket_items.get(bucket).copied().unwrap_or(0);
+        if carried != count {
+            counts_items_mismatch = true;
+            warnings.push(format!(
+                "required baseline debt delta input {path} bucket {bucket} reports count {count} but carries {carried} item(s); contradictory items and counts cannot yield a verdict"
+            ));
+        }
+    }
+    if unknown_bucket_items > 0 && clear_counts_zero {
+        counts_items_mismatch = true;
+        warnings.push(format!(
+            "required baseline debt delta input {path} carries {unknown_bucket_items} item(s) outside the producer buckets against zero counts; contradictory items and counts cannot yield a verdict"
+        ));
+    }
     DeltaParse {
         status: ParseStatus::Loaded,
         baseline_path: string_path(&value, &["baseline", "path"])
@@ -534,7 +864,9 @@ fn parse_delta(path: &str, text: Result<String, String>) -> DeltaParse {
         baseline_entries: usize_path(&value, &["baseline", "entries"]),
         counts,
         items,
-        warnings: warnings_from_value(&value),
+        warnings,
+        partial_denominator,
+        counts_items_mismatch,
     }
 }
 
@@ -573,12 +905,49 @@ fn parse_gap_ledger(path: Option<&str>, text: Option<Result<String, String>>) ->
         .filter(|record| gap_decision_ledger::projection_eligible(record, "ripr_zero_count"))
         .count();
     let repair_routes = gap_repair_routes(&records);
+    // A partial-scope ledger is disclosed, never silently counted (#5251
+    // Z4): its targets are a partial denominator, like the gate input rule.
+    let mut warnings = Vec::new();
+    let mut partial_denominator = false;
+    if let Ok(ledger_value) = serde_json::from_str::<Value>(&text) {
+        if discloses_limited_partial_scope(&ledger_value) {
+            partial_denominator = true;
+            warnings.push(format!(
+                "optional gap decision ledger input {path} discloses a limited_partial_scope producer run; a partial denominator can never yield achieved"
+            ));
+        }
+        if discloses_limited_findings_bound(&ledger_value) {
+            partial_denominator = true;
+            warnings.push(format!(
+                "optional gap decision ledger input {path} discloses a findings-bounded producer run; a bounded denominator can never yield achieved"
+            ));
+        }
+        if discloses_incomplete_analysis_outcome(&ledger_value) {
+            partial_denominator = true;
+            warnings.push(format!(
+                "optional gap decision ledger input {path} discloses an incomplete analysis outcome ({}); an incomplete denominator can never yield achieved",
+                incomplete_analysis_outcome_kind(&ledger_value)
+            ));
+        }
+        if discloses_blocked_producer_outcome(&ledger_value) {
+            partial_denominator = true;
+            warnings.push(format!(
+                "optional gap decision ledger input {path} discloses a blocked producer run; a blocked denominator can never yield achieved"
+            ));
+            for producer_warning in blocked_producer_warnings(&ledger_value) {
+                warnings.push(format!(
+                    "optional gap decision ledger input {path} producer warning: {producer_warning}"
+                ));
+            }
+        }
+    }
     GapLedgerParse {
         status: ParseStatus::Loaded,
         supplied: true,
         ripr_zero_targets,
         repair_routes,
-        warnings: Vec::new(),
+        warnings,
+        partial_denominator,
     }
 }
 
@@ -614,9 +983,28 @@ fn parse_gate(path: Option<&str>, text: Option<Result<String, String>>) -> GateP
             };
         }
     };
+    // A failed gate evaluation is surfaced, never silently zeroed (#5251
+    // Z5): its blocking count is meaningless because evaluation did not
+    // complete, so it is forced to 0 and the failure feeds the verdict.
+    let mut gate_warnings = warnings_from_value(&value);
+    let failed = string_field(value.get("status")).as_deref() == Some(GATE_STATUS_CONFIG_ERROR);
+    if failed {
+        let config_error_count = value
+            .get("config_errors")
+            .and_then(Value::as_array)
+            .map_or(0, Vec::len);
+        gate_warnings.push(format!(
+            "optional gate decision input {path} reports status config_error ({config_error_count} config errors); evaluation did not complete, so blocking candidates are reported as 0"
+        ));
+    }
     GateParse {
-        blocking_candidates: usize_path(&value, &["summary", "blocking"]),
-        warnings: warnings_from_value(&value),
+        blocking_candidates: if failed {
+            0
+        } else {
+            usize_path(&value, &["summary", "blocking"])
+        },
+        failed,
+        warnings: gate_warnings,
     }
 }
 
@@ -786,6 +1174,10 @@ fn evidence_record_repair_context_from_value(
             }),
         verify_command: recommendation
             .and_then(|recommendation| string_field(recommendation.get("verify_command"))),
+        repair_command: path_value(value, &["canonical_item", "repair_command"])
+            .and_then(Value::as_str)
+            .filter(|command| !command.trim().is_empty())
+            .map(ToOwned::to_owned),
         static_limitations: static_limitations_from_evidence_record(value),
     })
 }
@@ -982,7 +1374,7 @@ fn gap_repair_routes(records: &[GapRecord]) -> Vec<RepairRoute> {
                 gap_id: (!record.gap_id.is_empty()).then(|| record.gap_id.clone()),
                 canonical_gap_id: (!record.canonical_gap_id.is_empty())
                     .then(|| record.canonical_gap_id.clone()),
-                seam_id: seam_id.clone(),
+                seam_id,
                 path: anchor
                     .and_then(|anchor| anchor.file.clone())
                     .or_else(|| route.and_then(|route| route.target_file.clone())),
@@ -993,11 +1385,10 @@ fn gap_repair_routes(records: &[GapRecord]) -> Vec<RepairRoute> {
                 suggested_test: route.and_then(|route| route.assertion_shape.clone()),
                 related_test: route.and_then(|route| route.related_test.clone()),
                 verify_command: record.verification_commands.first().cloned(),
-                agent_command: seam_id.as_ref().map(|seam_id| {
-                    format!(
-                        "ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow"
-                    )
-                }),
+                // Gap records carry no repair start (#3906), and this route's
+                // `seam_id` is a gap identity, so no agent command is named.
+                repair_command: None,
+                agent_command: None,
                 static_limitations: Vec::new(),
             }
         })
@@ -1031,7 +1422,7 @@ fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
                 source: "baseline_debt_delta".to_string(),
                 gap_id: None,
                 canonical_gap_id: None,
-                seam_id: seam_id.clone(),
+                seam_id,
                 path: evidence
                     .and_then(|record| record.path.clone())
                     .or_else(|| item.path.clone()),
@@ -1056,11 +1447,8 @@ fn repair_routes(items: &[DeltaItem]) -> Vec<RepairRoute> {
                 verify_command: evidence
                     .and_then(|record| record.verify_command.clone())
                     .or_else(|| item.repair.verify_command.clone()),
-                agent_command: seam_id.as_ref().map(|seam_id| {
-                    format!(
-                        "ripr agent start --root . --seam-id {seam_id} --out target/ripr/workflow"
-                    )
-                }),
+                repair_command: evidence.and_then(|record| record.repair_command.clone()),
+                agent_command: evidence.and_then(|record| record.repair_command.clone()),
                 static_limitations: evidence
                     .map(|record| record.static_limitations.clone())
                     .unwrap_or_default(),
@@ -1231,7 +1619,7 @@ fn top_debt_area_json(area: &TopDebtArea) -> Value {
 }
 
 fn repair_route_json(route: &RepairRoute) -> Value {
-    json!({
+    let mut value = json!({
         "rank": route.rank,
         "source": route.source,
         "gap_id": route.gap_id,
@@ -1246,7 +1634,16 @@ fn repair_route_json(route: &RepairRoute) -> Value {
         "verify_command": route.verify_command,
         "agent_command": route.agent_command,
         "static_limitations": route.static_limitations,
-    })
+    });
+    if let Some(repair_command) = route.repair_command.as_ref()
+        && let Some(fields) = value.as_object_mut()
+    {
+        fields.insert(
+            "repair_command".to_string(),
+            Value::String(repair_command.clone()),
+        );
+    }
+    value
 }
 
 fn route_headline(route: &RepairRoute) -> String {
@@ -1281,6 +1678,16 @@ fn usize_path(value: &Value, path: &[&str]) -> usize {
         .unwrap_or(0)
 }
 
+/// A delta count that must be a valid nonnegative integer: `None` when the
+/// key is missing or present-but-malformed (null, string, float, negative,
+/// or overflowing). Used where a silent zero would fabricate zero debt.
+fn validated_count(delta_section: &serde_json::Map<String, Value>, key: &str) -> Option<usize> {
+    delta_section
+        .get(key)
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+}
+
 fn string_path(value: &Value, path: &[&str]) -> Option<String> {
     path_value(value, path).and_then(string_value)
 }
@@ -1312,6 +1719,7 @@ mod tests {
         RiprZeroStatusInput, build_ripr_zero_status_report, render_ripr_zero_status_json,
         render_ripr_zero_status_markdown,
     };
+    use crate::output::first_pr::{REPAIR_AFTER_PHASE_LABEL, REPAIR_AFTER_PHASE_STEP};
     use serde_json::Value;
 
     #[test]
@@ -1600,6 +2008,54 @@ mod tests {
             Some("ripr evidence-movement --before before.json --after after.json"),
             "expected evidence_record verify command in: {rendered}"
         );
+        // #3906: this record carries no repair start, so neither the route
+        // nor its Markdown names a repair-loop command for `record-seam`.
+        assert_eq!(route.get("agent_command"), Some(&Value::Null));
+        assert!(route.get("repair_command").is_none());
+        assert!(!rendered.contains("agent start") && !rendered.contains("agent repair"));
+        assert!(!markdown.contains("agent start") && !markdown.contains("agent repair"));
+
+        let carried = "ripr agent repair --root . --seam-id record-seam --phase before";
+        let mut carried_delta: Value =
+            serde_json::from_str(delta).map_err(|err| format!("parse delta fixture: {err}"))?;
+        carried_delta["items"][0]["evidence_record"]["canonical_item"] =
+            serde_json::json!({ "repair_command": carried });
+        let carried_report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "target/ripr/reports/baseline-debt-delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(carried_delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let carried_rendered = render_ripr_zero_status_json(&carried_report)?;
+        let carried_value = serde_json::from_str::<Value>(&carried_rendered)
+            .map_err(|err| format!("RIPR Zero status JSON should parse: {err}"))?;
+        assert_eq!(
+            carried_value["repair_routes"][0]["repair_command"],
+            Value::from(carried)
+        );
+        assert_eq!(
+            carried_value["repair_routes"][0]["agent_command"],
+            Value::from(carried)
+        );
+        let carried_markdown = render_ripr_zero_status_markdown(&carried_report);
+        // #3906 (F60-14): the after phase follows the carried start.
+        assert!(
+            carried_markdown.contains(&format!(
+                "  Repair start: {carried}\n  {REPAIR_AFTER_PHASE_LABEL}: {REPAIR_AFTER_PHASE_STEP}\n"
+            )),
+            "{carried_markdown}"
+        );
+        assert!(!carried_markdown.contains("  Verify after the test edit:"));
         let limitation = route
             .get("static_limitations")
             .and_then(Value::as_array)
@@ -1830,13 +2286,12 @@ mod tests {
             Some("legacy verify"),
             "expected legacy verify fallback in: {rendered}"
         );
-        assert!(
-            route
-                .get("agent_command")
-                .and_then(Value::as_str)
-                .is_some_and(|command| command.contains("--seam-id record-seam")),
-            "expected agent command to use record seam id in: {rendered}"
+        assert_eq!(
+            route.get("agent_command"),
+            Some(&Value::Null),
+            "a seam id without a carried repair start names no agent command: {rendered}"
         );
+        assert!(!rendered.contains("agent start") && !rendered.contains("agent repair"));
         Ok(())
     }
 
@@ -1849,6 +2304,409 @@ mod tests {
           "delta": {
             "still_present": 0,
             "resolved": 1,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "resolved", "identity": {"seam_id": "r"}, "path": "src/r.rs"}
+          ]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"achieved\""));
+        assert!(rendered.contains("\"visible_unresolved\": 0"));
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_a_content_free_delta() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta"
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("has no delta section"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_a_partial_delta_section() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {"resolved": 1}
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("partial delta section"), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_a_malformed_delta_count() -> Result<(), String> {
+        // Present-but-malformed counts must never read as zero debt (#6095
+        // review): null, string, and negative counts are all Invalid.
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": null,
+            "resolved": 0,
+            "new_policy_eligible": "0",
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": -1,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": []
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("malformed counts"), "{rendered}");
+        assert!(rendered.contains("still_present"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_a_malformed_run_state_disclosure() -> Result<(), String>
+    {
+        // Present-but-malformed run-state disclosures fail closed (#6770
+        // review): a corrupt qualifier is never a complete denominator, even
+        // when the counts themselves validate. Explicit null stays absent.
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [],
+          "analysis_outcome": "garbage",
+          "analysis_scope": null,
+          "run_limitations": {},
+          "current_gate_status": 42
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains("malformed run-state disclosures"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("analysis_outcome"), "{rendered}");
+        assert!(rendered.contains("run_limitations"), "{rendered}");
+        assert!(rendered.contains("current_gate_status"), "{rendered}");
+        assert!(!rendered.contains("analysis_scope"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_a_malformed_disclosure_member() -> Result<(), String> {
+        // Predicate-consumed members validate, not just envelope shapes
+        // (#6770 review): {"analysis_complete": "false"} dodges the
+        // boolean-false predicate, so without member validation a corrupt
+        // qualifier reads as a complete denominator. Null limitation
+        // entries stay lenient, matching top-level null handling.
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [],
+          "analysis_outcome": {"analysis_complete": "false"},
+          "analysis_scope": {"run_status": 42},
+          "run_limitations": [{"run_status": 42}, "bare-string", null],
+          "current_gate_status": "  "
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains("malformed run-state disclosures"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("analysis_outcome.analysis_complete"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("analysis_scope.run_status"), "{rendered}");
+        assert!(rendered.contains("run_limitations[]"), "{rendered}");
+        assert!(rendered.contains("current_gate_status"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_a_blank_disclosure_discriminator() -> Result<(), String>
+    {
+        // Blank discriminators are corrupt, not undisclosed (#6770 review):
+        // the predicates match exact vocabulary tokens, so blank members
+        // dodge disclosure; likewise an entry with no usable discriminator
+        // and an out-of-schema gate status. All fail as Invalid, never as
+        // a complete denominator.
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [],
+          "analysis_scope": {"run_status": "  "},
+          "run_limitations": [{"run_status": " "}, {"category": ""}, {}],
+          "current_gate_status": "error"
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains("malformed run-state disclosures"),
+            "{rendered}"
+        );
+        assert!(rendered.contains("analysis_scope.run_status"), "{rendered}");
+        assert!(rendered.contains("run_limitations[]"), "{rendered}");
+        assert!(rendered.contains("current_gate_status"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_overflowing_delta_counts() -> Result<(), String> {
+        // Aggregates that overflow must fail closed (#6095 review): a wrapped
+        // sum would fabricate zero visible debt and `achieved`. usize::MAX
+        // keeps the overflow exact on any pointer width.
+        let delta = format!(
+            r#"{{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {{
+            "still_present": {},
+            "resolved": 0,
+            "new_policy_eligible": 1,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          }},
+          "items": []
+        }}"#,
+            usize::MAX
+        );
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("aggregates overflow"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_for_unclassified_items_under_resolved_counts()
+    -> Result<(), String> {
+        // An unclassifiable item blocks achieved even when historical
+        // resolved counts are positive: resolved is not current-debt
+        // evidence for an item of unknown classification (#6095 review).
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 1,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [{"bucket": "unrecognized", "path": "src/mystery.rs"}]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("contradictory"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_discloses_a_partial_scope_delta_and_withholds_achieved()
+    -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "run_status": "limited_partial_scope",
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
             "new_policy_eligible": 0,
             "acknowledged": 0,
             "suppressed": 0,
@@ -1875,8 +2733,464 @@ mod tests {
             recommendation_calibration_json: None,
         });
         let rendered = render_ripr_zero_status_json(&report)?;
-        assert!(rendered.contains("\"state\": \"achieved\""));
-        assert!(rendered.contains("\"visible_unresolved\": 0"));
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("limited_partial_scope"), "{rendered}");
+        assert!(!rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_keeps_not_yet_for_debt_under_a_partial_scope_delta() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "run_status": "limited_partial_scope",
+          "delta": {
+            "still_present": 2,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "still_present", "identity": {"seam_id": "a"}, "path": "src/a.rs"},
+            {"bucket": "still_present", "identity": {"seam_id": "b"}, "path": "src/b.rs"}
+          ]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"not_yet\""), "{rendered}");
+        assert!(rendered.contains("limited_partial_scope"), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_when_items_contradict_zero_counts() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [{"bucket": "still_present", "path": "src/a.rs"}]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(rendered.contains("contradict"), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_discloses_a_partial_scope_gap_ledger() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 1,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "resolved", "identity": {"seam_id": "r"}, "path": "src/r.rs"}
+          ]
+        }"#;
+        let gap_ledger = r#"{
+          "run_status": "limited_partial_scope",
+          "gap_records": []
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: Some("gap-ledger.json".to_string()),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: Some(Ok(gap_ledger.to_string())),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains("gap decision ledger input gap-ledger.json discloses"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_rejects_a_blocked_gap_ledger_with_producer_warnings() -> Result<(), String>
+    {
+        // A `status: "blocked"` ledger with producer warnings is a failed
+        // producer, never a complete zero denominator: an otherwise clean
+        // delta must report unknown and preserve the warnings (#6095 review).
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 1,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "resolved", "identity": {"seam_id": "r"}, "path": "src/r.rs"}
+          ]
+        }"#;
+        let gap_ledger = r#"{
+          "status": "blocked",
+          "records": [],
+          "warnings": ["parse ledger-source.json failed: invalid JSON: expected value at line 1 column 1"]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: Some("gap-ledger.json".to_string()),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: Some(Ok(gap_ledger.to_string())),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains(
+                "gap decision ledger input gap-ledger.json discloses a blocked producer run"
+            ),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("producer warning: parse ledger-source.json failed"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_accepts_a_warning_free_blocked_gap_ledger_as_zero() -> Result<(), String> {
+        // The producer also reports `status: "blocked"` for a genuinely
+        // empty zero-gap ledger; with no warnings that stays a complete zero
+        // denominator and a clean delta still reports achieved.
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 1,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "resolved", "identity": {"seam_id": "r"}, "path": "src/r.rs"}
+          ]
+        }"#;
+        let gap_ledger = r#"{
+          "status": "blocked",
+          "records": [],
+          "warnings": []
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: Some("gap-ledger.json".to_string()),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: Some(Ok(gap_ledger.to_string())),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"achieved\""), "{rendered}");
+        assert!(
+            rendered.contains("\"target_source\": \"gap_decision_ledger\""),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_keeps_delta_debt_under_a_failed_gap_ledger() -> Result<(), String> {
+        // A failed (blocked) ledger must not erase visible delta debt: the
+        // delta keeps the not_yet signal while the report stays incomplete
+        // and preserves the producer warnings (#6095 review).
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 2,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "still_present", "identity": {"seam_id": "a"}, "path": "src/a.rs"},
+            {"bucket": "still_present", "identity": {"seam_id": "b"}, "path": "src/b.rs"}
+          ]
+        }"#;
+        let gap_ledger = r#"{
+          "status": "blocked",
+          "records": [],
+          "warnings": ["parse ledger-source.json failed: source file not found"]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: Some("gap-ledger.json".to_string()),
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: Some(Ok(gap_ledger.to_string())),
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"not_yet\""), "{rendered}");
+        assert!(rendered.contains("\"visible_unresolved\": 2"), "{rendered}");
+        assert!(
+            rendered.contains("\"target_source\": \"baseline_debt_delta\""),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("producer warning: parse ledger-source.json failed"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_surfaces_a_failed_gate_decision() -> Result<(), String> {
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 0,
+            "resolved": 1,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "resolved", "identity": {"seam_id": "r"}, "path": "src/r.rs"}
+          ]
+        }"#;
+        let gate = r#"{
+          "schema_version": "0.1",
+          "kind": "gate_decision",
+          "status": "config_error",
+          "config_errors": ["gate evaluate requires --pr-guidance <path> or --gap-ledger <path>"],
+          "summary": {"blocking": 2}
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: Some("gate.json".to_string()),
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: Some(Ok(gate.to_string())),
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(
+            rendered.contains("reports status config_error (1 config errors)"),
+            "{rendered}"
+        );
+        // A failed gate evaluation is meaningless blocking evidence: the
+        // count is forced to 0 and a zero-count delta reports unknown, never
+        // achieved (#6095 review).
+        assert!(
+            rendered.contains("\"blocking_candidates\": 0"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("\"status\": \"incomplete\""),
+            "{rendered}"
+        );
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_when_items_exceed_a_nonzero_count() -> Result<(), String> {
+        // The producer aggregates counts from the emitted items, so a
+        // still_present count of 1 carrying 2 items is a contradictory
+        // document, which cannot yield a verdict (#6095 review).
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 1,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": [
+            {"bucket": "still_present", "identity": {"seam_id": "a"}, "path": "src/a.rs"},
+            {"bucket": "still_present", "identity": {"seam_id": "b"}, "path": "src/b.rs"}
+          ]
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains("bucket still_present reports count 1 but carries 2 item(s)"),
+            "{rendered}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ripr_zero_status_reports_unknown_when_a_nonzero_count_carries_no_items() -> Result<(), String>
+    {
+        // A positive count with no items is the same contradiction from the
+        // other side: the counts cannot be trusted, so no verdict (#6095
+        // review).
+        let delta = r#"{
+          "schema_version": "0.1",
+          "kind": "baseline_debt_delta",
+          "delta": {
+            "still_present": 1,
+            "resolved": 0,
+            "new_policy_eligible": 0,
+            "acknowledged": 0,
+            "suppressed": 0,
+            "stale_baseline_entry": 0,
+            "invalid_baseline_entry": 0,
+            "missing_current_input": 0
+          },
+          "items": []
+        }"#;
+        let report = build_ripr_zero_status_report(RiprZeroStatusInput {
+            root: ".".to_string(),
+            generated_at: "unix_ms:100000000".to_string(),
+            baseline_path: None,
+            delta_path: "delta.json".to_string(),
+            gap_ledger_path: None,
+            gate_path: None,
+            pr_guidance_path: None,
+            recommendation_calibration_path: None,
+            baseline_json: None,
+            delta_json: Ok(delta.to_string()),
+            gap_ledger_json: None,
+            gate_json: None,
+            pr_guidance_json: None,
+            recommendation_calibration_json: None,
+        });
+        let rendered = render_ripr_zero_status_json(&report)?;
+        assert!(rendered.contains("\"state\": \"unknown\""), "{rendered}");
+        assert!(
+            rendered.contains("bucket still_present reports count 1 but carries 0 item(s)"),
+            "{rendered}"
+        );
         Ok(())
     }
 

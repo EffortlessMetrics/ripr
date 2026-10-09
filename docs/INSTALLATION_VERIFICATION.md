@@ -17,7 +17,12 @@ ripr agent receipt --verify-json <agent-verify.json> --seam-id <seam_id> --json
 `ripr init` may materialize repo policy, but it must not be required for the
 first useful CLI, editor, or CI experience.
 
-## Last Published Release Proof
+## Last Recorded Release Proof
+
+`ripr` 0.8.0 (2026-06-02), 0.9.0 (2026-06-11), and 0.10.0 (2026-06-15) were
+published to crates.io and GitHub Releases after 0.7.0; their post-publish
+proof is not recorded in this file. The last release whose proof is recorded
+here is 0.7.0.
 
 The `ripr 0.7.0` release was published and verified on 2026-05-20. The
 verified public loop covers `ripr first-pr`, zero-config `ripr pilot`,
@@ -72,8 +77,18 @@ Linux-only receipt is not a cross-platform qualification: the release handoff
 must name the missing platform when the other hosted lane has not run.
 
 The installed binary's identity probe is intentionally narrower than every
-other CLI command: `ripr --version` and `ripr -V` must exit 0 and emit exactly
-`ripr <package version>` followed by one newline on stdout, with empty stderr.
+other CLI command: `ripr --version` and `ripr -V` must exit 0 and emit exactly one line,
+`ripr <package version> (<commit>)`, on stdout, with empty stderr. The commit is
+the full commit id the binary was built from, with `-dirty` appended when the
+crate sources (`src/`, `Cargo.toml`, `build.rs`) or the repository-root
+Cargo inputs (`Cargo.toml`, `Cargo.lock`, `.cargo/`) differed from it. A packaged
+crate (crates.io, `cargo install ripr`, an unpacked `.crate`) takes the commit
+from the `.cargo_vcs_info.json` that `cargo package` records; a build from a Git
+checkout takes it from that checkout. A build with neither prints the bare
+`ripr <package version>`, so a candidate with no commit is visibly
+unidentified rather than guessed. `ripr doctor` reports the same line together
+with the running executable and the first `ripr` on PATH, and warns when that
+PATH entry is Cargo build output (`target/<profile>/`) or a different binary.
 The top-level version flag takes precedence over leading help, JSON, and
 verbose-looking flags; it must not print help, parse repository configuration,
 analyze a workspace, or write artifacts. Command-local version contracts, such
@@ -132,7 +147,7 @@ cargo publish -p ripr --dry-run
 ```
 
 The authoritative packaged-crate install proof is produced by
-`VERSION="0.11.0" cargo xtask release-readiness --version "$VERSION"`. It packages the requested
+`cargo xtask release-readiness --version 0.11.0`. It packages the requested
 crate, extracts it outside the source checkout, installs from that extracted
 source, compares the installed binary with the workspace build, and exercises
 `ripr doctor --root <external-fixture> --json`. It then runs the installed
@@ -176,7 +191,7 @@ On Windows, use `target\ripr\install-smoke-path\bin\ripr.exe`.
 Also confirm the generated CI and editor first-run front doors before release:
 
 ```bash
-VERSION="0.11.0" cargo xtask release-readiness --version "$VERSION"
+cargo xtask release-readiness --version 0.11.0
 ```
 
 The readiness report must show that generated GitHub CI includes `#### First-run
@@ -190,7 +205,7 @@ Use the version being verified so an older cached or latest crate cannot mask a
 release mistake:
 
 ```bash
-cargo install ripr --version 0.7.0 --locked --root target/ripr/install-smoke-cratesio --force
+cargo install ripr --version 0.11.0 --locked --root target/ripr/install-smoke-cratesio --force
 target/ripr/install-smoke-cratesio/bin/ripr --version
 target/ripr/install-smoke-cratesio/bin/ripr first-pr --help
 target/ripr/install-smoke-cratesio/bin/ripr pilot \

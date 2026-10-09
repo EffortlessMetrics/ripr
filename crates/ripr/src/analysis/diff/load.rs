@@ -1,7 +1,76 @@
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Duration;
+
+use crate::core_error::CoreError;
+
+#[cfg(test)]
+mod contract_tests;
+
+/// A loaded diff together with the base ref that produced it (#3940).
+///
+/// `effective_base` is the explicit base when one was given, the resolved
+/// default base when the loader chose one, and `None` when the text came
+/// from a diff file or stdin (where `base` is ignored by contract).
+///
+/// A reported base is always one that resolved, because the field only exists
+/// on a successful load: `resolve_effective_base` rejects an unresolvable
+/// explicit `--base` before the diff runs, and a base that slipped past that
+/// probe still fails in `run_git_diff`.
+pub struct LoadedDiff {
+    pub text: String,
+    pub effective_base: Option<String>,
+}
+
+/// Decode a supplied diff the same way the git-run path decodes its stdout
+/// (`run_git_diff_with_unified`). A diff carries the raw bytes of every
+/// changed file, so one Latin-1 or binary-ish text file in the change made
+/// `--diff` refuse the whole diff that `ripr check` itself accepts.
+///
+/// Hunk payloads decode lossily. Path identity must not: the git route pins
+/// `core.quotePath=true`, so non-UTF-8 path bytes arrive C-quoted, but a
+/// supplied diff made with `quotePath=false` carries them raw, and a lossy
+/// decode would merge distinct names onto one U+FFFD path (#3601). A
+/// file-header line that is not UTF-8 therefore fails closed, naming the
+/// regeneration command.
+fn decode_diff_text(source: &str, bytes: Vec<u8>) -> Result<String, String> {
+    let error = match String::from_utf8(bytes) {
+        Ok(text) => return Ok(text),
+        Err(error) => error,
+    };
+    let bytes = error.as_bytes();
+    let lines = bytes.split(|byte| *byte == b'\n').collect::<Vec<_>>();
+    let not_utf8 = |line: &[u8]| std::str::from_utf8(line).is_err();
+    // A `---`/`+++` pair is a file header in a plain unified diff too.
+    let raw_marker_pair = lines.windows(2).any(|pair| {
+        matches!(pair, [old, new] if old.starts_with(b"--- ")
+            && new.starts_with(b"+++ ")
+            && (not_utf8(old) || not_utf8(new)))
+    });
+    let raw_header = lines.iter().any(|line| {
+        not_utf8(line)
+            && DIFF_PATH_HEADER_PREFIXES
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+    });
+    if raw_marker_pair || raw_header {
+        return Err(format!(
+            "failed to read {source}: a file header names a path that is not UTF-8 and \
+             not C-quoted, so distinct paths cannot be told apart; regenerate the diff \
+             with `git -c core.quotePath=true diff ...`"
+        ));
+    }
+    Ok(String::from_utf8_lossy(bytes).into_owned())
+}
+
+/// Git file-header lines that carry a path. None can be a hunk line, which
+/// always starts with `+`, `-`, a space or a backslash.
+const DIFF_PATH_HEADER_PREFIXES: &[&[u8]] = &[
+    b"diff --git ",
+    b"rename from ",
+    b"rename to ",
+    b"copy from ",
+    b"copy to ",
+];
 
 pub fn load_diff(
     root: &Path,
@@ -9,39 +78,109 @@ pub fn load_diff(
     diff_file: Option<&PathBuf>,
     git_timeout: Option<Duration>,
 ) -> Result<String, String> {
+    load_diff_core(root, base, diff_file, git_timeout).map_err(Into::into)
+}
+
+pub(crate) fn load_diff_core(
+    root: &Path,
+    base: Option<&str>,
+    diff_file: Option<&PathBuf>,
+    git_timeout: Option<Duration>,
+) -> Result<String, CoreError> {
+    load_diff_with_effective_base_core(root, base, diff_file, git_timeout).map(|loaded| loaded.text)
+}
+
+/// String compatibility wrapper around [`load_diff_with_effective_base_core`].
+/// Production analysis uses the typed core; tests pin Display parity here.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "public String boundary for LoadedDiff; production analysis uses load_diff_with_effective_base_core"
+    )
+)]
+pub fn load_diff_with_effective_base(
+    root: &Path,
+    base: Option<&str>,
+    diff_file: Option<&PathBuf>,
+    git_timeout: Option<Duration>,
+) -> Result<LoadedDiff, String> {
+    load_diff_with_effective_base_core(root, base, diff_file, git_timeout).map_err(Into::into)
+}
+
+pub(crate) fn load_diff_with_effective_base_core(
+    root: &Path,
+    base: Option<&str>,
+    diff_file: Option<&PathBuf>,
+    git_timeout: Option<Duration>,
+) -> Result<LoadedDiff, CoreError> {
     if let Some(diff_file) = diff_file {
         if diff_file == std::path::Path::new("-") {
-            let mut buffer = String::new();
-            std::io::stdin()
-                .read_to_string(&mut buffer)
+            // #4319: this read blocks until EOF. On an attached terminal that
+            // looks like a silent hang, so the CLI adapters disclose the read
+            // before dispatching here; the loader itself stays silent so
+            // library callers never receive CLI-branded stderr text.
+            // #4480: stdin is bounded by the shared CLI input cap, so a
+            // producer that never closes the pipe cannot grow memory forever.
+            let buffer = crate::bounded_input::read_reader(std::io::stdin().lock())
                 .map_err(|err| format!("failed to read diff from stdin: {err}"))?;
-            return Ok(buffer);
+            return Ok(LoadedDiff {
+                text: decode_diff_text("diff from stdin", buffer)?,
+                effective_base: None,
+            });
         }
-        return std::fs::read_to_string(diff_file)
-            .map_err(|err| format!("failed to read diff file {}: {err}", diff_file.display()));
+        // #4376(c): a directory is the common wrong `--diff` argument. On
+        // Windows its read fails as "Access is denied", which sends the user
+        // chasing ACLs; name the real cause. Genuine permission failures on a
+        // file still surface the OS error below.
+        if diff_file.is_dir() {
+            return Err(format!(
+                "failed to read diff file {}: the path is a directory, not a unified diff file; pass a diff file path, or `-` to read the diff from stdin",
+                diff_file.display()
+            )
+            .into());
+        }
+        // #4480: bounded, so `--diff /dev/zero` or a multi-GB log fails with
+        // the input limit instead of reading until memory is exhausted.
+        let bytes = crate::bounded_input::read(diff_file)
+            .map_err(|err| {
+                format!(
+                    "failed to read diff file {}: {err}; pass the path of an existing unified diff file, or `-` to read the diff from stdin",
+                    diff_file.display()
+                )
+            })?;
+        return Ok(LoadedDiff {
+            text: decode_diff_text(&format!("diff file {}", diff_file.display()), bytes)?,
+            effective_base: None,
+        });
+    }
+
+    // #3952: a missing root must fail as a missing root, not as an
+    // unresolvable base. Default-base resolution would otherwise turn a
+    // typo'd --root into "could not resolve a default base", misdirecting
+    // the caller toward --base.
+    if !root.is_dir() {
+        return Err(format!(
+            "repository root {} does not exist or is not a directory",
+            root.display()
+        )
+        .into());
     }
 
     warn_if_git_operation_in_progress(root, git_timeout);
 
-    // RIPR-SPEC-0084: when the caller passes an explicit base, use it as-is
-    // (if it does not exist, git diff will surface a clear error that names
-    // the ref the user chose). When the caller passes None (bare `ripr check`,
-    // no --base flag), resolve the repo's real default branch rather than
-    // hardcoding origin/main.
-    let owned;
-    let base: &str = if let Some(explicit) = base {
-        explicit
-    } else {
-        owned = resolve_default_base(root, git_timeout)?;
-        &owned
-    };
+    let base = resolve_effective_base(root, base, git_timeout)?;
 
-    run_git_diff(
+    let text = run_git_diff(
         root,
         &format!("{base}...HEAD"),
         &["--no-ext-diff", "--submodule=short", "--unified=0"],
         git_timeout,
-    )
+    )?;
+    Ok(LoadedDiff {
+        text,
+        effective_base: Some(base),
+    })
 }
 
 /// Load the diff from `base` to the live working tree.
@@ -54,17 +193,232 @@ pub fn load_worktree_diff(
     base: Option<&str>,
     git_timeout: Option<Duration>,
 ) -> Result<String, String> {
+    load_worktree_diff_core(root, base, git_timeout).map_err(Into::into)
+}
+
+pub(crate) fn load_worktree_diff_core(
+    root: &Path,
+    base: Option<&str>,
+    git_timeout: Option<Duration>,
+) -> Result<String, CoreError> {
+    load_worktree_diff_with_effective_base_core(root, base, git_timeout).map(|loaded| loaded.text)
+}
+
+/// String compatibility wrapper around [`load_worktree_diff_with_effective_base_core`].
+/// Production analysis uses the typed core; tests pin Display parity here.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "public String boundary for LoadedDiff; production analysis uses load_worktree_diff_with_effective_base_core"
+    )
+)]
+pub fn load_worktree_diff_with_effective_base(
+    root: &Path,
+    base: Option<&str>,
+    git_timeout: Option<Duration>,
+) -> Result<LoadedDiff, String> {
+    load_worktree_diff_with_effective_base_core(root, base, git_timeout).map_err(Into::into)
+}
+
+pub(crate) fn load_worktree_diff_with_effective_base_core(
+    root: &Path,
+    base: Option<&str>,
+    git_timeout: Option<Duration>,
+) -> Result<LoadedDiff, CoreError> {
     warn_if_git_operation_in_progress(root, git_timeout);
 
-    let owned;
-    let base: &str = if let Some(explicit) = base {
-        explicit
-    } else {
-        owned = resolve_default_base(root, git_timeout)?;
-        &owned
+    let base = resolve_effective_base(root, base, git_timeout)?;
+
+    let origin = worktree_diff_origin(root, &base, git_timeout);
+    let text = run_git_diff(root, &origin, &["--submodule=short"], git_timeout)?;
+    Ok(LoadedDiff {
+        text,
+        effective_base: Some(base),
+    })
+}
+
+/// The commit a `--worktree` diff starts from: the merge base of `base` and
+/// `HEAD`, the same origin the committed `<base>...HEAD` form uses. Diffing
+/// from the base tip instead would report every commit the base gained after
+/// the branch forked, reversed, as a change in this branch, so a worktree
+/// re-check after a test edit would not cover the same PR changes as the
+/// check it is compared with. Without a merge base (a shallow clone, an
+/// unborn branch) the base tip stays the origin, as before.
+fn worktree_diff_origin(root: &Path, base: &str, git_timeout: Option<Duration>) -> String {
+    crate::git::run_git_output_with_deadline(root, &["merge-base", base, "HEAD"], git_timeout)
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|commit| commit.trim().to_string())
+        .filter(|commit| !commit.is_empty())
+        .unwrap_or_else(|| base.to_string())
+}
+
+/// Resolve the base ref the diff will actually run against, which is also
+/// the value reported as [`LoadedDiff::effective_base`].
+///
+/// RIPR-SPEC-0084: an explicit `--base` is never substituted. It is only
+/// verified, so an unresolvable ref fails in ripr's own voice — naming the ref
+/// the user chose and saying the analysis did not run — instead of reaching
+/// `git diff` and surfacing git's `ambiguous argument` usage advice, which
+/// recommends `--` path separation for a mistake the user did not make. The
+/// zero-config path (no `--base`) still resolves the repository's real default
+/// branch below.
+///
+/// Both of those failures ask the git-root probe first. Missing git is named
+/// ahead of "not a work tree", because the default-base search treats any
+/// spawn failure as "ref absent" and would otherwise tell the user to pass
+/// `--base` (#4735). A root that is not a repository is named next: no ref
+/// resolves there, so blaming the chosen ref or the default-base search sends
+/// the user to a repair that cannot work. When that probe answers, its
+/// message replaces theirs; otherwise they stand.
+///
+/// The probe is evidence, not an assumption: only a `rev-parse` that actually
+/// ran and reported the ref absent produces the named failure above. When the
+/// probe cannot complete at all — the spawn fails, or it exceeds `git_timeout`
+/// — this returns the base unverified and `run_git_diff` decides, exactly as
+/// before this check existed.
+///
+/// That fallback is deliberately unconditional about *why* the probe failed,
+/// so it also carries the case where the ref really is absent but nothing
+/// could establish it. Git's raw `ambiguous argument` advice can therefore
+/// still reach the user on that path; the trade is that a probe which never
+/// ran is never allowed to assert a bad ref, and an unusable root keeps
+/// producing the `failed to run git diff: ...` text that the `context` and
+/// `explain` invalid-root contract pins.
+///
+/// This is the one base authority for every command that diffs committed
+/// history (#3952, #3886): `check`, `diff`, `first-pr` and `pr-evidence` all
+/// resolve an omitted `--base` here instead of assuming `origin/main`.
+pub fn resolve_effective_base(
+    root: &Path,
+    base: Option<&str>,
+    git_timeout: Option<Duration>,
+) -> Result<String, String> {
+    let Some(explicit) = base else {
+        return resolve_default_base(root, git_timeout).map_err(|err| {
+            message_for_git_root_probe(probe_git_root(root, git_timeout), root).unwrap_or(err)
+        });
     };
 
-    run_git_diff(root, base, &["--submodule=short"], git_timeout)
+    // No revision starts with `-`, and `git diff` would parse one as an option
+    // (`--output=<path>...HEAD` writes a file) if the probe below cannot run.
+    // The LSP takes this value from its client's settings.
+    if explicit.starts_with('-') {
+        return Err(format!(
+            "the base `{explicit}` starts with `-`, which no Git revision does (the analysis \
+             did not run). Pass `--base <ref>` for a ref this repository has."
+        ));
+    }
+    let commit = format!("{explicit}^{{commit}}");
+    match git_ref_output(root, &commit, git_timeout) {
+        Some(output) if !output.status.success() => Err(not_a_work_tree(root, git_timeout)
+            .unwrap_or_else(|| {
+                let fetch = missing_ref_repair(root, git_timeout);
+                format!(
+                    "the base `{explicit}` does not resolve to a commit (the analysis did not \
+                     run). {fetch} or pass `--base <ref>` for a ref this repository has."
+                )
+            })),
+        _ => Ok(explicit.to_string()),
+    }
+}
+
+/// What `rev-parse --is-inside-work-tree` established on a failed base path.
+///
+/// Default-base probes treat any git spawn failure as "ref absent". This
+/// classification is the single place that puts missing git, a non-repository
+/// root, Git's dubious-ownership refusal, and an unanswered probe back into
+/// distinct messages.
+#[derive(Debug, PartialEq, Eq)]
+enum GitRootProbe {
+    GitNotFoundOnPath,
+    NotAWorkTree,
+    /// Git ran and refused the repository because another user owns it; the
+    /// message carries the `safe.directory` repair rendered from Git's stderr.
+    DubiousOwnership(String),
+    Unanswered,
+}
+
+fn classify_git_root_probe(spawn: Result<bool, &str>) -> GitRootProbe {
+    match spawn {
+        Err(err) if crate::git::is_git_not_found_on_path(err) => GitRootProbe::GitNotFoundOnPath,
+        Ok(false) => GitRootProbe::NotAWorkTree,
+        Ok(true) | Err(_) => GitRootProbe::Unanswered,
+    }
+}
+
+fn not_a_work_tree_message(root: &Path) -> String {
+    format!(
+        "`{}` is not inside a Git work tree (the analysis did not run). ripr diffs \
+         committed history, so run it from inside your repository, or pass `--root <path>` \
+         pointing at one. For a repository-free scan of the current sources, use \
+         `ripr check --root . --format repo-exposure-md`.",
+        root.display()
+    )
+}
+
+fn message_for_git_root_probe(probe: GitRootProbe, root: &Path) -> Option<String> {
+    match probe {
+        GitRootProbe::GitNotFoundOnPath => {
+            Some(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.to_string())
+        }
+        GitRootProbe::NotAWorkTree => Some(not_a_work_tree_message(root)),
+        GitRootProbe::DubiousOwnership(message) => Some(message),
+        GitRootProbe::Unanswered => None,
+    }
+}
+
+fn probe_git_root(root: &Path, git_timeout: Option<Duration>) -> GitRootProbe {
+    match crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--is-inside-work-tree"],
+        git_timeout,
+    ) {
+        Err(err) => classify_git_root_probe(Err(&err.to_string())),
+        Ok(output) => {
+            let inside =
+                output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true";
+            if !inside
+                && let Some(message) = crate::git::dubious_ownership_message(
+                    root,
+                    &output.stderr,
+                    " (the analysis did not run)",
+                )
+            {
+                return GitRootProbe::DubiousOwnership(message);
+            }
+            classify_git_root_probe(Ok(inside))
+        }
+    }
+}
+
+/// The accurate failure when no base could resolve because `root` is not a Git
+/// work tree, or `None` when it is one.
+///
+/// Every base failure above reads as a ref problem and sends the user to
+/// `git fetch` or to a different `--base`. Outside a repository neither repair
+/// applies: no ref can resolve there, so `git fetch origin` fails for the same
+/// reason the base did. Only this probe tells the two apart, and it runs on the
+/// failure path alone, so the ordinary run still costs one `rev-parse`.
+///
+/// It is evidence on the same terms as the base probe: `None` when the command
+/// could not run at all, because a probe that never ran may not assert that a
+/// directory is not a repository any more than it may assert a ref is absent.
+/// `--is-inside-work-tree` prints `true` only inside a work tree, so a run that
+/// printed anything else — or failed, which is what it does outside a
+/// repository — is the case this names. Missing git is not this message; the
+/// omitted-`--base` path reads [`message_for_git_root_probe`] so PATH is named
+/// instead of "pass `--base`". A repository Git refuses because another user
+/// owns it fails the same way, so that refusal is named with its
+/// `safe.directory` repair instead (#4530).
+fn not_a_work_tree(root: &Path, git_timeout: Option<Duration>) -> Option<String> {
+    match probe_git_root(root, git_timeout) {
+        GitRootProbe::NotAWorkTree => Some(not_a_work_tree_message(root)),
+        GitRootProbe::DubiousOwnership(message) => Some(message),
+        GitRootProbe::GitNotFoundOnPath | GitRootProbe::Unanswered => None,
+    }
 }
 
 /// Resolve the best available base ref for `ripr check` when none was
@@ -106,12 +460,123 @@ fn resolve_default_base(root: &Path, git_timeout: Option<Duration>) -> Result<St
     // Fail closed: nothing resolves — emit a named, actionable message.
     // This is distinct from "analyzed and found nothing": the analysis did
     // not run because there was no base to diff against.
-    Err(
+    Err(format!(
         "could not resolve a default base (no origin/main, origin/master, or local main/master \
-         found). Pass `--base <ref>` to diff against a specific ref, or \
-         `--root . --format repo-exposure-md` for a full-repo scan."
-            .to_string(),
-    )
+         found).{} Pass `--base <ref>` to diff against a specific ref, or run \
+         `ripr check --root . --format repo-exposure-md` for a full-repo scan.",
+        default_base_failure_context(root, git_timeout)
+    ))
+}
+
+/// Repository facts that explain why no default base resolved and which
+/// `--base` would work: an unborn HEAD has nothing to diff, a shallow CI
+/// checkout never fetched its base branch, and a repository whose default
+/// branch is not `main`/`master` (`trunk`, `develop`) names its branches.
+/// Empty when none applies or Git cannot answer.
+fn default_base_failure_context(root: &Path, git_timeout: Option<Duration>) -> String {
+    // Only a `rev-parse` that ran and answered "no" proves an unborn HEAD;
+    // a missing or timed-out Git proves nothing, so it adds no context.
+    let Ok(head) = crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+        git_timeout,
+    ) else {
+        return String::new();
+    };
+    if !head.status.success() {
+        return " This repository has no commits yet; commit once, then analyze uncommitted \
+                edits with `--base HEAD --worktree`."
+            .to_string();
+    }
+    if is_shallow_repository(root, git_timeout) {
+        return " This is a shallow clone that did not fetch a base branch; fetch it with \
+                `git fetch --unshallow origin` (in GitHub Actions, set `fetch-depth: 0` on \
+                actions/checkout)."
+            .to_string();
+    }
+    let git_lines = |args: &[&str]| -> Vec<String> {
+        crate::git::run_git_output_with_deadline(root, args, git_timeout)
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| {
+                String::from_utf8_lossy(&output.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .filter(|line| !line.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    let current = git_lines(&["symbolic-ref", "--quiet", "--short", "HEAD"]);
+    let others = git_lines(&[
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/heads",
+        "refs/remotes",
+    ])
+    .into_iter()
+    // Full ref names, shortened here: `%(refname:short)` abbreviates any
+    // remote's `HEAD` pointer to the bare remote name, which is no branch.
+    .filter(|name| !name.ends_with("/HEAD"))
+    .filter_map(|name| {
+        name.strip_prefix("refs/heads/")
+            .or_else(|| name.strip_prefix("refs/remotes/"))
+            .map(str::to_string)
+    })
+    // The current branch cannot be its own base.
+    .filter(|name| !current.contains(name))
+    .collect::<Vec<_>>();
+    // `base...HEAD` needs a merge base, so only a branch that shares history
+    // with HEAD is offered as a working `--base`. The probe is bounded; past
+    // the cap, "no branch shares history" would be unproven, so it stays
+    // unsaid.
+    const MERGE_BASE_PROBE_CAP: usize = 64;
+    let all_checked = others.len() <= MERGE_BASE_PROBE_CAP;
+    let mut related = Vec::new();
+    let mut unrelated = Vec::new();
+    for name in others.into_iter().take(MERGE_BASE_PROBE_CAP) {
+        let shares_history = crate::git::run_git_output_with_deadline(
+            root,
+            &["merge-base", name.as_str(), "HEAD"],
+            git_timeout,
+        )
+        .is_ok_and(|output| output.status.success());
+        if shares_history {
+            related.push(name);
+            if related.len() == 5 {
+                break;
+            }
+        } else {
+            unrelated.push(name);
+        }
+    }
+    let listed = |names: &[String]| {
+        names
+            .iter()
+            .take(5)
+            .map(|name| format!("`{name}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    match (related.first(), unrelated.is_empty(), current.first()) {
+        (Some(first), _, _) => format!(
+            " Other branches here: {}; for example `--base {first}`.",
+            listed(&related)
+        ),
+        (None, false, _) if all_checked => format!(
+            " No other branch here shares history with HEAD ({}), so none can be a base; \
+             fetch the branch this work started from, or use `--base HEAD~1` for the last \
+             commit.",
+            listed(&unrelated)
+        ),
+        (None, true, Some(only)) => format!(
+            " `{only}` is the only branch, so there is no separate base to compare; use \
+             `--base HEAD~1` for the last commit or `--base HEAD --worktree` for uncommitted \
+             edits."
+        ),
+        (None, false, _) | (None, true, None) => String::new(),
+    }
 }
 
 /// Resolve the diff loader's default base for `root` together with the
@@ -192,7 +657,7 @@ pub fn resolve_base_commit(
     base: Option<&str>,
     git_timeout: Option<Duration>,
 ) -> Option<String> {
-    let base = base?;
+    let base = base.filter(|base| !base.starts_with('-'))?;
     let commit = format!("{base}^{{commit}}");
     let output = git_ref_output(root, &commit, git_timeout)?;
     if !output.status.success() {
@@ -202,16 +667,213 @@ pub fn resolve_base_commit(
     (!commit.is_empty()).then_some(commit)
 }
 
+/// Load `<base>...<head>` for the commands that name both revisions (`diff`,
+/// `review-comments`). Callers verify `base` through
+/// [`resolve_effective_base`] first; this verifies `head` the same way, so an
+/// unresolvable revision fails in ripr's own voice instead of git's
+/// `ambiguous argument` advice (#4538). The range then goes through the same
+/// pinned presentation as every analysis loader (#3850, #4086), including
+/// `--submodule=short`, so ambient `color.diff` or `diff.submodule` config
+/// cannot empty or widen the parsed change set.
 pub fn load_diff_range(root: &Path, base: &str, head: &str) -> Result<String, String> {
-    // CLI-only range path (#1921 migration scope note): no deadline is
-    // threaded here yet, so the invocation stays unbounded like the
-    // pre-#2303 behavior.
-    run_git_diff(
+    // No deadline on the public CLI/xtask range path (#1921 migration scope
+    // note): the invocation stays unbounded like the pre-#2303 behavior.
+    load_diff_range_with_deadline(root, base, head, None)
+}
+
+/// Canonical zero-context analysis text for both PR-evidence producers.
+/// Retain their existing five-minute full-diff ceiling and the shared pinned
+/// Git assembly used by review-comments.
+pub fn load_canonical_pr_evidence_diff_range(
+    root: &Path,
+    base: &str,
+    head: &str,
+) -> Result<String, String> {
+    load_diff_range_with_deadline(root, base, head, Some(Duration::from_mins(5)))
+}
+
+/// Original bytes of the canonical zero-context PR analysis range.
+///
+/// Uses the same pinned Git assembly, head verification and five-minute
+/// deadline as the canonical text loader, before its lossy semantic decode.
+/// These are analysis-range stdout bytes, not the different three-context
+/// binary packet diff. Callers own immutable subject binding and exhaustive
+/// occurrence accounting; raw bytes alone establish neither.
+pub fn load_canonical_pr_evidence_diff_bytes(
+    root: &Path,
+    base: &str,
+    head: &str,
+) -> Result<Vec<u8>, String> {
+    load_diff_range_bytes_with_deadline_core(root, base, head, Some(Duration::from_mins(5)))
+        .map_err(Into::into)
+}
+
+/// Complete-route capture only. The caller authenticates literal commits,
+/// both trees and the actual three-dot origin before using these bytes.
+/// This function owns finite stdout/stderr capture, never completion authority.
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Inactive producer-owned route consumes this crate-private capture seam"
+    )
+)]
+pub(crate) fn load_canonical_pr_evidence_diff_bytes_bounded(
+    root: &Path,
+    base: &str,
+    head: &str,
+    max_output_bytes: usize,
+) -> Result<Vec<u8>, CoreError> {
+    // Existing complete-worker file admission, or a lower assigned profile.
+    if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
+        return Err(CoreError::message(
+            "canonical diff capture requires a positive limit within the existing 256 MiB worker admission",
+        ));
+    }
+    if ![base, head].into_iter().all(|revision| {
+        matches!(revision.len(), 40 | 64) && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
+    }) {
+        return Err(CoreError::message(
+            "canonical bounded diff requires literal full base and head commit IDs",
+        ));
+    }
+    // Deliberately no permissive legacy verify_head_revision preflight.
+    run_git_diff_bytes_with_capture(
         root,
         &format!("{base}...{head}"),
-        &["--unified=0", "--no-ext-diff", "--submodule=short"],
-        None,
+        &[
+            "--relative",
+            "--unified=0",
+            "--no-ext-diff",
+            "--submodule=short",
+        ],
+        "0",
+        Some(Duration::from_mins(5)),
+        Some(max_output_bytes),
     )
+}
+
+/// [`load_diff_range`] under a caller's cooperative git deadline.
+pub(crate) fn load_diff_range_with_deadline(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<String, String> {
+    load_diff_range_with_deadline_core(root, base, head, git_timeout).map_err(Into::into)
+}
+
+pub(crate) fn load_diff_range_with_deadline_core(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<String, CoreError> {
+    Ok(
+        String::from_utf8_lossy(&load_diff_range_bytes_with_deadline_core(
+            root,
+            base,
+            head,
+            git_timeout,
+        )?)
+        .into_owned(),
+    )
+}
+
+/// One raw range assembly shared by the byte and semantic range boundaries.
+/// Keep the legacy ordered extras, including the relative root, unchanged.
+fn load_diff_range_bytes_with_deadline_core(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<Vec<u8>, CoreError> {
+    verify_head_revision(root, head, git_timeout)?;
+    run_git_diff_bytes(
+        root,
+        &format!("{base}...{head}"),
+        &[
+            "--relative",
+            "--unified=0",
+            "--no-ext-diff",
+            "--submodule=short",
+        ],
+        "0",
+        git_timeout,
+    )
+}
+
+/// Fail with a named message when `head` does not resolve to a commit. Like
+/// the base probe in [`resolve_effective_base`], only a `rev-parse` that ran
+/// and reported the revision absent produces the message; a probe that could
+/// not run leaves the decision to `git diff`.
+fn verify_head_revision(
+    root: &Path,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> Result<(), String> {
+    let commit = format!("{head}^{{commit}}");
+    match git_ref_output(root, &commit, git_timeout) {
+        Some(output) if !output.status.success() => Err(not_a_work_tree(root, git_timeout)
+            .unwrap_or_else(|| {
+                format!(
+                    "the head `{head}` does not resolve to a commit (the analysis did not \
+                     run). {} or pass `--head <ref>` for a ref this repository has.",
+                    missing_ref_repair(root, git_timeout)
+                )
+            })),
+        _ => Ok(()),
+    }
+}
+
+/// The repair for a revision that does not resolve. `git fetch origin` never
+/// deepens a shallow clone, so an ancestor such as `HEAD~5` needs the
+/// unshallow repair there.
+fn missing_ref_repair(root: &Path, git_timeout: Option<Duration>) -> &'static str {
+    if is_shallow_repository(root, git_timeout) {
+        "This is a shallow clone: fetch the missing history with `git fetch \
+         --unshallow` (in GitHub Actions, set `fetch-depth: 0` on actions/checkout)"
+    } else {
+        "Fetch the ref (for example `git fetch origin`)"
+    }
+}
+
+/// Cooperative ceiling for the PR-evidence packet diff (#4363). A `--binary`
+/// full-patch diff of a large pull request can take far longer than a
+/// revision probe, so this is five minutes, not the one-minute probe ceiling.
+const PR_EVIDENCE_DIFF_DEADLINE: Duration = Duration::from_mins(5);
+
+/// PR-evidence range path (issue #3930): the same pinned presentation as
+/// the analysis loaders, with `--binary` as the caller extra (the packet
+/// artifact keeps binary hunks) and three context lines (the pre-#3930
+/// `PR_DIFF` presentation was Git's three-line default). No
+/// `--submodule=short`: submodule rendering stays exactly as the
+/// PR-evidence path produced it, so ordinary repositories see
+/// byte-identical `PR_DIFF`. The packet artifact records evidence, so the
+/// decode stays strict like the pre-#3930 helper: non-UTF-8 stdout is a
+/// named error, never silently recorded with replacement characters. The
+/// diff runs under [`PR_EVIDENCE_DIFF_DEADLINE`] (#4363), so a hung git ends
+/// in the named `git_invocation_timeout` error instead of pinning the packet.
+pub fn load_pr_evidence_diff_range(root: &Path, base: &str, head: &str) -> Result<String, String> {
+    load_pr_evidence_diff_range_within(root, base, head, PR_EVIDENCE_DIFF_DEADLINE)
+}
+
+/// [`load_pr_evidence_diff_range`] with the deadline as a parameter, so a
+/// test can prove the deadline reaches the git runner.
+fn load_pr_evidence_diff_range_within(
+    root: &Path,
+    base: &str,
+    head: &str,
+    deadline: Duration,
+) -> Result<String, String> {
+    let bytes = run_git_diff_bytes(
+        root,
+        &format!("{base}...{head}"),
+        &["--binary"],
+        "3",
+        Some(deadline),
+    )?;
+    String::from_utf8(bytes).map_err(|err| format!("packet diff is not valid UTF-8: {err}"))
 }
 
 /// Return `true` when the working tree at `root` has uncommitted changes to
@@ -263,11 +925,20 @@ enum WorkingTreeProbe {
     Error(String),
 }
 
+/// Cooperative deadline for the working-tree change probe (#2303, #4363).
+/// The probe is a disclosure side channel on the analysis path, not the
+/// analysis itself: a hung `git status` must not block the run past the
+/// deadline. One minute matches the `GIT_DEADLINE` family used by the other
+/// bounded git consumers; unlike the loader's base-resolution probes, this
+/// public entry point carries no caller-supplied `git_timeout`.
+const WORKING_TREE_PROBE_DEADLINE: Duration = Duration::from_mins(1);
+
 fn working_tree_probe(root: &Path) -> WorkingTreeProbe {
-    let result = Command::new("git")
-        .args(["status", "--porcelain", "--", "."])
-        .current_dir(root)
-        .output();
+    let result = crate::git::run_git_output_with_deadline(
+        root,
+        &["status", "--porcelain", "--", "."],
+        Some(WORKING_TREE_PROBE_DEADLINE),
+    );
     match result {
         Ok(out) if out.status.success() => {
             if String::from_utf8_lossy(&out.stdout)
@@ -371,12 +1042,67 @@ fn run_git_diff(
     range: &str,
     extra_args: &[&str],
     git_timeout: Option<Duration>,
-) -> Result<String, String> {
+) -> Result<String, CoreError> {
+    // Analysis loaders consume source-coordinate patches: zero context
+    // lines stay the assembly default.
+    //
+    // `--relative` scopes the diff to `root` and reports paths relative to
+    // it (git runs with `current_dir(root)`). Without it, `--root` at a
+    // workspace member received repository-relative paths
+    // (`tokio-util/src/x.rs` under `tokio-util/`), so every changed file
+    // resolved to a path that does not exist, related tests went unfound,
+    // and files outside the member entered scope. At the repository top
+    // level the flag changes nothing.
+    let mut args = Vec::with_capacity(extra_args.len() + 1);
+    args.push("--relative");
+    args.extend_from_slice(extra_args);
+    run_git_diff_with_unified(root, range, &args, "0", git_timeout)
+}
+
+fn run_git_diff_with_unified(
+    root: &Path,
+    range: &str,
+    extra_args: &[&str],
+    unified: &str,
+    git_timeout: Option<Duration>,
+) -> Result<String, CoreError> {
+    // Analysis decodes lossy (unchanged): coordinates come from the
+    // C-quoted path contract above, and hunk bodies are parsed, not
+    // recorded as evidence.
+    Ok(String::from_utf8_lossy(&run_git_diff_bytes(
+        root,
+        range,
+        extra_args,
+        unified,
+        git_timeout,
+    )?)
+    .into_owned())
+}
+
+fn run_git_diff_bytes(
+    root: &Path,
+    range: &str,
+    extra_args: &[&str],
+    unified: &str,
+    git_timeout: Option<Duration>,
+) -> Result<Vec<u8>, CoreError> {
+    run_git_diff_bytes_with_capture(root, range, extra_args, unified, git_timeout, None)
+}
+
+fn run_git_diff_bytes_with_capture(
+    root: &Path,
+    range: &str,
+    extra_args: &[&str],
+    unified: &str,
+    git_timeout: Option<Duration>,
+    capture_limit: Option<usize>,
+) -> Result<Vec<u8>, CoreError> {
     // Delegate the spawn to the shared git authority (#1921, #2303), which
-    // spawns with `current_dir(root)`: a missing/unusable root fails the
-    // SPAWN, so the wrap arm below reproduces the established
-    // `failed to run git diff: ...` text the context/explain invalid-root
-    // contract pins. The named timeout and cancellation errors pass through
+    // spawns with `current_dir(root)`. A missing root never reaches the
+    // spawn: `load_diff_with_effective_base` rejects non-directories up
+    // front (#3952), so the wrap arm below only reproduces the
+    // `failed to run git diff: ...` text for other invocation failures.
+    // The named timeout and cancellation errors pass through
     // unwrapped so the LSP refresh path can match them; the non-zero-exit
     // text below stays byte-identical.
     // `core.quotePath=true` pins the diff input contract (#3601): with the
@@ -387,27 +1113,127 @@ fn run_git_diff(
     // decode distinct and the C-quoted parser form applies. ASCII-only
     // paths are unaffected, so existing fixtures and goldens see no
     // change.
+    // The range is the one caller-derived argument; one starting with `-`
+    // would be parsed as a diff option, so refuse it at the sink.
+    if range.starts_with('-') {
+        return Err(
+            format!("refusing to diff `{range}`: a revision range cannot start with `-`").into(),
+        );
+    }
     let mut args: Vec<&str> = vec!["-c", "core.quotePath=true", "diff"];
     args.extend_from_slice(extra_args);
+    // Analysis consumes source-coordinate patches, not human diff views.
+    // Pin every caller, including worktree mode: helpers can suppress real
+    // changes, textconv can invent source coordinates, and ambient context
+    // can expand a one-line edit into a full-file payload (#3850). Git's
+    // source/destination prefixes are also parser identity syntax: ambient
+    // diff.noprefix can remove them, so a real path such as b/identity.rs
+    // can collapse onto identity.rs after the parser strips the expected b/
+    // side prefix (#4086). (diff.mnemonicPrefix only rewrites worktree/index
+    // comparisons, never the <base>...HEAD range form issued here.) Append canonical
+    // side prefixes after caller extras so neither repository config nor a
+    // conflicting presentation extra can change file identity.
+    // The context-line count is the one caller-selected presentation knob
+    // (the appended pin wins over any same-named extra): analysis takes zero,
+    // the PR-evidence packet takes three.
+    let unified_arg = format!("--unified={unified}");
+    args.extend_from_slice(&[
+        "--no-ext-diff",
+        "--no-textconv",
+        "--no-color",
+        "--src-prefix=a/",
+        "--dst-prefix=b/",
+        unified_arg.as_str(),
+        "--inter-hunk-context=0",
+    ]);
     args.push(range);
-    let output = match crate::git::run_git_output_with_deadline(root, &args, git_timeout) {
+    let captured = match capture_limit {
+        Some(limit) => {
+            let timeout = git_timeout.ok_or_else(|| {
+                CoreError::message("bounded canonical capture requires a deadline")
+            })?;
+            crate::git::run_git_output_with_deadline_and_limit_strict(root, &args, timeout, limit)
+        }
+        None => crate::git::run_git_output_with_deadline(root, &args, git_timeout),
+    };
+    let output = match captured {
         Ok(output) => output,
         Err(err)
-            if crate::git::is_git_invocation_timeout(&err)
-                || crate::analysis::cancellation::is_cancellation_error(&err) =>
+            if err.is_git_invocation_timeout()
+                || crate::git::is_git_not_found_on_path(&err.to_string())
+                || err.is_analysis_cancelled() =>
         {
             return Err(err);
         }
-        Err(err) => return Err(format!("failed to run git diff: {err}")),
+        Err(err) => {
+            return Err(CoreError::message(format!("failed to run git diff: {err}")));
+        }
     };
     if !output.status.success() {
-        return Err(format!(
-            "git diff failed: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stderr = stderr.trim();
+        let hint = if capture_limit.is_none() && stderr.contains("no merge base") {
+            no_merge_base_hint(root, range, git_timeout)
+        } else {
+            String::new()
+        };
+        return Err(format!("git diff failed: {stderr}{hint}").into());
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok(output.stdout)
+}
+
+/// Name the cause and the repair when `<base>...HEAD` has no merge base.
+///
+/// Raw `fatal: origin/main...HEAD: no merge base` names neither. The usual
+/// cause is a shallow clone, which is what `actions/checkout` produces by
+/// default: the base and HEAD tips are present but the history joining
+/// them was never fetched. Otherwise the two refs really are unrelated
+/// histories and only a different base helps.
+fn no_merge_base_hint(root: &Path, range: &str, git_timeout: Option<Duration>) -> String {
+    let (base, head) = range.split_once("...").unwrap_or((range, "HEAD"));
+    format!(
+        ". {}",
+        no_merge_base_diagnosis(root, base, head, git_timeout).0
+    )
+}
+
+/// The cause and repair for a `<base>...<head>` range with no merge base, as
+/// one sentence, plus whether the repair is unshallowing. Shared with the
+/// first-pr range preflight (#4538) so both name the same cause.
+pub(crate) fn no_merge_base_diagnosis(
+    root: &Path,
+    base: &str,
+    head: &str,
+    git_timeout: Option<Duration>,
+) -> (String, bool) {
+    if is_shallow_repository(root, git_timeout) {
+        let text = format!(
+            "This is a shallow clone, so `{base}` and `{head}` share no fetched history \
+             (the analysis did not run). Fetch the full history with `git fetch --unshallow` \
+             (in GitHub Actions, set `fetch-depth: 0` on actions/checkout), then re-run."
+        );
+        (text, true)
+    } else {
+        let text = format!(
+            "`{base}` and `{head}` share no commit (unrelated histories; the analysis did \
+             not run). Pass `--base <ref>` for a ref on `{head}`'s history."
+        );
+        (text, false)
+    }
+}
+
+/// Whether `root` is a shallow clone. `false` when Git cannot answer, so a
+/// failed probe never invents a shallow-clone diagnosis.
+fn is_shallow_repository(root: &Path, git_timeout: Option<Duration>) -> bool {
+    crate::git::run_git_output_with_deadline(
+        root,
+        &["rev-parse", "--is-shallow-repository"],
+        git_timeout,
+    )
+    .is_ok_and(|output| {
+        output.status.success() && String::from_utf8_lossy(&output.stdout).trim() == "true"
+    })
 }
 
 #[cfg(test)]
@@ -421,9 +1247,96 @@ mod tests {
     use std::process::Command;
 
     #[test]
+    fn pr_evidence_diff_range_forwards_its_deadline_to_git() -> Result<(), String> {
+        // #4363: a zero deadline is refused before spawn with the named
+        // timeout error. Dropping the deadline would instead report the
+        // missing root as a spawn failure, which this rejects.
+        let missing = std::env::temp_dir().join(format!(
+            "ripr-pr-evidence-diff-deadline-missing-{}",
+            std::process::id()
+        ));
+        match load_pr_evidence_diff_range_within(&missing, "HEAD~1", "HEAD", Duration::from_mins(5))
+        {
+            Err(err) if !err.starts_with("git_invocation_timeout:") => {}
+            other => return Err(format!("control: expected a spawn failure, got {other:?}")),
+        }
+        match load_pr_evidence_diff_range_within(&missing, "HEAD~1", "HEAD", Duration::ZERO) {
+            Err(err) if err.starts_with("git_invocation_timeout:") => Ok(()),
+            other => Err(format!("zero deadline must be refused, got {other:?}")),
+        }
+    }
+
+    /// Best-effort temp-dir teardown. The `io::Result` is matched with `if let`
+    /// so a `#[must_use]` cleanup failure is an explicit ignore.
+    fn ignore_remove_dir_all(path: &Path) {
+        if let Ok(()) = fs::remove_dir_all(path) {}
+    }
+
+    #[test]
+    fn git_root_probe_prefers_missing_git_over_unresolved_base() {
+        let probe = classify_git_root_probe(Err(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE));
+        assert_eq!(probe, GitRootProbe::GitNotFoundOnPath);
+        assert_eq!(
+            message_for_git_root_probe(probe, Path::new("/repo")).as_deref(),
+            Some(crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE)
+        );
+        assert!(
+            !crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.contains("could not resolve a default base"),
+            "PATH diagnosis must not fall through to the default-base text"
+        );
+        assert!(
+            !crate::git::GIT_NOT_FOUND_ON_PATH_MESSAGE.contains("Pass `--base"),
+            "PATH diagnosis must not send the user to `--base`"
+        );
+    }
+
+    #[test]
+    fn git_root_probe_names_a_non_repo_after_git_ran() {
+        assert_eq!(
+            classify_git_root_probe(Ok(false)),
+            GitRootProbe::NotAWorkTree
+        );
+        let message =
+            message_for_git_root_probe(GitRootProbe::NotAWorkTree, Path::new("/tmp/not-a-repo"));
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| text.contains("is not inside a Git work tree")),
+            "expected the work-tree diagnosis, got: {message:?}"
+        );
+        assert!(
+            message
+                .as_deref()
+                .is_some_and(|text| !text.contains("git was not found on PATH")),
+            "a git that ran must not steal the PATH diagnosis: {message:?}"
+        );
+    }
+
+    #[test]
+    fn git_root_probe_does_not_invent_a_cause_when_git_ran_inside_a_work_tree() {
+        assert_eq!(classify_git_root_probe(Ok(true)), GitRootProbe::Unanswered);
+        assert!(
+            message_for_git_root_probe(GitRootProbe::Unanswered, Path::new("/repo")).is_none(),
+            "an answered work tree must keep the original default-base error"
+        );
+    }
+
+    #[test]
+    fn git_root_probe_does_not_invent_a_cause_on_timeout() {
+        let probe = classify_git_root_probe(Err(
+            "git_invocation_timeout: git -C /repo [\"rev-parse\"] exceeded 100ms",
+        ));
+        assert_eq!(probe, GitRootProbe::Unanswered);
+        assert!(
+            message_for_git_root_probe(probe, Path::new("/repo")).is_none(),
+            "a timeout must not be remapped to missing git or a non-repo"
+        );
+    }
+
+    #[test]
     fn load_diff_from_file_returns_content() -> std::io::Result<()> {
         let dir = unique_fixture_root("load-diff-test")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         fs::create_dir_all(&dir)?;
         let diff_file = dir.join("test.diff");
         fs::write(&diff_file, "test content")?;
@@ -431,9 +1344,126 @@ mod tests {
         let result = load_diff(&dir, None, Some(&diff_file), None);
         assert_eq!(result.as_deref(), Ok("test content"));
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
+
+    #[test]
+    fn directory_diff_path_names_the_directory_cause_not_the_os_error() -> std::io::Result<()> {
+        // #4376(c): a directory passed as the diff file must be named as a
+        // directory, not surfaced as the OS read error ("Access is denied"
+        // on Windows, "Is a directory" on Unix).
+        let dir = unique_fixture_root("load-diff-directory")?;
+        ignore_remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("crates"))?;
+        let as_diff = dir.join("crates");
+
+        let result = load_diff(&dir, None, Some(&as_diff), None);
+        ignore_remove_dir_all(&dir);
+        let Err(message) = result else {
+            return Err(std::io::Error::other(
+                "a directory --diff path must fail to load",
+            ));
+        };
+        assert!(
+            message.contains("is a directory, not a unified diff file"),
+            "directory cause must be named: {message}"
+        );
+        assert!(
+            message.contains(&as_diff.display().to_string()),
+            "the offending path must be named: {message}"
+        );
+        assert!(
+            !message.contains("os error"),
+            "the OS error text must not stand in for the cause: {message}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn diff_file_with_non_utf8_content_loads_like_the_git_route() -> std::io::Result<()> {
+        // A Latin-1 line in an unrelated changed file used to refuse the
+        // whole `--diff` input ("stream did not contain valid UTF-8") that
+        // the git-run route decodes lossily.
+        let dir = unique_fixture_root("load-diff-non-utf8")?;
+        ignore_remove_dir_all(&dir);
+        fs::create_dir_all(&dir)?;
+        let diff_path = dir.join("change.diff");
+        fs::write(
+            &diff_path,
+            b"diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1 +1 @@\n-caf\xe9\n+caf\xe9s\ndiff --git a/src/lib.rs b/src/lib.rs\n--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-fn a() -> bool { 1 > 0 }\n+fn a() -> bool { 1 >= 0 }\n",
+        )?;
+
+        let result = load_diff(&dir, None, Some(&diff_path), None);
+        ignore_remove_dir_all(&dir);
+        let text = result.map_err(std::io::Error::other)?;
+        assert!(text.contains("-caf\u{fffd}\n+caf\u{fffd}s\n"), "{text}");
+        let files = crate::analysis::diff::parse_unified_diff(&text);
+        let rust = files
+            .iter()
+            .find(|file| file.path == std::path::Path::new("src/lib.rs"))
+            .ok_or_else(|| std::io::Error::other("rust file missing from parsed diff"))?;
+        assert_eq!(rust.added_lines[0].text, "fn a() -> bool { 1 >= 0 }");
+        Ok(())
+    }
+
+    #[test]
+    fn diff_file_with_raw_non_utf8_path_fails_closed() -> std::io::Result<()> {
+        // `quotePath=false` emits raw path bytes; a lossy decode would merge
+        // `p_\xff.rs` and `p_\xfe.rs` onto one U+FFFD path (#3601).
+        let git_diff = b"diff --git a/src/p_\xff.rs b/src/p_\xff.rs\n--- a/src/p_\xff.rs\n+++ b/src/p_\xff.rs\n@@ -1 +1 @@\n-a\n+b\n".to_vec();
+        let plain_diff = b"--- src/p_\xfe.rs\n+++ src/p_\xfe.rs\n@@ -1 +1 @@\n-a\n+b\n".to_vec();
+        for bytes in [git_diff, plain_diff] {
+            let Err(message) = decode_diff_text("diff from stdin", bytes) else {
+                return Err(std::io::Error::other(
+                    "a raw non-UTF-8 path must fail closed",
+                ));
+            };
+            assert!(message.contains("core.quotePath=true"), "{message}");
+        }
+        // C-quoted paths are ASCII, so only the hunk payload decodes lossily.
+        let quoted =
+            b"diff --git \"a/src/p_\\377.rs\" \"b/src/p_\\377.rs\"\n@@ -1 +1 @@\n-caf\xe9\n+b\n"
+                .to_vec();
+        let text = decode_diff_text("diff from stdin", quoted).map_err(std::io::Error::other)?;
+        assert!(text.contains("-caf\u{fffd}"), "{text}");
+        Ok(())
+    }
+
+    #[test]
+    fn missing_diff_file_keeps_the_os_read_error() -> std::io::Result<()> {
+        // #4376(c) negative control: a path that is not a directory keeps the
+        // OS error, so genuine read failures (missing file, ACL denial) are
+        // still reported as read failures rather than as the directory cause.
+        let dir = unique_fixture_root("load-diff-missing")?;
+        ignore_remove_dir_all(&dir);
+        fs::create_dir_all(&dir)?;
+        let missing = dir.join("absent.diff");
+
+        let result = load_diff(&dir, None, Some(&missing), None);
+        ignore_remove_dir_all(&dir);
+        let Err(message) = result else {
+            return Err(std::io::Error::other("a missing diff file must fail"));
+        };
+        assert!(
+            message.starts_with("failed to read diff file "),
+            "{message}"
+        );
+        assert!(
+            message.contains("or `-` to read the diff from stdin"),
+            "{message}"
+        );
+        assert!(message.contains("os error"), "{message}");
+        assert!(!message.contains("is a directory"), "{message}");
+        Ok(())
+    }
+
+    // The ambient side-prefix and caller-extras controls for the loader's
+    // `--src-prefix=a/`/`--dst-prefix=b/` identity pins live in
+    // `super::contract_tests`, the owner for the Git source-patch contract
+    // (#3850, #4086): they need the shared `Repo` fixture, its hostile-config
+    // helper and the Windows readonly-bit teardown, none of which this
+    // module's local fixture helpers provide.
 
     #[test]
     #[cfg(unix)]
@@ -514,7 +1544,7 @@ mod tests {
             "raw invalid bytes must remain distinct in parsed paths: {paths:?}"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -598,7 +1628,7 @@ mod tests {
             "valid UTF-8 names must keep their on-disk identity: {paths:?}"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -622,13 +1652,13 @@ mod tests {
     /// A unique fixture root, so two concurrent or overlapping suite runs cannot
     /// share a git repo.
     ///
-    /// Fixed names are unsafe here beyond the obvious collision: the cleanup is
-    /// `let _ = fs::remove_dir_all(..)`, and on Windows that cannot delete a git
-    /// object store whose files are read-only, so a half-deleted repo would be
-    /// silently reused by the next run.
+    /// Fixed names are unsafe here beyond the obvious collision: the cleanup
+    /// ignores a failed `fs::remove_dir_all`, and on Windows that cannot delete
+    /// a git object store whose files are read-only, so a half-deleted repo
+    /// would be silently reused by the next run.
     fn unique_fixture_root(name: &str) -> std::io::Result<PathBuf> {
         let dir = unique_fixture_path(name);
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         fs::create_dir_all(&dir)?;
         Ok(dir)
     }
@@ -655,10 +1685,18 @@ mod tests {
     /// `Ok(())` having produced a repo with no commit and no refs, and every
     /// assertion downstream would then fail for a reason unrelated to what it
     /// tests.
-    fn run_git_checked(dir: &Path, args: &[&str]) -> std::io::Result<()> {
-        let output = Command::new("git").args(args).current_dir(dir).output()?;
+    fn run_git_checked(dir: &Path, args: &[&str]) -> std::io::Result<String> {
+        // A hook-launched test inherits `GIT_DIR`/`GIT_WORK_TREE`, which
+        // would point these fixture commands at the caller's repository.
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()?;
         if output.status.success() {
-            return Ok(());
+            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
         }
         Err(std::io::Error::other(format!(
             "git {args:?} in {} failed with {:?}: {}{}",
@@ -694,7 +1732,7 @@ mod tests {
     fn explicit_base_resolves_to_exact_commit_and_unknown_refs_fail_closed() -> std::io::Result<()>
     {
         let dir = unique_fixture_root("resolve-exact-base")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
         let expected = String::from_utf8(
@@ -714,7 +1752,7 @@ mod tests {
         );
         assert_eq!(resolve_base_commit(&dir, Some("missing-base"), None), None);
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -725,7 +1763,7 @@ mod tests {
         // We create a local repo, then set refs/remotes/origin/HEAD to point at
         // refs/remotes/origin/master, and create that ref.
         let dir = unique_fixture_root("resolve-base-origin-master")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "master")?;
         // Create the remote-tracking ref manually (simulates a fetched remote).
         Command::new("git")
@@ -748,7 +1786,52 @@ mod tests {
             "expected origin/master resolution via symbolic-ref"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn load_diff_with_effective_base_reports_the_base_the_loader_used() -> std::io::Result<()> {
+        // #3940: the loader is the single authority for which base produced
+        // the diff — explicit, resolved default, or none for diff files.
+        let dir = unique_fixture_root("effective-base-reporting")?;
+        ignore_remove_dir_all(&dir);
+        init_git_repo(&dir, "master")?;
+        run_git_checked(&dir, &["update-ref", "refs/remotes/origin/master", "HEAD"])?;
+        run_git_checked(
+            &dir,
+            &[
+                "symbolic-ref",
+                "refs/remotes/origin/HEAD",
+                "refs/remotes/origin/master",
+            ],
+        )?;
+
+        let resolved =
+            load_diff_with_effective_base(&dir, None, None, None).map_err(std::io::Error::other)?;
+        assert_eq!(
+            resolved.effective_base.as_deref(),
+            Some("origin/master"),
+            "a scope-less load must report the resolved default base"
+        );
+        let explicit = load_diff_with_effective_base(&dir, Some("master"), None, None)
+            .map_err(std::io::Error::other)?;
+        assert_eq!(
+            explicit.effective_base.as_deref(),
+            Some("master"),
+            "an explicit base must be reported as-is"
+        );
+
+        let diff_file = dir.join("change.diff");
+        fs::write(&diff_file, "diff --git a/x b/x\n")?;
+        let from_file = load_diff_with_effective_base(&dir, Some("master"), Some(&diff_file), None)
+            .map_err(std::io::Error::other)?;
+        assert_eq!(
+            from_file.effective_base, None,
+            "a diff file ignores base, so none is reported"
+        );
+
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -756,12 +1839,11 @@ mod tests {
     fn resolve_default_base_uses_local_main_when_no_remote() -> std::io::Result<()> {
         // Simulates a fresh git init with no remote; local branch is "main".
         let dir = unique_fixture_root("resolve-base-local-main")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         // Confirm no remote refs exist.
         let refs_remote = dir.join(".git").join("refs").join("remotes");
-        let _ = fs::remove_dir_all(&refs_remote);
-
+        ignore_remove_dir_all(&refs_remote);
         let result = resolve_default_base(&dir, None);
         assert_eq!(
             result.as_deref(),
@@ -769,7 +1851,31 @@ mod tests {
             "expected local main fallback when no remote"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn option_shaped_base_never_reaches_git_diff() -> std::io::Result<()> {
+        let dir = unique_fixture_root("option-shaped-base")?;
+        init_git_repo(&dir, "main")?;
+        fs::write(dir.join("lib.rs"), "fn a() {}\n")?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-q", "-m", "init"])?;
+        let planted = dir.join("planted");
+        let base = format!("--output={}", planted.display());
+        // The sink: `git diff --output=<path>...HEAD` would create the file.
+        let sink = run_git_diff_bytes(&dir, &format!("{base}...HEAD"), &[], "0", None);
+        // The LSP settings path and the CLI path both refuse it before git.
+        let resolved = resolve_effective_base(&dir, Some(&base), None);
+        let identity = resolve_base_commit(&dir, Some(&base), None);
+        let planted_exists = planted.exists() || dir.join("planted...HEAD").exists();
+        ignore_remove_dir_all(&dir);
+        assert!(sink.is_err(), "an option-shaped range must be refused");
+        assert!(!planted_exists, "git diff must not write an --output file");
+        let err = resolved.expect_err("an option-shaped base must be refused");
+        assert!(err.contains("starts with `-`"), "{err}");
+        assert!(identity.is_none());
         Ok(())
     }
 
@@ -778,7 +1884,7 @@ mod tests {
         // Simulates a bare repo with no commits and no remote refs. We create
         // a temp dir, run git init, but do NOT create any commits or refs.
         let dir = unique_fixture_root("resolve-base-no-base")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         fs::create_dir_all(&dir)?;
         Command::new("git").arg("init").current_dir(&dir).output()?;
         Command::new("git")
@@ -805,35 +1911,432 @@ mod tests {
             err.contains("--format repo-exposure-md"),
             "expected --format repo-exposure-md guidance in message, got: {err}"
         );
+        assert!(
+            err.contains("no commits yet"),
+            "an unborn HEAD must be named as the cause, got: {err}"
+        );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn default_base_failure_names_the_branches_that_would_work() -> std::io::Result<()> {
+        // A `trunk`-default repository with no remote matches none of the
+        // fixed candidates. The failure must name the branch to pass, and a
+        // lone branch must say there is nothing separate to compare.
+        let dir = unique_fixture_root("resolve-base-trunk")?;
+        init_git_repo(&dir, "trunk")?;
+        let err = resolve_default_base(&dir, None).expect_err("trunk is not a default candidate");
+        assert!(
+            err.contains("`trunk` is the only branch") && err.contains("--base HEAD~1"),
+            "a single-branch repository must say so, got: {err}"
+        );
+
+        run_git_checked(&dir, &["checkout", "-b", "feature/discount"])?;
+        let err = resolve_default_base(&dir, None).expect_err("still no default candidate");
+        assert!(
+            err.contains("Other branches here: `trunk`") && err.contains("`--base trunk`"),
+            "the failure must name the base that would work, got: {err}"
+        );
+        assert!(
+            !err.contains("`feature/discount`"),
+            "the current branch is never offered as its own base, got: {err}"
+        );
+
+        // Unrelated refs that sort first must not hide the related base.
+        let tree = run_git_checked(&dir, &["rev-parse", "HEAD^{tree}"])?;
+        let island_names = (0..9).map(|n| format!("a-island-{n}")).collect::<Vec<_>>();
+        for name in &island_names {
+            let sha = run_git_checked(&dir, &["commit-tree", &tree, "-m", name])?;
+            run_git_checked(&dir, &["branch", "-q", name, &sha])?;
+        }
+        let err = resolve_default_base(&dir, None).expect_err("still no default candidate");
+        assert!(
+            err.contains("`--base trunk`") && !err.contains("a-island-0`;"),
+            "a related branch past many unrelated refs must still be offered, got: {err}"
+        );
+        for name in &island_names {
+            run_git_checked(&dir, &["branch", "-q", "-D", name])?;
+        }
+
+        // An orphan branch shares no history with HEAD: `--base orphan`
+        // would fail on the missing merge base, so it is never offered.
+        run_git_checked(&dir, &["checkout", "-q", "--orphan", "orphan"])?;
+        run_git_checked(&dir, &["commit", "-q", "-m", "orphan root"])?;
+        run_git_checked(&dir, &["branch", "-q", "-D", "trunk", "feature/discount"])?;
+        let err = resolve_default_base(&dir, None).expect_err("no default candidate");
+        assert!(
+            err.contains("`orphan` is the only branch"),
+            "the lone orphan branch must say so, got: {err}"
+        );
+        run_git_checked(&dir, &["checkout", "-q", "--orphan", "island"])?;
+        run_git_checked(&dir, &["commit", "-q", "-m", "island root"])?;
+        let err = resolve_default_base(&dir, None).expect_err("no default candidate");
+        assert!(
+            err.contains("No other branch here shares history with HEAD (`orphan`)")
+                && !err.contains("--base orphan"),
+            "an unrelated branch must not be offered as a base, got: {err}"
+        );
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn missing_merge_base_names_shallow_clone_or_unrelated_history() -> std::io::Result<()> {
+        // `actions/checkout` clones one commit deep by default. Fetching the
+        // base tip alone leaves `origin/main...HEAD` with no merge base, and
+        // raw `fatal: ... no merge base` names neither the cause nor the fix.
+        let origin = unique_fixture_root("no-merge-base-origin")?;
+        init_git_repo(&origin, "main")?;
+        run_git_checked(&origin, &["checkout", "-b", "feat"])?;
+        fs::write(origin.join("lib.rs"), "pub fn f() -> bool { 1 > 0 }\n")?;
+        run_git_checked(&origin, &["add", "."])?;
+        run_git_checked(&origin, &["commit", "-m", "feat"])?;
+        run_git_checked(&origin, &["checkout", "main"])?;
+        fs::write(origin.join("README"), "moved on")?;
+        run_git_checked(&origin, &["commit", "-am", "main moves"])?;
+
+        let shallow = unique_fixture_path("no-merge-base-shallow");
+        let origin_url = format!("file://{}", origin.display());
+        let parent = shallow.parent().unwrap_or(Path::new("."));
+        let shallow_arg = shallow.to_string_lossy().to_string();
+        run_git_checked(
+            parent,
+            &[
+                "clone",
+                "-q",
+                "--depth",
+                "1",
+                "--branch",
+                "feat",
+                &origin_url,
+                &shallow_arg,
+            ],
+        )?;
+        run_git_checked(
+            &shallow,
+            &[
+                "fetch",
+                "-q",
+                "--depth",
+                "1",
+                "origin",
+                "main:refs/remotes/origin/main",
+            ],
+        )?;
+        let err = load_diff(&shallow, Some("HEAD~1"), None, None)
+            .expect_err("a depth-1 clone has no parent commit");
+        assert!(
+            err.contains("does not resolve to a commit") && err.contains("git fetch --unshallow"),
+            "an ancestor base in a shallow clone must name the unshallow repair, got: {err}"
+        );
+        let err = load_diff(&shallow, Some("origin/main"), None, None)
+            .expect_err("a shallow clone has no merge base");
+        assert!(
+            err.starts_with("git diff failed:") && err.contains("no merge base"),
+            "the git failure text stays intact, got: {err}"
+        );
+        assert!(
+            err.contains("shallow clone") && err.contains("fetch-depth: 0"),
+            "a shallow clone must be named with its repair, got: {err}"
+        );
+
+        // A full clone with truly unrelated histories gets the other cause.
+        run_git_checked(&origin, &["checkout", "-q", "--orphan", "island"])?;
+        run_git_checked(&origin, &["commit", "-q", "-m", "island"])?;
+        let err = load_diff(&origin, Some("main"), None, None)
+            .expect_err("unrelated histories have no merge base");
+        assert!(
+            err.contains("unrelated histories") && !err.contains("shallow clone"),
+            "a full clone must not be diagnosed as shallow, got: {err}"
+        );
+        ignore_remove_dir_all(&shallow);
+        ignore_remove_dir_all(&origin);
+        Ok(())
+    }
+
+    #[test]
+    fn member_root_diff_is_scoped_and_relative_to_the_member() -> std::io::Result<()> {
+        // `ripr check --root crates/core` inside a workspace: paths must be
+        // relative to the member so they resolve under `--root`, and
+        // changes outside the member are not in its scope.
+        let dir = unique_fixture_root("member-root-relative")?;
+        init_git_repo(&dir, "main")?;
+        fs::create_dir_all(dir.join("crates/core/src"))?;
+        fs::write(
+            dir.join("crates/core/src/lib.rs"),
+            "pub fn f() -> bool { 1 > 0 }\n",
+        )?;
+        fs::write(dir.join("other.rs"), "pub fn g() -> bool { 1 > 0 }\n")?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "base"])?;
+        fs::write(
+            dir.join("crates/core/src/lib.rs"),
+            "pub fn f() -> bool { 1 >= 0 }\n",
+        )?;
+        fs::write(dir.join("other.rs"), "pub fn g() -> bool { 1 >= 0 }\n")?;
+        run_git_checked(&dir, &["commit", "-am", "change"])?;
+
+        let member = dir.join("crates/core");
+        for text in [
+            load_diff(&member, Some("HEAD~1"), None, None).map_err(std::io::Error::other)?,
+            load_worktree_diff(&member, Some("HEAD~1"), None).map_err(std::io::Error::other)?,
+            load_diff_range(&member, "HEAD~1", "HEAD").map_err(std::io::Error::other)?,
+        ] {
+            assert!(
+                text.contains("+++ b/src/lib.rs"),
+                "member paths must be relative to the member root: {text}"
+            );
+            assert!(
+                !text.contains("crates/core/") && !text.contains("other.rs"),
+                "nothing outside the member root may enter its diff: {text}"
+            );
+        }
+        let top = load_diff(&dir, Some("HEAD~1"), None, None).map_err(std::io::Error::other)?;
+        assert!(
+            top.contains("+++ b/crates/core/src/lib.rs") && top.contains("+++ b/other.rs"),
+            "the repository top level keeps every path: {top}"
+        );
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
     #[test]
     fn explicit_base_is_used_as_is_without_resolution() -> std::io::Result<()> {
         // When an explicit base is given, load_diff does not attempt resolution.
-        // A nonexistent explicit base should produce a git-diff error (not the
-        // named "could not resolve" message), confirming the explicit path is kept.
+        // A nonexistent explicit base must fail naming the ref the user chose,
+        // never the auto-resolve message (that would mean we silently
+        // substituted it).
         let dir = unique_fixture_root("explicit-base-no-subst")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
         let result = load_diff(&dir, Some("nonexistent-branch-xyz"), None, None);
         let err = result.expect_err("expected error for nonexistent explicit base");
-        // Must NOT contain the auto-resolve message (that would mean we silently
-        // substituted the explicit ref).
         assert!(
             !err.contains("could not resolve a default base"),
             "explicit base must not trigger auto-resolve fallback; got: {err}"
         );
-        // Must surface a git error referencing the chosen ref.
         assert!(
             err.contains("nonexistent-branch-xyz") || err.contains("git diff failed"),
-            "expected git-diff error for explicit bad base, got: {err}"
+            "expected error naming the chosen ref, got: {err}"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn unresolvable_explicit_base_reports_the_ref_instead_of_git_usage_advice()
+    -> std::io::Result<()> {
+        // The user-facing defect: `ripr check --base origin/main` in a repo with
+        // no `origin` used to print git's raw `ambiguous argument` text, whose
+        // remedy ("use `--` to separate paths from revisions") addresses a
+        // mistake the user did not make. The failure now names the ref, says the
+        // analysis did not run, and gives the two real next actions.
+        let dir = unique_fixture_root("explicit-base-named-failure")?;
+        ignore_remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        let err = load_diff(&dir, Some("origin/main"), None, None)
+            .expect_err("expected error for a base with no origin remote");
+
+        assert!(
+            err.contains("`origin/main`"),
+            "expected the chosen ref to be named, got: {err}"
+        );
+        assert!(
+            err.contains("does not resolve to a commit"),
+            "expected the named non-resolution state, got: {err}"
+        );
+        assert!(
+            err.contains("the analysis did not run"),
+            "expected an explicit did-not-run boundary so an unresolvable base \
+             is never read as an empty result, got: {err}"
+        );
+        assert!(
+            err.contains("--base <ref>"),
+            "expected the next action, got: {err}"
+        );
+        // Discriminator: git's usage advice for a different mistake must be gone.
+        assert!(
+            !err.contains("ambiguous argument") && !err.contains("separate paths from revisions"),
+            "raw git usage advice must not reach the user, got: {err}"
+        );
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn resolvable_explicit_base_still_loads_its_diff() -> std::io::Result<()> {
+        // Negative control for the preflight above: a base that does resolve is
+        // analyzed exactly as before, so the new check cannot pass by rejecting
+        // every explicit base.
+        let dir = unique_fixture_root("explicit-base-resolvable")?;
+        ignore_remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        fs::write(dir.join("src.rs"), "pub fn added() -> i32 { 1 }\n")?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "-m", "add src"])?;
+
+        let loaded = load_diff(&dir, Some("HEAD~1"), None, None);
+        assert!(
+            loaded.as_ref().is_ok_and(|diff| diff.contains("src.rs")),
+            "expected a resolvable explicit base to analyze the changed file, got: {loaded:?}"
+        );
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn worktree_load_starts_at_the_merge_base_when_the_base_moved_on() -> std::io::Result<()> {
+        // The branch forks at A and changes feature.rs; the base then gains
+        // B, which changes upstream.rs. The committed `main...HEAD` diff
+        // names only feature.rs, and the worktree diff must cover the same
+        // PR changes plus the uncommitted edit, not B reversed.
+        let dir = unique_fixture_root("worktree-merge-base")?;
+        ignore_remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+        fs::write(dir.join("feature.rs"), "fn feature() -> u32 { 1 }\n")?;
+        fs::write(dir.join("upstream.rs"), "fn upstream() -> u32 { 1 }\n")?;
+        fs::write(dir.join("edit.rs"), "fn edit() -> u32 { 1 }\n")?;
+        run_git_checked(&dir, &["add", "."])?;
+        run_git_checked(&dir, &["commit", "--quiet", "-m", "A"])?;
+        run_git_checked(&dir, &["checkout", "--quiet", "-b", "feature"])?;
+        fs::write(dir.join("feature.rs"), "fn feature() -> u32 { 2 }\n")?;
+        run_git_checked(&dir, &["commit", "--quiet", "-am", "feature"])?;
+        run_git_checked(&dir, &["checkout", "--quiet", "main"])?;
+        fs::write(dir.join("upstream.rs"), "fn upstream() -> u32 { 2 }\n")?;
+        run_git_checked(&dir, &["commit", "--quiet", "-am", "B"])?;
+        run_git_checked(&dir, &["checkout", "--quiet", "feature"])?;
+        fs::write(dir.join("edit.rs"), "fn edit() -> u32 { 2 }\n")?;
+
+        let tip_diff = run_git_checked(&dir, &["diff", "main"])?;
+        assert!(
+            tip_diff.contains("upstream.rs"),
+            "fixture precondition: a base-tip diff must carry the base's own change:\n{tip_diff}"
+        );
+        let committed = load_diff(&dir, Some("main"), None, None).map_err(std::io::Error::other)?;
+        assert!(
+            committed.contains("feature.rs") && !committed.contains("upstream.rs"),
+            "fixture precondition: the committed range names only the branch change:\n{committed}"
+        );
+
+        let loaded = load_worktree_diff_with_effective_base(&dir, Some("main"), None)
+            .map_err(std::io::Error::other)?;
+        assert!(
+            loaded.text.contains("feature.rs") && loaded.text.contains("edit.rs"),
+            "the worktree diff must keep the branch change and the uncommitted edit:\n{}",
+            loaded.text
+        );
+        assert!(
+            !loaded.text.contains("upstream.rs"),
+            "the worktree diff must not report the base's later commit as a branch change:\n{}",
+            loaded.text
+        );
+        assert_eq!(loaded.effective_base.as_deref(), Some("main"));
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn worktree_load_reports_an_unresolvable_explicit_base_by_name() -> std::io::Result<()> {
+        // `--worktree` shares the same base authority, so it shares the fix.
+        let dir = unique_fixture_root("worktree-base-named-failure")?;
+        ignore_remove_dir_all(&dir);
+        init_git_repo(&dir, "main")?;
+
+        let err = load_worktree_diff(&dir, Some("origin/main"), None)
+            .expect_err("expected error for a worktree base with no origin remote");
+        assert!(
+            err.contains("`origin/main`") && err.contains("does not resolve to a commit"),
+            "expected the named non-resolution state, got: {err}"
+        );
+
+        ignore_remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn outside_a_work_tree_names_the_missing_repository_not_a_missing_ref() -> std::io::Result<()> {
+        // A root that is not a usable work tree fails every base, and the ref
+        // messages send the user to `git fetch origin` or to a different
+        // `--base`. Neither repair applies there: `git fetch` fails for the
+        // same reason the base did. Reported against a plain directory, where
+        // `--base origin/main` printed git's whole `--no-index` usage — 129
+        // lines of it — with `ripr:` in front.
+        //
+        // The two fixtures are the two ways the probe establishes it, and
+        // neither depends on where the temp directory happens to live: a bare
+        // repository makes `--is-inside-work-tree` print `false`, and an
+        // invalid gitfile makes it exit nonzero. A plain directory outside any
+        // checkout takes the second path, so it is the second fixture's case.
+        let bare = unique_fixture_root("no-work-tree-bare")?;
+        run_git_checked(&bare, &["init", "--bare", "--quiet", "."])?;
+        let gitfile = unique_fixture_root("no-work-tree-gitfile")?;
+        fs::write(gitfile.join(".git"), "not a gitfile\n")?;
+
+        for dir in [&bare, &gitfile] {
+            // Assert the fixture before reading anything into the message: a
+            // root that is a work tree would make this pass for another reason.
+            let probe = crate::git::run_git_output_with_deadline(
+                dir,
+                &["rev-parse", "--is-inside-work-tree"],
+                None,
+            )
+            .map_err(std::io::Error::other)?;
+            assert!(
+                !(probe.status.success()
+                    && String::from_utf8_lossy(&probe.stdout).trim() == "true"),
+                "fixture {} is a work tree, so this test proves nothing",
+                dir.display()
+            );
+
+            for base in [Some("origin/main"), None] {
+                let err = load_diff(dir, base, None, None)
+                    .expect_err("expected an error outside a work tree");
+                assert!(
+                    err.contains("not inside a Git work tree"),
+                    "expected the repository state to be named for {base:?} in {}, got: {err}",
+                    dir.display()
+                );
+                assert!(
+                    err.contains("the analysis did not run"),
+                    "expected the did-not-run boundary for {base:?} in {}, got: {err}",
+                    dir.display()
+                );
+                assert!(
+                    err.contains("--root <path>"),
+                    "expected the next action for {base:?} in {}, got: {err}",
+                    dir.display()
+                );
+                // Discriminators. The ref advice is wrong here, and so is git's
+                // own text; neither may reach the user in this state.
+                assert!(
+                    !err.contains("does not resolve to a commit") && !err.contains("git fetch"),
+                    "ref-repair advice must not be given for {base:?} in {}, got: {err}",
+                    dir.display()
+                );
+                assert!(
+                    !err.contains("could not resolve a default base"),
+                    "default-base search advice must not be given for {base:?} in {}, got: {err}",
+                    dir.display()
+                );
+                assert!(
+                    !err.contains("--no-index") && !err.contains("invalid gitfile"),
+                    "raw git output must not reach the user for {base:?} in {}, got: {err}",
+                    dir.display()
+                );
+            }
+        }
+
+        ignore_remove_dir_all(&bare);
+        ignore_remove_dir_all(&gitfile);
         Ok(())
     }
 
@@ -843,7 +2346,7 @@ mod tests {
         // same base the candidate search picks and the exact commit the
         // analysis will diff against.
         let dir = unique_fixture_root("resolve-default-base-commit")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
         let expected = String::from_utf8(
@@ -867,7 +2370,7 @@ mod tests {
         // only branch is neither main nor master has no candidate in the
         // loader's default-base search order.
         let bare = unique_fixture_root("resolve-default-base-commit-empty")?;
-        let _ = fs::remove_dir_all(&bare);
+        ignore_remove_dir_all(&bare);
         init_git_repo(&bare, "trunk")?;
         let err = resolve_default_base_commit(&bare, None)
             .expect_err("expected a named error when no default base resolves");
@@ -876,8 +2379,8 @@ mod tests {
             "expected the candidate-search error, got: {err}"
         );
 
-        let _ = fs::remove_dir_all(&dir);
-        let _ = fs::remove_dir_all(&bare);
+        ignore_remove_dir_all(&dir);
+        ignore_remove_dir_all(&bare);
         Ok(())
     }
 
@@ -896,7 +2399,7 @@ mod tests {
     #[test]
     fn git_operation_probe_detects_rebase_merge_and_cherry_pick_markers() -> std::io::Result<()> {
         let dir = unique_fixture_root("git-operation-markers")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
         for (marker, expected) in [
@@ -927,7 +2430,7 @@ mod tests {
             assert_eq!(git_operation_in_progress(&dir, None), None);
         }
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -995,14 +2498,14 @@ mod tests {
             ));
         }
 
-        let _ = fs::remove_file(&file);
+        if let Ok(()) = fs::remove_file(&file) {}
         Ok(())
     }
 
     #[test]
     fn tracked_change_detector_ignores_untracked_only_files() -> std::io::Result<()> {
         let dir = unique_fixture_root("tracked-change-untracked-only")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         fs::write(dir.join("scratch.rs"), "fn scratch() {}\n")?;
 
@@ -1012,14 +2515,14 @@ mod tests {
             ));
         }
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
     #[test]
     fn tracked_change_detector_detects_tracked_edit() -> std::io::Result<()> {
         let dir = unique_fixture_root("tracked-change-edit")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         fs::write(dir.join("README"), "changed\n")?;
 
@@ -1029,14 +2532,14 @@ mod tests {
             ));
         }
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
     #[test]
     fn tracked_change_detector_ignores_parent_repo_changes_outside_root() -> std::io::Result<()> {
         let dir = unique_fixture_root("tracked-change-parent-dirty")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
         let nested = dir.join("nested-workspace");
         fs::create_dir_all(&nested)?;
@@ -1048,27 +2551,39 @@ mod tests {
             ));
         }
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
     #[test]
     fn zero_deadline_diff_load_fails_with_the_named_timeout_error() -> std::io::Result<()> {
         // #2303: a deadline that cannot be met fails before spawning with the
-        // named, matchable `git_invocation_timeout` error — the string the
+        // named, matchable typed `git_invocation_timeout` error — the kind the
         // LSP refresh path converts into a committed limited snapshot.
         let dir = unique_fixture_root("load-diff-zero-deadline")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
-        let result = load_diff(&dir, Some("HEAD"), None, Some(Duration::ZERO));
-        let err = result.expect_err("a zero deadline must fail the diff load");
+        let public = load_diff(&dir, Some("HEAD"), None, Some(Duration::ZERO))
+            .expect_err("a zero deadline must fail the diff load");
+        let err = load_diff_core(&dir, Some("HEAD"), None, Some(Duration::ZERO))
+            .expect_err("a zero deadline must fail the typed diff load");
+        assert_eq!(
+            err.to_string(),
+            public,
+            "public Display must stay byte-identical"
+        );
         assert!(
-            crate::git::is_git_invocation_timeout(&err),
-            "expected the named git_invocation_timeout error, got: {err}"
+            err.is_git_invocation_timeout(),
+            "expected the typed git_invocation_timeout error, got: {err}"
+        );
+        let lookalike = CoreError::message(err.to_string());
+        assert!(
+            !lookalike.is_git_invocation_timeout(),
+            "re-wrapping the Display as Message must not recover the typed kind"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -1078,7 +2593,7 @@ mod tests {
         // candidate resolution instead of silently falling back to an
         // unbounded Git probe or fabricating a base.
         let dir = unique_fixture_root("load-diff-default-base-zero-deadline")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
         let result = load_diff(&dir, None, None, Some(Duration::ZERO));
@@ -1088,7 +2603,7 @@ mod tests {
             "expected fail-closed default-base error, got: {err}"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 
@@ -1097,7 +2612,7 @@ mod tests {
         // #2303: probe-path timeouts degrade to the same fail-closed states
         // as an unresolvable ref — never to a fabricated base or commit.
         let dir = unique_fixture_root("probe-zero-deadline")?;
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         init_git_repo(&dir, "main")?;
 
         assert_eq!(
@@ -1118,7 +2633,7 @@ mod tests {
             "unbounded probe must resolve HEAD in the same repo"
         );
 
-        let _ = fs::remove_dir_all(&dir);
+        ignore_remove_dir_all(&dir);
         Ok(())
     }
 }

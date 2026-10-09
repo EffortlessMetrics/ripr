@@ -394,7 +394,7 @@ fn validate_lane1_evidence_quality_failure_case(
 
 pub(crate) fn validate_evidence_quality_benchmark_fixture_corpus(
     violations: &mut Vec<String>,
-) -> Result<(), String> {
+) -> Result<PolicyDisclosure, String> {
     validate_evidence_quality_benchmark_fixture_corpus_at(
         Path::new(EVIDENCE_QUALITY_BENCHMARK_CORPUS),
         violations,
@@ -404,31 +404,32 @@ pub(crate) fn validate_evidence_quality_benchmark_fixture_corpus(
 pub(crate) fn validate_evidence_quality_benchmark_fixture_corpus_at(
     path: &Path,
     violations: &mut Vec<String>,
-) -> Result<(), String> {
+) -> Result<PolicyDisclosure, String> {
     if !path.exists() {
         violations.push(format!(
             "Lane 1 evidence-quality benchmark corpus is missing {}",
             normalize_path(path)
         ));
-        return Ok(());
+        return Ok(benchmark_oracles::unavailable_disclosure());
     }
 
     let corpus = match read_json_value(path) {
         Ok(value) => value,
         Err(err) => {
             violations.push(err);
-            return Ok(());
+            return Ok(benchmark_oracles::unavailable_disclosure());
         }
     };
-    validate_evidence_quality_benchmark_corpus_value(path, &corpus, violations);
-    Ok(())
+    Ok(validate_evidence_quality_benchmark_corpus_value(
+        path, &corpus, violations,
+    ))
 }
 
 pub(crate) fn validate_evidence_quality_benchmark_corpus_value(
     path: &Path,
     corpus: &Value,
     violations: &mut Vec<String>,
-) {
+) -> PolicyDisclosure {
     let normalized = normalize_path(path);
     if json_string_field(corpus, "kind").as_deref()
         != Some("lane1_evidence_quality_benchmark_corpus")
@@ -476,19 +477,21 @@ pub(crate) fn validate_evidence_quality_benchmark_corpus_value(
 
     let Some(cases) = corpus.get("cases").and_then(Value::as_array) else {
         violations.push(format!("{normalized} is missing cases array"));
-        return;
+        return benchmark_oracles::unavailable_disclosure();
     };
 
+    let mut semantic_oracles = benchmark_oracles::Summary::default();
     let mut seen_ids = BTreeSet::new();
     let mut seen_classes = BTreeSet::new();
     let mut seen_kinds = BTreeSet::new();
     let mut has_runtime_only_guard = false;
     let mut has_line_movement_guard = false;
     for case in cases {
+        semantic_oracles.observe(path.parent().unwrap_or(Path::new(".")), case, violations);
         let case_id = json_string_field(case, "id").unwrap_or_else(|| "unknown".to_string());
         if !seen_ids.insert(case_id.clone()) {
             violations.push(format!(
-                "Lane 1 evidence-quality benchmark case {case_id} is duplicated"
+                "Lane 1 evidence-quality benchmark cases collection has duplicate id {case_id}"
             ));
         }
         validate_evidence_quality_benchmark_case(
@@ -535,6 +538,12 @@ pub(crate) fn validate_evidence_quality_benchmark_corpus_value(
                 .to_string(),
         );
     }
+    benchmark_oracles::append_controls_disclosure(
+        path.parent().unwrap_or(Path::new(".")),
+        corpus,
+        semantic_oracles.disclosure(),
+        violations,
+    )
 }
 
 fn validate_evidence_quality_benchmark_case(
@@ -885,7 +894,16 @@ pub(crate) fn validate_python_real_repo_eval_fixture_corpus(
     validate_python_real_repo_eval_fixture_corpus_at(
         Path::new(PYTHON_REAL_REPO_EVAL_CORPUS),
         violations,
-    )
+    )?;
+    if let Err(error) = super::upstream_python::validate_werkzeug_upstream_evidence(Path::new(
+        PYTHON_REAL_REPO_EVAL_CORPUS,
+    )) {
+        violations.push(error);
+    }
+    if let Err(error) = super::native_python::validate_native_case_registration(root) {
+        violations.push(error);
+    }
+    Ok(())
 }
 
 fn validate_python_real_repo_eval_fixture_corpus_at(
@@ -1725,4 +1743,1420 @@ pub(crate) fn user_surface_projection_required_run_status_violations(
             format!("user surface projection alignment corpus is missing run_status {required}")
         })
         .collect()
+}
+
+pub(crate) fn validate_blind_journey_contract_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/blind_journey_contract");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "blind journey contract fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0200") {
+            violations.push(
+                "blind journey contract SPEC.md must name its RIPR-SPEC-0200 decision".to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "blind journey contract SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_blind_journey_contract_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_blind_journey_contract_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "blind journey contract corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::blind_journey::load_blind_journey_fixture_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!("blind journey contract corpus is invalid: {error}"));
+            return Ok(());
+        }
+    };
+    let missing = crate::blind_journey::missing_blind_journey_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "blind journey contract corpus is missing required scenario {id}"
+        ));
+    }
+    let report = crate::reports::assess_blind_journey_fixture_corpus(&corpus);
+    for failure in &report.expectation_failures {
+        violations.push(format!("blind journey contract corpus drifted: {failure}"));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_orchestration_attempt_receipts_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/orchestration_attempt_receipts");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "orchestration attempt receipts fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0213") {
+            violations.push(
+                "orchestration attempt receipts SPEC.md must name its RIPR-SPEC-0213 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "orchestration attempt receipts SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_orchestration_attempt_receipts_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_orchestration_attempt_receipts_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "orchestration attempt receipts corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::orchestration_attempt::load_orchestration_fixture_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!(
+                "orchestration attempt receipts corpus is invalid: {error}"
+            ));
+            return Ok(());
+        }
+    };
+    let missing = crate::orchestration_attempt::missing_orchestration_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "orchestration attempt receipts corpus is missing required scenario {id}"
+        ));
+    }
+    let (_scorecard, failures) = crate::reports::assess_orchestration_fixture_corpus(
+        &corpus,
+        "fixtures/orchestration_attempt_receipts/corpus.json",
+    );
+    for failure in &failures {
+        violations.push(format!(
+            "orchestration attempt receipts corpus drifted: {failure}"
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_issue_lifecycle_attempts_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/issue_lifecycle_attempts");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "issue lifecycle attempts fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0218") {
+            violations.push(
+                "issue lifecycle attempts SPEC.md must name its RIPR-SPEC-0218 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "issue lifecycle attempts SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_issue_lifecycle_attempts_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_issue_lifecycle_attempts_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "issue lifecycle attempts corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::issue_lifecycle_attempt::load_issue_lifecycle_fixture_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!(
+                "issue lifecycle attempts corpus is invalid: {error}"
+            ));
+            return Ok(());
+        }
+    };
+    let missing = crate::issue_lifecycle_attempt::missing_issue_lifecycle_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "issue lifecycle attempts corpus is missing required scenario {id}"
+        ));
+    }
+    let (_scorecard, failures) = crate::reports::assess_issue_lifecycle_fixture_corpus(
+        &corpus,
+        "fixtures/issue_lifecycle_attempts/corpus.json",
+    );
+    for failure in &failures {
+        violations.push(format!(
+            "issue lifecycle attempts corpus drifted: {failure}"
+        ));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_issue_lifecycle_intake_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/issue_lifecycle_intake");
+    for required in ["SPEC.md", "corpus.json", "controls.json", "provenance.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "issue lifecycle intake fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    if !root.join("snapshots").is_dir() {
+        violations.push(
+            "issue lifecycle intake fixture corpus is missing its snapshots directory".to_string(),
+        );
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0234") {
+            violations.push(
+                "issue lifecycle intake SPEC.md must name its RIPR-SPEC-0234 decision".to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "issue lifecycle intake SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    let corpus_path = root.join("corpus.json");
+    if !corpus_path.exists() {
+        return Ok(());
+    }
+    let body = read_text_lossy(&corpus_path)?;
+    let corpus = match crate::issue_lifecycle_intake::load_issue_lifecycle_intake_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!("issue lifecycle intake corpus is invalid: {error}"));
+            return Ok(());
+        }
+    };
+    for failure in crate::issue_lifecycle_intake::assess_intake_corpus(&corpus) {
+        violations.push(format!(
+            "issue lifecycle intake corpus assessment failed: {failure}"
+        ));
+    }
+    for row in &corpus.rows {
+        if let Err(error) = crate::issue_lifecycle_intake::verify_intake_row_snapshot(row, root) {
+            violations.push(format!(
+                "issue lifecycle intake snapshot binding failed: {error}"
+            ));
+        }
+        let assessment =
+            crate::issue_lifecycle_attempt::assess_issue_lifecycle_attempt(&row.attempt);
+        if !assessment.counted {
+            violations.push(format!(
+                "issue lifecycle intake row `{}` was rejected by the RIPR-SPEC-0218 counting law: {:?}",
+                row.id, assessment.reasons
+            ));
+        }
+        if assessment.disposition != Some(row.root_disposition.disposition) {
+            violations.push(format!(
+                "issue lifecycle intake row `{}` root disposition {:?} disagrees with the assessed disposition {:?}",
+                row.id, row.root_disposition.disposition, assessment.disposition
+            ));
+        }
+    }
+    let controls_path = root.join("controls.json");
+    if controls_path.exists() {
+        let body = read_text_lossy(&controls_path)?;
+        match crate::issue_lifecycle_intake::load_issue_lifecycle_intake_control_corpus(&body) {
+            Ok(controls) => {
+                for failure in
+                    crate::issue_lifecycle_intake::assess_intake_control_corpus(&controls)
+                {
+                    violations.push(format!(
+                        "issue lifecycle intake control corpus assessment failed: {failure}"
+                    ));
+                }
+                for control in &controls.rows {
+                    let assessment = crate::issue_lifecycle_attempt::assess_issue_lifecycle_attempt(
+                        &control.row.attempt,
+                    );
+                    if !assessment.counted {
+                        violations.push(format!(
+                            "issue lifecycle intake control `{}` was rejected by the RIPR-SPEC-0218 counting law: {:?}",
+                            control.id, assessment.reasons
+                        ));
+                    }
+                }
+            }
+            Err(error) => {
+                violations.push(format!(
+                    "issue lifecycle intake controls are invalid: {error}"
+                ));
+            }
+        }
+    }
+    let provenance_path = root.join("provenance.json");
+    if !provenance_path.exists() {
+        return Ok(());
+    }
+    let body = read_text_lossy(&provenance_path)?;
+    match crate::issue_lifecycle_intake::load_issue_lifecycle_intake_provenance(&body) {
+        Ok(provenance) => {
+            if provenance.rows.len() != corpus.rows.len() {
+                violations.push(format!(
+                    "issue lifecycle intake provenance must name {} rows, got {}",
+                    corpus.rows.len(),
+                    provenance.rows.len()
+                ));
+            }
+            if provenance.base_main != corpus.base_main {
+                violations.push(format!(
+                    "issue lifecycle intake provenance base_main `{}` disagrees with corpus `{}`",
+                    provenance.base_main, corpus.base_main
+                ));
+            }
+            if provenance.captured_at != corpus.captured_at {
+                violations.push(format!(
+                    "issue lifecycle intake provenance captured_at `{}` disagrees with corpus `{}`",
+                    provenance.captured_at, corpus.captured_at
+                ));
+            }
+            for row in &corpus.rows {
+                match provenance
+                    .rows
+                    .iter()
+                    .find(|entry| entry.issue == row.snapshot.issue_number)
+                {
+                    Some(entry) => {
+                        if entry.category != row.category {
+                            violations.push(format!(
+                                "issue lifecycle intake provenance category `{}` disagrees with row `{}` category `{}`",
+                                entry.category, row.id, row.category
+                            ));
+                        }
+                    }
+                    None => {
+                        violations.push(format!(
+                            "issue lifecycle intake provenance is missing issue `{}`",
+                            row.snapshot.issue_ref
+                        ));
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            violations.push(format!(
+                "issue lifecycle intake provenance is invalid: {error}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_issue_lifecycle_contract_plan_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    use crate::issue_lifecycle_contract_plan as contract_plan;
+
+    let root = Path::new("fixtures/issue_lifecycle_contract_plan");
+    for required in ["SPEC.md", "corpus.json", "controls.json", "provenance.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "issue lifecycle contract plan fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    if !root.join("snapshots").is_dir() {
+        violations.push(
+            "issue lifecycle contract plan fixture corpus is missing its snapshots directory"
+                .to_string(),
+        );
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0236") {
+            violations.push(
+                "issue lifecycle contract plan SPEC.md must name its RIPR-SPEC-0236 decision"
+                    .to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "issue lifecycle contract plan SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    let corpus_path = root.join("corpus.json");
+    if !corpus_path.exists() {
+        return Ok(());
+    }
+    let body = read_text_lossy(&corpus_path)?;
+    let corpus = match contract_plan::load_issue_lifecycle_contract_plan_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!(
+                "issue lifecycle contract plan corpus is invalid: {error}"
+            ));
+            return Ok(());
+        }
+    };
+    for failure in contract_plan::assess_contract_plan_corpus(&corpus) {
+        violations.push(format!(
+            "issue lifecycle contract plan corpus assessment failed: {failure}"
+        ));
+    }
+    for row in &corpus.rows {
+        if let Err(error) = contract_plan::verify_contract_plan_row_snapshot(row, root) {
+            violations.push(format!(
+                "issue lifecycle contract plan snapshot binding failed: {error}"
+            ));
+        }
+    }
+    let (law_failures, _assessed) = contract_plan::assess_real_rows_against_counting_law(&corpus);
+    for failure in law_failures {
+        violations.push(format!(
+            "issue lifecycle contract plan counting law failed: {failure}"
+        ));
+    }
+    let controls_path = root.join("controls.json");
+    if controls_path.exists() {
+        let body = read_text_lossy(&controls_path)?;
+        match contract_plan::load_issue_lifecycle_contract_plan_control_corpus(&body) {
+            Ok(controls) => {
+                for failure in contract_plan::assess_contract_plan_control_corpus(&controls) {
+                    violations.push(format!(
+                        "issue lifecycle contract plan control corpus assessment failed: {failure}"
+                    ));
+                }
+                for failure in contract_plan::assess_control_rows_against_counting_law(&controls) {
+                    violations.push(format!(
+                        "issue lifecycle contract plan counting law failed: {failure}"
+                    ));
+                }
+            }
+            Err(error) => {
+                violations.push(format!(
+                    "issue lifecycle contract plan controls are invalid: {error}"
+                ));
+            }
+        }
+    }
+    let provenance_path = root.join("provenance.json");
+    if !provenance_path.exists() {
+        return Ok(());
+    }
+    let body = read_text_lossy(&provenance_path)?;
+    match contract_plan::load_issue_lifecycle_contract_plan_provenance(&body) {
+        Ok(provenance) => {
+            if let Err(error) = contract_plan::check_provenance_against_corpus(&corpus, &provenance)
+            {
+                violations.push(format!(
+                    "issue lifecycle contract plan provenance binding failed: {error}"
+                ));
+            }
+        }
+        Err(error) => {
+            violations.push(format!(
+                "issue lifecycle contract plan provenance is invalid: {error}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_blind_journey_execute_fixture_corpus(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new("fixtures/blind_journey_execute");
+    for required in ["SPEC.md", "corpus.json"] {
+        let path = root.join(required);
+        if !path.exists() {
+            violations.push(format!(
+                "blind journey execute fixture corpus is missing {}",
+                normalize_path(&path)
+            ));
+        }
+    }
+    let spec_path = root.join("SPEC.md");
+    if spec_path.exists() {
+        let body = read_text_lossy(&spec_path)?;
+        if !body.contains("RIPR-SPEC-0205") {
+            violations.push(
+                "blind journey execute SPEC.md must name its RIPR-SPEC-0205 decision".to_string(),
+            );
+        }
+        for heading in ["## Given", "## When", "## Then", "## Must Not"] {
+            if !body.contains(heading) {
+                violations.push(format!(
+                    "blind journey execute SPEC.md must contain the `{heading}` section"
+                ));
+            }
+        }
+    }
+    validate_blind_journey_execute_fixture_corpus_at(&root.join("corpus.json"), violations)
+}
+
+fn validate_blind_journey_execute_fixture_corpus_at(
+    path: &Path,
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    if !path.exists() {
+        violations.push(format!(
+            "blind journey execute corpus is missing {}",
+            normalize_path(path)
+        ));
+        return Ok(());
+    }
+    let body = read_text_lossy(path)?;
+    let corpus = match crate::blind_journey_execute::load_blind_journey_execute_corpus(&body) {
+        Ok(corpus) => corpus,
+        Err(error) => {
+            violations.push(format!("blind journey execute corpus is invalid: {error}"));
+            return Ok(());
+        }
+    };
+    let missing = crate::blind_journey_execute::missing_blind_journey_execute_required_scenarios(
+        corpus.scenarios.iter().map(|scenario| scenario.id.as_str()),
+    );
+    for id in missing {
+        violations.push(format!(
+            "blind journey execute corpus is missing required scenario {id}"
+        ));
+    }
+    let report = crate::reports::assess_blind_journey_execute_corpus(&corpus);
+    for failure in &report.expectation_failures {
+        violations.push(format!("blind journey execute corpus drifted: {failure}"));
+    }
+    Ok(())
+}
+
+pub(crate) fn validate_blind_journey_installed_rust_fixture(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_installed_journey_fixture(&INSTALLED_RUST_CONTRACT, violations)
+}
+
+/// Test-only compatibility shims so the unchanged per-language test modules
+/// keep exercising the shared owner through their historical entry points.
+#[cfg(test)]
+fn installed_rust_git_identity_wellformed(value: Option<&Value>) -> bool {
+    installed_journey_git_identity_wellformed(value)
+}
+
+#[cfg(test)]
+fn installed_rust_manifest_violations(root: &Path, manifest: &Value) -> Vec<String> {
+    installed_journey_manifest_violations(&INSTALLED_RUST_CONTRACT, root, manifest)
+}
+
+#[cfg(test)]
+fn installed_rust_missing_scenarios(manifest: &Value, corpus: &Value) -> Vec<String> {
+    installed_journey_missing_scenarios(&INSTALLED_RUST_CONTRACT, manifest, corpus)
+}
+
+#[cfg(test)]
+fn installed_rust_scenario_binding_violations(manifest: &Value, corpus: &Value) -> Vec<String> {
+    installed_journey_scenario_binding_violations(&INSTALLED_RUST_CONTRACT, manifest, corpus)
+}
+
+#[cfg(test)]
+mod installed_rust_fixture_tests {
+    use super::*;
+
+    #[test]
+    fn committed_installed_rust_manifest_binds_the_snapshot_bytes() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures/blind_journey_installed_rust");
+        let manifest = read_json_value(&root.join("manifest.json"))?;
+        let violations = installed_rust_manifest_violations(&root, &manifest);
+        if !violations.is_empty() {
+            return Err(format!(
+                "committed installed rust manifest drifted: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn committed_installed_rust_scenarios_exist_in_the_executor_corpus() -> Result<(), String> {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let manifest = read_json_value(
+            &workspace.join("fixtures/blind_journey_installed_rust/manifest.json"),
+        )?;
+        let corpus =
+            read_json_value(&workspace.join("fixtures/blind_journey_execute/corpus.json"))?;
+        let missing = installed_rust_missing_scenarios(&manifest, &corpus);
+        if !missing.is_empty() {
+            return Err(format!(
+                "committed installed rust fixture names missing corpus scenarios: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_installed_rust_scenario_is_reported_missing() -> Result<(), String> {
+        let manifest: Value =
+            serde_json::json!({"journey_scenario_ids": ["installed_rust_not_a_real_scenario"]});
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_rust_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("installed_rust_not_a_real_scenario"))
+        {
+            return Err(format!(
+                "an unknown installed rust scenario must be reported, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn drifted_snapshot_digest_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-rust-fixture-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("src/lib.rs"), b"fn drifted() {}\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_RUST_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+                "files": {"src/lib.rs":
+                    "0000000000000000000000000000000000000000000000000000000000000000"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/tier_boundary.rs"],
+                "forbidden_edits": ["src/lib.rs"],
+                "selected_repair": {"edit_target": "tests/tier_boundary.rs"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_rust_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("drifted"))
+        {
+            return Err(format!(
+                "a drifted snapshot digest must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_identity_binding_accepts_only_lowercase_hex() -> Result<(), String> {
+        let valid: Value = serde_json::json!("01821f774cb2cc2bc745b7506a3941312456fb4e");
+        if !installed_rust_git_identity_wellformed(Some(&valid)) {
+            return Err("a lowercase 40-hex git identity must be accepted".to_string());
+        }
+        for invalid in [
+            serde_json::json!("01821F774CB2CC2BC745B7506A3941312456FB4E"),
+            serde_json::json!("01821f77"),
+            serde_json::json!("zz821f774cb2cc2bc745b7506a3941312456fb4e"),
+            serde_json::json!(
+                "01821f774cb2cc2bc745b7506a3941312456fb4e01821f774cb2cc2bc745b7506a3941312456fb4e"
+            ),
+            serde_json::json!(40),
+        ] {
+            if installed_rust_git_identity_wellformed(Some(&invalid)) {
+                return Err(format!(
+                    "an ill-formed git identity must be rejected: {invalid}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unlisted_snapshot_file_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-rust-extra-file-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("src/lib.rs"), b"fn extra() {}\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("build.rs"), b"fn main() {}\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_RUST_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+                "files": {"src/lib.rs":
+                    "f70d3ed93649e7ee0271d38008eb4427cc0f3006fc1770462aafec2ee834bfcf"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/tier_boundary.rs"],
+                "forbidden_edits": ["src/lib.rs"],
+                "selected_repair": {"edit_target": "tests/tier_boundary.rs"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_rust_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("not bound in the manifest"))
+        {
+            return Err(format!(
+                "an unlisted snapshot file must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scenario_candidate_must_bind_the_manifest_snapshots() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_rust_positive_journey_emits_receipt"],
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                    "tree": "8c3a6ff250d34675386567f37ccf05d8a0dd6d6e",
+                    "files": {}
+                },
+                "head": {
+                    "commit": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+                    "tree": "60374952915a027947d4e1654bd6e945834114c3",
+                    "files": {}
+                }
+            }}
+        });
+        let bound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_rust_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "head": "18a45fa5cd718f85dc60fcb27495b24dbd9715e7",
+                "tree": "60374952915a027947d4e1654bd6e945834114c3"
+            }}
+        }]});
+        if !installed_rust_scenario_binding_violations(&manifest, &bound).is_empty() {
+            return Err("a snapshot-bound scenario candidate must be accepted".to_string());
+        }
+        let unbound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_rust_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "01821f774cb2cc2bc745b7506a3941312456fb4e",
+                "head": "0000000000000000000000000000000000000000",
+                "tree": "60374952915a027947d4e1654bd6e945834114c3"
+            }}
+        }]});
+        let violations = installed_rust_scenario_binding_violations(&manifest, &unbound);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind one manifest snapshot"))
+        {
+            return Err(format!(
+                "an unbound scenario candidate head must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn validate_blind_journey_installed_typescript_fixture(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_installed_journey_fixture(&INSTALLED_TYPESCRIPT_CONTRACT, violations)
+}
+
+/// Test-only compatibility shims so the unchanged per-language test modules
+/// keep exercising the shared owner through their historical entry points.
+#[cfg(test)]
+fn installed_typescript_git_identity_wellformed(value: Option<&Value>) -> bool {
+    installed_journey_git_identity_wellformed(value)
+}
+
+#[cfg(test)]
+fn installed_typescript_manifest_violations(root: &Path, manifest: &Value) -> Vec<String> {
+    installed_journey_manifest_violations(&INSTALLED_TYPESCRIPT_CONTRACT, root, manifest)
+}
+
+#[cfg(test)]
+fn installed_typescript_missing_scenarios(manifest: &Value, corpus: &Value) -> Vec<String> {
+    installed_journey_missing_scenarios(&INSTALLED_TYPESCRIPT_CONTRACT, manifest, corpus)
+}
+
+#[cfg(test)]
+fn installed_typescript_scenario_binding_violations(
+    manifest: &Value,
+    corpus: &Value,
+) -> Vec<String> {
+    installed_journey_scenario_binding_violations(&INSTALLED_TYPESCRIPT_CONTRACT, manifest, corpus)
+}
+
+#[cfg(test)]
+mod installed_typescript_fixture_tests {
+    use super::*;
+
+    #[test]
+    fn committed_installed_typescript_manifest_binds_the_snapshot_bytes() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures/blind_journey_installed_typescript");
+        let manifest = read_json_value(&root.join("manifest.json"))?;
+        let violations = installed_typescript_manifest_violations(&root, &manifest);
+        if !violations.is_empty() {
+            return Err(format!(
+                "committed installed typescript manifest drifted: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn committed_installed_typescript_scenarios_exist_in_the_executor_corpus() -> Result<(), String>
+    {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let manifest = read_json_value(
+            &workspace.join("fixtures/blind_journey_installed_typescript/manifest.json"),
+        )?;
+        let corpus =
+            read_json_value(&workspace.join("fixtures/blind_journey_execute/corpus.json"))?;
+        let missing = installed_typescript_missing_scenarios(&manifest, &corpus);
+        if !missing.is_empty() {
+            return Err(format!(
+                "committed installed typescript fixture names missing corpus scenarios: \
+                 {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_installed_typescript_scenario_is_reported_missing() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_typescript_not_a_real_scenario"]
+        });
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_typescript_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("installed_typescript_not_a_real_scenario"))
+        {
+            return Err(format!(
+                "an unknown installed typescript scenario must be reported, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn drifted_snapshot_digest_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-typescript-fixture-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("src/pricing.ts"),
+            b"export function drifted() {}\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                "files": {"src/pricing.ts":
+                    "0000000000000000000000000000000000000000000000000000000000000000"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["test/pricing.test.ts"],
+                "forbidden_edits": ["src/pricing.ts"],
+                "selected_repair": {"edit_target": "test/pricing.test.ts"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_typescript_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("drifted"))
+        {
+            return Err(format!(
+                "a drifted snapshot digest must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn git_identity_binding_accepts_only_lowercase_hex() -> Result<(), String> {
+        let valid: Value = serde_json::json!("5d48dbf2080a1596bfb267593402ab8b38cd63fa");
+        if !installed_typescript_git_identity_wellformed(Some(&valid)) {
+            return Err("a lowercase 40-hex git identity must be accepted".to_string());
+        }
+        for invalid in [
+            serde_json::json!("5D48DBF2080A1596BFB267593402AB8B38CD63FA"),
+            serde_json::json!("5d48dbf2"),
+            serde_json::json!("zz48dbf2080a1596bfb267593402ab8b38cd63fa"),
+            serde_json::json!(
+                "5d48dbf2080a1596bfb267593402ab8b38cd63fa5d48dbf2080a1596bfb267593402ab8b38cd63fa"
+            ),
+            serde_json::json!(40),
+        ] {
+            if installed_typescript_git_identity_wellformed(Some(&invalid)) {
+                return Err(format!(
+                    "an ill-formed git identity must be rejected: {invalid}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unlisted_snapshot_file_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-typescript-extra-file-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("src"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("src/pricing.ts"),
+            b"export function extra() {}\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("src/helper.ts"),
+            b"export function helper() {}\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_TYPESCRIPT_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                "files": {"src/pricing.ts":
+                    "70180cb1d03b8e6d59f1a1ad0de771b1ea19f7f0f3762a60c9bd2947bd4b6d6c"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["test/pricing.test.ts"],
+                "forbidden_edits": ["src/pricing.ts"],
+                "selected_repair": {"edit_target": "test/pricing.test.ts"}
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_typescript_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("not bound in the manifest"))
+        {
+            return Err(format!(
+                "an unlisted snapshot file must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scenario_candidate_must_bind_the_manifest_snapshots() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_typescript_positive_journey_emits_receipt"],
+            "scenario_snapshot_bindings": {
+                "installed_typescript_positive_journey_emits_receipt": "head"
+            },
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                    "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                    "files": {}
+                },
+                "head": {
+                    "commit": "94339d4e11d39461f5fec6893453cd9073609f5a",
+                    "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9",
+                    "files": {}
+                }
+            }}
+        });
+        let bound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "94339d4e11d39461f5fec6893453cd9073609f5a",
+                "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9"
+            }}
+        }]});
+        if !installed_typescript_scenario_binding_violations(&manifest, &bound).is_empty() {
+            return Err("a snapshot-bound scenario candidate must be accepted".to_string());
+        }
+        let unbound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "0000000000000000000000000000000000000000",
+                "tree": "8da68b121a26fbbb50a96d2c11c54a3628db4dc9"
+            }}
+        }]});
+        let violations = installed_typescript_scenario_binding_violations(&manifest, &unbound);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind its designated snapshot"))
+        {
+            return Err(format!(
+                "an unbound scenario candidate head must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn scenario_must_bind_its_designated_snapshot() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": [
+                "installed_typescript_let_binding_variant_unresolved",
+                "installed_typescript_shadowing_variant_unresolved"
+            ],
+            "scenario_snapshot_bindings": {
+                "installed_typescript_let_binding_variant_unresolved": "variant-let-binding"
+            },
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                    "tree": "5a86f441fd9e21c2f2e1963c5dc3ef58d2840578",
+                    "files": {}
+                },
+                "variant-let-binding": {
+                    "commit": "0df41e78033463d4a506a12189a77d2889d5b61c",
+                    "tree": "30f83a8fc868a7bc2d91981fb14bb5a03a6b95b0",
+                    "files": {}
+                },
+                "variant-shadowing": {
+                    "commit": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+                    "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11",
+                    "files": {}
+                }
+            }}
+        });
+        let wrong_snapshot: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_let_binding_variant_unresolved",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+                "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11"
+            }}
+        }]});
+        let violations =
+            installed_typescript_scenario_binding_violations(&manifest, &wrong_snapshot);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind its designated snapshot"))
+        {
+            return Err(format!(
+                "a scenario bound to the wrong variant snapshot must be rejected, got: \
+                 {violations:?}"
+            ));
+        }
+        let missing_binding: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_typescript_shadowing_variant_unresolved",
+            "journey": {"candidate": {
+                "base": "5d48dbf2080a1596bfb267593402ab8b38cd63fa",
+                "head": "d7a7d61fd7e3998de2d306d8f834b1fe45708fcc",
+                "tree": "cd6aef1e0edfa31d25c0aa794c86d1ba8e02da11"
+            }}
+        }]});
+        let violations =
+            installed_typescript_scenario_binding_violations(&manifest, &missing_binding);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must name its designated snapshot"))
+        {
+            return Err(format!(
+                "a scenario without a designated-snapshot binding must be rejected, got: \
+                 {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn validate_blind_journey_installed_python_fixture(
+    violations: &mut Vec<String>,
+) -> Result<(), String> {
+    validate_installed_journey_fixture(&INSTALLED_PYTHON_CONTRACT, violations)
+}
+
+/// Test-only compatibility shims so the unchanged per-language test modules
+/// keep exercising the shared owner through their historical entry points.
+#[cfg(test)]
+fn installed_python_git_identity_wellformed(value: Option<&Value>) -> bool {
+    installed_journey_git_identity_wellformed(value)
+}
+
+#[cfg(test)]
+fn installed_python_manifest_violations(root: &Path, manifest: &Value) -> Vec<String> {
+    installed_journey_manifest_violations(&INSTALLED_PYTHON_CONTRACT, root, manifest)
+}
+
+#[cfg(test)]
+fn installed_python_missing_scenarios(manifest: &Value, corpus: &Value) -> Vec<String> {
+    installed_journey_missing_scenarios(&INSTALLED_PYTHON_CONTRACT, manifest, corpus)
+}
+
+#[cfg(test)]
+fn installed_python_scenario_binding_violations(manifest: &Value, corpus: &Value) -> Vec<String> {
+    installed_journey_scenario_binding_violations(&INSTALLED_PYTHON_CONTRACT, manifest, corpus)
+}
+
+#[cfg(test)]
+mod installed_python_fixture_tests {
+    use super::*;
+
+    #[test]
+    fn committed_installed_python_manifest_binds_the_snapshot_bytes() -> Result<(), String> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures/blind_journey_installed_python");
+        let manifest = read_json_value(&root.join("manifest.json"))?;
+        let violations = installed_python_manifest_violations(&root, &manifest);
+        if !violations.is_empty() {
+            return Err(format!(
+                "committed installed python manifest drifted: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn committed_installed_python_scenarios_exist_in_the_executor_corpus() -> Result<(), String> {
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let manifest = read_json_value(
+            &workspace.join("fixtures/blind_journey_installed_python/manifest.json"),
+        )?;
+        let corpus =
+            read_json_value(&workspace.join("fixtures/blind_journey_execute/corpus.json"))?;
+        let missing = installed_python_missing_scenarios(&manifest, &corpus);
+        if !missing.is_empty() {
+            return Err(format!(
+                "committed installed python fixture names missing corpus scenarios: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unknown_installed_python_scenario_is_reported_missing() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_python_not_a_real_scenario"]
+        });
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_python_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("installed_python_not_a_real_scenario"))
+        {
+            return Err(format!(
+                "an unknown installed python scenario must be reported, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn empty_installed_python_scenario_inventory_is_rejected() -> Result<(), String> {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": []
+        });
+        let corpus: Value = serde_json::json!({"scenarios": []});
+        let missing = installed_python_missing_scenarios(&manifest, &corpus);
+        if !missing
+            .iter()
+            .any(|violation| violation.contains("must name at least one scenario"))
+        {
+            return Err(format!(
+                "an empty installed python scenario inventory must be rejected, got: {missing:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn drifted_installed_python_snapshot_digest_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-python-fixture-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("pricing"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(
+            snapshot.join("pricing/core.py"),
+            b"def drifted():\n    pass\n",
+        )
+        .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+                "files": {"pricing/core.py":
+                    "0000000000000000000000000000000000000000000000000000000000000000"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/test_pricing.py"],
+                "forbidden_edits": ["pricing/core.py"],
+                "selected_repair": {"edit_target": "tests/test_pricing.py"},
+                "environment_binding": {
+                    "current_verify_command": "python -m pytest tests/test_pricing.py",
+                    "historical_bare_command": "pytest tests/test_pricing.py"
+                }
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_python_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("drifted"))
+        {
+            return Err(format!(
+                "a drifted snapshot digest must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn installed_python_git_identity_binding_accepts_only_lowercase_hex() -> Result<(), String> {
+        let valid: Value = serde_json::json!("9e62e8091324eb65e214be59a45cd596a8192219");
+        if !installed_python_git_identity_wellformed(Some(&valid)) {
+            return Err("a lowercase 40-hex git identity must be accepted".to_string());
+        }
+        for invalid in [
+            serde_json::json!("9E62E8091324EB65E214BE59A45CD596A8192219"),
+            serde_json::json!("9e62e809"),
+            serde_json::json!("zz62e8091324eb65e214be59a45cd596a8192219"),
+            serde_json::json!(
+                "9e62e8091324eb65e214be59a45cd596a81922199e62e8091324eb65e214be59a45cd596a8192219"
+            ),
+            serde_json::json!(40),
+        ] {
+            if installed_python_git_identity_wellformed(Some(&invalid)) {
+                return Err(format!(
+                    "an ill-formed git identity must be rejected: {invalid}"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unlisted_installed_python_snapshot_file_is_rejected() -> Result<(), String> {
+        let temp = std::env::temp_dir().join(format!(
+            "ripr-installed-python-extra-file-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&temp);
+        let snapshot = temp.join("repository").join("head");
+        std::fs::create_dir_all(snapshot.join("pricing"))
+            .map_err(|error| format!("create temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("pricing/core.py"), b"def kept():\n    pass\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        std::fs::write(snapshot.join("conftest.py"), b"def extra():\n    pass\n")
+            .map_err(|error| format!("write temp snapshot: {error}"))?;
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {"head": {
+                "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+                "files": {"pricing/core.py":
+                    "f70d3ed93649e7ee0271d38008eb4427cc0f3006fc1770462aafec2ee834bfcf"}
+            }}},
+            "journey": {
+                "expected_edit_cage": ["tests/test_pricing.py"],
+                "forbidden_edits": ["pricing/core.py"],
+                "selected_repair": {"edit_target": "tests/test_pricing.py"},
+                "environment_binding": {
+                    "current_verify_command": "python -m pytest tests/test_pricing.py",
+                    "historical_bare_command": "pytest tests/test_pricing.py"
+                }
+            },
+            "journey_scenario_ids": []
+        });
+        let violations = installed_python_manifest_violations(&temp, &manifest);
+        std::fs::remove_dir_all(&temp).map_err(|error| format!("clean temp dir: {error}"))?;
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("not bound in the manifest"))
+        {
+            return Err(format!(
+                "an unlisted snapshot file must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn installed_python_scenario_candidate_must_bind_the_manifest_snapshots() -> Result<(), String>
+    {
+        let manifest: Value = serde_json::json!({
+            "journey_scenario_ids": ["installed_python_positive_journey_emits_receipt"],
+            "repository": {"snapshots": {
+                "base": {
+                    "commit": "9e62e8091324eb65e214be59a45cd596a8192219",
+                    "tree": "3b633ff09d7fca5e33f9ba5e15a5afe025c26b30",
+                    "files": {}
+                },
+                "head": {
+                    "commit": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+                    "tree": "453b32d284b9a120f92dbe254825f8d581e79369",
+                    "files": {}
+                }
+            }}
+        });
+        let bound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_python_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "head": "7ee422a670ba383a600785d46eadc432d27bbfd2",
+                "tree": "453b32d284b9a120f92dbe254825f8d581e79369"
+            }}
+        }]});
+        if !installed_python_scenario_binding_violations(&manifest, &bound).is_empty() {
+            return Err("a snapshot-bound scenario candidate must be accepted".to_string());
+        }
+        let unbound: Value = serde_json::json!({"scenarios": [{
+            "id": "installed_python_positive_journey_emits_receipt",
+            "journey": {"candidate": {
+                "base": "9e62e8091324eb65e214be59a45cd596a8192219",
+                "head": "0000000000000000000000000000000000000000",
+                "tree": "453b32d284b9a120f92dbe254825f8d581e79369"
+            }}
+        }]});
+        let violations = installed_python_scenario_binding_violations(&manifest, &unbound);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must bind one manifest snapshot"))
+        {
+            return Err(format!(
+                "an unbound scenario candidate head must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bare_historical_command_must_not_become_the_recommendation() -> Result<(), String> {
+        let journey: Value = serde_json::json!({
+            "expected_edit_cage": ["tests/test_pricing.py"],
+            "forbidden_edits": ["pricing/core.py"],
+            "selected_repair": {
+                "edit_target": "tests/test_pricing.py",
+                "focused_verification_command": "pytest tests/test_pricing.py"
+            },
+            "environment_binding": {
+                "current_verify_command": "python -m pytest tests/test_pricing.py",
+                "historical_bare_command": "pytest tests/test_pricing.py"
+            }
+        });
+        let manifest: Value = serde_json::json!({
+            "schema_version": INSTALLED_PYTHON_FIXTURE_SCHEMA_VERSION,
+            "repository": {"snapshots": {}},
+            "journey": journey,
+            "journey_scenario_ids": []
+        });
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let violations = installed_python_manifest_violations(&root, &manifest);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains("must equal the documented current module form"))
+        {
+            return Err(format!(
+                "a bare-form focused command must be rejected, got: {violations:?}"
+            ));
+        }
+        Ok(())
+    }
 }

@@ -1,0 +1,66 @@
+//! Relational boundaries, one function per test style.
+
+pub fn is_adult(age: u32) -> bool {
+    age >= 18
+}
+
+pub fn free_shipping(cents: u64) -> bool {
+    cents >= 5_000
+}
+
+pub fn can_retire(age: u32) -> bool {
+    age >= 67
+}
+
+pub fn passes(score: u32) -> bool {
+    score >= 50
+}
+
+pub fn overweight(grams: u32) -> bool {
+    grams >= 2_000
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn eighteen_is_adult_and_seventeen_is_not() {
+        assert!(is_adult(18));
+        assert!(!is_adult(17));
+    }
+
+    #[test]
+    fn free_shipping_table() {
+        let cases = [(0, false), (4_999, false), (5_000, true), (12_000, true)];
+        for (cents, want) in cases {
+            assert_eq!(free_shipping(cents), want, "cents = {cents}");
+        }
+    }
+
+    #[test]
+    fn retirement_is_monotonic_in_age() {
+        for age in 0..120 {
+            if can_retire(age) {
+                assert!(can_retire(age + 1), "age {age}");
+            }
+        }
+        assert!(!can_retire(0));
+        assert!(can_retire(119));
+    }
+
+    fn check_pass(score: u32, want: bool) {
+        assert_eq!(passes(score), want, "score {score}");
+    }
+
+    #[test]
+    fn pass_mark_is_fifty() {
+        check_pass(50, true);
+        check_pass(49, false);
+    }
+
+    #[test]
+    fn overweight_smoke() {
+        let _ = overweight(2_500);
+    }
+}

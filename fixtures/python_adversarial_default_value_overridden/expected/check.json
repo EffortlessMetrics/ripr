@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/python_adversarial_default_value_overridden/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"python","files":1},{"language":"rust","files":0}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:ac2fae90a59940e94d7e7e1288f29461d61e3b2786d8c73db1edc25f64cdb8f8","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":"fnv1a64:6865f76b1f82dc2a","base_revision":null,"input_identity":"sha256:ac2fae90a59940e94d7e7e1288f29461d61e3b2786d8c73db1edc25f64cdb8f8","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -47,7 +46,7 @@
       "flow_sinks": [
         {"kind":"unknown","text":"def render(name, verbose=True):","line":1}
       ],
-      "evidence": ["owner: render", "owner_kind: function", "missing_discriminator: call `render` without `verbose`", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_render.py", "suggested_test_name: test_render_explicit_verbose_false", "suggested_test_node_id: tests/test_render.py::test_render_explicit_verbose_false", "suggested_verify_command: pytest tests/test_render.py::test_render_explicit_verbose_false", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_render_explicit_verbose_false)", "test_verify_command: pytest tests/test_render.py::test_render_explicit_verbose_false (test_render_explicit_verbose_false)", "related_test_relation: syntactic_call (test_render_explicit_verbose_false)", "test_oracle: exact_value strong (test_render_explicit_verbose_false)"],
+      "evidence": ["owner: render", "owner_kind: function", "missing_discriminator: call `render` without `verbose`", "suggested_repair_action: strengthen_existing_test", "suggested_test_file: tests/test_render.py", "suggested_test_name: test_render_explicit_verbose_false", "suggested_test_node_id: tests/test_render.py::test_render_explicit_verbose_false", "suggested_verify_command: python -m pytest tests/test_render.py::test_render_explicit_verbose_false", "suggested_verify_command_confidence: high", "suggested_test_location_reason: strengthen existing weak pytest relation", "test_framework: pytest (test_render_explicit_verbose_false)", "test_verify_command: python -m pytest tests/test_render.py::test_render_explicit_verbose_false (test_render_explicit_verbose_false)", "related_test_relation: syntactic_call (test_render_explicit_verbose_false)", "test_oracle: exact_value strong (test_render_explicit_verbose_false)"],
       "missing": ["A strong Python oracle reaches `render`, but every related call passes `verbose` explicitly, so the changed default value is never exercised; static evidence cannot confirm the changed default is discriminated. Add a test that calls `render` without `verbose` to exercise the changed default."],
       "assertion_texts": {
       },
@@ -86,7 +85,7 @@
         "suggested_test_file": "tests/test_render.py",
         "suggested_test_name": "test_render_explicit_verbose_false",
         "suggested_test_node_id": "tests/test_render.py::test_render_explicit_verbose_false",
-        "verify_command": "pytest tests/test_render.py::test_render_explicit_verbose_false",
+        "verify_command": "python -m pytest tests/test_render.py::test_render_explicit_verbose_false",
         "verify_command_confidence": "high"
        },
       "python_repair_card": {
@@ -109,7 +108,7 @@
           "pytest_node_id": "tests/test_render.py::test_render_explicit_verbose_false"
          },
         "verify": {
-          "command": "pytest tests/test_render.py::test_render_explicit_verbose_false",
+          "command": "python -m pytest tests/test_render.py::test_render_explicit_verbose_false",
           "confidence": "high"
          },
         "receipt": {
@@ -145,5 +144,6 @@
       "category": "preview_language_advisory",
       "why": "preview adapter; advisory; may be incomplete; empty result is not Rust-grade clean"
     }
-  ]
+  ],
+  "source_subject": {"digest_algorithm":"sha256","files":[{"path":"src/render.py","digest":"sha256:4ac6b6d1bf91f3297db7af505bba9223cc50b7e773a42a51245e77d2b99c262d"},{"path":"tests/test_render.py","digest":"sha256:4b975ebb88c322dec3d2410b82c03ecfddb7025202ed96240e6942b931ff0874"}]}
 }

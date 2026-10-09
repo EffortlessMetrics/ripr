@@ -525,7 +525,7 @@ fn extract_rstest_cases_preserves_string_literal_whitespace() {
         file: std::path::PathBuf::from("tests/x.rs"),
         start_line: 1,
         end_line: 1,
-        body: "fn t(input: &str) { check(input); }".to_string(),
+        body: "fn t(input: &str) { check(input); }".into(),
         calls: Vec::new(),
         assertions: Vec::new(),
         literals: Vec::new(),
@@ -597,7 +597,7 @@ fn allowed_builder_method_names_includes_required_discriminator_tokens() {
         file: std::path::PathBuf::from("tests/x.rs"),
         start_line: 1,
         end_line: 1,
-        body: String::new(),
+        body: String::new().into(),
         calls: Vec::new(),
         assertions: Vec::new(),
         literals: Vec::new(),
@@ -764,4 +764,292 @@ fn invalidated_field_assignment_does_not_fall_back_to_a_stale_struct_value() -> 
         ));
     }
     Ok(())
+}
+
+#[test]
+fn named_constant_reads_one_same_file_integer_declaration() {
+    let source = "//! pricing\npub const DISCOUNT_THRESHOLD: u64 = 10_000;\npub(crate) const LIMIT: i32 = -5;\nconst fn helper() -> u64 { 1 }\n";
+    assert_eq!(
+        named_constant(source, "DISCOUNT_THRESHOLD"),
+        NamedConstant::Value("10_000".to_string())
+    );
+    assert_eq!(
+        named_constant(source, "LIMIT"),
+        NamedConstant::Value("-5".to_string())
+    );
+    assert_eq!(named_constant(source, "OTHER"), NamedConstant::Undeclared);
+}
+
+#[test]
+fn named_constant_fails_closed_on_computed_duplicate_or_mutable_declarations() {
+    let computed = "pub const DISCOUNT_THRESHOLD: u64 = 10 * 1_000;\n";
+    assert_eq!(
+        named_constant(computed, "DISCOUNT_THRESHOLD"),
+        NamedConstant::Opaque
+    );
+    let suffixed = "pub const DISCOUNT_THRESHOLD: u64 = 10_000u64;\n";
+    assert_eq!(
+        named_constant(suffixed, "DISCOUNT_THRESHOLD"),
+        NamedConstant::Opaque
+    );
+    let duplicated = "mod eu {\n    pub const LIMIT: u32 = 10;\n}\nmod us {\n    pub const LIMIT: u32 = 20;\n}\n";
+    assert_eq!(
+        named_constant(duplicated, "LIMIT"),
+        NamedConstant::Ambiguous
+    );
+    let mutable = "static mut LIMIT: u32 = 10;\n";
+    assert_eq!(named_constant(mutable, "LIMIT"), NamedConstant::Opaque);
+    let commented = "// const LIMIT: u32 = 10;\n";
+    assert_eq!(
+        named_constant(commented, "LIMIT"),
+        NamedConstant::Undeclared
+    );
+}
+
+#[test]
+fn constant_operand_names_and_arguments_match_by_identity() {
+    assert_eq!(
+        constant_operand_name(" DISCOUNT_THRESHOLD "),
+        Some("DISCOUNT_THRESHOLD")
+    );
+    assert_eq!(constant_operand_name("Self::LIMIT"), Some("LIMIT"));
+    assert_eq!(constant_operand_name("threshold"), None);
+    assert_eq!(constant_operand_name("config.limit"), None);
+    assert_eq!(constant_operand_name("10_000"), None);
+
+    assert!(argument_names_constant(
+        "DISCOUNT_THRESHOLD",
+        "DISCOUNT_THRESHOLD"
+    ));
+    assert!(argument_names_constant(
+        "&DISCOUNT_THRESHOLD",
+        "DISCOUNT_THRESHOLD"
+    ));
+    assert!(argument_names_constant(
+        "pricing::DISCOUNT_THRESHOLD",
+        "DISCOUNT_THRESHOLD"
+    ));
+    assert!(!argument_names_constant(
+        "DISCOUNT_THRESHOLD + 1",
+        "DISCOUNT_THRESHOLD"
+    ));
+    assert!(!argument_names_constant(
+        "OTHER_DISCOUNT_THRESHOLD",
+        "DISCOUNT_THRESHOLD"
+    ));
+    assert!(!argument_names_constant("10_000", "DISCOUNT_THRESHOLD"));
+}
+
+#[test]
+fn named_constant_counts_attribute_prefixed_declarations() {
+    let attributed = "#[doc(hidden)] pub const LIMIT: u32 = 10;\n";
+    assert!(named_constant(attributed, "LIMIT").is_declared_once());
+    let cfg_pair = "#[cfg(feature = \"eu\")] const LIMIT: u32 = 10;\n#[cfg(not(feature = \"eu\"))]\nconst LIMIT: u32 = 20;\n";
+    assert_eq!(named_constant(cfg_pair, "LIMIT"), NamedConstant::Ambiguous);
+    let nested_brackets =
+        "#[doc = \"[x]\"] #[doc(hidden)] const LIMIT: u32 = 10;\nconst LIMIT: u32 = 20;\n";
+    assert_eq!(
+        named_constant(nested_brackets, "LIMIT"),
+        NamedConstant::Ambiguous
+    );
+}
+
+#[test]
+fn a_test_file_declaring_the_same_constant_name_may_shadow_the_owner() {
+    let owner = std::path::Path::new("src/pricing.rs");
+    let test = std::path::Path::new("tests/pricing.rs");
+    let shadowing = "const DISCOUNT_THRESHOLD: u64 = 5;\n#[test]\nfn t() {}\n";
+    let importing = "use app::pricing::DISCOUNT_THRESHOLD;\n#[test]\nfn t() {}\n";
+    assert!(test_file_may_shadow_constant(
+        owner,
+        test,
+        Some(shadowing),
+        "DISCOUNT_THRESHOLD"
+    ));
+    assert!(!test_file_may_shadow_constant(
+        owner,
+        test,
+        Some(importing),
+        "DISCOUNT_THRESHOLD"
+    ));
+    // Source not available: fail closed.
+    assert!(test_file_may_shadow_constant(
+        owner,
+        test,
+        None,
+        "DISCOUNT_THRESHOLD"
+    ));
+    // Same file as the owner: the owner lookup already counts a second
+    // declaration as ambiguous.
+    assert!(!test_file_may_shadow_constant(
+        owner,
+        owner,
+        Some(shadowing),
+        "DISCOUNT_THRESHOLD"
+    ));
+}
+
+#[test]
+fn extract_rstest_cases_maps_case_rows_to_case_marked_parameters_only() {
+    // Real rstest marks case parameters `#[case]`; unmarked parameters are
+    // fixtures and take no case column.
+    let test = TestSummary {
+        name: "t".to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body: "fn t(fixture: Db, #[case] x: u32, #[values(vec![1])] v: Vec<u8>, #[case] mut expected: bool) { assert_eq!(gate(x), expected); }".into(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(10, false)]".to_string(),
+            "#[case(11, true)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    };
+
+    let (cases, params) = extract_rstest_cases(&test);
+
+    assert_eq!(params, vec!["x", "expected"]);
+    assert_eq!(
+        cases,
+        vec![
+            vec!["10".to_string(), "false".to_string()],
+            vec!["11".to_string(), "true".to_string()],
+        ]
+    );
+    assert_eq!(
+        extract_fn_param_names(&test.body),
+        vec!["fixture", "x", "v", "expected"],
+        "every parameter still counts for shadow invalidation"
+    );
+}
+
+#[test]
+fn case_columns_stay_aligned_past_a_pattern_parameter() {
+    // Review of #4715: a `ref` case parameter was dropped from the list, so
+    // `amount` took the first column (10, 9) instead of its own (100, 200).
+    let test = TestSummary {
+        name: "far_above".to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body:
+            "fn far_above(#[case] ref _label: u32, #[case] amount: u32) { assert!(gate(amount)); }"
+                .into(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(10, 100)]".to_string(),
+            "#[case(9, 200)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    };
+
+    assert_eq!(
+        test_case_bound_literals(&test, "amount"),
+        vec!["100", "200"]
+    );
+}
+
+#[test]
+fn case_value_not_credited_past_a_shadowing_let_after_a_url_string() {
+    // Review of #4715: `strip_comments_and_strings` cut the line at the
+    // `//` inside `"http://example"`, so the shadowing `let amount` after
+    // the string vanished from the rebound scan and `gate(amount)` was
+    // credited with the original case value. A string-internal `//` is not
+    // a comment; the binding after it must fail the case credit closed.
+    let test = TestSummary {
+        name: "rebound_after_url".to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body: "fn rebound_after_url(#[case] amount: u32) { let _url = \"http://example\"; let amount = amount + 1; gate(amount); }".into(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(100)]".to_string(),
+            "#[case(200)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    };
+
+    assert_eq!(
+        test_case_bound_literals(&test, "amount"),
+        Vec::<String>::new()
+    );
+}
+
+fn rstest_case_test(name: &str, body: &str) -> TestSummary {
+    TestSummary {
+        name: name.to_string(),
+        file: std::path::PathBuf::from("src/lib.rs"),
+        start_line: 1,
+        end_line: 1,
+        body: body.into(),
+        calls: Vec::new(),
+        assertions: Vec::new(),
+        literals: Vec::new(),
+        attrs: vec![
+            "#[rstest]".to_string(),
+            "#[case(100)]".to_string(),
+            "#[case(200)]".to_string(),
+        ],
+        nested_fn_names: Vec::new(),
+        let_bindings: Vec::new(),
+    }
+}
+
+#[test]
+fn case_value_not_credited_past_a_shadowing_let_after_a_char_or_raw_string_literal() {
+    // Review of #4715: the lexical scanner tracks only `"` strings, so a
+    // `'"'` char literal or a raw string with an embedded quote left it
+    // "inside a string" and hid the shadowing `let amount` that follows.
+    // The parser-backed binding count fails the case credit closed.
+    for body in [
+        "fn rebound(#[case] amount: u32) { let _c = '\"'; let amount = amount + 1; gate(amount); }",
+        "fn rebound(#[case] amount: u32) { let _r = r#\"a\"b\"#; let amount = amount + 1; gate(amount); }",
+    ] {
+        let test = rstest_case_test("rebound", body);
+        assert_eq!(
+            test_case_bound_literals(&test, "amount"),
+            Vec::<String>::new(),
+            "`{body}` must not credit the original case values"
+        );
+    }
+}
+
+#[test]
+fn case_value_credited_past_a_char_or_raw_string_literal_without_rebinding() {
+    // Positive control for the test above: the same literals with no
+    // shadowing binding still credit every case row.
+    for body in [
+        "fn kept(#[case] amount: u32) { let _c = '\"'; gate(amount); }",
+        "fn kept(#[case] amount: u32) { let _r = r#\"a\"b\"#; gate(amount); }",
+    ] {
+        let test = rstest_case_test("kept", body);
+        assert_eq!(
+            test_case_bound_literals(&test, "amount"),
+            vec!["100".to_string(), "200".to_string()],
+            "`{body}` should credit the case values"
+        );
+    }
+}
+
+#[test]
+fn case_value_not_credited_when_the_test_body_does_not_parse() {
+    let test = rstest_case_test("broken", "fn broken(#[case] amount: u32) { gate(amount ");
+    assert_eq!(
+        test_case_bound_literals(&test, "amount"),
+        Vec::<String>::new()
+    );
 }

@@ -315,9 +315,13 @@ fn run_validation_packet(
         Some(context) => context
             .validate_preflight(&options.preflight, &options.repo)
             .and_then(|()| {
-                validate_with_final_authority(&options, &mut state, packet.root(), |options, _| {
-                    context.validate_preflight(&options.preflight, &options.repo)
-                })
+                validate_with_final_authority_observed(
+                    &options,
+                    &mut state,
+                    packet.root(),
+                    |options, _| context.validate_preflight(&options.preflight, &options.repo),
+                    crate::policy::phase_diagnostics::requested(),
+                )
             }),
         None => validate(&options, &mut state, packet.root()),
     };

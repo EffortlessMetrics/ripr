@@ -1,7 +1,7 @@
 //! Private badge summary model and renderer.
 //!
-//! This module is the rendering substrate for the `ripr` and (future)
-//! `ripr+` badges. Its types are intentionally crate-private — the public
+//! This module is the rendering substrate for the `ripr` and `ripr+`
+//! badges. Its types are intentionally crate-private — the public
 //! contract is the JSON wire shape, not the Rust types. See
 //! [`docs/BADGE_POLICY.md`](../../../../../../docs/BADGE_POLICY.md) for the
 //! locked semantics, color thresholds, and JSON shape.
@@ -20,7 +20,9 @@ mod test_efficiency;
 pub(crate) use model::{
     BadgeBasis, BadgeCounts, BadgeKind, BadgePolicy, BadgeScope, BadgeStatus, BadgeSummary,
 };
-pub(crate) use public_projection::attach_public_projection;
+pub(crate) use public_projection::{
+    attach_public_projection, attach_public_projection_with_optional_source,
+};
 pub(crate) use render::{render_native_json, render_shields_json};
 pub(crate) use summaries::{
     repo_gap_ledger_badge_summary_from_json, ripr_badge_summary_with_suppressions,

@@ -262,6 +262,7 @@ pub(crate) fn parse_policy_history_options(
     let mut pr_number = None;
     let mut out = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_OUT);
     let mut out_md = PathBuf::from(output::policy_history::DEFAULT_POLICY_HISTORY_MD_OUT);
+    let mut out_jsonl = None;
 
     let mut i = 0usize;
     while i < args.len() {
@@ -299,19 +300,41 @@ pub(crate) fn parse_policy_history_options(
                 i += 1;
                 out_md = non_empty_path_arg(args, i, "--out-md", "policy history")?;
             }
+            "--out-jsonl" => {
+                i += 1;
+                out_jsonl = Some(non_empty_path_arg(
+                    args,
+                    i,
+                    "--out-jsonl",
+                    "policy history",
+                )?);
+            }
             other => return Err(unknown_argument("policy history", other)),
         }
         i += 1;
     }
 
+    let current = current.ok_or_else(|| "policy history requires --current <path>".to_string())?;
+    if let Some(jsonl) = out_jsonl.as_ref()
+        && (crate::output::path::same_output_leaf(jsonl, &out)
+            || crate::output::path::same_output_leaf(jsonl, &out_md)
+            || crate::output::path::same_output_leaf(jsonl, &current))
+    {
+        return Err(
+            "policy history --out-jsonl must not be the same path as --out, --out-md, or --current"
+                .to_string(),
+        );
+    }
+
     Ok(PolicyHistoryOptions {
         root,
-        current: current.ok_or_else(|| "policy history requires --current <path>".to_string())?,
+        current,
         history,
         commit,
         pr_number,
         out,
         out_md,
+        out_jsonl,
     })
 }
 

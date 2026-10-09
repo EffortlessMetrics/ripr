@@ -82,6 +82,32 @@ impl ExposureClass {
     pub fn requires_stop_reason(&self) -> bool {
         profile::for_class(self).requires_stop_reason
     }
+
+    /// The plain word human output leads with. It is the vocabulary of the
+    /// `ripr check` summary line, and `SeamGripClass::plain_label` maps the
+    /// seam-level grip classes onto the same words, so `check` and `pilot`
+    /// name one gap the same way while the schema values stay distinct.
+    pub(crate) fn plain_label(&self) -> &'static str {
+        match self {
+            ExposureClass::Exposed => "exposed",
+            ExposureClass::WeaklyExposed => "weak",
+            ExposureClass::ReachableUnrevealed => "unrevealed",
+            ExposureClass::NoStaticPath => "no path",
+            ExposureClass::InfectionUnknown
+            | ExposureClass::PropagationUnknown
+            | ExposureClass::StaticUnknown => "unknown",
+        }
+    }
+
+    /// `plain word (schema value, ` for human lines, or just `plain word (`
+    /// when the two are the same (`exposed`), so the value is never repeated.
+    pub(crate) fn human_lead(&self) -> String {
+        if self.plain_label() == self.as_str() {
+            format!("{} (", self.as_str())
+        } else {
+            format!("{} ({}, ", self.plain_label(), self.as_str())
+        }
+    }
 }
 
 mod profile {

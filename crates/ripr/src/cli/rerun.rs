@@ -1,7 +1,7 @@
 #[cfg(feature = "lang-typescript")]
 use crate::analysis::targeted_typescript_findings_for_scope;
 use crate::analysis::{
-    canonical_gap::canonical_gap_identity,
+    TargetedTestInventoryError, canonical_gap::canonical_gap_identity,
     inventory_changed_test_classified_seams_at_with_config_node,
     inventory_classified_seams_at_with_config,
     inventory_diff_scoped_classified_seams_at_with_config, seam_cache::stable_input_hash,
@@ -480,28 +480,49 @@ fn rerun_changed_test(
     test_node: Option<&str>,
 ) -> Result<TargetedRerunReport, String> {
     let changed_test = normalize_changed_test(root, changed_test)?;
-    let inventory = inventory_changed_test_classified_seams_at_with_config_node(
+    let selector = |selected_test_count, direct_call_names| TargetedRerunSelector {
+        kind: "changed_test",
+        changed_test: Some(match test_node {
+            Some(test_node) => format!("{}::{test_node}", display_path(&changed_test)),
+            None => display_path(&changed_test),
+        }),
+        canonical_gap_id: None,
+        gap_ledger: None,
+        matched_record_count: None,
+        recomputed_scope_count: None,
+        selected_test_count,
+        direct_call_names,
+    };
+    // RIPR-SPEC-0123: an unknown, ownerless, or ambiguous selector is a named
+    // limitation with no seams, never an error or a broader scan.
+    let inventory = match inventory_changed_test_classified_seams_at_with_config_node(
         root,
         config,
         &changed_test,
         test_node,
-    )?;
+    ) {
+        Ok(inventory) => inventory,
+        Err(TargetedTestInventoryError::Selector {
+            kind,
+            message,
+            selected_test_count,
+            cache,
+        }) => {
+            // The index (and its file-fact cache) already ran; disclose that
+            // work instead of reporting a cache that never ran.
+            let mut report =
+                limited_report(selector(selected_test_count, Vec::new()), kind, message);
+            report.cache = cache_from(&cache.file_fact_cache, []);
+            report.cache.input_fingerprint =
+                Some(input_fingerprint_for(root, &cache.workspace_cache_key));
+            return Ok(report);
+        }
+        Err(TargetedTestInventoryError::Analysis(message)) => return Err(message),
+    };
     let direct_call_names = inventory.direct_call_names.clone();
     let mut report = report(
         "current_state_only",
-        TargetedRerunSelector {
-            kind: "changed_test",
-            changed_test: Some(match test_node {
-                Some(test_node) => format!("{}::{test_node}", display_path(&changed_test)),
-                None => display_path(&changed_test),
-            }),
-            canonical_gap_id: None,
-            gap_ledger: None,
-            matched_record_count: None,
-            recomputed_scope_count: None,
-            selected_test_count: inventory.selected_test_count,
-            direct_call_names: inventory.direct_call_names,
-        },
+        selector(inventory.selected_test_count, inventory.direct_call_names),
         cache_from(
             &inventory.file_fact_cache,
             ["selected_test_scope_recomputed"],
@@ -551,26 +572,14 @@ fn rerun_gap(
         selected_test_count: 0,
         direct_call_names: Vec::new(),
     };
-    let contents = match std::fs::read_to_string(&gap_ledger) {
-        Ok(contents) => contents,
-        Err(err) => {
-            return Ok(limited_report(
-                selector,
-                "canonical_gap_unresolved",
-                format!("read gap ledger {} failed: {err}", gap_ledger.display()),
-            ));
-        }
-    };
-    let source = match parse_gap_record_source_json(&contents) {
-        Ok(source) => source,
-        Err(err) => {
-            return Ok(limited_report(
-                selector,
-                "canonical_gap_unresolved",
-                format!("parse gap ledger {} failed: {err}", gap_ledger.display()),
-            ));
-        }
-    };
+    // A named ledger that cannot be read or parsed is an input the command
+    // could not use, like an unreadable `--changed-test`: exit 2, not a
+    // `limited` report with exit 0 (#4727). A readable ledger that does not
+    // resolve the gap stays a named `limited` outcome below.
+    let contents = crate::bounded_input::read_to_string(&gap_ledger)
+        .map_err(|err| format!("read gap ledger {} failed: {err}", gap_ledger.display()))?;
+    let source = parse_gap_record_source_json(&contents)
+        .map_err(|err| format!("parse gap ledger {} failed: {err}", gap_ledger.display()))?;
     if let Some(ledger_root) = source
         .root
         .as_deref()
@@ -813,10 +822,14 @@ fn push_scope_unresolved(
 
 #[cfg(feature = "lang-typescript")]
 fn is_typescript_scope(scope: &GapRerunScope) -> bool {
-    matches!(
-        scope.file.extension().and_then(|ext| ext.to_str()),
-        Some("ts" | "tsx" | "js" | "jsx")
-    )
+    // #4116: consume the shared TS/JS extension authority so a targeted
+    // rerun scope on .mts/.cts/.mjs/.cjs selects the same seam surface the
+    // router already admitted.
+    scope
+        .file
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(crate::analysis::is_ts_js_source_extension)
 }
 
 #[cfg(feature = "lang-typescript")]
@@ -1170,6 +1183,14 @@ fn add_cache_stats(
     target.corrupt_ignored += source.corrupt_ignored;
     target.stores += source.stores;
     target.store_errors += source.store_errors;
+    for failure in source.store_failures.iter().cloned() {
+        if target.store_failures.len() < crate::analysis::seam_cache::MAX_STORE_FAILURE_ROWS {
+            target.store_failures.push(failure);
+        } else {
+            target.store_failures_dropped += 1;
+        }
+    }
+    target.store_failures_dropped += source.store_failures_dropped;
 }
 
 fn display_scope(scope: &GapRerunScope) -> String {
@@ -1444,7 +1465,7 @@ fn apply_before(report: &mut TargetedRerunReport, before: &Path) {
     if report.state == "limited" {
         return;
     }
-    let before_text = match std::fs::read_to_string(before) {
+    let before_text = match crate::bounded_input::read_to_string(before) {
         Ok(text) => text,
         Err(err) => {
             set_before_limitation(
@@ -1812,7 +1833,8 @@ fn write_text_file(path: &Path, rendered: &str) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
     }
-    std::fs::write(path, rendered).map_err(|err| format!("write {} failed: {err}", path.display()))
+    crate::output::file_write::write(path, rendered.as_bytes())
+        .map_err(|err| format!("write {} failed: {err}", path.display()))
 }
 
 fn render_human(report: &TargetedRerunReport) -> String {
@@ -1906,10 +1928,11 @@ mod tests {
         TargetedRerunInputFingerprint, TargetedRerunMissingDiscriminator, TargetedRerunMovement,
         TargetedRerunPathDependencyGraph, TargetedRerunPathDependencyNeighbors,
         TargetedRerunRelatedTest, TargetedRerunReport, TargetedRerunSeam, TargetedRerunSelector,
-        cache_from, compare_selector_scoped_seams, entry_matches_selected_gap,
+        add_cache_stats, cache_from, compare_selector_scoped_seams, entry_matches_selected_gap,
         graph_provenance_unavailable_fields, input_fingerprint_changes, parity_mismatch_fields,
-        parse_options, render_human, rerun_gap, resolve_gap_records, route_from_gap_records,
-        same_root, scopes_from_gap_records, seam_from, seam_matches_resolved_scope,
+        parse_options, render_human, rerun_changed_test, rerun_gap, resolve_gap_records,
+        route_from_gap_records, same_root, scopes_from_gap_records, seam_from,
+        seam_matches_resolved_scope,
     };
     use crate::analysis::ClassifiedSeam;
     use crate::analysis::classify_seam;
@@ -2038,12 +2061,13 @@ mod tests {
     #[cfg(feature = "lang-typescript")]
     #[test]
     fn typescript_rerun_covers_every_accepted_extension() -> Result<(), String> {
-        for extension in ["ts", "tsx", "js", "jsx"] {
+        for extension in ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"] {
             let root = unique_temp_root(&format!("ts-rerun-ext-{extension}"))?;
             let source = format!("src/discount.{extension}");
-            // Type annotations only in TypeScript-family fixtures; .js/.jsx
-            // fixtures must be plain ECMAScript or the control is unfaithful.
-            let body = if extension.starts_with("ts") {
+            // Type annotations only in TypeScript-family fixtures (.ts/.tsx/
+            // .mts/.cts); JavaScript-family fixtures must be plain
+            // ECMAScript or the control is unfaithful.
+            let body = if matches!(extension, "ts" | "tsx" | "mts" | "cts") {
                 "export function applyDiscount(amount: number, discount: number) {\n  return amount - discount;\n}\n"
             } else {
                 "export function applyDiscount(amount, discount) {\n  return amount - discount;\n}\n"
@@ -2245,6 +2269,81 @@ mod tests {
         Ok(())
     }
 
+    /// RIPR-SPEC-0123: an unknown test node, an unparsed test path, and an
+    /// ambiguous owner are named limitations with no seams, so a `--json`
+    /// caller gets a parseable report instead of exit 2 with empty stdout.
+    #[test]
+    fn unresolved_changed_test_selectors_are_named_limitations() -> Result<(), String> {
+        let root = unique_temp_root("rerun-changed-test-unresolved")?;
+        write_file(
+            &root.join("src/first.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount > 0 { amount } else { 0 } }
+",
+        )?;
+        write_file(
+            &root.join("src/second.rs"),
+            "pub fn same_name(amount: i32) -> i32 { if amount >= 0 { amount } else { 0 } }
+",
+        )?;
+        write_file(
+            &root.join("tests/pricing.rs"),
+            "#[test]\nfn same_name_case() { assert_eq!(same_name(1), 1); }\n",
+        )?;
+        let config = RiprConfig::default();
+        let cases = [
+            (
+                "tests/pricing.rs",
+                Some("missing_case"),
+                "changed_test_unresolved",
+                0,
+            ),
+            ("tests/absent.rs", None, "changed_test_unresolved", 0),
+            ("tests/pricing.rs", None, "changed_test_owner_ambiguous", 1),
+        ];
+        let mut failures = Vec::new();
+        let mut warm_hits = Vec::new();
+        for (file, node, expected_kind, expected_selected) in cases {
+            let report = rerun_changed_test(&root, &config, Path::new(file), node)?;
+            let kind = report.limitation.as_ref().map(|limitation| limitation.kind);
+            // The index ran before the selector failed, so the cache block
+            // must report that work, not `not_run` with zeroed counters.
+            let cache = &report.cache;
+            if report.state != "limited"
+                || kind != Some(expected_kind)
+                || !report.seams.is_empty()
+                || report.selector.selected_test_count != expected_selected
+                || cache.reuse_state == "not_run"
+                || cache.hits + cache.misses == 0
+                || cache.input_fingerprint.is_none()
+            {
+                failures.push(format!(
+                    "{file} {node:?}: state={} kind={kind:?} seams={} selected={} cache={}/{} hits={} misses={} fingerprint={:?}",
+                    report.state,
+                    report.seams.len(),
+                    report.selector.selected_test_count,
+                    cache.reuse_state,
+                    cache.file_fact_status,
+                    cache.hits,
+                    cache.misses,
+                    cache.input_fingerprint
+                ));
+            }
+            warm_hits.push(cache.hits);
+        }
+        // Later selectors reuse the file facts the first run stored.
+        if warm_hits.last().is_none_or(|hits| *hits == 0) {
+            failures.push(format!(
+                "warm selector runs reused no file facts: {warm_hits:?}"
+            ));
+        }
+        let _ = std::fs::remove_dir_all(&root);
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("\n"))
+        }
+    }
+
     #[cfg(feature = "lang-typescript")]
     #[test]
     fn typescript_rerun_without_current_seam_fails_closed() -> Result<(), String> {
@@ -2291,7 +2390,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "lang-typescript")]
     fn unique_temp_root(name: &str) -> Result<PathBuf, String> {
         let root = std::env::temp_dir().join(format!(
             "ripr-{name}-{}-{}",
@@ -2381,7 +2479,6 @@ mod tests {
         write_file(path, &rendered)
     }
 
-    #[cfg(feature = "lang-typescript")]
     fn write_file(path: &Path, contents: &str) -> Result<(), String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -2476,6 +2573,48 @@ mod tests {
             );
         }
         Ok(())
+    }
+
+    #[test]
+    fn add_cache_stats_merges_store_failure_rows_bounded() {
+        use crate::analysis::seam_cache::{
+            FileFactStoreFailure, FileFactStoreStage, MAX_STORE_FAILURE_ROWS,
+        };
+        let row = |name: &str| FileFactStoreFailure {
+            path: PathBuf::from(name),
+            stage: FileFactStoreStage::Write.as_str(),
+            error: "write failure".to_string(),
+        };
+        let mut target = FileFactCacheStats {
+            store_errors: 1,
+            store_failures: vec![row("src/a.rs")],
+            ..FileFactCacheStats::default()
+        };
+        let source = FileFactCacheStats {
+            store_errors: 2,
+            store_failures: vec![row("src/b.rs"), row("src/c.rs")],
+            store_failures_dropped: 3,
+            ..FileFactCacheStats::default()
+        };
+        add_cache_stats(&mut target, &source);
+        assert_eq!(target.store_errors, 3);
+        assert_eq!(
+            target
+                .store_failures
+                .iter()
+                .map(|failure| failure.path.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("src/a.rs"),
+                PathBuf::from("src/b.rs"),
+                PathBuf::from("src/c.rs"),
+            ]
+        );
+        assert_eq!(target.store_failures_dropped, 3);
+        assert!(
+            target.store_failures.len() <= MAX_STORE_FAILURE_ROWS,
+            "merged rows respect the bound"
+        );
     }
 
     #[test]
@@ -2961,6 +3100,39 @@ mod tests {
             return Err("two failed root canonicalizations compared equal".to_string());
         }
         Ok(())
+    }
+
+    /// #4727: an explicitly named `--gap-ledger` that cannot be read or
+    /// parsed is an input failure (exit 2), not a `limited` report that
+    /// exits 0 the way an unresolved gap in a readable ledger does.
+    #[test]
+    fn rerun_gap_fails_when_named_ledger_is_unreadable_or_unparsable() -> Result<(), String> {
+        let root = unique_temp_root("rerun-unreadable-ledger")?;
+        let config = crate::config::RiprConfig::default();
+        let missing = root.join("nope.json");
+        let garbage = root.join("garbage.json");
+        std::fs::write(&garbage, "not json").map_err(|err| format!("write garbage: {err}"))?;
+        let missing_result = rerun_gap(&root, &config, "gap:example", &missing);
+        let garbage_result = rerun_gap(&root, &config, "gap:example", &garbage);
+        let _ = std::fs::remove_dir_all(&root);
+        match missing_result {
+            Err(err) if err.starts_with("read gap ledger") => {}
+            Err(err) => return Err(format!("unexpected read error: {err}")),
+            Ok(report) => {
+                return Err(format!(
+                    "unreadable ledger produced a report: state={}",
+                    report.state
+                ));
+            }
+        }
+        match garbage_result {
+            Err(err) if err.starts_with("parse gap ledger") => Ok(()),
+            Err(err) => Err(format!("unexpected parse error: {err}")),
+            Ok(report) => Err(format!(
+                "unparsable ledger produced a report: state={}",
+                report.state
+            )),
+        }
     }
 
     #[test]
@@ -3541,6 +3713,7 @@ mod tests {
                 reason: "the changed error variant is not asserted exactly".to_string(),
                 flow_sink: None,
             }],
+            new_test_target: None,
         };
         let class = classify_seam(&seam, &evidence);
         ClassifiedSeam {

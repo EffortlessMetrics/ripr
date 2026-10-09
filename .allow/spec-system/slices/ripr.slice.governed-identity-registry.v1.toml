@@ -1,0 +1,66 @@
+schema_version = "2.0"
+id = "ripr.slice.governed-identity-registry.v1"
+generation = 1
+
+source_issue = "issue:4804"
+design_reference = "RIPR-SPEC-0182#behavior"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Defines one checked identity registry and compatibility map for governed RIPR
+identifiers. Vocabulary and relationship graph only. Existing authorities are
+recorded, not wrapped again. This slice does not migrate consumers, mint
+replacement types owned by #4805–#4809, or change actionability, currentness,
+transport behavior, or support claims.
+"""
+
+non_goals = [
+  "consumer DTO migration",
+  "typed wrappers owned by #4805–#4809",
+  "new LSP or MCP protocol",
+  "action or edit execution",
+  "replacement of existing snapshot, command, continuation, or repair-attempt authority",
+  "actionability or currentness changes",
+  "support-tier promotion",
+  "release membership",
+]
+
+return_conditions = [
+  "Return to root if the registry wraps an existing canonical type instead of recording it.",
+  "Return to root if RepairAttemptId is aliased to an analysis-attempt or snapshot identity.",
+  "Return to root if agent snapshot_id is recorded as CompletedAnalysisSnapshotId.",
+  "Return to root if unknown governed identity fields are accepted.",
+  "Return to root if this slice migrates consumers or changes actionability, currentness, transport, or support claims.",
+]
+
+owned_seams = [
+  "seam:ripr:domain:identity-registry",
+  "seam:ripr:xtask:identity-registry-check",
+]
+
+shared_seams = [
+  "seam:ripr:contract:agent-protocol",
+  "seam:ripr:contract:repair-attempt",
+  "seam:ripr:domain:command-spec",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp:typed-id-wrappers",
+  "seam:ripr:mcp",
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:release:promotion",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0182#behavior"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

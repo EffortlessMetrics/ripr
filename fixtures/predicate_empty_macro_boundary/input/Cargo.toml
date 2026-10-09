@@ -1,0 +1,4 @@
+[package]
+name = "predicate_empty_macro_boundary_fixture"
+version = "0.0.0"
+edition = "2024"

@@ -10,6 +10,6 @@ out/**/*.map
 out/test/**
 out/src/test/**
 out/scripts/**
-# `cargo xtask` builds into a cwd-relative target dir (.cargo/config.toml), so
-# `npm run compile` from this directory leaves build output here.
+# Cargo output under the extension (for example a cwd-relative `cargo xtask`
+# target dir, ripr#1690) must never be packaged into the VSIX.
 target/**

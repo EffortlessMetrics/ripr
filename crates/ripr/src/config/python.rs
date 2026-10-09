@@ -151,30 +151,65 @@ fn canonical_marker_name<'a>(candidates: &[&'a str], name: &str) -> Option<&'a s
 }
 
 fn dir_contains_python_source(dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
+    dir_contains_python_source_with_control(dir, false).unwrap_or(false)
+}
+
+pub(crate) fn source_dir_contains_detectable_python_cancellable(
+    root: &Path,
+    marker: &str,
+) -> Result<bool, crate::core_error::CoreError> {
+    dir_contains_python_source_with_control(&root.join(marker), true)
+}
+
+fn dir_contains_python_source_with_control(
+    dir: &Path,
+    cooperative: bool,
+) -> Result<bool, crate::core_error::CoreError> {
+    if cooperative {
+        crate::analysis::cancellation::checkpoint_typed()?;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if cooperative && error.kind() != std::io::ErrorKind::NotFound => {
+            return Err(format!("read Python role directory {}: {error}", dir.display()).into());
+        }
+        Err(_) => return Ok(false),
     };
-    for entry in entries.flatten() {
+    for entry in entries {
+        if cooperative {
+            crate::analysis::cancellation::checkpoint_typed()?;
+        }
+        let entry = match entry {
+            Ok(entry) => entry,
+            Err(error) if cooperative => {
+                return Err(format!("read Python role entry: {error}").into());
+            }
+            Err(_) => continue,
+        };
         let path = entry.path();
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
+        let file_type = match entry.file_type() {
+            Ok(kind) => kind,
+            Err(error) if cooperative => {
+                return Err(format!("stat Python role entry {}: {error}", path.display()).into());
+            }
+            Err(_) => continue,
         };
         if file_type.is_dir() {
             if is_python_excluded_dir_everywhere(name) {
                 continue;
             }
-            if dir_contains_python_source(&path) {
-                return true;
+            if dir_contains_python_source_with_control(&path, cooperative)? {
+                return Ok(true);
             }
         } else if file_type.is_file() && is_detectable_python_source_path(&path, name) {
-            return true;
+            return Ok(true);
         }
     }
-    false
+    Ok(false)
 }
 
 /// The `.py` check runs on the entry path's extension — `Path::extension` is
@@ -230,6 +265,41 @@ pub(crate) fn is_detectable_generated_python_path(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn cooperative_role_detection_refuses_typed_aborts_before_filesystem_work() -> Result<(), String>
+    {
+        use crate::analysis::cancellation::{
+            AnalysisAbortKind, AnalysisCancellationToken, with_token,
+        };
+        for kind in [
+            AnalysisAbortKind::Cancelled,
+            AnalysisAbortKind::Superseded,
+            AnalysisAbortKind::DeadlineExceeded,
+        ] {
+            let token = AnalysisCancellationToken::new();
+            token.cancel(kind);
+            let result = with_token(&token, || {
+                source_dir_contains_detectable_python_cancellable(
+                    Path::new("not-an-owned-root"),
+                    "src",
+                )
+            });
+            match result {
+                Err(error)
+                    if error.is_analysis_cancelled()
+                        && error.to_string() == format!("analysis cancelled: {kind:?}")
+                        && token.observed_abort() == Some(kind) => {}
+                Err(error) => {
+                    return Err(format!(
+                        "cooperative Python role lost typed {kind:?}: {error}"
+                    ));
+                }
+                Ok(_) => return Err(format!("cooperative Python role ignored {kind:?}")),
+            }
+        }
+        Ok(())
+    }
+
     use super::*;
 
     fn unique_test_root(label: &str) -> std::path::PathBuf {

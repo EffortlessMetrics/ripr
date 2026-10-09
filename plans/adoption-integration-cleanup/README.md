@@ -18,7 +18,9 @@ Current disposition:
   `ripr-swarm` Start-Here Surface Convergence PR chain and closeout.
 - This rail is not the active execution manifest and must not be selected as
   the next campaign without a fresh repo-owned activation.
-- `.ripr/goals/active.toml` remains the machine-readable current goal source.
+- Live execution state is governed by GitHub issues, PRs, and worktree state
+  per [Repository Tracking Model](../../docs/REPO_TRACKING_MODEL.md) (the former
+  `.ripr/goals/active.toml` manifest was retired in #1701).
 
 ## Scope
 

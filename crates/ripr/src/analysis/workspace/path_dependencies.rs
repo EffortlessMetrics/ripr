@@ -77,6 +77,10 @@ pub(crate) struct PathDependencyWalk {
     /// Targets of back-edges to manifests already on the current walk path,
     /// sorted. Non-empty means the walked subgraph is cyclic; the walk
     /// terminated by cutting these edges instead of recursing into them.
+    ///
+    /// Test disclosure only. The cycle cut uses `on_path`; production scope
+    /// expansion reads `reachable` and does not consult this set.
+    #[cfg(test)]
     cycle_manifests: Vec<String>,
 }
 
@@ -87,11 +91,7 @@ impl PathDependencyWalk {
     }
 
     /// Cycle markers: back-edge targets already on the walk path, sorted.
-    #[allow(
-        dead_code,
-        reason = "cycle markers stay disclosed on the graph surfaces (rerun fingerprint, \
-                  adjacency tests); diff-scope expansion needs only the reachable set"
-    )]
+    #[cfg(test)]
     pub(crate) fn cycle_manifests(&self) -> &[String] {
         &self.cycle_manifests
     }
@@ -243,11 +243,7 @@ impl PathDependencyAdjacency {
 
     /// Whether `manifest` participates in the graph at all. Unknown manifests
     /// and crates with no path-dependency edges both return `false`.
-    #[allow(
-        dead_code,
-        reason = "adjacency membership probe kept for graph consumers and tests; the scope \
-                  expansion resolves membership through the walk itself"
-    )]
+    #[cfg(test)]
     pub(crate) fn contains_node(&self, manifest: &str) -> bool {
         self.nodes.contains(manifest)
     }
@@ -292,12 +288,8 @@ impl PathDependencyAdjacency {
     ///
     /// No production consumer yet: the #2970 diff-scope expansion walks the
     /// reverse direction (dependents), and forward scope expansion is not a
-    /// stated contract.
-    #[allow(
-        dead_code,
-        reason = "forward direction is pinned by tests and reserved for future dep-driven \
-                  consumers; only the reverse walk has a production consumer today"
-    )]
+    /// stated contract. Test-only until that consumer exists.
+    #[cfg(test)]
     pub(crate) fn forward_walk(&self, manifest: &str) -> Option<PathDependencyWalk> {
         self.walk(&self.forward, manifest)
     }
@@ -327,6 +319,7 @@ impl PathDependencyAdjacency {
         on_path.insert(start.to_string());
         let mut visited: BTreeSet<String> = BTreeSet::new();
         let mut reachable: BTreeSet<String> = BTreeSet::new();
+        #[cfg(test)]
         let mut cycles: BTreeSet<String> = BTreeSet::new();
         let mut stack: Vec<(String, std::vec::IntoIter<String>)> = Vec::new();
         let children = adjacency.get(start).unwrap_or(&empty);
@@ -341,6 +334,7 @@ impl PathDependencyAdjacency {
             match advance {
                 Some(child) => {
                     if on_path.contains(&child) {
+                        #[cfg(test)]
                         cycles.insert(child);
                         continue;
                     }
@@ -369,6 +363,7 @@ impl PathDependencyAdjacency {
         }
         Some(PathDependencyWalk {
             reachable: reachable.into_iter().collect(),
+            #[cfg(test)]
             cycle_manifests: cycles.into_iter().collect(),
         })
     }
@@ -406,12 +401,9 @@ impl PathDependencyScopeExpansion {
     pub(crate) fn manifest_dir_prefixes(&self) -> &[String] {
         &self.manifest_dir_prefixes
     }
-    /// Disclosed graph state behind this expansion.
-    #[allow(
-        dead_code,
-        reason = "status accessor is exercised by the expansion tests; the production scope \
-                  surface consumes the disclosure and the roots only"
-    )]
+    /// Disclosed graph state behind this expansion. Production reads this
+    /// field through `scope_disclosure`; the accessor is test-only.
+    #[cfg(test)]
     pub(crate) fn status(&self) -> PathDependencyGraphStatus {
         self.status
     }

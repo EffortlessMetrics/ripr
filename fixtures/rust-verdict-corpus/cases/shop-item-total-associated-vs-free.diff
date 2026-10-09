@@ -1,0 +1,13 @@
+diff --git a/pricing/src/lib.rs b/pricing/src/lib.rs
+index 20a5b7f..c550b7a 100644
+--- a/pricing/src/lib.rs
++++ b/pricing/src/lib.rs
+@@ -28,7 +28,7 @@ impl Price for Item {
+ 
+ impl Item {
+     pub fn total(&self) -> i64 {
+-        self.units * 100
++        100 * self.units
+     }
+ }
+ 

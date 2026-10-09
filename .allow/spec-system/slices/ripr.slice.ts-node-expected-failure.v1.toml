@@ -1,0 +1,29 @@
+schema_version = "2.0"
+id = "ripr.slice.ts-node-expected-failure.v1"
+generation = 1
+source_issue = "issue:5433"
+design_reference = "RIPR-SPEC-0027"
+change_class = "behavior_change"
+claim_boundary = "Node expectFailure options cannot supply ordinary TypeScript oracle/discriminator credit through the existing declaration option admission owner. Literal false, unshadowed global undefined and independent ordinary tests remain admitted. Shadowed undefined cannot bypass shared qualification options. Source candidate only until exact-head tests and hosted proof execute; native date-fns framework observations are separate preparation, not accepted analyzer outcomes."
+non_goals = [
+  "runner execution or dynamic expected-failure matcher evaluation",
+  "focus selection and general runner binding semantics",
+  "support-tier, public authority or denominator promotion",
+  "Perl producer/consumer changes or corpus owner replacement",
+]
+return_conditions = [
+  "Investigate any existing golden drift; never rewrite an expected outcome to manufacture a pass.",
+  "Do not claim analyzer RED/GREEN or corpus graduation before exact-source execution.",
+]
+owned_seams = ["seam:ripr:analysis:language-typescript-test-declarations"]
+shared_seams = ["seam:ripr:specs:typescript-preview-static-facts"]
+forbidden_seams = ["seam:ripr:analysis:language-perl-adapter", "seam:ripr:output:support-promotion"]
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0027"
+requirement_generation = 1
+[implementation_claim]
+status = "implemented"
+[evidence]
+state = "outstanding"
+[support_claim]
+state = "unchanged"

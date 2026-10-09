@@ -3,11 +3,10 @@
   "tool": "ripr",
   "mode": "fast",
   "root": "fixtures/propagate_value_returned/input",
-  "base": "origin/main",
   "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
   "analysis_outcome": {
     "analysis_complete": true,
-    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:d65b6976d8328c5c8ef7aafe048eb5f0fc6bc12fe765b401f11f320834304249","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:d65b6976d8328c5c8ef7aafe048eb5f0fc6bc12fe765b401f11f320834304249","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
   },
   "findings": [
     {
@@ -30,7 +29,7 @@
         "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
         "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
        },
-      "evidence_path": ["reach yes: Related tests appear to reach apply: apply_returns_ok_on_success", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: Propagation witness is incomplete for returned value: self.persist(amount * 9)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: self.persist(amount * 9) (line 11)", "related test tests/ledger_tests.rs:4 apply_returns_ok_on_success uses smoke smoke only oracle: assert!(ledger.apply(5).is_ok());", "observed function argument value amount = 5 at line 6"],
+      "evidence_path": ["reach yes: Related tests appear to reach apply: apply_returns_ok_on_success", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation weak: Propagation witness is incomplete for returned value: self.persist(amount * 9)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: self.persist(amount * 9) (line 11)", "related test tests/ledger_tests.rs:4 apply_returns_ok_on_success uses smoke smoke only oracle: assert!(ledger.apply(5).is_ok());", "source function argument value amount = 5 at line 6"],
       "flow_sinks": [
         {"kind":"return_value","text":"self.persist(amount * 9)","line":11}
       ],
@@ -69,7 +68,9 @@
           "oracle_kind": "smoke_only",
           "oracle": "assert!(ledger.apply(5).is_ok());",
           "relation_reason": "direct_owner_call",
-          "relation_confidence": "high"
+          "relation_confidence": "high",
+          "miss": "weak_assertion",
+          "why": "assertion too weak to tell the old behavior from the new"
         }
       ],
       "stop_reasons": [],

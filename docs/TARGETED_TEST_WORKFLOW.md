@@ -57,10 +57,21 @@ remaining public CLI path for this loop. `ripr outcome` owns the before/after
 receipt, and `ripr calibrate cargo-mutants` owns the advisory runtime
 calibration import.
 
-Use a local scratch directory for before/after snapshots:
+Use a local scratch directory for before/after snapshots. The loop's snapshot
+commands redirect into this directory, and every shell opens the redirect
+before `ripr` runs, so create it first — in the shell that will run the
+snapshots (a fresh workspace has no `target/` yet):
 
 ```bash
 mkdir -p target/ripr/workflow
+```
+
+```cmd
+mkdir target\ripr\workflow
+```
+
+```powershell
+New-Item -ItemType Directory -Force -Path target/ripr/workflow | Out-Null
 ```
 
 ## 0. Generate a Pilot Packet
@@ -280,11 +291,17 @@ ripr agent receipt \
   --out target/ripr/agent/agent-receipt.json
 ```
 
-The generated CI workflow uses `target/ripr/pilot/repo-exposure.json`,
-`target/ripr/pilot/after.repo-exposure.json`, and `target/ripr/agent/` by
-default. The `target/ripr/workflow/` paths above are a local scratch variant
-for people who want to keep before/after snapshots separate from the pilot
-packet.
+The generated CI workflow prepares the before side of this loop only: it seeds
+`target/ripr/workflow/before.repo-exposure.json` from the pilot snapshot and
+writes the workflow, brief, and packet, with compatibility copies of the packet
+and brief under `target/ripr/agent/`. There is no test edit between two
+snapshots of one CI checkout, so it writes no after snapshot, verify JSON, or
+receipt; run the after side locally once the test edit exists.
+
+For one named gap, `ripr agent repair --seam-id <seam-id> --phase before` and
+`ripr agent repair --attempt <repair-attempt-id> --phase after` run this whole
+before/verify/receipt sequence as one transaction; see
+[Repair attempt identity](REPAIR_ATTEMPT.md).
 
 Interpretation:
 

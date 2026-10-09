@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 8e555ab..f53ac98 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,7 +8,7 @@ pub fn parse_port(text: &str) -> Result<u16, ParseIntError> {
+ }
+ 
+ pub fn parse_percent(text: &str) -> Result<u8, ParseIntError> {
+-    let value = text.trim_end_matches('%').parse::<u8>()?;
++    let value: u8 = text.trim_end_matches('%').parse()?;
+     Ok(value)
+ }
+ 

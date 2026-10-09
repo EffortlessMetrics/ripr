@@ -98,6 +98,29 @@ current one — state, effective root, candidate roots, and detail — is not a
 transition: the root epoch is not bumped, analysis input is not
 invalidated, and no status is published.
 
+### Kept root for generic clients (#4459)
+
+A client without the `experimental.riprEditor` capability has no ripr root
+picker, and some such clients add every newly opened repository to the one
+server (Helix reuses a server that supports workspace folders). For these
+clients only, when an accepted event or a drift-correction answer leaves more
+than one entry and the current authority is `selected_single_root` whose
+effective root is still in the set, that root is kept: the derived authority
+is the unchanged `selected_single_root`, so no transition, epoch bump, or
+invalidation happens. The server names the unanalyzed folders once per such
+event with `window/logMessage` and `window/showMessage`, and hover on a file
+outside the root says it is outside the analyzed root. Removing the kept root
+leaves the remaining single folder, which follows the direct-switch rule
+(`root_changed`). A set with no selected root, including more than one folder
+at `initialize`, is still `workspace_ambiguous`, and the VS Code integration
+(`riprEditor` advertised) keeps the ambiguous transition described above.
+
+Any accepted or rejected folder event that moves the authority into a new
+blocked state (`workspace_ambiguous`, `root_unavailable`, `root_removed`,
+`root_changed`) sends a `window/logMessage` warning naming the state; clients
+without `riprEditor` also get the same text as `window/showMessage`. An
+unchanged blocked state is not repeated.
+
 ### Epoch-bound reconciliation
 
 If the client answers `workspace/workspaceFolders`, the handler treats the
@@ -238,6 +261,11 @@ and no duplicate analysis runs.
   — fixture 1: one fresh transition, no duplicate analysis.
 - `crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_second_folder_becomes_ambiguous_without_fallback`
   — fixture 2: ambiguity, never first-folder.
+- `crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_generic_client_keeps_selected_root_when_a_folder_is_added`
+  — #4459: a generic client keeps its selected root on a folder addition,
+  names the unanalyzed folder, hovers the other folder's file as outside the
+  root, and switches when the kept root is removed. The fixture matrix above
+  runs as the `riprEditor` client.
 - `crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_ambiguous_resolves_to_remaining_folder_on_removal`
   — fixture 3.
 - `crates/ripr/src/lsp/tests.rs::workspace_folder_transitions_direct_switch_lands_on_root_changed`
@@ -281,6 +309,8 @@ and no duplicate analysis runs.
   `apply_workspace_folder_set_authority` (folder-set-epoch-bound
   application), and the byte-identical no-bump guard in
   `apply_workspace_root_authority_locked`.
+- `crates/ripr/src/lsp/backend.rs` — `kept_root_for_added_folders` and
+  `disclose_kept_root` (#4459 generic-client kept root).
 
 ## Metrics
 

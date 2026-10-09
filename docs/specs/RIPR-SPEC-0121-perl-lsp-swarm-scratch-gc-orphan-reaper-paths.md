@@ -7,6 +7,16 @@ Status: proposed
 > is applied in `perl-lsp-swarm`; there is no `ripr` test or code to map. An
 > agent or maintainer with access to `perl-lsp-swarm` applies it there.
 
+> Superseded reference (2026-09-22, #3841): `ripr-swarm`'s `scratch-gc.yml`
+> no longer uses the age-only selector quoted below. A top-level directory
+> mtime is not a lease on a live job tree (nested writes do not refresh it), so
+> an `-mmin` window can delete an active job's trees. `ripr-swarm` now reclaims
+> only through the flock-lease authority in
+> `.github/actions/ci-scratch-lease/action.yml`, and entries it cannot prove
+> it owns (including `/mnt/ci-scratch/tmp/ripr-*`) are left alone. The path
+> mismatch this spec records is unchanged; the fix in `perl-lsp-swarm` should
+> reclaim by ownership and liveness rather than by an age window.
+
 Owner: product / swarm
 
 Created: 2026-06-26

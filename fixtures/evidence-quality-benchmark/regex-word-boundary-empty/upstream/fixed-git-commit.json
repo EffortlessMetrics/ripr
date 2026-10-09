@@ -1,0 +1,35 @@
+{
+  "sha": "88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "node_id": "C_kwDOAamT7doAKDg4YTJhNjJkODYxZDE4OWZhYWU1Mzk5OTBmNjNjYjljZjE5NWJkOGM",
+  "url": "https://api.github.com/repos/rust-lang/regex/git/commits/88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "html_url": "https://github.com/rust-lang/regex/commit/88a2a62d861d189faae539990f63cb9cf195bd8c",
+  "author": {
+    "name": "Andrew Gallant",
+    "email": "jamslam@gmail.com",
+    "date": "2022-05-17T18:27:33Z"
+  },
+  "committer": {
+    "name": "Andrew Gallant",
+    "email": "jamslam@gmail.com",
+    "date": "2022-05-18T12:18:14Z"
+  },
+  "tree": {
+    "sha": "0f9d79ebcb952c9beac5b998874d76cf49479d2a",
+    "url": "https://api.github.com/repos/rust-lang/regex/git/trees/0f9d79ebcb952c9beac5b998874d76cf49479d2a"
+  },
+  "message": "syntax: fix 'is_match_empty' predicate\n\nThis was incorrectly defined for \\b. Previously, I had erroneously made\nit return true only for \\B since \\B matches '' and \\b does not match\n''. However, \\b does match the empty string. Like \\B, it only matches a\nsubset of empty strings, depending on what the surrounding context is.\nThe important bit is that it can match *an* empty string, not that it\nmatches *the* empty string.\n\nWe were not yet using this predicate anywhere in the regex crate, so we\njust fix the implementation and update the tests.\n\nThis does present a compatibility hazard for anyone who was using this\nfunction, but as of this time, I'm considering this a bug fix since \\b\nclearly matches an empty string.\n\nFixes #859",
+  "parents": [
+    {
+      "sha": "72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4",
+      "url": "https://api.github.com/repos/rust-lang/regex/git/commits/72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4",
+      "html_url": "https://github.com/rust-lang/regex/commit/72f09f1aeb0ff3f703b1afdbdd21f5ff63162fb4"
+    }
+  ],
+  "verification": {
+    "verified": false,
+    "reason": "unsigned",
+    "signature": null,
+    "payload": null,
+    "verified_at": null
+  }
+}

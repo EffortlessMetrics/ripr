@@ -1,12 +1,17 @@
-use super::{CheckInput, CheckOutput};
+use super::progress::{
+    AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage, ProgressRun,
+};
+use super::{CheckInput, CheckOutput, OutputFormat};
 use crate::analysis::{
-    AnalysisResult, run_analysis_with_oracle_policy_and_generated_file_patterns,
-    run_repo_analysis_with_oracle_policy_and_generated_file_patterns,
-    run_worktree_analysis_with_oracle_policy_and_generated_file_patterns,
+    AnalysisResult, run_analysis_with_oracle_policy_and_rust_config,
+    run_repo_analysis_with_oracle_policy_and_rust_config,
+    run_worktree_analysis_with_oracle_policy_and_rust_config,
 };
 use crate::config::RiprConfig;
+use crate::core_error::CoreError;
 use crate::domain::LanguageId;
 use crate::domain::Summary;
+use crate::output::human::terminal_safe;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -37,14 +42,64 @@ pub fn check_workspace_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    run_check(input, config, AnalysisMode::Diff)
+    check_with_progress(input, config, AnalysisProgressScope::Diff, None)
 }
 
 pub fn check_workspace_worktree_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    run_check(input, config, AnalysisMode::Worktree)
+    check_with_progress(input, config, AnalysisProgressScope::Worktree, None)
+}
+
+#[cfg(test)]
+pub(crate) fn check_workspace_worktree_with_origins(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ),
+    String,
+> {
+    check_with_progress_and_origins(input, config, AnalysisProgressScope::Worktree, None)
+        .map(|(output, origins, _)| (output, origins))
+        .map_err(Into::into)
+}
+
+/// Sink-bearing variant of the worktree+sources+open-paths check entry
+/// point. Projections (the LSP work-done bridge, #4811) observe the same
+/// producer-owned boundaries through this path without changing analysis
+/// identity; `sink: None` reproduces the legacy behavior exactly.
+pub(crate) fn check_workspace_worktree_with_sources_open_rust_paths_and_progress(
+    input: CheckInput,
+    config: &RiprConfig,
+    open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+    sink: Option<&dyn AnalysisProgressSink>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    CoreError,
+> {
+    if open_rust_index_paths.is_empty() {
+        return check_with_progress_and_origins(
+            input,
+            config,
+            AnalysisProgressScope::Worktree,
+            sink,
+        );
+    }
+    check_with_progress_and_origins_with_open_rust_paths(
+        input,
+        config,
+        AnalysisProgressScope::Worktree,
+        sink,
+        open_rust_index_paths,
+    )
 }
 
 /// Runs the repo-baseline static exposure analysis for a workspace. This
@@ -65,7 +120,229 @@ pub fn check_workspace_repo_with_config(
     input: CheckInput,
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
-    run_check(input, config, AnalysisMode::Repo)
+    check_with_progress(input, config, AnalysisProgressScope::Repo, None)
+}
+
+#[cfg(test)]
+pub(crate) fn check_workspace_repo_with_origins(
+    input: CheckInput,
+    config: &RiprConfig,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    ),
+    String,
+> {
+    check_with_progress_and_origins(input, config, AnalysisProgressScope::Repo, None)
+        .map(|(output, origins, _)| (output, origins))
+        .map_err(Into::into)
+}
+
+/// Run a check while observing producer-owned progress boundaries.
+pub(crate) fn check_with_progress(
+    input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+) -> Result<CheckOutput, String> {
+    Ok(check_with_progress_and_origins(input, config, scope, sink)?.0)
+}
+
+fn check_with_progress_and_origins(
+    input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    CoreError,
+> {
+    check_with_progress_and_origins_with_open_rust_paths(
+        input,
+        config,
+        scope,
+        sink,
+        &Default::default(),
+    )
+}
+
+fn check_with_progress_and_origins_with_open_rust_paths(
+    mut input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+    open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    CoreError,
+> {
+    let mut progress = ProgressRun::new(sink, scope);
+    progress.emit(AnalysisProgressStage::LoadingInput);
+    // Immutable Git candidate subjects (#3237 / #3276): bind-and-validate
+    // only in this build. Validate first, before any subprocess or diff
+    // acquisition, so a subject input can never fall through to worktree
+    // analysis or an empty diff.
+    super::analysis_subject::validate_input_subject(&input).map_err(|error| error.to_string())?;
+    // Managed producer mode (Campaign 31 Phase D, #1407; architecture
+    // corrected post perl-lsp-swarm #3294): when a Perl facts exporter is
+    // configured (`producer = "perl-ripr-facts"` or `producer = "perllsp"`
+    // for backward compatibility), invoke the exporter binary to generate
+    // a fact packet, then consume it automatically. NO silent invocation
+    // unless explicitly configured.
+    let perl_config = config.perl();
+    if let Some(producer) = perl_config.producer()
+        && is_managed_perl_producer(producer)
+        && input.perl_facts_path.is_none()
+    {
+        // Item 4b: producer failure must NOT abort the whole `ripr check`.
+        // If invocation fails (missing binary, timeout, non-zero exit, no
+        // packet), leave perl_facts_path as None so the pipeline records a
+        // Perl `unavailable` language_runs[] entry and the other languages'
+        // findings still emit. Known gap: the producer error is surfaced
+        // only as the stderr warning below. The Perl `language_runs` reason
+        // and the typed outcome limitation carry the adapter's generic
+        // missing-packet reason, because the pipeline has no carrier for
+        // this error (threading one needs a new `AnalysisOptions` field).
+        match invoke_perl_lsp_producer(perl_config, &input) {
+            Ok(packet_path) => input.perl_facts_path = Some(packet_path),
+            Err(reason) => {
+                eprintln!(
+                    "{}",
+                    terminal_safe(format!("warning: Perl facts exporter failed: {reason}"))
+                );
+                eprintln!("warning: Perl analysis will be unavailable; other languages continue.");
+            }
+        }
+    }
+
+    let mut options = options_builder::analysis_options_from_input_and_config(&input, config);
+    options
+        .open_rust_index_paths
+        .clone_from(open_rust_index_paths);
+
+    // Build the language list from config. When --perl-facts is provided,
+    // automatically add Perl to the enabled list (the user explicitly opted in
+    // by supplying a packet path). Campaign 31, #1429.
+    let mut languages = config.languages().enabled().to_vec();
+    if options.perl_facts_path.is_some() && !languages.contains(&LanguageId::Perl) {
+        languages.push(LanguageId::Perl);
+    }
+
+    if crate::is_verbose() {
+        eprintln!(
+            "ripr: analyzing {} language(s): {}",
+            languages.len(),
+            languages
+                .iter()
+                .map(|l| l.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        eprintln!("ripr: mode = {:?}", scope);
+    }
+
+    progress.emit(AnalysisProgressStage::Analyzing);
+    let mut analysis = match scope {
+        AnalysisProgressScope::Diff => run_analysis_with_oracle_policy_and_rust_config(
+            &options,
+            config.oracles(),
+            &languages,
+            &config.languages().rust,
+        )?,
+        AnalysisProgressScope::Worktree => {
+            run_worktree_analysis_with_oracle_policy_and_rust_config(
+                &options,
+                config.oracles(),
+                &languages,
+                &config.languages().rust,
+            )?
+        }
+        AnalysisProgressScope::Repo => run_repo_analysis_with_oracle_policy_and_rust_config(
+            &options,
+            config.oracles(),
+            &languages,
+            &config.languages().rust,
+        )?,
+    };
+    // #5988: the published identity block must distinguish runs whose loaded
+    // `ripr.toml` differs — a config edit that flips findings used to leave
+    // every identity field equal. Bind the canonical finding-affecting
+    // fingerprint (the one the check-artifact reuse gate enforces) whenever a
+    // config file was actually loaded; a defaults-only run keeps `null`.
+    if let Some(outcome) = analysis.analysis_outcome.as_mut()
+        && let Some(config_identity) = crate::config::loaded_config_identity(config)
+    {
+        let mut identity = outcome.identity.clone();
+        identity.config_identity = Some(config_identity);
+        *outcome = crate::analysis_outcome::AnalysisOutcome::new(
+            outcome.kind,
+            identity,
+            outcome.counts,
+            outcome.limitations.clone(),
+        )?;
+    }
+
+    if crate::is_verbose() {
+        let finding_count = analysis.findings.len();
+        let probe_count = analysis.summary.probes;
+        eprintln!("ripr: analysis complete — {probe_count} probes, {finding_count} findings");
+    }
+
+    progress.emit(AnalysisProgressStage::BuildingOutput);
+    let suppression_policy = input.suppression_policy.clone();
+    let origins = analysis.rust_diagnostic_origins.clone();
+    let consumed_sources = std::mem::take(&mut analysis.rust_consumed_sources);
+    let human_output = matches!(input.format, OutputFormat::Human | OutputFormat::HumanFull);
+    let mut output = output_builder::check_output_from_analysis(input, analysis);
+    // #6340: only a human-rendered run pays for the Python test walk; JSON, LSP
+    // refreshes and other machine consumers never read the note.
+    if human_output && python_test_note_possible(&output.findings) {
+        output.unlinked_python_tests = crate::analysis::discover_python_test_files(&output.root)?;
+    }
+    if let Some(policy) = suppression_policy {
+        apply_suppression_policy(&mut output, &policy)?;
+    }
+    progress.complete();
+    Ok((output, origins, consumed_sources))
+}
+
+/// Whether the all-no-path human note could name unlinked Python tests. This
+/// mirrors `render_all_no_path_disclosure` (RIPR-SPEC-0090): no exposed, weakly
+/// exposed or reachable finding, every finding in a no-path or unknown class,
+/// no finding with `reach: yes`, and at least one `no_static_path` finding in a
+/// Rust file. A necessary condition only; the renderer applies the rest.
+pub(crate) fn python_test_note_possible(findings: &[crate::domain::Finding]) -> bool {
+    use crate::domain::{ExposureClass, StageState};
+    let mut rust_no_path = false;
+    for finding in findings {
+        if finding.ripr.reach.state == StageState::Yes {
+            return false;
+        }
+        match finding.class {
+            ExposureClass::NoStaticPath => {
+                rust_no_path |= finding
+                    .probe
+                    .location
+                    .file
+                    .extension()
+                    .is_some_and(|e| e == "rs");
+            }
+            ExposureClass::InfectionUnknown
+            | ExposureClass::PropagationUnknown
+            | ExposureClass::StaticUnknown => {}
+            _ => return false,
+        }
+    }
+    rust_no_path
 }
 
 /// Build a minimal [`CheckOutput`] for repo seam-driven rendering.
@@ -91,111 +368,14 @@ pub fn repo_seam_inventory_input(input: CheckInput) -> CheckOutput {
             preview_language_advisories: Vec::new(),
             language_runs: Vec::new(),
             partial_scope: None,
+            // No analysis ran, so no loader chose a base (#3940).
+            effective_base: None,
+            uncommitted_source_paths: Vec::new(),
+            untracked_source_paths: Vec::new(),
+            rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
         },
     )
-}
-
-#[derive(Debug)]
-enum AnalysisMode {
-    Diff,
-    Worktree,
-    Repo,
-}
-
-fn run_check(
-    mut input: CheckInput,
-    config: &RiprConfig,
-    mode: AnalysisMode,
-) -> Result<CheckOutput, String> {
-    // Immutable Git candidate subjects (#3237 / #3276): bind-and-validate
-    // only in this build. Validate first, before any subprocess or diff
-    // acquisition, so a subject input can never fall through to worktree
-    // analysis or an empty diff.
-    super::analysis_subject::validate_input_subject(&input).map_err(|error| error.to_string())?;
-    // Managed producer mode (Campaign 31 Phase D, #1407; architecture
-    // corrected post perl-lsp-swarm #3294): when a Perl facts exporter is
-    // configured (`producer = "perl-ripr-facts"` or `producer = "perllsp"`
-    // for backward compatibility), invoke the exporter binary to generate
-    // a fact packet, then consume it automatically. NO silent invocation
-    // unless explicitly configured.
-    let perl_config = config.perl();
-    if let Some(producer) = perl_config.producer()
-        && is_managed_perl_producer(producer)
-        && input.perl_facts_path.is_none()
-    {
-        // Item 4b: producer failure must NOT abort the whole `ripr check`.
-        // If invocation fails (missing binary, timeout, non-zero exit, no
-        // packet), leave perl_facts_path as None so the pipeline records a
-        // Perl `unavailable` language_runs[] entry and the other languages'
-        // findings still emit. The error is surfaced as the language_runs
-        // reason string.
-        match invoke_perl_lsp_producer(perl_config, &input) {
-            Ok(packet_path) => input.perl_facts_path = Some(packet_path),
-            Err(reason) => {
-                eprintln!("warning: Perl facts exporter failed: {reason}");
-                eprintln!("warning: Perl analysis will be unavailable; other languages continue.");
-            }
-        }
-    }
-
-    let options = options_builder::analysis_options_from_input_and_config(&input, config);
-
-    // Build the language list from config. When --perl-facts is provided,
-    // automatically add Perl to the enabled list (the user explicitly opted in
-    // by supplying a packet path). Campaign 31, #1429.
-    let mut languages = config.languages().enabled().to_vec();
-    if options.perl_facts_path.is_some() && !languages.contains(&LanguageId::Perl) {
-        languages.push(LanguageId::Perl);
-    }
-
-    if crate::is_verbose() {
-        eprintln!(
-            "ripr: analyzing {} language(s): {}",
-            languages.len(),
-            languages
-                .iter()
-                .map(|l| l.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        eprintln!("ripr: mode = {:?}", mode);
-    }
-
-    let analysis = match mode {
-        AnalysisMode::Diff => run_analysis_with_oracle_policy_and_generated_file_patterns(
-            &options,
-            config.oracles(),
-            &languages,
-            config.languages().generated_file_patterns(),
-        )?,
-        AnalysisMode::Worktree => {
-            run_worktree_analysis_with_oracle_policy_and_generated_file_patterns(
-                &options,
-                config.oracles(),
-                &languages,
-                config.languages().generated_file_patterns(),
-            )?
-        }
-        AnalysisMode::Repo => run_repo_analysis_with_oracle_policy_and_generated_file_patterns(
-            &options,
-            config.oracles(),
-            &languages,
-            config.languages().generated_file_patterns(),
-        )?,
-    };
-
-    if crate::is_verbose() {
-        let finding_count = analysis.findings.len();
-        let probe_count = analysis.summary.probes;
-        eprintln!("ripr: analysis complete — {probe_count} probes, {finding_count} findings");
-    }
-
-    let suppression_policy = input.suppression_policy.clone();
-    let mut output = output_builder::check_output_from_analysis(input, analysis);
-    if let Some(policy) = suppression_policy {
-        apply_suppression_policy(&mut output, &policy)?;
-    }
-    Ok(output)
 }
 
 /// Applies an explicit `--suppression-policy` file to check findings (#1441).
@@ -215,15 +395,8 @@ fn apply_suppression_policy(output: &mut CheckOutput, policy: &Path) -> Result<(
     };
     let entries = sup::load_check_suppression_policy(&resolved)?;
     let today = sup::current_iso_date();
-    let candidates: Vec<sup::CheckSuppressionCandidate> = output
-        .findings
-        .iter()
-        .map(|finding| sup::CheckSuppressionCandidate {
-            finding_id: finding.id.clone(),
-            path: sup::root_relative_finding_path(&output.root, &finding.probe.location.file),
-            class: finding.class.as_str().to_string(),
-        })
-        .collect();
+    let candidates =
+        sup::CheckSuppressionCandidate::for_findings(&output.root, &output.findings, &entries);
     let (matched, warnings) = sup::apply_check_suppressions(&candidates, &entries, &today);
 
     let mut suppressed = Vec::new();
@@ -319,6 +492,17 @@ fn perl_facts_export_argv(
 #[allow(dead_code, reason = "retained for future content-keyed cache reuse")]
 const PERL_FACTS_MAX_AGE_SECS: u64 = 86_400;
 
+/// The Perl facts cache directory under the analyzed root. Config validation
+/// keeps `[perl].cache_dir` repository-relative; joining it to the root (not
+/// the process directory) keeps `--root <checkout>` from writing elsewhere.
+fn perl_facts_cache_dir(perl_config: &crate::config::PerlConfig, root: &Path) -> PathBuf {
+    root.join(
+        perl_config
+            .cache_dir()
+            .unwrap_or_else(|| Path::new("target/ripr/perl-facts")),
+    )
+}
+
 /// Invoke a Perl facts exporter to generate a fact packet.
 ///
 /// Managed producer mode (Campaign 31 Phase D #1407; hardened in item 4).
@@ -336,21 +520,31 @@ fn invoke_perl_lsp_producer(
     perl_config: &crate::config::PerlConfig,
     input: &CheckInput,
 ) -> Result<PathBuf, String> {
+    if let Some(refused) = perl_config.refused_executable() {
+        eprintln!(
+            "{}",
+            terminal_safe(format!(
+                "warning: ignoring [perl].executable `{}` from ripr.toml: repository config cannot choose a program for ripr to run; set {}=1 to trust it. Using `{}` from PATH instead.",
+                refused.display(),
+                crate::config::PERL_EXECUTABLE_OPT_IN_ENV,
+                default_executable_for_producer(perl_config.producer()).display()
+            ))
+        );
+    }
     let executable = perl_config
         .executable()
         .map(|p| p.to_path_buf())
         .unwrap_or_else(|| default_executable_for_producer(perl_config.producer()));
 
-    let cache_dir = perl_config
-        .cache_dir()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| PathBuf::from("target/ripr/perl-facts"));
+    let cache_dir = perl_facts_cache_dir(perl_config, &input.root);
 
     std::fs::create_dir_all(&cache_dir)
         .map_err(|e| format!("failed to create Perl facts cache dir: {e}"))?;
 
     let root_str = input.root.display().to_string();
-    let base = input.base.as_deref();
+    // Supplied patch bytes have no loader base. Do not let a discarded
+    // caller declaration change the exporter's scope or cache identity.
+    let base = input.base.as_deref().filter(|_| input.diff_file.is_none());
     let head = "HEAD";
     let timeout_ms = perl_config.timeout_ms();
     let executable_str = executable.display().to_string();
@@ -410,7 +604,10 @@ fn invoke_perl_lsp_producer(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
 
-    let mut child = command.spawn().map_err(|e| {
+    // The shared owned-subprocess authority (#3803) owns containment: on
+    // Windows the exporter is assigned to a Job Object before its user code
+    // runs, so the timeout/cancellation kill below terminates the whole tree.
+    let mut child = crate::process_owner::OwnedProcess::spawn(command).map_err(|e| {
         format!(
             "failed to spawn Perl facts exporter at `{}`: {e}. Configure [perl].executable or \
              put `perl-ripr-facts` on PATH.",
@@ -464,11 +661,19 @@ fn invoke_perl_lsp_producer(
             // Cooperative cancellation (#2303): the enclosing analysis was
             // superseded or cancelled; the shared wait already terminated +
             // reaped the child. Propagate the named cancellation error.
-            Err(cancelled)
+            Err(cancelled.to_string())
         }
         crate::git::ChildWait::WaitFailed(err) => {
             // The shared wait already terminated + reaped the child.
             Err(format!("Perl facts exporter failed while waiting: {err}"))
+        }
+        crate::git::ChildWait::CleanupFailed(cleanup) => {
+            // The wait ended abnormally and the terminate-and-reap could
+            // not be confirmed: the exporter or its tree may still be
+            // running, so the partial packet is discarded and never
+            // renamed.
+            let _ = std::fs::remove_file(&tmp_path);
+            Err(cleanup)
         }
     }
 }
@@ -529,6 +734,23 @@ fn simple_hash(s: &str) -> u64 {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn perl_facts_cache_dir_resolves_under_the_analyzed_root() {
+        let root = Path::new("checkout");
+        let configured = crate::config::PerlConfig {
+            cache_dir: Some(PathBuf::from(".ssh")),
+            ..crate::config::PerlConfig::default()
+        };
+        assert_eq!(
+            perl_facts_cache_dir(&configured, root),
+            Path::new("checkout/.ssh")
+        );
+        assert_eq!(
+            perl_facts_cache_dir(&crate::config::PerlConfig::default(), root),
+            Path::new("checkout/target/ripr/perl-facts")
+        );
+    }
     use super::*;
     use crate::app::{Mode, OutputFormat};
     use std::path::PathBuf;
@@ -666,6 +888,108 @@ mod tests {
     }
 
     #[test]
+    fn loaded_config_flips_findings_and_the_identity_block_with_them() -> Result<(), String> {
+        // #5988: the diff-check identity block used to be byte-equal across a
+        // ripr.toml change that flips findings — config_identity stayed null
+        // and input_identity is only the diff digest. A loaded config must
+        // now contribute the fingerprint of the exact loaded text, so any
+        // loaded-config change moves the block (#6777 review: settings the
+        // check-artifact allowlist classifies CapturedElsewhere — mode,
+        // include_unchanged_tests, enabled languages — are recorded in
+        // separate artifact fields but have no outcome sibling, so only the
+        // text fingerprint closes every escape). A defaults-only run stays
+        // null.
+        let defaults = RiprConfig::default();
+        let without_config = check_workspace_with_config(sample_diff_input(), &defaults)?;
+        let plain_identity = without_config
+            .analysis_outcome
+            .as_ref()
+            .ok_or_else(|| "diff run must project an analysis outcome".to_string())?
+            .identity
+            .clone();
+        assert_eq!(
+            plain_identity.config_identity, None,
+            "a defaults-only run keeps config_identity null"
+        );
+
+        // The issue's flip: mark the sample's changed Rust file generated, so
+        // the same diff yields zero findings plus a language-scope
+        // limitation. Fixture precondition: the config really changes the
+        // result, so the identity split below discriminates real inputs.
+        let mut generated = RiprConfig::default();
+        generated
+            .languages
+            .rust
+            .generated_file_patterns
+            .push("lib.rs".to_string());
+        generated.source_path = Some(sample_root().join("ripr.toml"));
+        generated.source_text =
+            Some("[languages.rust]\ngenerated_file_patterns = [\"lib.rs\"]\n".to_string());
+        let with_config = check_workspace_with_config(sample_diff_input(), &generated)?;
+        assert_eq!(
+            with_config.summary.findings, 0,
+            "fixture precondition: the generated pattern must exclude the sample finding"
+        );
+        let generated_identity = with_config
+            .analysis_outcome
+            .as_ref()
+            .ok_or_else(|| "diff run must project an analysis outcome".to_string())?
+            .identity
+            .clone();
+        let loaded_text = generated
+            .source_text()
+            .ok_or_else(|| "fixture must set the loaded config text".to_string())?;
+        assert_eq!(
+            generated_identity.config_identity.as_deref(),
+            Some(crate::config::config_fingerprint(loaded_text).as_str()),
+            "a loaded config publishes the fingerprint of its exact text"
+        );
+        assert_ne!(
+            plain_identity, generated_identity,
+            "runs whose config flips findings must not share an identity block"
+        );
+        // input_identity alone was the old discriminator's whole domain: it
+        // must stay equal here, proving the config field carries the change.
+        assert_eq!(
+            plain_identity.input_identity,
+            generated_identity.input_identity
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn loaded_config_identity_requires_an_actually_loaded_file_and_tracks_the_text() {
+        // No ripr.toml: null, even though the default fields still analyze.
+        assert_eq!(
+            crate::config::loaded_config_identity(&RiprConfig::default()),
+            None
+        );
+        let loaded = RiprConfig {
+            source_text: Some(String::new()),
+            ..RiprConfig::default()
+        };
+        let identity = crate::config::loaded_config_identity(&loaded);
+        assert_eq!(
+            identity.as_deref(),
+            Some(crate::config::config_fingerprint("").as_str()),
+            "any loaded file publishes the fingerprint of its text, even an empty one"
+        );
+        // Any change to the loaded text moves the identity — including the
+        // CapturedElsewhere settings (mode, include_unchanged_tests, enabled
+        // languages) that the finding-affecting allowlist alone would miss
+        // (#6777 review).
+        let enabled_languages = RiprConfig {
+            source_text: Some("[languages]\nenabled = [\"rust\", \"python\"]".to_string()),
+            ..RiprConfig::default()
+        };
+        let other = crate::config::loaded_config_identity(&enabled_languages);
+        assert_ne!(
+            identity, other,
+            "a different loaded config text must publish a different identity"
+        );
+    }
+
+    #[test]
     fn check_workspace_repo_runs_repo_use_case_from_input() -> Result<(), String> {
         let mut input = sample_diff_input();
         input.diff_file = None;
@@ -677,6 +1001,200 @@ mod tests {
         assert_eq!(output.mode, Mode::Draft);
         assert_eq!(output.root, sample_root());
         Ok(())
+    }
+
+    fn minimal_result_with_effective_base(effective_base: Option<String>) -> AnalysisResult {
+        AnalysisResult {
+            harness_projections: Vec::new(),
+            analysis_outcome: None,
+            summary: Summary::default(),
+            findings: Vec::new(),
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            partial_scope: None,
+            effective_base,
+            uncommitted_source_paths: Vec::new(),
+            untracked_source_paths: Vec::new(),
+            rust_diagnostic_origins: Default::default(),
+            rust_consumed_sources: Default::default(),
+        }
+    }
+
+    #[test]
+    fn default_check_input_resolves_the_repo_default_branch() -> Result<(), String> {
+        // #3952 / RIPR-SPEC-0084: consumers built from
+        // `CheckInput::default()` must analyze the repository's real
+        // default branch instead of `origin/main`. The fixture's only
+        // branch is `master` with no `origin/*` refs: diffing
+        // `origin/main...HEAD` fails, while the resolved default
+        // analyzes and records `master`.
+        use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
+        struct FixtureGuard<'a> {
+            repo: &'a Path,
+        }
+        impl Drop for FixtureGuard<'_> {
+            fn drop(&mut self) {
+                let _ = remove_fixture_tree(self.repo);
+            }
+        }
+
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("system time before unix epoch: {error}"))?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-check-default-base-{}-{stamp}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _guard = FixtureGuard { repo: &repo };
+        std::fs::create_dir_all(repo.join("src"))
+            .map_err(|error| format!("create fixture src failed: {error}"))?;
+        std::fs::write(
+            repo.join("Cargo.toml"),
+            "[package]\nname = \"default-base-fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )
+        .map_err(|error| format!("write fixture manifest failed: {error}"))?;
+        std::fs::write(repo.join("src/lib.rs"), "pub const VALUE: u32 = 1;\n")
+            .map_err(|error| format!("write base source failed: {error}"))?;
+        fixture_git_ok(&repo, &["init", "--initial-branch=master"])?;
+        for (key, value) in [
+            ("user.name", "Default Base"),
+            ("user.email", "default-base@example.com"),
+            ("commit.gpgsign", "false"),
+            ("core.autocrlf", "false"),
+        ] {
+            fixture_git_ok(&repo, &["config", "--local", key, value])?;
+        }
+        fixture_git_ok(&repo, &["add", "."])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "base"])?;
+        std::fs::write(repo.join("src/lib.rs"), "pub const VALUE: u32 = 2;\n")
+            .map_err(|error| format!("write edited source failed: {error}"))?;
+        fixture_git_ok(&repo, &["add", "src/lib.rs"])?;
+        fixture_git_ok(&repo, &["commit", "--quiet", "-m", "edit"])?;
+        // The consumer path the CLI explain/context/pilot commands build:
+        // repository root plus library defaults, no explicit base.
+        let input = CheckInput {
+            root: repo.clone(),
+            ..CheckInput::default()
+        };
+        assert_eq!(
+            input.base, None,
+            "the library default must not name a branch (RIPR-SPEC-0084)"
+        );
+        let output = check_workspace(input)?;
+        assert_eq!(
+            output.base.as_deref(),
+            Some("master"),
+            "the default run must record the resolved repository default branch"
+        );
+        assert_eq!(
+            output
+                .analysis_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.identity.base_revision.as_deref()),
+            Some("master")
+        );
+        // Genuine Git diffs require a resolvable base and retain that base.
+        let git_input = CheckInput {
+            root: repo.clone(),
+            base: Some("HEAD~1".to_string()),
+            ..CheckInput::default()
+        };
+        let git_output = check_workspace(git_input.clone())?;
+        assert_eq!(git_output.base.as_deref(), Some("HEAD~1"));
+        assert_eq!(
+            git_output
+                .analysis_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.identity.base_revision.as_deref()),
+            Some("HEAD~1")
+        );
+        assert!(!git_output.findings.is_empty());
+        let worktree =
+            check_workspace_worktree_with_config(git_input.clone(), &RiprConfig::default())?;
+        assert_eq!(worktree.base.as_deref(), Some("HEAD~1"));
+        assert_eq!(
+            worktree
+                .analysis_outcome
+                .as_ref()
+                .and_then(|outcome| outcome.identity.base_revision.as_deref()),
+            Some("HEAD~1")
+        );
+        assert!(!worktree.findings.is_empty());
+        let mut invalid = git_input;
+        invalid.base = Some("missing-causal-base".to_string());
+        for result in [
+            check_workspace_worktree_with_config(invalid.clone(), &RiprConfig::default()),
+            check_workspace(invalid),
+        ] {
+            let error = match result {
+                Ok(_) => {
+                    return Err("unresolvable Git base produced a successful report".to_string());
+                }
+                Err(error) => error,
+            };
+            assert!(error.contains("missing-causal-base"), "{error}");
+        }
+
+        // Supplied patches are independent of Git base selection. Even a
+        // resolvable ref cannot establish the provenance of supplied bytes.
+        let supplied = repo.join("supplied.diff");
+        std::fs::write(&supplied, "--- a/src/lib.rs\n+++ b/src/lib.rs\n@@ -1 +1 @@\n-pub const VALUE: u32 = 1;\n+pub const VALUE: u32 = 2;\n")
+            .map_err(|error| format!("write supplied diff failed: {error}"))?;
+        let mut input_identity = None;
+        for base in [Some("HEAD~1"), Some("missing-causal-base"), None] {
+            let output = check_workspace(CheckInput {
+                root: repo.clone(),
+                diff_file: Some(supplied.clone()),
+                base: base.map(str::to_string),
+                ..CheckInput::default()
+            })?;
+            assert!(!output.findings.is_empty());
+            assert_eq!(output.base, None, "supplied diff with base {base:?}");
+            let outcome = output
+                .analysis_outcome
+                .as_ref()
+                .ok_or_else(|| "supplied diff lost typed outcome".to_string())?;
+            assert_eq!(outcome.identity.base_revision, None);
+            assert!(outcome.identity.input_identity.is_some());
+            if let Some(expected) = &input_identity {
+                assert_eq!(&outcome.identity.input_identity, expected);
+            } else {
+                input_identity = Some(outcome.identity.input_identity.clone());
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn check_output_records_the_loader_effective_base_over_an_unset_input() {
+        // #3940: a scope-less run whose loader resolved a default base must
+        // record it, so base-matching consumers accept the envelope.
+        let mut input = sample_diff_input();
+        input.base = None;
+        let output = output_builder::check_output_from_analysis(
+            input,
+            minimal_result_with_effective_base(Some("origin/master".to_string())),
+        );
+        assert_eq!(output.base.as_deref(), Some("origin/master"));
+    }
+
+    #[test]
+    fn check_output_discards_input_base_when_no_loader_base_applies() {
+        // Diff-file/stdin runs involve no resolved base. Input declarations
+        // cannot manufacture one in the output.
+        let mut input = sample_diff_input();
+        input.base = Some("origin/main".to_string());
+        let output = output_builder::check_output_from_analysis(
+            input,
+            minimal_result_with_effective_base(None),
+        );
+        assert_eq!(output.base, None);
     }
 
     #[test]

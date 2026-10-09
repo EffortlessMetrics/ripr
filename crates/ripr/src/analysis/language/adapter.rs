@@ -31,7 +31,8 @@ pub(crate) struct LanguageDiffResult {
     pub(crate) candidate_line_count: usize,
     /// Per-output-language breakdown of `changed_files` for adapters that
     /// cover more than one output language — the TypeScript adapter handles
-    /// `.ts/.tsx` (typescript) and `.js/.jsx` (javascript) (#2103 review).
+    /// `.ts/.tsx/.mts/.cts` (typescript) and `.js/.jsx/.mjs/.cjs`
+    /// (javascript) (#2103 review).
     /// Empty when the adapter covers exactly one language; the pipeline then
     /// attributes `changed_files` to the adapter's own language.
     pub(crate) changed_files_by_language: Vec<(super::LanguageId, usize)>,
@@ -42,6 +43,10 @@ pub(crate) struct LanguageDiffResult {
     /// Typed adapter-owned limitations that the pipeline publishes in the
     /// shared analysis outcome.
     pub(crate) limitations: Vec<AnalysisLimitation>,
+    /// Crate-private numeric diagnostic origins for Rust findings (#4464).
+    /// Empty for preview adapters.
+    pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    pub(crate) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
 }
 
 /// Per-language results returned by [`LanguageAdapter::analyze_repo`].
@@ -66,6 +71,10 @@ pub(crate) struct LanguageRepoResult {
     /// human/JSON output renders and gates fail closed on. `None` for
     /// complete runs and honest zeros.
     pub(crate) partial_reason: Option<String>,
+    /// Crate-private numeric diagnostic origins for Rust findings (#4464).
+    /// Empty for preview adapters.
+    pub(crate) rust_diagnostic_origins: crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+    pub(crate) rust_consumed_sources: crate::analysis::consumed_source::ConsumedRustSources,
 }
 
 /// Boundary trait for per-language adapters.

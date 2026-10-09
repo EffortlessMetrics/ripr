@@ -1,0 +1,13 @@
+diff --git a/src/bytes.rs b/src/bytes.rs
+index 805f2e3..d54f1f5 100644
+--- a/src/bytes.rs
++++ b/src/bytes.rs
+@@ -17,7 +17,7 @@ pub fn last_byte(bytes: &[u8]) -> Option<u8> {
+     }
+     // SAFETY: `bytes` is not empty, so `len - 1` is in bounds.
+     let byte = unsafe {
+-        *bytes.get_unchecked(bytes.len() - 1)
++        *bytes.as_ptr().add(bytes.len() - 1)
+     };
+     Some(byte)
+ }

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index c000ade..ac1a24e 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,7 +1,7 @@
+ //! Code in different source roles: a constant, a production function and a
+ //! test-only helper.
+ 
+-pub const LIMIT: u32 = 10;
++pub const LIMIT: u32 = 5 + 5;
+ 
+ pub fn within(value: u32) -> bool {
+     value <= LIMIT

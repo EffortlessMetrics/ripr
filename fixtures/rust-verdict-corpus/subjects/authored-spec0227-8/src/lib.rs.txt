@@ -1,0 +1,24 @@
+//! An accepted length observed only as some success.
+
+#[derive(Debug, PartialEq)]
+pub enum E {
+    TooLong,
+    Bad,
+}
+
+pub fn check_ok(len: usize) -> Result<usize, E> {
+    if len >= 256 {
+        return Err(E::TooLong);
+    }
+    Ok(len)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_ok;
+
+    #[test]
+    fn short_input_is_ok() {
+        assert!(check_ok(3).is_ok());
+    }
+}

@@ -12,6 +12,7 @@
     "mode",
     "root",
     "inputs",
+    "subject",
     "policy",
     "summary",
     "new_unsuppressed",
@@ -41,10 +42,65 @@
     "warnings": { "type": "array", "items": { "type": "string" } },
     "config_errors": { "type": "array", "items": { "type": "string" } },
     "limits_note": { "type": "string", "minLength": 1 },
-    "exception_policy": { "type": "object" }
+    "exception_policy": { "type": "object" },
+    "causal_comparison": { "$ref": "#/$defs/causal_comparison" },
+    "subject": { "$ref": "#/$defs/subject" }
   },
   "$defs": {
     "nullable_string": { "type": ["string", "null"] },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["analyzer_version", "inputs"],
+      "properties": {
+        "analyzer_version": { "type": "string", "minLength": 1 },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [],
+          "properties": {
+            "pr_guidance": { "$ref": "#/$defs/subject_input" },
+            "gap_ledger": { "$ref": "#/$defs/subject_input" },
+            "repo_exposure": { "$ref": "#/$defs/subject_input" },
+            "sarif_policy": { "$ref": "#/$defs/subject_input" },
+            "labels_json": { "$ref": "#/$defs/subject_input" },
+            "agent_verify": { "$ref": "#/$defs/subject_input" },
+            "agent_receipt": { "$ref": "#/$defs/subject_input" },
+            "recommendation_calibration": { "$ref": "#/$defs/subject_input" },
+            "mutation_calibration": { "$ref": "#/$defs/subject_input" },
+            "baseline": { "$ref": "#/$defs/subject_input" },
+            "exception_policy": { "$ref": "#/$defs/subject_input" }
+          }
+        },
+        "labels_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "subject_input": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_hash"],
+      "properties": {
+        "content_hash": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "producer_subject": { "$ref": "#/$defs/producer_subject" }
+      }
+    },
+    "producer_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_sha", "head_sha"],
+      "properties": {
+        "root_identity": { "type": ["string", "null"] },
+        "base_sha": { "type": "string", "minLength": 1 },
+        "head_sha": { "type": "string", "minLength": 1 },
+        "reusable_cache_identity": { "type": ["string", "null"] }
+      }
+    },
     "inputs": {
       "type": "object",
       "additionalProperties": false,
@@ -148,6 +204,7 @@
         "gap_id": { "type": "string", "minLength": 1 },
         "gap_kind": { "type": "string", "minLength": 1 },
         "canonical_gap_id": { "type": "string", "minLength": 1 },
+        "baseline_match_kind": { "enum": ["legacy_path_line_class"] },
         "seam_id": { "$ref": "#/$defs/nullable_string" },
         "source_id": { "type": "string" },
         "gap_state": { "$ref": "#/$defs/nullable_string" },
@@ -156,7 +213,15 @@
         "placement": { "$ref": "#/$defs/placement" },
         "policy": { "$ref": "#/$defs/decision_policy" },
         "repair_route": { "$ref": "#/$defs/repair_route" },
-        "evidence": { "$ref": "#/$defs/evidence" }
+        "evidence": { "$ref": "#/$defs/evidence" },
+        "delta_attribution": { "$ref": "#/$defs/delta_attribution" },
+        "base_state": { "$ref": "#/$defs/nullable_causal_evidence_state" },
+        "head_state": { "$ref": "#/$defs/nullable_causal_evidence_state" },
+        "attribution_basis": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/attribution_basis" }
+        },
+        "comparison_confidence": { "$ref": "#/$defs/comparison_confidence" }
       }
     },
     "placement": {
@@ -193,6 +258,7 @@
         "missing_discriminator",
         "repair_target",
         "test_intent",
+        "repair_command",
         "verify_command",
         "receipt_command",
         "inspection_command",
@@ -214,7 +280,19 @@
           ]
         },
         "test_intent": { "$ref": "#/$defs/nullable_string" },
+        "repair_command": {
+          "description": "`ripr agent repair --root <root> --seam-id <id> --phase before` for a seam that passed the fail-closed repair-packet flip upstream (#3906); null otherwise. Not a completeness field: a complete route may have none.",
+          "anyOf": [
+            { "type": "null" },
+            { "type": "string", "minLength": 1 }
+          ]
+        },
         "verify_command": { "$ref": "#/$defs/nullable_string" },
+        "analysis_outcome_command": {
+          "description": "Optional completeness step carried from the producing review card; omitted for older cards and GapRecord routes. Not a route-completeness or repair-eligibility requirement.",
+          "type": "string",
+          "minLength": 1
+        },
         "receipt_command": { "$ref": "#/$defs/nullable_string" },
         "inspection_command": { "$ref": "#/$defs/nullable_string" },
         "authority_boundary": { "const": "static_ripr_evidence_only" },
@@ -317,6 +395,98 @@
         "available": { "type": "boolean" },
         "outcome": { "$ref": "#/$defs/nullable_string" },
         "confidence_effect": { "type": "string", "minLength": 1 }
+      }
+    },
+    "causal_comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "coverage"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_items",
+            "head_items",
+            "matched_items",
+            "ambiguous_items",
+            "unknown_items",
+            "complete",
+            "low_coverage_disclosed"
+          ],
+          "properties": {
+            "base_items": { "type": "integer", "minimum": 0 },
+            "head_items": { "type": "integer", "minimum": 0 },
+            "matched_items": { "type": "integer", "minimum": 0 },
+            "ambiguous_items": { "type": "integer", "minimum": 0 },
+            "unknown_items": { "type": "integer", "minimum": 0 },
+            "complete": { "type": "boolean" },
+            "low_coverage_disclosed": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "delta_attribution": {
+      "enum": [
+        "introduced_by_change",
+        "weakened_by_change",
+        "reintroduced_by_change",
+        "resolved_by_change",
+        "changed_surface_existing",
+        "adjacent_preexisting",
+        "baseline_existing",
+        "comparison_unknown"
+      ]
+    },
+    "attribution_basis": {
+      "enum": [
+        "same_canonical_owner",
+        "same_behavior_identity",
+        "same_discriminator",
+        "oracle_strength_decreased",
+        "oracle_strength_increased",
+        "gap_state_changed",
+        "unchanged_evidence",
+        "base_item_absent",
+        "head_item_absent",
+        "base_snapshot_unavailable",
+        "head_snapshot_unavailable",
+        "identity_ambiguous",
+        "rename_or_move_mapped",
+        "adjacent_surface",
+        "baseline_receipt"
+      ]
+    },
+    "comparison_confidence": {
+      "enum": ["fixture_backed", "high", "medium", "low", "unknown"]
+    },
+    "nullable_causal_evidence_state": {
+      "anyOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/causal_evidence_state" }
+      ]
+    },
+    "causal_evidence_state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_owner",
+        "behavior_identity",
+        "discriminator_identity",
+        "gap_state",
+        "oracle_strength"
+      ],
+      "properties": {
+        "canonical_owner": { "type": "string" },
+        "behavior_identity": { "type": "string" },
+        "discriminator_identity": { "type": "string" },
+        "gap_state": {
+          "enum": ["actionable", "already_observed", "resolved", "unknown"]
+        },
+        "oracle_strength": {
+          "enum": ["strong", "medium", "weak", "smoke", "none", "unknown"]
+        }
       }
     }
   }

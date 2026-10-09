@@ -1,0 +1,106 @@
+From 88a2a62d861d189faae539990f63cb9cf195bd8c Mon Sep 17 00:00:00 2001
+From: Andrew Gallant <jamslam@gmail.com>
+Date: Tue, 17 May 2022 14:27:33 -0400
+Subject: [PATCH] syntax: fix 'is_match_empty' predicate
+
+This was incorrectly defined for \b. Previously, I had erroneously made
+it return true only for \B since \B matches '' and \b does not match
+''. However, \b does match the empty string. Like \B, it only matches a
+subset of empty strings, depending on what the surrounding context is.
+The important bit is that it can match *an* empty string, not that it
+matches *the* empty string.
+
+We were not yet using this predicate anywhere in the regex crate, so we
+just fix the implementation and update the tests.
+
+This does present a compatibility hazard for anyone who was using this
+function, but as of this time, I'm considering this a bug fix since \b
+clearly matches an empty string.
+
+Fixes #859
+---
+ CHANGELOG.md                      |  3 +++
+ regex-syntax/src/hir/mod.rs       | 14 +++++++++-----
+ regex-syntax/src/hir/translate.rs |  7 +++++--
+ 3 files changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 961b5abb8c..bd612e72ac 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,8 +1,11 @@
+ TBD
+ ===
++The below are changes for the next release, which is to be determined.
+ 
+ * [BUG #680](https://github.com/rust-lang/regex/issues/680):
+   Fixes a bug where `[[:alnum:][:^ascii:]]` dropped `[:alnum:]` from the class.
++* [BUG #859](https://github.com/rust-lang/regex/issues/859):
++  Fixes a bug where `Hir::is_match_empty` returned `false` for `\b`.
+ 
+ 
+ 1.5.5 (2022-03-08)
+diff --git a/regex-syntax/src/hir/mod.rs b/regex-syntax/src/hir/mod.rs
+index 4969f1265a..f5cf992e51 100644
+--- a/regex-syntax/src/hir/mod.rs
++++ b/regex-syntax/src/hir/mod.rs
+@@ -334,9 +334,13 @@ impl Hir {
+         info.set_any_anchored_end(false);
+         info.set_literal(false);
+         info.set_alternation_literal(false);
+-        // A negated word boundary matches the empty string, but a normal
+-        // word boundary does not!
+-        info.set_match_empty(word_boundary.is_negated());
++        // A negated word boundary matches '', so that's fine. But \b does not
++        // match \b, so why do we say it can match the empty string? Well,
++        // because, if you search for \b against 'a', it will report [0, 0) and
++        // [1, 1) as matches, and both of those matches correspond to the empty
++        // string. Thus, only *certain* empty strings match \b, which similarly
++        // applies to \B.
++        info.set_match_empty(true);
+         // Negated ASCII word boundaries can match invalid UTF-8.
+         if let WordBoundary::AsciiNegate = word_boundary {
+             info.set_always_utf8(false);
+@@ -661,8 +665,8 @@ impl Hir {
+     /// Return true if and only if the empty string is part of the language
+     /// matched by this regular expression.
+     ///
+-    /// This includes `a*`, `a?b*`, `a{0}`, `()`, `()+`, `^$`, `a|b?`, `\B`,
+-    /// but not `a`, `a+` or `\b`.
++    /// This includes `a*`, `a?b*`, `a{0}`, `()`, `()+`, `^$`, `a|b?`, `\b`
++    /// and `\B`, but not `a` or `a+`.
+     pub fn is_match_empty(&self) -> bool {
+         self.info.is_match_empty()
+     }
+diff --git a/regex-syntax/src/hir/translate.rs b/regex-syntax/src/hir/translate.rs
+index a7ae9bc380..56afbbed80 100644
+--- a/regex-syntax/src/hir/translate.rs
++++ b/regex-syntax/src/hir/translate.rs
+@@ -3139,6 +3139,9 @@ mod tests {
+         assert!(t(r"\pL*").is_match_empty());
+         assert!(t(r"a*|b").is_match_empty());
+         assert!(t(r"b|a*").is_match_empty());
++        assert!(t(r"a|").is_match_empty());
++        assert!(t(r"|a").is_match_empty());
++        assert!(t(r"a||b").is_match_empty());
+         assert!(t(r"a*a?(abcd)*").is_match_empty());
+         assert!(t(r"^").is_match_empty());
+         assert!(t(r"$").is_match_empty());
+@@ -3148,6 +3151,8 @@ mod tests {
+         assert!(t(r"\z").is_match_empty());
+         assert!(t(r"\B").is_match_empty());
+         assert!(t_bytes(r"(?-u)\B").is_match_empty());
++        assert!(t(r"\b").is_match_empty());
++        assert!(t(r"(?-u)\b").is_match_empty());
+ 
+         // Negative examples.
+         assert!(!t(r"a+").is_match_empty());
+@@ -3157,8 +3162,6 @@ mod tests {
+         assert!(!t(r"a{1,10}").is_match_empty());
+         assert!(!t(r"b|a").is_match_empty());
+         assert!(!t(r"a*a+(abcd)*").is_match_empty());
+-        assert!(!t(r"\b").is_match_empty());
+-        assert!(!t(r"(?-u)\b").is_match_empty());
+     }
+ 
+     #[test]

@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 3e0c325..db10008 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -29,7 +29,7 @@ pub fn discount(total: u64) -> u64 {
+ }
+ 
+ pub fn ratio(hits: u32, total: u32) -> u32 {
+-    if total == 0 {
++    if 0 == total {
+         return 0;
+     }
+     hits * 100 / total

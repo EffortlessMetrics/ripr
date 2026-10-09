@@ -226,7 +226,7 @@ pub(crate) fn run_refresh_with_env(
     // Generation staging: fresh per run, so a previous interrupted refresh
     // cannot mix its half-written generation into this one.
     let staging = out_abs.join(STAGING_DIR);
-    let _ = std::fs::remove_dir_all(&staging);
+    discard_partial_dir(&staging);
     std::fs::create_dir_all(&staging).map_err(|error| {
         format!(
             "eval-sweep refresh cannot create staging dir `{}`: {error}",
@@ -927,8 +927,10 @@ fn git_head(dir: &Path, subject_id: &str) -> Option<String> {
     if sha.is_empty() { None } else { Some(sha) }
 }
 
+/// Best-effort removal of a partial checkout. The `io::Result` is matched
+/// with `if let` so a `#[must_use]` cleanup failure is an explicit ignore.
 fn discard_partial_dir(dir: &Path) {
-    let _ = std::fs::remove_dir_all(dir);
+    if let Ok(()) = std::fs::remove_dir_all(dir) {}
 }
 
 fn first_line(text: &str) -> String {
@@ -978,6 +980,16 @@ fn corpus_selection_state(corpus: Option<&CorpusCounts>) -> &'static str {
 /// working set. Vendor classification precedes generated/test so a vendored
 /// generated file is counted once, as vendored.
 fn count_corpus(dir: &Path) -> CorpusCounts {
+    count_corpus_with_read_dir(dir, |path| std::fs::read_dir(path))
+}
+
+/// Keep the production directory reader as the default; injecting its exact
+/// failure boundary lets the test exercise a truncated walk on hosts whose
+/// ACLs cannot reliably deny directory enumeration (#3878).
+fn count_corpus_with_read_dir(
+    dir: &Path,
+    mut read_dir: impl FnMut(&Path) -> std::io::Result<std::fs::ReadDir>,
+) -> CorpusCounts {
     let mut counts = CorpusCounts {
         source_files: 0,
         test_files: 0,
@@ -989,7 +1001,7 @@ fn count_corpus(dir: &Path) -> CorpusCounts {
     let mut stack = vec![dir.to_path_buf()];
     let mut seen = 0usize;
     while let Some(current) = stack.pop() {
-        let entries = match std::fs::read_dir(&current) {
+        let entries = match read_dir(&current) {
             Ok(entries) => entries,
             // An unreadable subtree is a truncated walk, not a smaller
             // corpus: the selection state can never claim complete, and the
@@ -2544,6 +2556,78 @@ mod python_eval_sweep_refresh {
         crate::test_binary::resolve_built_ripr_binary_from_env()
     }
 
+    /// Stages a private copy of the built binary under the test's temp
+    /// root and returns its path for `--ripr-bin`. The refresh route
+    /// spawns the binary repeatedly over minutes; spawning
+    /// `target/debug/` directly races a concurrent cargo relink, which
+    /// breaks spawns with ETXTBSY/sharing violations (#3742 class (a)).
+    /// A private copy is never relinked. A short copy retry covers a
+    /// transient read lock on the source; a missing source fails closed
+    /// with no fallback to a live path.
+    fn staged_ripr_binary(root: &Path, source: &str) -> Result<String, String> {
+        let staged = root.join(format!("ripr-under-test{}", std::env::consts::EXE_SUFFIX));
+        let mut failures = 0u32;
+        loop {
+            match std::fs::copy(source, &staged) {
+                Ok(_) => break,
+                Err(error) => {
+                    failures += 1;
+                    if failures >= 3 {
+                        return Err(format!(
+                            "stage ripr binary for spawn failed after 3 attempts \
+                             (source `{source}`, staged `{}`): {error}",
+                            staged.display()
+                        ));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(50 * u64::from(failures)));
+                }
+            }
+        }
+        if !staged.is_file() {
+            return Err(format!(
+                "staged ripr binary is not a file: {}",
+                staged.display()
+            ));
+        }
+        Ok(staged.to_string_lossy().to_string())
+    }
+
+    #[test]
+    fn staged_binary_copies_bytes_under_the_test_root() -> Result<(), String> {
+        let root = temp_root("stage-bytes");
+        std::fs::create_dir_all(&root).map_err(|error| format!("create stage root: {error}"))?;
+        let source = root.join("source-binary");
+        std::fs::write(&source, b"fake-ripr-bytes")
+            .map_err(|error| format!("write fake source: {error}"))?;
+        let staged = staged_ripr_binary(&root, &source.to_string_lossy())?;
+        let staged_path = PathBuf::from(&staged);
+        assert!(
+            staged_path.starts_with(&root),
+            "staged binary must live under the test root: {staged}"
+        );
+        assert_ne!(staged_path, source, "staged copy must not be the source");
+        let bytes =
+            std::fs::read(&staged_path).map_err(|error| format!("read staged copy: {error}"))?;
+        assert_eq!(bytes, b"fake-ripr-bytes");
+        std::fs::remove_dir_all(&root).map_err(|error| format!("remove stage root: {error}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn staged_binary_missing_source_fails_closed() -> Result<(), String> {
+        let root = temp_root("stage-missing");
+        std::fs::create_dir_all(&root).map_err(|error| format!("create stage root: {error}"))?;
+        let error = staged_ripr_binary(&root, &root.join("no-such-binary").to_string_lossy())
+            .err()
+            .ok_or_else(|| "missing source must fail".to_string())?;
+        assert!(
+            error.contains("stage ripr binary for spawn failed"),
+            "failure must name the staging step: {error}"
+        );
+        std::fs::remove_dir_all(&root).map_err(|error| format!("remove stage root: {error}"))?;
+        Ok(())
+    }
+
     fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
         let mut owned: Vec<String> = vec!["-C".to_string(), dir.to_string_lossy().to_string()];
         owned.extend(args.iter().map(|argument| (*argument).to_string()));
@@ -2597,6 +2681,21 @@ mod python_eval_sweep_refresh {
                 target.display(),
                 first_line(&output.stderr)
             ));
+        }
+        Ok(())
+    }
+
+    /// Apply or remove an Everyone listing-deny ACE. A zero `icacls` exit is
+    /// not the same as enumeration actually being denied (#3878); callers must
+    /// probe `read_dir` before treating the subtree as unreadable.
+    #[cfg(windows)]
+    fn icacls(sealed: &Path, args: &[&str], context: &str) -> Result<(), String> {
+        let mut owned = vec![sealed.to_string_lossy().into_owned()];
+        owned.extend(args.iter().map(|argument| (*argument).to_string()));
+        let output =
+            capture_output_with_timeout("icacls", &owned, &[], Duration::from_secs(30), context)?;
+        if output.timed_out || !output.status.is_some_and(|status| status.success()) {
+            return Err(format!("{context} failed: {}", first_line(&output.stderr)));
         }
         Ok(())
     }
@@ -2816,7 +2915,7 @@ mod python_eval_sweep_refresh {
             "a dedicated candidate dir under target/ is accepted: {}",
             ok.display()
         );
-        let _ = std::fs::remove_dir_all(&ok);
+        super::discard_partial_dir(&ok);
         Ok(())
     }
 
@@ -2840,8 +2939,8 @@ mod python_eval_sweep_refresh {
                 std::thread::current().id()
             ));
         let target = root.join("fixtures").join("python-eval-sweep");
-        let _ = std::fs::remove_dir_all(&link);
-        let _ = std::fs::remove_file(&link);
+        super::discard_partial_dir(&link);
+        if let Ok(()) = std::fs::remove_file(&link) {}
         if let Some(parent) = link.parent() {
             std::fs::create_dir_all(parent)
                 .map_err(|error| format!("create link parent: {error}"))?;
@@ -2850,8 +2949,8 @@ mod python_eval_sweep_refresh {
 
         let refused =
             refusal_of(validate_out_separation(link.to_string_lossy().as_ref()).map(|_| ()));
-        let _ = std::fs::remove_dir_all(&link);
-        let _ = std::fs::remove_file(&link);
+        super::discard_partial_dir(&link);
+        if let Ok(()) = std::fs::remove_file(&link) {}
         let error = refused?;
         assert!(
             error.contains("accepted state"),
@@ -3079,7 +3178,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn corpus_classification_counts_by_real_path_shapes() -> Result<(), String> {
         let dir = temp_root("corpus");
-        let _ = std::fs::remove_dir_all(&dir);
+        super::discard_partial_dir(&dir);
         std::fs::create_dir_all(dir.join("src")).map_err(|error| error.to_string())?;
         std::fs::create_dir_all(dir.join("tests")).map_err(|error| error.to_string())?;
         std::fs::create_dir_all(dir.join("vendor")).map_err(|error| error.to_string())?;
@@ -3094,7 +3193,7 @@ mod python_eval_sweep_refresh {
             .map_err(|error| error.to_string())?;
         std::fs::write(dir.join("notes.md"), "not python\n").map_err(|error| error.to_string())?;
         let counts = count_corpus(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
+        super::discard_partial_dir(&dir);
         assert!(counts.complete);
         assert_eq!(counts.source_files, 1);
         assert_eq!(counts.test_files, 1);
@@ -3107,12 +3206,13 @@ mod python_eval_sweep_refresh {
     /// (#3735 N3): the counts can never claim complete, so the row's
     /// corpus-selection state is `partial` (consistent with the working-set-
     /// cap rule) with the counts omitted, and the limitation names the failed
-    /// subtree for the execution receipt. Windows denies the listing with an
-    /// ACL; Unix removes the read permission.
+    /// subtree for the execution receipt. Injecting the read failure at the
+    /// actual walker boundary is deterministic across platforms: `icacls`
+    /// success does not mean the Windows runner lost enumeration access.
     #[test]
     fn unreadable_subtree_marks_corpus_selection_incomplete() -> Result<(), String> {
         let dir = temp_root("corpus-unreadable");
-        let _ = std::fs::remove_dir_all(&dir);
+        super::discard_partial_dir(&dir);
         std::fs::create_dir_all(dir.join("src")).map_err(|error| error.to_string())?;
         std::fs::create_dir_all(dir.join("sealed")).map_err(|error| error.to_string())?;
         std::fs::write(dir.join("src").join("app.py"), "x = 1\n")
@@ -3121,60 +3221,27 @@ mod python_eval_sweep_refresh {
             .map_err(|error| error.to_string())?;
         let sealed = dir.join("sealed");
 
-        // Deny only the LISTING of `sealed/`: the walk still sees the
-        // directory (metadata stays readable), then cannot enumerate it.
-        #[cfg(windows)]
-        let denied: Result<(), String> = capture_output_with_timeout(
-            "icacls",
-            &[
-                sealed.to_string_lossy().to_string(),
-                "/deny".to_string(),
-                "*S-1-1-0:(OI)(CI)(RD)".to_string(),
-            ],
-            &[],
-            Duration::from_secs(30),
-            "python_eval_sweep_refresh test icacls deny",
-        )
-        .and_then(|output| {
-            if output.timed_out || !output.status.is_some_and(|status| status.success()) {
-                Err(format!(
-                    "icacls deny failed: {}",
-                    first_line(&output.stderr)
+        // A normal walk observes both files. The injected reader then denies
+        // only the sealed subtree, after the real parent listing discovered it.
+        let complete = count_corpus(&dir);
+        assert!(
+            complete.complete,
+            "the control walk must enumerate the fixture"
+        );
+        assert_eq!(complete.source_files, 2);
+        let mut denied_calls = 0;
+        let counts = count_corpus_with_read_dir(&dir, |current| {
+            if current == sealed.as_path() {
+                denied_calls += 1;
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::PermissionDenied,
+                    "injected sealed subtree denial",
                 ))
             } else {
-                Ok(())
+                std::fs::read_dir(current)
             }
         });
-        #[cfg(unix)]
-        let denied: Result<(), String> = {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000))
-                .map_err(|error| format!("chmod sealed: {error}"))
-        };
-        denied.map_err(|error| format!("deny the sealed subtree: {error}"))?;
-
-        let counts = count_corpus(&dir);
-
-        // Restore access BEFORE asserting, so cleanup cannot fail.
-        #[cfg(windows)]
-        {
-            let _ = capture_output_with_timeout(
-                "icacls",
-                &[
-                    sealed.to_string_lossy().to_string(),
-                    "/remove:d".to_string(),
-                    "*S-1-1-0".to_string(),
-                ],
-                &[],
-                Duration::from_secs(30),
-                "python_eval_sweep_refresh test icacls restore",
-            );
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755));
-        }
+        assert_eq!(denied_calls, 1, "the walker must reach the denied subtree");
 
         assert!(
             !counts.complete,
@@ -3219,7 +3286,132 @@ mod python_eval_sweep_refresh {
             "truncated counts are omitted, not emitted: {corpus_json}"
         );
 
-        let _ = std::fs::remove_dir_all(&dir);
+        super::discard_partial_dir(&dir);
+        Ok(())
+    }
+
+    /// On Unix, also retain a real filesystem control for permission-denied
+    /// directory enumeration. This test requires a process that cannot bypass
+    /// mode bits; otherwise it reports the unavailable precondition explicitly.
+    #[cfg(unix)]
+    #[test]
+    fn real_unreadable_subtree_marks_corpus_selection_incomplete() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = temp_root("corpus-real-unreadable");
+        super::discard_partial_dir(&dir);
+        let sealed = dir.join("sealed");
+        std::fs::create_dir_all(&sealed).map_err(|error| error.to_string())?;
+        std::fs::write(sealed.join("hidden.py"), "x = 1\n").map_err(|error| error.to_string())?;
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o000))
+            .map_err(|error| format!("chmod sealed: {error}"))?;
+
+        let listing_denied = std::fs::read_dir(&sealed).is_err();
+        let counts = if listing_denied {
+            Some(count_corpus(&dir))
+        } else {
+            None
+        };
+        std::fs::set_permissions(&sealed, std::fs::Permissions::from_mode(0o755))
+            .map_err(|error| format!("restore sealed permissions: {error}"))?;
+        super::discard_partial_dir(&dir);
+
+        let counts = counts.ok_or_else(|| {
+            "NOT_ESTABLISHED: this process can still list a mode-000 directory".to_string()
+        })?;
+        assert!(!counts.complete);
+        assert!(
+            counts
+                .limitation
+                .as_deref()
+                .is_some_and(|s| s.contains("sealed"))
+        );
+        Ok(())
+    }
+
+    /// On Windows, also retain a real filesystem control for permission-denied
+    /// directory enumeration. `icacls` succeeding is not the denial (#3878);
+    /// this test lists the subtree first and reports the unavailable
+    /// precondition explicitly rather than asserting incompleteness. A failed
+    /// ACL restoration fails the test instead of leaving denied residue at the
+    /// reusable temp path.
+    #[cfg(windows)]
+    #[test]
+    fn real_unreadable_subtree_marks_corpus_selection_incomplete() -> Result<(), String> {
+        let dir = temp_root("corpus-real-unreadable");
+        super::discard_partial_dir(&dir);
+        let sealed = dir.join("sealed");
+        std::fs::create_dir_all(&sealed).map_err(|error| error.to_string())?;
+        std::fs::write(sealed.join("hidden.py"), "x = 1\n").map_err(|error| error.to_string())?;
+        icacls(
+            &sealed,
+            &["/deny", "*S-1-1-0:(OI)(CI)(RD)"],
+            "python_eval_sweep_refresh test icacls deny",
+        )
+        .map_err(|error| format!("deny the sealed subtree: {error}"))?;
+
+        let listing_denied = std::fs::read_dir(&sealed).is_err();
+        let counts = if listing_denied {
+            Some(count_corpus(&dir))
+        } else {
+            None
+        };
+        let restore = icacls(
+            &sealed,
+            &["/remove:d", "*S-1-1-0"],
+            "python_eval_sweep_refresh test icacls restore",
+        );
+        super::discard_partial_dir(&dir);
+        restore.map_err(|error| format!("restore the sealed subtree ACL: {error}"))?;
+        if dir.exists() {
+            return Err(format!(
+                "NOT_ESTABLISHED: the sealed test tree at {} could not be removed; a denied subtree must not remain at the PID/thread-derived temp path for a later run",
+                dir.display()
+            ));
+        }
+
+        let counts = counts.ok_or_else(|| {
+            "NOT_ESTABLISHED: this process can still list a directory after icacls /deny *S-1-1-0:(OI)(CI)(RD)"
+                .to_string()
+        })?;
+        assert!(!counts.complete);
+        assert!(
+            counts
+                .limitation
+                .as_deref()
+                .is_some_and(|s| s.contains("sealed"))
+        );
+        Ok(())
+    }
+
+    /// A failed `icacls` invocation maps to `Err`. The restore propagation in
+    /// `real_unreadable_subtree_marks_corpus_selection_incomplete` relies on
+    /// that mapping: a failed `/remove:d` must fail the test, not silently
+    /// leave a denied subtree at the reusable temp path.
+    #[cfg(windows)]
+    #[test]
+    fn icacls_failure_maps_to_err() -> Result<(), String> {
+        let missing = std::env::temp_dir().join(format!(
+            "ripr-evalsweep-refresh-missing-icacls-probe-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        let error = match icacls(
+            &missing,
+            &["/deny", "*S-1-1-0:(OI)(CI)(RD)"],
+            "python_eval_sweep_refresh test icacls failure probe",
+        ) {
+            Ok(()) => {
+                return Err(
+                    "expected the icacls failure probe to fail against a missing path".to_string(),
+                );
+            }
+            Err(error) => error,
+        };
+        assert!(
+            error.contains("icacls failure probe failed"),
+            "the error names the failed context: {error}"
+        );
         Ok(())
     }
 
@@ -3231,7 +3423,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn staged_generation_finalizes_by_rename_without_residue() -> Result<(), String> {
         let root = temp_root("staging");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         let out = root.join("out");
         let staging = out.join(STAGING_DIR);
         std::fs::create_dir_all(staging.join(RAW_DIR).join("s0"))
@@ -3272,7 +3464,7 @@ mod python_eval_sweep_refresh {
             "the rerun replaces the published generation"
         );
         assert!(!staging.exists());
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -3624,7 +3816,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn binary_swap_between_subjects_is_detected() -> Result<(), String> {
         let root = temp_root("drift-binary");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
         let binary_path = root.join("ripr-under-test");
         std::fs::write(&binary_path, b"binary bytes subject 1-3")
@@ -3664,7 +3856,7 @@ mod python_eval_sweep_refresh {
         let unreadable = binary_identity_drift(&binary)
             .ok_or_else(|| "an unreadable binary must fail closed".to_string())?;
         assert!(unreadable.contains("re-read"), "{unreadable}");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -3728,7 +3920,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn subject_ripr_toml_is_recorded_not_default() -> Result<(), String> {
         let root = temp_root("config-detect");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
         let (profile, path) = detect_subject_config(&root);
         assert_eq!(profile, CONFIG_PROFILE_DEFAULT, "no subject config file");
@@ -3741,7 +3933,7 @@ mod python_eval_sweep_refresh {
         let (profile, path) = detect_subject_config(&root);
         assert_eq!(profile, CONFIG_PROFILE_SUBJECT);
         assert_eq!(path.as_deref(), Some("ripr.toml"));
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -3753,7 +3945,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn cache_creation_failure_becomes_tempfail_and_route_completes() -> Result<(), String> {
         let root = temp_root("cache-fail");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
         let mut pins = Vec::new();
         for index in 0..8 {
@@ -3770,7 +3962,7 @@ mod python_eval_sweep_refresh {
         std::fs::write(out.join(CACHE_DIR).join("s7"), "not a directory")
             .map_err(|error| format!("write cache blocker: {error}"))?;
 
-        let binary = built_ripr_binary()?;
+        let binary = staged_ripr_binary(&root, &built_ripr_binary()?)?;
         let args = vec![
             "--manifest".to_string(),
             manifest_path.to_string_lossy().to_string(),
@@ -3786,7 +3978,7 @@ mod python_eval_sweep_refresh {
         ];
         let run = run_refresh_with_env(&args, Some("1"));
         if let Err(error) = &run {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!(
                 "the route must contain the failure, not abort: {error}"
             ));
@@ -3818,7 +4010,7 @@ mod python_eval_sweep_refresh {
             Some(out.join(RECEIPT_FILE).to_string_lossy().as_ref()),
         );
         if let Err(error) = &outcome {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("the contained receipt must validate: {error}"));
         }
 
@@ -3843,7 +4035,7 @@ mod python_eval_sweep_refresh {
             limitation.contains("cache dir"),
             "the limitation names the cache-creation cause: {limitation}"
         );
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -3854,7 +4046,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn refresh_candidate_validates_through_eval_sweep_check() -> Result<(), String> {
         let root = temp_root("e2e");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
 
         // Eight local seeds; each seed's real HEAD becomes the manifest pin.
@@ -3864,24 +4056,7 @@ mod python_eval_sweep_refresh {
             pins.push(build_seed(&seed)?);
         }
         let manifest_path = write_manifest_and_diffs(&root, &pins)?;
-        let binary = built_ripr_binary()?;
-        // #1712: execute an invocation-owned copy of the analyzer. Under full
-        // nextest load a sibling test can rebuild target/debug/ripr mid-run,
-        // drifting the content identity the route re-verifies after every
-        // subject and downgrading rows to tempfail. The copy is immutable for
-        // the life of this invocation, so a concurrent rebuild cannot move
-        // the executed bytes underneath it.
-        let owned_bin_dir = root.join("bin");
-        std::fs::create_dir_all(&owned_bin_dir)
-            .map_err(|error| format!("create owned bin dir: {error}"))?;
-        let binary_path = PathBuf::from(&binary);
-        let binary_name = binary_path
-            .file_name()
-            .ok_or_else(|| "built ripr binary has no file name".to_string())?;
-        let owned_binary = owned_bin_dir.join(binary_name);
-        std::fs::copy(&binary_path, &owned_binary)
-            .map_err(|error| format!("stage owned analyzer copy: {error}"))?;
-        let binary = owned_binary.to_string_lossy().to_string();
+        let binary = staged_ripr_binary(&root, &built_ripr_binary()?)?;
         let out = root.join("out");
 
         let args = vec![
@@ -3899,7 +4074,7 @@ mod python_eval_sweep_refresh {
         ];
         let run = run_refresh_with_env(&args, Some("1"));
         if let Err(error) = &run {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("authorized offline refresh must run: {error}"));
         }
 
@@ -3911,14 +4086,14 @@ mod python_eval_sweep_refresh {
             Some(receipt_path.to_string_lossy().as_ref()),
         );
         if let Err(error) = &outcome {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!(
                 "the produced candidate must pass eval-sweep check: {error}"
             ));
         }
         let outcome = outcome?;
         if outcome.verdict() != super::super::eval_sweep_check::Verdict::Incomplete {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!(
                 "expected an incomplete verdict (the synthetic manifest records no optional identities), got {:?}",
                 outcome.verdict()
@@ -4082,7 +4257,7 @@ mod python_eval_sweep_refresh {
             out.join(STAGING_DIR).display()
         );
 
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -4093,7 +4268,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn stale_subject_path_keeps_the_denominator_without_loss() -> Result<(), String> {
         let root = temp_root("stale-e2e");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
 
         // Seven seeds; the eighth subject gets a non-git candidate dir, so
@@ -4109,7 +4284,7 @@ mod python_eval_sweep_refresh {
         std::fs::create_dir_all(root.join("out").join(SUBJECTS_DIR).join("s7"))
             .map_err(|error| format!("create stale dir: {error}"))?;
 
-        let binary = built_ripr_binary()?;
+        let binary = staged_ripr_binary(&root, &built_ripr_binary()?)?;
         let out = root.join("out");
         let args = vec![
             "--manifest".to_string(),
@@ -4126,7 +4301,7 @@ mod python_eval_sweep_refresh {
         ];
         let run = run_refresh_with_env(&args, Some("1"));
         if let Err(error) = &run {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("stale-subject refresh must still run: {error}"));
         }
 
@@ -4156,10 +4331,10 @@ mod python_eval_sweep_refresh {
             Some(out.join(RECEIPT_FILE).to_string_lossy().as_ref()),
         );
         if let Err(error) = &outcome {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("stale-subject receipt must validate: {error}"));
         }
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -4170,7 +4345,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn dirty_reused_checkout_is_stale_not_the_pinned_tree() -> Result<(), String> {
         let root = temp_root("dirty-reuse");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
 
         // Eight local seeds; each seed's real HEAD becomes the manifest pin.
@@ -4197,7 +4372,7 @@ mod python_eval_sweep_refresh {
             "the reused checkout must be dirty before the route runs"
         );
 
-        let binary = built_ripr_binary()?;
+        let binary = staged_ripr_binary(&root, &built_ripr_binary()?)?;
         let out = root.join("out");
         let args = vec![
             "--manifest".to_string(),
@@ -4214,7 +4389,7 @@ mod python_eval_sweep_refresh {
         ];
         let run = run_refresh_with_env(&args, Some("1"));
         if let Err(error) = &run {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("dirty-reuse refresh must still run: {error}"));
         }
 
@@ -4243,10 +4418,10 @@ mod python_eval_sweep_refresh {
             Some(out.join(RECEIPT_FILE).to_string_lossy().as_ref()),
         );
         if let Err(error) = &outcome {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("dirty-reuse receipt must validate: {error}"));
         }
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 
@@ -4260,7 +4435,7 @@ mod python_eval_sweep_refresh {
     #[test]
     fn drifted_recheckout_runs_under_the_configured_clone_timeout() -> Result<(), String> {
         let root = temp_root("recheckout-timeout");
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         std::fs::create_dir_all(&root).map_err(|error| format!("create root: {error}"))?;
 
         // Eight local seeds; each seed's real HEAD becomes the manifest pin.
@@ -4311,7 +4486,7 @@ mod python_eval_sweep_refresh {
                 .map_err(|error| format!("mark post-checkout hook executable: {error}"))?;
         }
 
-        let binary = built_ripr_binary()?;
+        let binary = staged_ripr_binary(&root, &built_ripr_binary()?)?;
         let out = root.join("out");
         let args = vec![
             "--manifest".to_string(),
@@ -4330,7 +4505,7 @@ mod python_eval_sweep_refresh {
         ];
         let run = run_refresh_with_env(&args, Some("1"));
         if let Err(error) = &run {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!(
                 "recheckout-timeout refresh must still run: {error}"
             ));
@@ -4361,10 +4536,10 @@ mod python_eval_sweep_refresh {
             Some(out.join(RECEIPT_FILE).to_string_lossy().as_ref()),
         );
         if let Err(error) = &outcome {
-            let _ = std::fs::remove_dir_all(&root);
+            super::discard_partial_dir(&root);
             return Err(format!("recheckout-timeout receipt must validate: {error}"));
         }
-        let _ = std::fs::remove_dir_all(&root);
+        super::discard_partial_dir(&root);
         Ok(())
     }
 }

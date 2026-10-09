@@ -61,7 +61,10 @@ workflow behavior documented in [Current Workflows](#current-workflows).
   - no-cancel preserves a running expensive job and allows only one pending
     replacement;
   - synchronize-cancel favors the latest commit and may abandon near-complete
-    work.
+    work;
+  - Ready-cancel (current `routed-rust.yml`, #4986) runs the PR qualification
+    only on Draft -> Ready and cancels only when a second Ready transition
+    replaces it.
 - Any switch to or from `cancel-in-progress` must document the affected
   workflows, rollback path, cost tradeoff, and review impact.
 - Cheap metadata-only workflows may use `cancel-in-progress: true`, but only as
@@ -267,8 +270,8 @@ implement and validate the lane-selection logic.
 
 | Label | Effect |
 | --- | --- |
-| `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
-| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
+| `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. For Routed Rust Small, read at the next Draft -> Ready transition. |
+| `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, unlocked install resolution, and release-readiness. |
 | `vscode` | Run the existing hosted editor compile, admitted VSIX package, and editor-host test job without opting into the other `full-ci` jobs. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
@@ -280,8 +283,8 @@ New labels that affect CI must update this table, the PR template, and the
 budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. Today, `release-check` and
-`full-ci` activate the Rust workflow's package list, publish dry-run, and
-release-readiness steps on pull requests. `vscode` now activates only the CI editor job. Other label effects remain target vocabulary until a later PR
+`full-ci` activate the Rust workflow's package list, publish dry-run, unlocked
+install resolution, and release-readiness steps on pull requests. `vscode` activates only the hosted CI editor job. Other label effects remain target vocabulary until a later PR
 wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
@@ -319,6 +322,80 @@ and single-platform CI was the root cause enabling both.
   false-confidence condition it exists to prevent.
 - **Selection.** A daily schedule for standing signal, `workflow_dispatch`, and
   pull requests labeled `windows-ci` or `full-ci`.
+- **Always-on subset (#4938).** Every subscribed `pull_request` action
+  (`opened`, `synchronize`, `reopened`, `labeled`; `unlabeled` stays omitted
+  per #4380) also runs `windows-advisory-subset`, a fast advisory Windows job
+  (`lsp::gap_artifacts` lib tests, the #4918 cache-warning smoke, and
+  `cargo clippy -p ripr --all-targets`) under the same advisory contract as
+  the lane. It does not gate merges; #4337, #4918, and #4921 were each caught
+  only by a native-Windows audit, so native-Windows verification of new
+  product behavior remains an author and audit responsibility.
+
+- **Subject identity (#5043).** Observations and failure reasons are keyed by
+  Cargo target kind, source path, exact executable basename (including its
+  Cargo hash), and test name. Both samples execute the same compiled workspace;
+  a changed hash cannot borrow a pass or manufacture a repeated failure. Cargo
+  text does not expose integration-target package IDs, so the report does not
+  invent them. Artifact directories, validated Windows separators and the
+  `.exe` suffix are presentation; raw Cargo headers remain visible beside the
+  normalized target identity. Doctests use their explicit `Doc-tests` name as
+  a distinct target kind, without inferred package ownership.
+- **Owning-target evidence.** Each release-seam control declares its Cargo
+  target kind, source and executable stem as well as its exact test name. The
+  selector must identify one exact artifact across both logs. Zero or multiple
+  candidate artifacts, including hash drift across samples, cannot satisfy a
+  required control. A control failure stays advisory; an absent or ambiguous
+  owner is refused. Name-only legacy logs, malformed target headers, duplicate
+  target transitions (including doctests), duplicate observations and orphan
+  test rows are `incomplete_evidence` with actionable provenance reasons.
+  Recollect both complete logs from one build rather than mixing histories.
+  The summary still counts observed subjects rather than failure-section echoes.
+- **Completion evidence (#5107).** Every owning harness needs an announcement
+  and a well-formed completion. The completion's verdict and passed, failed,
+  ignored and measured counts must agree with the observed rows and announced
+  subjects. Filtered-out counts do not represent executed subjects. Malformed,
+  contradictory or orphan completions are `incomplete_evidence`; a captured
+  zero exit status cannot override observed test failures. Measured benchmark
+  rows are outside this lane's supported Cargo-test text and remain incomplete
+  evidence. Valid empty harnesses, ignored rows, filtered runs and multiple
+  doctest batches retain their existing semantics.
+- **Unavailable samples.** Cross-run verdicts require two usable runs. A
+  missing log/status or incomplete evidence is never translated into ordinary
+  test absence to produce `masked_unknown`. Observed counts, target provenance
+  and bounded failure reasons remain available even when no verdict can be
+  derived. Genuine subject absence in a usable run still produces
+  `masked_unknown`, and the existing compile/harness-failure distinction and
+  advisory failing-test policy remain unchanged.
+- **Diagnostic presentation.** Provenance errors, reached targets and raw
+  headers each show at most 20 entries per run. Each verdict category shows at
+  most 20 subjects; the failure-reason section shows at most 20 distinct
+  subjects, each with its reasons from up to two runs. Omitted entries and
+  complete totals are stated exactly. Every displayed log-derived identity,
+  provenance error, header and reason retains at most 240 Unicode scalar
+  values, followed by an explicit `… [truncated]` marker when shortened. These
+  are section-entry and scalar limits, not a whole-report byte budget. Parsing
+  retains all identities, errors and raw headers; display excerpts never become
+  identity keys or merge subjects. These limits do not change evidence refusal,
+  observed totals or verdicts. Full original text remains in the logs.
+
+- **Console provenance limit.** This is a bounded parser for the lane's Cargo
+  text, not universal authentication of test origin. Target completion expires
+  ownership; a later headerless harness cannot inherit it. Announced counts
+  must agree with observed rows. The retained native log's well-formed empty
+  child harness supplies no subjects and does not end its parent. Nonempty
+  nested harnesses have unproven attribution and are refused. Ordinary captured
+  failure stdout remains reason text; complete header/result-shaped content in
+  an unterminated captured block is ambiguous and refused. Doctests may have
+  multiple announced batches beneath their explicit header. Reliable origin
+  for arbitrary interleaved or deliberately forged console output would need
+  structured producer evidence, which this change neither adds nor claims.
+
+The production-command corpus in `xtask/tests/windows_advisory_identity.rs`
+checks completion/exit consistency, unavailable samples, colliding names,
+cross-target pass/failure substitution, independent
+failure reasons, same-source executables, hash/path boundaries, owning-control
+absence/ambiguity, ANSI logs and doctest transitions. These synthetic text
+controls qualify the parser; they do not claim native Windows test execution.
 
 Promotion to required is gated on #2430 and on stability across repeated runs on
 hardware that reproduces the failures — the hosted runner does not reproduce the
@@ -336,6 +413,45 @@ class, it reproduces on the hosted runner: two independent `windows-latest` runs
 produced the identical `timed out waiting for response id 3`, and it reproduces
 5 of 5 on a Windows developer host. That is the lane doing its job — a platform
 question that could not be settled from one machine, settled by CI.
+
+### Advisory Printed-Command Paste Lane
+
+`.github/workflows/printed-command-paste.yml` runs the
+`printed_command_paste` integration test on Linux, macOS and Windows. ripr
+prints commands for people and agents to paste (`ripr explain`, `ripr agent
+repair --phase after`, regeneration and recovery lines, the commands inside
+JSON and the artifacts it writes), and each surface was once fixed by hand
+after a hostile path broke it (#5188, #5232, #5247, #5269).
+
+- **What runs.** The main flows run against one fixture whose root and source
+  file names hold spaces, apostrophes, typographic quotes, backticks, `$`,
+  `;` payloads and non-ASCII text. Every printed command is lifted out of the
+  output and pasted into bash, sh, zsh, PowerShell 7 and Windows PowerShell,
+  as the platform provides them, from a foreign working directory and from a
+  relative `--root`. A line labelled `(PowerShell)` is the PowerShell form of
+  the command before it; a command with none is pasted unchanged, which is the
+  contract `COMMAND_SHELL_DISCLOSURE` prints. JSON-carried commands are Bash
+  records and run at the repository root.
+- **Oracle.** `ripr` and `git` resolve to argv recorders. A command fails when
+  it does not reach the program exactly once, passes different argv in
+  different shells, passes an argument holding a fragment of a hostile name
+  that is not the whole path or finding id, names a `--root` that is not the
+  fixture (or none, from a foreign directory), or leaves a canary or any file
+  beside the shell.
+- **Known gaps.** `KNOWN_GAPS` in the test lists commands that do not paste
+  correctly yet, each with its surface and reason. The ledger is strict both
+  ways: a listed gap is reported, not failed, and a row whose gap stops
+  reproducing fails the lane until the row is deleted.
+- **Shells.** A shell named in `RIPR_PASTE_REQUIRE` that is missing fails the
+  run; the workflow sets it per OS. Anywhere else a missing shell is skipped
+  with a notice, which is how the test behaves in the required Rust lane. `RIPR_PASTE_REPORT=<file>`
+  writes every collected command as JSON lines, and `RIPR_PASTE_KEEP=1` keeps
+  the fixture.
+- **Selection.** A nightly schedule, `workflow_dispatch`, and pull requests
+  that touch `crates/ripr/src/**`, the harness files, `Cargo.lock` or the
+  workflow. The workflow is advisory, but the same test also runs as an
+  ordinary test in the required Rust lane (with whatever shells that runner
+  has), so a new unlisted gap fails that lane too until it is fixed or listed.
 
 ### Advisory Specification Maintenance Digest
 
@@ -444,6 +560,47 @@ docs-only pull request:
   docs gate; the Rust proof is not applicable
 ```
 
+The Ready-only event rule applies to `routed-rust.yml` and its
+`Ripr Rust Small Result` context (#4986). Other public required checks retain
+their own triggers, including the `rust` job in `ci.yml`. Labels and Draft
+iteration do not allocate this routed gate:
+
+```text
+opened / reopened / synchronize (Draft or Ready):
+  no Routed Rust Small run; cheap feedback only
+
+ready_for_review (Draft -> Ready):
+  the sole pull-request qualification request; validates the exact Ready head
+
+labeled / unlabeled (any label):
+  no Routed Rust Small run; labels never create or refresh the required context
+
+push to main / workflow_dispatch:
+  launch under their own authorities, unchanged
+```
+
+`windows-ci` continues to opt into `.github/workflows/windows-advisory.yml` only.
+`cancel-in-progress` is `github.event_name == 'pull_request'` and the concurrency
+group is qualified by `github.event_name`, so a second Ready transition replaces
+the prior admission attempt while independent main and manual work cannot replace
+each other. No run posts a pseudo-result, so a Draft PR with no required check
+blocks rather than inheriting stale proof. The result job keeps its static
+`Ripr Rust Small Result` name on every run. One gap is not enforced: a
+`workflow_dispatch` of `routed-rust.yml` on a PR branch also posts that context
+on the branch head, without the `pull_request`-scoped PR-evidence steps.
+Do not dispatch on PR branches; #5394 tracks enforcing this.
+
+What this means for authors and agents:
+
+- Open PRs as Draft (`gh pr create --draft`), then mark them Ready. A PR opened
+  directly as Ready never receives a `ready_for_review` event and never gets
+  the required check.
+- A push after Ready leaves the new head without the required check. Convert
+  to Draft and mark Ready again once the push is final. If the PR had
+  auto-merge armed, check that it is still armed after the toggle.
+- For this routed lane, labels such as `full-ci` take effect at the next Ready
+  transition. The public `ci.yml` job retains its own label-triggered rules.
+
 The source repository proves its own pull requests on GitHub-hosted runners.
 Self-hosted runner capacity is `ripr-swarm` authority, so the source route
 performs no organization runner discovery, requests no private runner secret,
@@ -507,47 +664,23 @@ only the lane-only gates enumerated (`check-evidence-promotion-honesty`,
 for docs-only pull requests. It keeps advisory evidence artifacts
 non-blocking and uploads the normal `target/ripr` report packet when present.
 
-The legacy Rust workflow currently runs on pushes to `main` or `master`, manual
-dispatches, pull requests labeled `release-check`, and pull requests labeled
-`full-ci`:
+The public `CI` workflow (`.github/workflows/ci.yml`) retains its `rust` job.
+On pushes, manual dispatches, and pull requests labeled `release-check` or
+`full-ci`, that job runs workspace formatting, check, Clippy and nextest,
+plus its existing repository-policy and evidence steps. The routed lane
+provides its own typed receipt/aggregate path; its runner contract is in
+[PRODUCT_GATE_PLAN.md](ci/PRODUCT_GATE_PLAN.md) (#3825). The legacy workflow's
+`Perl and release proof` job runs on pushes to `main` or `master`, manual
+dispatches, and pull requests labeled `release-check` or `full-ci`, and keeps
+only the proof unique to it, the non-default `lang-perl` feature:
 
 ```bash
-cargo fmt --check
-cargo check --workspace --all-targets
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-cargo xtask check-static-language
-cargo xtask check-no-panic-family
-cargo xtask check-allow-attributes
-cargo xtask check-local-context
-cargo xtask check-file-policy
-cargo xtask check-covered-by
-cargo xtask check-executable-files
-cargo xtask check-workflows
-cargo xtask check-spec-format
-cargo xtask check-spec-numbering
-cargo xtask check-fixture-contracts
-cargo xtask check-traceability
-cargo xtask check-capabilities
-cargo xtask check-workspace-shape
-cargo xtask check-architecture
-cargo xtask check-public-api
-cargo xtask check-output-contracts
-cargo xtask check-doc-index
-cargo xtask check-readme-state
-cargo xtask markdown-links
-cargo xtask check-pr-shape
-cargo xtask check-generated
-cargo xtask check-badge-diff-policy
-cargo xtask check-generated-clean
-cargo xtask check-dependencies
-cargo xtask check-process-policy
-cargo xtask check-network-policy
+cargo check -p ripr --features lang-perl
+cargo test -p ripr --features lang-perl --lib analysis::language::perl
 ```
 
-On those same Rust workflow runs, pull requests labeled `release-check`, pull
-requests labeled `full-ci`, and pushes to `main` or `master` also run the
-release-surface package checks:
+On pushes to `main` or `master` and on pull requests labeled `release-check`
+or `full-ci`, the same job also runs the release-surface package checks:
 
 ```bash
 cargo package -p ripr --list
@@ -556,17 +689,42 @@ release_version="$(cargo pkgid -p ripr | sed 's/.*#//')"
 cargo xtask release-readiness --version "$release_version"
 ```
 
+The unlocked install resolution step builds the packaged crate the way
+`cargo install ripr` without `--locked` does: it unpacks the `.crate`, deletes
+its `Cargo.lock`, re-resolves, and checks. It catches a dependency that only
+compiles under the committed lock (#3787):
+
+```bash
+cargo package -p ripr --no-verify
+tar xzf "target/package/ripr-$release_version.crate" -C "$RUNNER_TEMP"
+cd "$RUNNER_TEMP/ripr-$release_version" && rm Cargo.lock && cargo generate-lockfile
+cargo check --target-dir "$RUNNER_TEMP/unlocked-target"
+```
+
+The legacy workflow's `Rust-only feature lane` job (#4252) runs the Rust-only
+feature set (#2400, #3128) on Linux:
+
+```bash
+cargo test -p ripr --locked --no-default-features --features lang-rust --no-fail-fast
+```
+
+It runs on every push to `main` or `master`, on manual dispatch, and on pull
+request `opened`, `synchronize`, and `reopened` events whose diff touches
+`crates/`, `fixtures/`, `Cargo.toml`, `Cargo.lock`, `rust-toolchain*`, or
+`.cargo/`. Label events and other pull requests skip the compile. It is not
+a required check. The Windows advisory lane runs the same command on Windows.
 The CI workflow also has an explicit MSRV job that pins Rust `1.95.0` and runs:
 
 ```bash
 cargo check --workspace --all-targets
 ```
 
-The main Rust job stays on `stable` so routine CI also proves the current stable
-toolchain, while the MSRV job proves the declared workspace baseline.
+The `release-proof` job pins the declared `1.95.0` toolchain; the MSRV job
+duplicates that baseline and runs only on manual dispatch or `full-ci` pull
+requests.
 
-The legacy Rust workflow's `rust` and `msrv` jobs run on `ubuntu-latest`. These
-jobs are release-surface proof on main and manual dispatches; they must not
+The legacy workflow's `release-proof`, `rust-only-features`, and `msrv` jobs
+run on `ubuntu-latest`. They carry release-surface and baseline proof and must not
 depend on self-hosted runner capacity when preparing a source release. The
 routed Rust-small workflow is also GitHub-hosted by construction; it neither
 selects self-hosted runners nor treats hosted execution as fallback capacity.
@@ -635,8 +793,10 @@ writes advisory Markdown and JSON summaries of semantic expected-output drift
 for reviewers. `test-oracle-report` writes an advisory baseline for the strength
 of `ripr`'s own Rust test oracles. If no tests are selected, both report formats
 use status `not_run` and explain that oracle evidence was not established; this
-is distinct from a nonempty all-strong `pass` and remains advisory. `dogfood` writes a non-blocking
-`ripr`-on-`ripr` report from stable fixture diffs. `critic` writes an advisory
+is distinct from a nonempty all-strong `pass` and remains advisory. `dogfood` writes a
+`ripr`-on-`ripr` report from stable fixture diffs; its findings stay advisory,
+but the command, and `ci-full`, fails when any scenario records errors (report
+status `warn`). `critic` writes an advisory
 adversarial review packet from the current diff, reports, and receipts.
 `reports index` writes a reviewer front door for generated reports and includes
 the repo-ops packet statuses for command mutability, PR-ready, worktree doctor,
@@ -678,6 +838,7 @@ cargo xtask check-workspace-shape
 cargo xtask check-architecture
 cargo xtask check-public-api
 cargo xtask check-output-contracts
+cargo xtask check-identity-registry
 cargo xtask check-doc-index
 cargo xtask check-readme-state
 cargo xtask markdown-links
@@ -791,6 +952,37 @@ the same file to Codecov Test Analytics only when `CODECOV_TOKEN` is available
 on trusted runs. Fork pull requests still run tests and upload the artifact, but
 skip the Codecov test-results upload because repository secrets are unavailable.
 
+### PR Staleness Watchdog
+
+GitHub sometimes silently drops the `pull_request` event delivery that creates
+the `routed-rust.yml` run for a pushed PR head SHA, leaving a PR blocked with
+no required check to retry (#4937; incidents #4528/#4537 ~9 hours dark,
+#4923 ~35 minutes).
+`.github/workflows/pr-staleness-watchdog.yml` runs every 30 minutes, finds open
+same-repo, non-draft PR heads with no `Ripr Rust Small Result` check run on the
+head SHA, and reports them (step-summary row plus a workflow warning). It is
+alert-only (#4986; issue #4937 option ii): it never dispatches
+`routed-rust.yml` and holds no `actions: write` permission. With Ready-only
+admission, a Ready head without the required check is either a dropped
+Ready-triggered delivery or a push made after Ready, and the watchdog cannot
+tell the two apart. A head mutated after Ready has revoked its own admission
+and must not be qualified by a lighter branch-head dispatch (which skips the
+`pull_request`-scoped PR-evidence steps). The remedy for every reported head
+is the same: convert the PR to Draft and mark it Ready for review again, which
+runs the full Ready-triggered qualification on the exact head and also
+recovers a dropped delivery. The required check, not run existence, is the
+discriminator: any `Ripr Rust Small Result` check run on the head SHA is a
+real qualification attempt on that exact head. That check run is created only
+when the `result` job starts, after every implementation job (up to 120
+minutes), so before calling a head dark the watchdog also lists
+`routed-rust.yml` runs with `event=pull_request` on that SHA. A queued or
+in-progress run is reported as in flight. Re-toggling Draft -> Ready on such a
+head would cancel the real run, so the watchdog never recommends it. This uses
+`actions: read` only. Drafts and fork heads are
+skipped. No PR comments are posted; each sweep's summary table is the audit
+trail. `xtask/tests/pr_readiness_workflow_contract.rs` pins the alert-only
+shape (no dispatch command, no `actions: write`) and the in-flight check.
+
 ### Self-Hosted Runner Placement
 
 The everyday required Rust gate routes through `routed-rust.yml`, which runs on
@@ -836,9 +1028,10 @@ moving them onto the shared `sccache`/`/mnt/ci-cache` path used by
 `routed-rust.yml` is a tracked follow-up rather than part of this placement
 change.
 
-Release and publish workflows (`publish-extension.yml`,
-`release-server-binaries.yml`) and branch protection (`.github/settings.yml`)
-are intentionally out of scope for this placement change.
+Publication workflow `publish-extension.yml`, the read-only server-binary
+rehearsal `release-server-binaries.yml`, and branch protection
+(`.github/settings.yml`) are intentionally out of scope for this placement
+change. Public release publication belongs to `EffortlessMetrics/ripr`.
 
 ## SARIF and Policy Contract
 
@@ -912,33 +1105,82 @@ GitHub code scanning:
 ripr init --ci github
 ```
 
-The generated workflow matches the recipe below. It uploads the pilot, report,
-and agent artifact directories; if the repository is the RIPR source tree, it
-also renders the repo-local operator cockpit through xtask. The official GitHub
+Copy the generated file, not a workflow from this page. Run
+`ripr init --ci github --dry-run` to print it without writing anything. It
+uploads the pilot, report, and agent artifact directories. The official GitHub
 SARIF upload documentation uses `github/codeql-action/upload-sarif@v4`; keep
 the RIPR job, artifact upload, and optional SARIF steps advisory until the
 repository has chosen a baseline policy.
+
+A released `ripr` generates a workflow that installs the exact version
+that generated it, because its steps use that version's commands and flags;
+a later release does not change CI behavior until you regenerate. It
+downloads that release's prebuilt binary from the `EffortlessMetrics/ripr`
+GitHub Release and checks it against the release's published SHA-256, which
+takes seconds instead of the minutes `cargo install` spends compiling. A
+checksum mismatch fails the step. On a runner with no prebuilt archive
+(Windows), or when the download fails, it falls back to
+`cargo install ripr --version <that version> --locked`, which needs a Rust
+toolchain on the runner; on a runner without `cargo` the step fails and says
+to install Rust or add a toolchain step. A development build newer than the
+latest release cannot pin itself — that version has no release archive and
+no crates.io package, so both install routes would fail. Instead it pins the
+latest release and warns on stderr, naming both versions and the refresh
+command (#5208); the installed release may be older than the generating
+steps, so review the workflow and regenerate with a released `ripr` when one
+is available. The workflow also restores ripr's analysis cache
+(`RIPR_CACHE_DIR`, outside the checkout) with `actions/cache` (pinned to a commit SHA), so later pushes
+to a pull request reuse the facts of files they did not change. Entries are
+keyed on file contents, configuration, and the ripr version, so a restored
+entry that no longer matches is a miss rather than stale evidence. To upgrade, install
+the newer `ripr` and compare its `ripr init --ci github --force --dry-run`
+output with the committed file (`--force` lets the dry run plan over the
+existing file; nothing is written). With `--ci`, `--force` replaces only the
+workflow: an existing `ripr.toml` is left unchanged, so refreshing CI keeps the
+repository's settings (`ripr init --force` without `--ci` resets the config).
+`ripr doctor` flags a workflow that installs ripr unpinned or at another
+version; when the pin is the intentional latest-release fallback for the
+running unreleased `ripr`, it says so and prescribes upgrading `ripr` first,
+since refreshing immediately would rewrite the identical pin. On pull requests the workflow checks out the PR head
+commit, not GitHub's `refs/pull/N/merge` commit, so annotation and review
+comment lines match the lines in the PR diff after the base branch moves. A
+newer push cancels the older run of the same PR. Dependabot runs get a
+read-only token, so their inline-comment plan records
+`missing_write_permission` instead of attempting a post.
 
 For a CI-first user, the useful output is the artifact packet:
 
 - `target/ripr/pilot/` - first-screen pilot summary, repo exposure snapshot,
   and agent seam packets;
 - `target/ripr/workflow/` - selected-seam workflow manifest, commands,
-  status JSON/Markdown, review summary JSON/Markdown, and agent packet,
-  brief, and verify JSON when a top seam is available;
-- `target/ripr/agent/` - compatibility copies of packet, brief, verify, and
-  receipt JSON for the top seam when one is available;
-- `target/ripr/reports/` - targeted-test outcome, SARIF files when enabled,
-  repo badge JSON, `agent-receipt.json`, `gap-decision-ledger.{json,md}`,
+  status JSON/Markdown, review summary JSON/Markdown, the before snapshot,
+  and agent packet and brief JSON when a top seam is available;
+- `target/ripr/agent/` - compatibility copies of packet and brief JSON for
+  the top seam when one is available;
+- `target/ripr/reports/` - SARIF files when enabled, repo badge JSON,
+  `gap-decision-ledger.{json,md}`,
   `assistant-loop-health.{json,md}`, `first-useful-action.{json,md}`,
   `pr-review-front-panel.{json,md}`, `start-here.{json,md}`,
   `waiver-aging.{json,md}`, `suppression-health.{json,md}`,
-  `policy-readiness.{json,md}`, `index.{json,md}`, and any repo-local
-  cockpit output.
+  `policy-readiness.{json,md}`, and `index.{json,md}`.
 - `target/ripr/review/` - PR test guidance JSON and Markdown when
   `ripr review-comments` runs on pull requests.
 
-The workflow also writes a `RIPR advisory summary` step summary. It starts with
+CI prepares the before side of the repair loop only. There is no test edit
+between two snapshots of one CI checkout, so the workflow writes no after
+snapshot, verify JSON, agent receipt, or targeted-test outcome. The
+`ripr agent repair --root . --seam-id <seam-id> --phase before` command the
+summary leads with starts the repair where the test edit happens; the
+`--attempt ... --phase after` command it prints runs verify and writes the
+receipt. The summary labels the low-level verify and receipt commands as steps
+that run after the test edit.
+
+The workflow also writes a `RIPR advisory summary` step summary with one
+command, `ripr reports ci-summary --root . >> "$GITHUB_STEP_SUMMARY"`, which
+reads the artifacts earlier steps wrote and prints a regeneration route for any
+that are missing or malformed instead of failing. When the pinned ripr did not install (even if an older one is on PATH),
+the step writes a short summary saying so and pointing at the install step's
+log instead of leaving the summary empty. The summary starts with
 the `start-here` first-run packet when `ripr first-pr` can compose one from
 explicit artifacts, then includes the PR review front panel, first useful
 action fallback, a language preview grouping section when `[languages]` enables
@@ -974,8 +1216,9 @@ The generated workflow runs the pure renderer on pull requests:
 ```bash
 ripr review-comments \
   --root . \
-  --base "$GITHUB_BASE_SHA" \
-  --head "$GITHUB_SHA" \
+  --base "origin/$GITHUB_BASE_REF" \
+  --head HEAD \
+  --check-output target/ripr/pr/check.json \
   --out target/ripr/review/comments.json
 ```
 
@@ -995,8 +1238,10 @@ Selection and placement must stay conservative:
 - target only changed lines, otherwise fall back to summary-only guidance;
 - cap inline review comments to three by default;
 - include the missing discriminator, suggested assertion shape, recommended
-  test file, related test to imitate, and `ripr agent brief` command when
-  available.
+  test file, related test to imitate, and the repair start
+  (`ripr agent repair --root . --seam-id <seam-id> --phase before`) when the
+  seam is repair-ready. Check annotations carry only the reason and that
+  repair start, so they never name a path inside the CI runner's checkout.
 
 The LLM guidance in annotations is bounded handoff material. It should ask for
 one focused test, avoid production edits unless explicitly requested, and point
@@ -1015,797 +1260,145 @@ See [PR inline comment publisher workflow](PR_INLINE_COMMENT_PUBLISHER_WORKFLOW.
 for rollout guidance, publish-plan review, fork and permission behavior,
 dedupe/upsert expectations, and rollback.
 
-The excerpt below shows the adoption shape. The generated workflow also captures
-existing RIPR inline-comment metadata, checks the publish plan's
-`safe_to_publish` result, and only calls GitHub for safe create/update
-operations in explicit `inline` mode.
+The generated workflow installs published RIPR **0.10.0** and uses commands
+that binary supports. It retains shell/jq adapters for the report pipeline,
+summary, existing-comment capture and ordered comment requests. The adapters
+preserve bot-author filtering, safe-publish checks, changed-line batching,
+blocking gate failures and the before phase of the repair loop. CI does not
+manufacture an after snapshot or repair receipt without a test edit.
+
+`reports ci-packet`, `reports ci-summary`, `pr-comments existing` and
+`pr-comments requests` are development-only capabilities of the current
+0.11.0-alpha.2 source; they are absent from installed 0.10.0. A successful
+current-CLI replay does not qualify a workflow using the released binary.
+The generated file verifies the installed version before running its command
+steps and keeps the modern checksum, checkout and artifact protections.
+It only calls GitHub in explicit `inline` mode. Read those
+steps in the output of `ripr init --ci github --dry-run`; this page does not
+keep a copy because a copy drifts from what the command writes. Installed
+0.10.0 also predates repair-attempt orchestration: its proof rail uses manual
+snapshots, verify and receipt after the focused test edit. Included reports
+label snapshot comparisons as post-edit guidance.
+
+The development command fixture keeps this step byte-equal to the compact
+template; it is not emitted for an installation pinned to 0.10.0. The token-holding
+comment capture and publish steps and the summary stay in YAML around it.
+`ripr reports ci-packet` runs the pilot, the pull request diff capture (which pins the diff presentation so
+ambient Git configuration cannot change the bytes RIPR analyzes, #4005), the
+PR guidance, the comment plan, SARIF and badge renders, the gate, the ledgers,
+start-here, the report index, and the changed-line annotations, each as a log
+group named after the step it replaced. `ripr help reports` lists its
+failure rules, and `--step NAME` reruns one step locally.
 
 ```yaml
-name: RIPR
-
-on:
-  pull_request:
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pull-requests: write
-  security-events: write
-
-env:
-  RIPR_UPLOAD_SARIF: "true"
-  RIPR_GATE_MODE: ${{ vars.RIPR_GATE_MODE || '' }}
-  RIPR_GATE_BASELINE: ${{ vars.RIPR_GATE_BASELINE || '' }}
-  RIPR_COMMENT_MODE: ${{ vars.RIPR_COMMENT_MODE || 'off' }}
-
-jobs:
-  ripr:
-    name: RIPR advisory reports
-    runs-on: ubuntu-latest
-    continue-on-error: ${{ vars.RIPR_GATE_MODE == '' || vars.RIPR_GATE_MODE == 'visible-only' }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Install ripr
-        run: cargo install ripr --locked
-
-      - name: Generate RIPR pilot packet
-        continue-on-error: true
-        run: |
-          ripr pilot \
-            --root . \
-            --out target/ripr/pilot \
-            --mode ready \
-            --max-seams 5
-
-      - name: Prepare RIPR editor-agent artifacts
-        if: always()
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports target/ripr/agent target/ripr/workflow
-          if [ -f target/ripr/pilot/repo-exposure.json ]; then
-            cp target/ripr/pilot/repo-exposure.json target/ripr/reports/repo-exposure.json
-            cp target/ripr/pilot/repo-exposure.json target/ripr/workflow/before.repo-exposure.json
-          fi
-          if [ -f target/ripr/pilot/agent-seam-packets.json ]; then
-            cp target/ripr/pilot/agent-seam-packets.json target/ripr/workflow/agent-seam-packets.json
-          fi
-          if [ -f target/ripr/pilot/pilot-summary.json ]; then
-            top_seam_id="$(jq -r '.top_actionable_seams[0].seam_id // empty' target/ripr/pilot/pilot-summary.json 2>/dev/null || true)"
-            if [ -n "$top_seam_id" ] && [ "$top_seam_id" != "null" ]; then
-              echo "RIPR_TOP_SEAM_ID=$top_seam_id" >> "$GITHUB_ENV"
-            fi
-          fi
-
-      - name: Generate RIPR agent loop artifacts
-        if: always() && env.RIPR_TOP_SEAM_ID != ''
-        continue-on-error: true
-        run: |
-          ripr agent start \
-            --root . \
-            --seam-id "$RIPR_TOP_SEAM_ID" \
-            --out target/ripr/workflow
-          ripr agent packet \
-            --root . \
-            --seam-id "$RIPR_TOP_SEAM_ID" \
-            --json \
-            > target/ripr/workflow/agent-packet.json
-          cp target/ripr/workflow/agent-packet.json target/ripr/agent/agent-packet.json
-          cp target/ripr/workflow/agent-brief.json target/ripr/agent/agent-brief.json
-          ripr check \
-            --root . \
-            --mode ready \
-            --format repo-exposure-json \
-            > target/ripr/workflow/after.repo-exposure.json
-          cp target/ripr/workflow/after.repo-exposure.json target/ripr/pilot/after.repo-exposure.json
-          ripr agent verify \
-            --root . \
-            --before target/ripr/workflow/before.repo-exposure.json \
-            --after target/ripr/workflow/after.repo-exposure.json \
-            --json \
-            > target/ripr/workflow/agent-verify.json
-          cp target/ripr/workflow/agent-verify.json target/ripr/agent/agent-verify.json
-          ripr agent receipt \
-            --root . \
-            --verify-json target/ripr/workflow/agent-verify.json \
-            --seam-id "$RIPR_TOP_SEAM_ID" \
-            --json \
-            --out target/ripr/reports/agent-receipt.json
-          cp target/ripr/reports/agent-receipt.json target/ripr/agent/agent-receipt.json
-          ripr outcome \
-            --before target/ripr/workflow/before.repo-exposure.json \
-            --after target/ripr/workflow/after.repo-exposure.json \
-            --format json \
-            --out target/ripr/reports/targeted-test-outcome.json
-
-      - name: Capture pull request diff
-        if: github.event_name == 'pull_request'
-        run: |
-          mkdir -p target/ripr/reports
-          git diff --binary "origin/${{ github.base_ref }}...HEAD" > target/ripr/reports/pr.diff
-
-      - name: Run RIPR PR guidance report
-        if: github.event_name == 'pull_request'
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/review
-          ripr review-comments \
-            --root . \
-            --base "origin/${{ github.base_ref }}" \
-            --head HEAD \
-            --out target/ripr/review/comments.json
-
-      - name: Plan RIPR inline comments
-        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE != 'off' && hashFiles('target/ripr/review/comments.json') != ''
-        continue-on-error: true
-        run: |
-          ripr pr-comments plan \
-            --root . \
-            --pr-guidance target/ripr/review/comments.json \
-            --mode "$RIPR_COMMENT_MODE" \
-            --event-name "${{ github.event_name }}" \
-            --pull-request "${{ github.event.pull_request.number }}" \
-            --head-repo "${{ github.event.pull_request.head.repo.full_name }}" \
-            --base-repo "${{ github.repository }}" \
-            --out target/ripr/review/comment-publish-plan.json \
-            --out-md target/ripr/review/comment-publish-plan.md
-
-      - name: Publish RIPR inline comments
-        if: always() && github.event_name == 'pull_request' && env.RIPR_COMMENT_MODE == 'inline' && hashFiles('target/ripr/review/comment-publish-plan.json') != ''
-        continue-on-error: true
-        run: |
-          echo "Publishes only safe operations from target/ripr/review/comment-publish-plan.json."
-
-      - name: Capture RIPR gate labels
-        if: always() && github.event_name == 'pull_request'
-        continue-on-error: true
-        run: |
-          mkdir -p target/ci
-          jq -c '{labels: [.pull_request.labels[]?.name]}' "$GITHUB_EVENT_PATH" > target/ci/labels.json
-
-      - name: Render diff SARIF
-        if: env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request'
-        continue-on-error: true
-        run: |
-          ripr check \
-            --root . \
-            --diff target/ripr/reports/pr.diff \
-            --format sarif \
-            > target/ripr/reports/ripr-findings.sarif
-
-      - name: Render repo seam SARIF
-        if: env.RIPR_UPLOAD_SARIF == 'true'
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          ripr check \
-            --root . \
-            --mode ready \
-            --format repo-sarif \
-            > target/ripr/reports/ripr-seams.sarif
-
-      - name: Render RIPR repo badge artifacts
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          ripr check \
-            --root . \
-            --mode ready \
-            --format repo-badge-json \
-            > target/ripr/reports/repo-ripr-badge.json
-          ripr check \
-            --root . \
-            --mode ready \
-            --format repo-badge-shields \
-            > target/ripr/reports/repo-ripr-badge-shields.json
-
-      - name: Render RIPR operator cockpit
-        if: always() && hashFiles('crates/ripr/Cargo.toml') != '' && hashFiles('xtask/src/reports/operator.rs') != ''
-        continue-on-error: true
-        run: cargo xtask operator-cockpit
-
-      - name: Evaluate RIPR gate decision
-        if: always() && env.RIPR_GATE_MODE != '' && hashFiles('target/ripr/review/comments.json') != ''
-        run: |
-          mkdir -p target/ripr/reports
-          gate_args=(
-            gate evaluate
-            --root .
-            --pr-guidance target/ripr/review/comments.json
-            --mode "$RIPR_GATE_MODE"
-            --out target/ripr/reports/gate-decision.json
-            --out-md target/ripr/reports/gate-decision.md
-          )
-          if [ -f target/ripr/reports/repo-exposure.json ]; then
-            gate_args+=(--repo-exposure target/ripr/reports/repo-exposure.json)
-          fi
-          if [ -f target/ci/labels.json ]; then
-            gate_args+=(--labels-json target/ci/labels.json)
-          fi
-          if [ -f target/ripr/reports/sarif-policy.json ]; then
-            gate_args+=(--sarif-policy target/ripr/reports/sarif-policy.json)
-          fi
-          if [ -f target/ripr/workflow/agent-verify.json ]; then
-            gate_args+=(--agent-verify target/ripr/workflow/agent-verify.json)
-          fi
-          if [ -f target/ripr/reports/agent-receipt.json ]; then
-            gate_args+=(--agent-receipt target/ripr/reports/agent-receipt.json)
-          fi
-          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
-            gate_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
-          fi
-          if [ -f target/ripr/reports/mutation-calibration.json ]; then
-            gate_args+=(--mutation-calibration target/ripr/reports/mutation-calibration.json)
-          fi
-          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
-            gate_args+=(--baseline "$RIPR_GATE_BASELINE")
-          fi
-          ripr "${gate_args[@]}"
-
-      - name: Render RIPR baseline debt delta
-        if: always() && env.RIPR_GATE_BASELINE != '' && hashFiles('target/ripr/reports/gate-decision.json') != ''
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          ripr baseline diff \
-            --baseline "$RIPR_GATE_BASELINE" \
-            --current target/ripr/reports/gate-decision.json \
-            --out target/ripr/reports/baseline-debt-delta.json \
-            --out-md target/ripr/reports/baseline-debt-delta.md
-
-      - name: Render RIPR Zero status
-        if: always() && hashFiles('target/ripr/reports/baseline-debt-delta.json') != ''
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          zero_args=(
-            zero status
-            --delta target/ripr/reports/baseline-debt-delta.json
-            --out target/ripr/reports/ripr-zero-status.json
-            --out-md target/ripr/reports/ripr-zero-status.md
-          )
-          if [ -n "${RIPR_GATE_BASELINE:-}" ]; then
-            zero_args+=(--baseline "$RIPR_GATE_BASELINE")
-          fi
-          if [ -f target/ripr/reports/gate-decision.json ]; then
-            zero_args+=(--gate target/ripr/reports/gate-decision.json)
-          fi
-          if [ -f target/ripr/review/comments.json ]; then
-            zero_args+=(--pr-guidance target/ripr/review/comments.json)
-          fi
-          if [ -f target/ripr/reports/recommendation-calibration.json ]; then
-            zero_args+=(--recommendation-calibration target/ripr/reports/recommendation-calibration.json)
-          fi
-          ripr "${zero_args[@]}"
-
-      - name: Render RIPR test-oracle assistant proof
-        if: always() && hashFiles('target/ripr/review/comments.json') != '' && hashFiles('target/ripr/workflow/agent-brief.json') != '' && hashFiles('target/ripr/workflow/before.repo-exposure.json') != '' && hashFiles('target/ripr/workflow/after.repo-exposure.json') != '' && hashFiles('target/ripr/reports/agent-receipt.json') != '' && hashFiles('target/ripr/reports/pr-evidence-ledger.json') != ''
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          proof_args=(
-            assistant-loop proof
-            --root .
-            --pr-guidance target/ripr/review/comments.json
-            --agent-packet target/ripr/workflow/agent-brief.json
-            --before target/ripr/workflow/before.repo-exposure.json
-            --after target/ripr/workflow/after.repo-exposure.json
-            --receipt target/ripr/reports/agent-receipt.json
-            --ledger target/ripr/reports/pr-evidence-ledger.json
-            --out target/ripr/reports/test-oracle-assistant-proof.json
-            --out-md target/ripr/reports/test-oracle-assistant-proof.md
-          )
-          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
-            proof_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
-          fi
-          if [ -f target/ripr/reports/gate-decision.json ]; then
-            proof_args+=(--gate-decision target/ripr/reports/gate-decision.json)
-          fi
-          ripr "${proof_args[@]}"
-
-      - name: Render RIPR assistant loop health
-        if: always() && hashFiles('target/ripr/reports/test-oracle-assistant-proof.json') != ''
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          ripr assistant-loop health \
-            --root . \
-            --proof target/ripr/reports/test-oracle-assistant-proof.json \
-            --out target/ripr/reports/assistant-loop-health.json \
-            --out-md target/ripr/reports/assistant-loop-health.md
-
-      - name: Render RIPR first useful action
-        if: always()
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/reports
-          first_action_has_input=false
-          first_action_args=(
-            first-action
-            --root .
-            --out target/ripr/reports/first-useful-action.json
-            --out-md target/ripr/reports/first-useful-action.md
-          )
-          if [ -f target/ripr/review/comments.json ]; then
-            first_action_args+=(--pr-guidance target/ripr/review/comments.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
-            first_action_args+=(--assistant-proof target/ripr/reports/test-oracle-assistant-proof.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/reports/pr-evidence-ledger.json ]; then
-            first_action_args+=(--ledger target/ripr/reports/pr-evidence-ledger.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
-            first_action_args+=(--baseline-delta target/ripr/reports/baseline-debt-delta.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/reports/agent-receipt.json ]; then
-            first_action_args+=(--receipt target/ripr/reports/agent-receipt.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/reports/gate-decision.json ]; then
-            first_action_args+=(--gate-decision target/ripr/reports/gate-decision.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/reports/coverage-grip-frontier.json ]; then
-            first_action_args+=(--coverage-frontier target/ripr/reports/coverage-grip-frontier.json)
-            first_action_has_input=true
-          fi
-          if [ -f target/ripr/workflow/evidence-context.json ]; then
-            first_action_args+=(--editor-context target/ripr/workflow/evidence-context.json)
-            first_action_has_input=true
-          fi
-          if [ "$first_action_has_input" = true ]; then
-            ripr "${first_action_args[@]}"
-          else
-            echo 'No RIPR first-useful-action inputs were available.'
-          fi
-
-      - name: Render RIPR LLM work-loop summaries
-        if: always()
-        continue-on-error: true
-        run: |
-          mkdir -p target/ripr/workflow
-          ripr agent status \
-            --root . \
-            --json \
-            > target/ripr/workflow/agent-status.json
-          ripr agent status \
-            --root . \
-            > target/ripr/workflow/agent-status.md
-          ripr agent review-summary \
-            --root . \
-            --json \
-            > target/ripr/workflow/agent-review-summary.json
-          ripr agent review-summary \
-            --root . \
-            > target/ripr/workflow/agent-review-summary.md
-
-      - name: Emit RIPR PR guidance annotations
-        if: always() && hashFiles('target/ripr/review/comments.json') != ''
-        continue-on-error: true
-        run: |
-          escape_github_message() {
-            local value="$1"
-            value="${value//'%'/'%25'}"
-            value="${value//$'\r'/'%0D'}"
-            value="${value//$'\n'/'%0A'}"
-            printf '%s' "$value"
-          }
-
-          escape_github_property() {
-            local value="$1"
-            value="${value//'%'/'%25'}"
-            value="${value//$'\r'/'%0D'}"
-            value="${value//$'\n'/'%0A'}"
-            value="${value//':'/'%3A'}"
-            value="${value//','/'%2C'}"
-            printf '%s' "$value"
-          }
-
-          jq -r '.comments[]? | select(.placement.path and .placement.line) | [.placement.path, (.placement.line | tostring), (.reason // "RIPR targeted test guidance"), (.llm_guidance.command // "")] | @tsv' target/ripr/review/comments.json \
-            | while IFS="$(printf '\t')" read -r path line reason command; do
-                message="$reason"
-                if [ -n "$command" ] && [ "$command" != "null" ]; then
-                  message="$message Command: $command"
-                fi
-                annotation_path="$(escape_github_property "$path")"
-                annotation_line="$(escape_github_property "$line")"
-                annotation_title="$(escape_github_property "RIPR targeted test guidance")"
-                message="$(escape_github_message "$message")"
-                echo "::warning file=$annotation_path,line=$annotation_line,title=$annotation_title::$message"
-              done
-
-      - name: Add RIPR advisory summary
-        if: always()
-        continue-on-error: true
-        run: |
-          {
-            markdown_inline() {
-              printf '%s' "$1" | tr '\r\n' '  ' | sed 's/`/\\`/g'
-            }
-
-            echo '## RIPR advisory summary'
-            echo
-            echo "RIPR is advisory static evidence. It does not edit source, generate tests, or run mutation testing."
-            echo
-            echo '### Recommended next test'
-            if [ -f target/ripr/reports/first-useful-action.json ] || [ -f target/ripr/reports/first-useful-action.md ]; then
-              if [ -f target/ripr/reports/first-useful-action.json ]; then
-                action_json=target/ripr/reports/first-useful-action.json
-                action_status="$(jq -r '.status // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
-                action_kind="$(jq -r '.action_kind // "unknown"' "$action_json" 2>/dev/null || echo unknown)"
-                action_title="$(jq -r '.title // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
-                action_why="$(jq -r '.why // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
-                action_seam="$(jq -r '.selected.seam_id // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
-                action_target="$(jq -r '(.target.file // "not_available") + (if .target.related_test then " related_test=" + .target.related_test else "" end)' "$action_json" 2>/dev/null || echo unknown)"
-                action_verify="$(jq -r '.commands.verify // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
-                action_receipt="$(jq -r '.commands.receipt // "not_available"' "$action_json" 2>/dev/null || echo unknown)"
-                action_fallback="$(jq -r '.fallback.kind // "none"' "$action_json" 2>/dev/null || echo unknown)"
-                action_warning_count="$(jq -r '(.warnings // [] | length)' "$action_json" 2>/dev/null || echo 0)"
-                action_status="$(markdown_inline "$action_status")"
-                action_kind="$(markdown_inline "$action_kind")"
-                action_title="$(markdown_inline "$action_title")"
-                action_why="$(markdown_inline "$action_why")"
-                action_seam="$(markdown_inline "$action_seam")"
-                action_target="$(markdown_inline "$action_target")"
-                action_verify="$(markdown_inline "$action_verify")"
-                action_receipt="$(markdown_inline "$action_receipt")"
-                action_fallback="$(markdown_inline "$action_fallback")"
-                action_warning_count="$(markdown_inline "$action_warning_count")"
-                echo '#### Recommended next test at a glance'
-                echo "- Status: \`$action_status\`"
-                echo "- Action: \`$action_kind\`"
-                echo "- Title: \`$action_title\`"
-                echo "- Why: \`$action_why\`"
-                echo "- Seam: \`$action_seam\`"
-                echo "- Target: \`$action_target\`"
-                echo "- Verify command: \`$action_verify\`"
-                echo "- Receipt command: \`$action_receipt\`"
-                echo "- Fallback: \`$action_fallback\`"
-                echo "- Warnings: \`$action_warning_count\`"
-                echo "- Action artifacts: \`target/ripr/reports/first-useful-action.json\`, \`target/ripr/reports/first-useful-action.md\`"
-                echo "- Boundary: static evidence only; no runtime mutation execution."
-                echo
-              fi
-              if [ -f target/ripr/reports/first-useful-action.md ]; then
-                cat target/ripr/reports/first-useful-action.md
-              fi
-            else
-              echo 'Recommended next test was not generated. It runs when existing PR guidance, assistant proof, ledger, baseline, receipt, gate, coverage/grip, or editor context artifacts are available.'
-            fi
-            echo
-            echo '### Top recommendation'
-            if [ -f target/ripr/pilot/pilot-summary.md ]; then
-              cat target/ripr/pilot/pilot-summary.md
-            else
-              echo "Pilot summary was not generated. Inspect the uploaded artifact packet and job logs."
-            fi
-            echo
-            echo '### Agent review packet'
-            if [ -f target/ripr/workflow/agent-review-summary.md ]; then
-              cat target/ripr/workflow/agent-review-summary.md
-            else
-              echo 'Agent review summary was not generated. Run `ripr agent status --root .` locally or inspect uploaded workflow artifacts.'
-            fi
-            echo
-            echo '### Artifact packet'
-            echo '- Pilot reports: `target/ripr/pilot/`'
-            echo '- Agent workflow: `target/ripr/workflow/`'
-            echo '- Agent compatibility copies: `target/ripr/agent/`'
-            echo '- Repo reports, badges, SARIF, and receipts: `target/ripr/reports/`'
-            echo '- CI labels and plan inputs: `target/ci/`'
-            if [ -d target/ripr/review ]; then
-              echo '- PR test guidance report: `target/ripr/review/`'
-            else
-              echo "- PR test guidance report: not generated yet"
-            fi
-            echo
-            if [ -f target/ripr/reports/test-oracle-assistant-proof.json ] || [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
-              echo '### Test-oracle assistant proof'
-              if [ -f target/ripr/reports/test-oracle-assistant-proof.json ]; then
-                proof_json=target/ripr/reports/test-oracle-assistant-proof.json
-                proof_status="$(jq -r '.status // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_seam="$(jq -r '(.seam.path // "unknown") + (if .seam.line then ":" + (.seam.line|tostring) else "" end)' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_missing="$(jq -r '.seam.missing_discriminator // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_placement="$(jq -r '.recommendation.placement // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_movement="$(jq -r '.evidence_movement.state // "unknown"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_receipt="$(jq -r '.evidence_movement.artifact // .inputs.receipt // "not_available"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_gate="$(jq -r '.ci_projection.gate_decision // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_coverage="$(jq -r '.ci_projection.coverage_frontier // "not_supplied"' "$proof_json" 2>/dev/null || echo unknown)"
-                proof_warning_count="$(jq -r '(.warnings // [] | length)' "$proof_json" 2>/dev/null || echo 0)"
-                proof_status="$(markdown_inline "$proof_status")"
-                proof_seam="$(markdown_inline "$proof_seam")"
-                proof_missing="$(markdown_inline "$proof_missing")"
-                proof_placement="$(markdown_inline "$proof_placement")"
-                proof_movement="$(markdown_inline "$proof_movement")"
-                proof_receipt="$(markdown_inline "$proof_receipt")"
-                proof_gate="$(markdown_inline "$proof_gate")"
-                proof_coverage="$(markdown_inline "$proof_coverage")"
-                proof_warning_count="$(markdown_inline "$proof_warning_count")"
-                echo '#### Assistant proof at a glance'
-                echo "- Status: \`$proof_status\`"
-                echo "- Seam: \`$proof_seam\`"
-                echo "- Missing discriminator: \`$proof_missing\`"
-                echo "- Placement: \`$proof_placement\`"
-                echo "- Static movement: \`$proof_movement\`"
-                echo "- Receipt: \`$proof_receipt\`"
-                echo "- Gate input: \`$proof_gate\`"
-                echo "- Coverage/grip frontier input: \`$proof_coverage\`"
-                echo "- Warnings: \`$proof_warning_count\`"
-                echo "- Proof artifacts: \`target/ripr/reports/test-oracle-assistant-proof.json\`, \`target/ripr/reports/test-oracle-assistant-proof.md\`"
-                echo "- Pass/fail authority remains \`ripr gate evaluate\` when an explicit gate mode is configured."
-                echo
-              fi
-              if [ -f target/ripr/reports/test-oracle-assistant-proof.md ]; then
-                cat target/ripr/reports/test-oracle-assistant-proof.md
-              fi
-              echo
-            fi
-            if [ -f target/ripr/reports/assistant-loop-health.json ] || [ -f target/ripr/reports/assistant-loop-health.md ]; then
-              echo '### Agent proof status'
-              if [ -f target/ripr/reports/assistant-loop-health.json ]; then
-                health_json=target/ripr/reports/assistant-loop-health.json
-                health_status="$(jq -r '.status // "unknown"' "$health_json" 2>/dev/null || echo unknown)"
-                health_proofs="$(jq -r '.summary.proofs // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_complete="$(jq -r '.summary.complete // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_partial="$(jq -r '.summary.partial // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_missing_required="$(jq -r '.summary.missing_required_input // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_missing_optional="$(jq -r '.summary.missing_optional_input // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_improved="$(jq -r '.summary.improved // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_unchanged="$(jq -r '.summary.unchanged // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_regressed="$(jq -r '.summary.regressed // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_unknown="$(jq -r '.summary.unknown_movement // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_warnings="$(jq -r '.summary.warnings // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_repairs="$(jq -r '.summary.repair_queue // 0' "$health_json" 2>/dev/null || echo 0)"
-                health_top_warning="$(jq -r '([.warning_summary[]? | "\(.kind)=\(.count)"] | if length == 0 then "none" else join(", ") end)' "$health_json" 2>/dev/null || echo unknown)"
-                health_top_repair="$(jq -r '([.repair_queue[]?.repair_kind] | first) // "none"' "$health_json" 2>/dev/null || echo unknown)"
-                health_status="$(markdown_inline "$health_status")"
-                health_proofs="$(markdown_inline "$health_proofs")"
-                health_complete="$(markdown_inline "$health_complete")"
-                health_partial="$(markdown_inline "$health_partial")"
-                health_missing_required="$(markdown_inline "$health_missing_required")"
-                health_missing_optional="$(markdown_inline "$health_missing_optional")"
-                health_improved="$(markdown_inline "$health_improved")"
-                health_unchanged="$(markdown_inline "$health_unchanged")"
-                health_regressed="$(markdown_inline "$health_regressed")"
-                health_unknown="$(markdown_inline "$health_unknown")"
-                health_warnings="$(markdown_inline "$health_warnings")"
-                health_repairs="$(markdown_inline "$health_repairs")"
-                health_top_warning="$(markdown_inline "$health_top_warning")"
-                health_top_repair="$(markdown_inline "$health_top_repair")"
-                echo '#### Agent proof status at a glance'
-                echo "- Status: \`$health_status\`"
-                echo "- Proof packets: total=\`$health_proofs\`, complete=\`$health_complete\`, partial=\`$health_partial\`, missing_required=\`$health_missing_required\`, missing_optional=\`$health_missing_optional\`"
-                echo "- Evidence movement: improved=\`$health_improved\`, unchanged=\`$health_unchanged\`, regressed=\`$health_regressed\`, unknown=\`$health_unknown\`"
-                echo "- Warnings: total=\`$health_warnings\`, top=\`$health_top_warning\`"
-                echo "- Repair queue: total=\`$health_repairs\`, first=\`$health_top_repair\`"
-                echo "- Health artifacts: \`target/ripr/reports/assistant-loop-health.json\`, \`target/ripr/reports/assistant-loop-health.md\`"
-                echo "- Boundary: advisory static health over proof artifacts; gate evaluator remains pass/fail authority."
-                echo
-              fi
-              if [ -f target/ripr/reports/assistant-loop-health.md ]; then
-                cat target/ripr/reports/assistant-loop-health.md
-              fi
-              echo
-            fi
-            echo
-            echo '### Gate decision'
-            if [ -f target/ripr/reports/gate-decision.json ]; then
-              gate_json=target/ripr/reports/gate-decision.json
-              gate_status="$(jq -r '.status // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
-              gate_mode="$(jq -r '.mode // "unknown"' "$gate_json" 2>/dev/null || echo unknown)"
-              blocking="$(jq -r '.summary.blocking // 0' "$gate_json" 2>/dev/null || echo 0)"
-              acknowledged="$(jq -r '.summary.acknowledged // 0' "$gate_json" 2>/dev/null || echo 0)"
-              advisory="$(jq -r '.summary.advisory // 0' "$gate_json" 2>/dev/null || echo 0)"
-              suppressed="$(jq -r '.summary.suppressed // 0' "$gate_json" 2>/dev/null || echo 0)"
-              not_applicable="$(jq -r '.summary.not_applicable // 0' "$gate_json" 2>/dev/null || echo 0)"
-              unknown_confidence="$(jq -r '.summary.unknown_confidence // 0' "$gate_json" 2>/dev/null || echo 0)"
-              active_labels="$(jq -r 'if ((.inputs.labels // []) | length) == 0 then "none" else (.inputs.labels // [] | join(", ")) end' "$gate_json" 2>/dev/null || echo unknown)"
-              acknowledgement_labels="$(jq -r 'if ((.policy.acknowledgement_labels // []) | length) == 0 then "none" else (.policy.acknowledgement_labels // [] | join(", ")) end' "$gate_json" 2>/dev/null || echo unknown)"
-              applied_waiver="$(jq -r '([.decisions[]? | select(.decision == "acknowledged") | .policy.acknowledgement_label | select(. != null)] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
-              baseline_artifact="$(jq -r '.inputs.baseline // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
-              recommendation_calibration="$(jq -r '.inputs.recommendation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
-              mutation_calibration="$(jq -r '.inputs.mutation_calibration // "not supplied"' "$gate_json" 2>/dev/null || echo unknown)"
-              recommendation_effects="$(jq -r '([.decisions[]?.evidence.recommendation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
-              mutation_effects="$(jq -r '([.decisions[]?.evidence.mutation_calibration.confidence_effect | select(. != null)] | unique | if length == 0 then "none" else join(", ") end)' "$gate_json" 2>/dev/null || echo unknown)"
-              blocking_reason="$(jq -r '([.decisions[]? | select(.decision == "blocking") | .gate_reason] | first) // "none"' "$gate_json" 2>/dev/null || echo unknown)"
-              gate_status="$(markdown_inline "$gate_status")"
-              gate_mode="$(markdown_inline "$gate_mode")"
-              blocking="$(markdown_inline "$blocking")"
-              acknowledged="$(markdown_inline "$acknowledged")"
-              advisory="$(markdown_inline "$advisory")"
-              suppressed="$(markdown_inline "$suppressed")"
-              not_applicable="$(markdown_inline "$not_applicable")"
-              unknown_confidence="$(markdown_inline "$unknown_confidence")"
-              active_labels="$(markdown_inline "$active_labels")"
-              acknowledgement_labels="$(markdown_inline "$acknowledgement_labels")"
-              applied_waiver="$(markdown_inline "$applied_waiver")"
-              baseline_artifact="$(markdown_inline "$baseline_artifact")"
-              recommendation_calibration="$(markdown_inline "$recommendation_calibration")"
-              mutation_calibration="$(markdown_inline "$mutation_calibration")"
-              recommendation_effects="$(markdown_inline "$recommendation_effects")"
-              mutation_effects="$(markdown_inline "$mutation_effects")"
-              blocking_reason="$(markdown_inline "$blocking_reason")"
-              echo '#### Gate decision at a glance'
-              echo "- Mode: \`$gate_mode\`"
-              echo "- Status: \`$gate_status\`"
-              echo "- Counts: blocking=\`$blocking\`, acknowledged=\`$acknowledged\`, advisory=\`$advisory\`, suppressed=\`$suppressed\`, not_applicable=\`$not_applicable\`, unknown_confidence=\`$unknown_confidence\`"
-              echo "- Active PR labels: \`$active_labels\`"
-              echo "- Acknowledgement labels: \`$acknowledgement_labels\`"
-              echo "- Applied waiver label: \`$applied_waiver\`"
-              echo "- Baseline artifact: \`$baseline_artifact\`"
-              echo "- Recommendation calibration: \`$recommendation_calibration\` (effects: $recommendation_effects)"
-              echo "- Mutation calibration: \`$mutation_calibration\` (effects: $mutation_effects)"
-              echo "- Blocking reason: \`$blocking_reason\`"
-              echo "- Gate artifacts: \`target/ripr/reports/gate-decision.json\`, \`target/ripr/reports/gate-decision.md\`"
-              echo "- Related inputs: \`target/ripr/review/comments.json\`, \`target/ci/labels.json\`"
-              echo
-            fi
-            if [ -f target/ripr/reports/gate-decision.md ]; then
-              cat target/ripr/reports/gate-decision.md
-            else
-              echo 'Gate decision was not run. Set `RIPR_GATE_MODE` to `visible-only`, `acknowledgeable`, `baseline-check`, or `calibrated-gate` to opt in.'
-            fi
-            echo
-            echo '### Baseline debt delta'
-            if [ -f target/ripr/reports/baseline-debt-delta.json ]; then
-              delta_json=target/ripr/reports/baseline-debt-delta.json
-              baseline_path="$(jq -r '.baseline.path // .inputs.baseline // "unknown"' "$delta_json" 2>/dev/null || echo unknown)"
-              still_present="$(jq -r '.delta.still_present // 0' "$delta_json" 2>/dev/null || echo 0)"
-              resolved="$(jq -r '.delta.resolved // 0' "$delta_json" 2>/dev/null || echo 0)"
-              new_policy_eligible="$(jq -r '.delta.new_policy_eligible // 0' "$delta_json" 2>/dev/null || echo 0)"
-              acknowledged_delta="$(jq -r '.delta.acknowledged // 0' "$delta_json" 2>/dev/null || echo 0)"
-              suppressed_delta="$(jq -r '.delta.suppressed // 0' "$delta_json" 2>/dev/null || echo 0)"
-              stale_baseline_entry="$(jq -r '.delta.stale_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
-              invalid_baseline_entry="$(jq -r '.delta.invalid_baseline_entry // 0' "$delta_json" 2>/dev/null || echo 0)"
-              missing_current_input="$(jq -r '.delta.missing_current_input // 0' "$delta_json" 2>/dev/null || echo 0)"
-              limits_note="$(jq -r '.limits_note // "Advisory baseline debt movement; gate decision owns pass or fail."' "$delta_json" 2>/dev/null || echo unknown)"
-              baseline_path="$(markdown_inline "$baseline_path")"
-              still_present="$(markdown_inline "$still_present")"
-              resolved="$(markdown_inline "$resolved")"
-              new_policy_eligible="$(markdown_inline "$new_policy_eligible")"
-              acknowledged_delta="$(markdown_inline "$acknowledged_delta")"
-              suppressed_delta="$(markdown_inline "$suppressed_delta")"
-              stale_baseline_entry="$(markdown_inline "$stale_baseline_entry")"
-              invalid_baseline_entry="$(markdown_inline "$invalid_baseline_entry")"
-              missing_current_input="$(markdown_inline "$missing_current_input")"
-              limits_note="$(markdown_inline "$limits_note")"
-              echo '#### Baseline debt movement'
-              echo "- Baseline: \`$baseline_path\`"
-              echo "- Counts: still_present=\`$still_present\`, resolved=\`$resolved\`, new_policy_eligible=\`$new_policy_eligible\`, acknowledged=\`$acknowledged_delta\`, suppressed=\`$suppressed_delta\`, stale=\`$stale_baseline_entry\`, invalid=\`$invalid_baseline_entry\`, missing_current_input=\`$missing_current_input\`"
-              echo "- Boundary: $limits_note"
-              echo "- Baseline delta artifacts: \`target/ripr/reports/baseline-debt-delta.json\`, \`target/ripr/reports/baseline-debt-delta.md\`"
-              echo
-            fi
-            if [ -f target/ripr/reports/baseline-debt-delta.md ]; then
-              cat target/ripr/reports/baseline-debt-delta.md
-            elif [ -n "${RIPR_GATE_BASELINE:-}" ]; then
-              echo 'Baseline debt delta was not generated. Check that `RIPR_GATE_MODE` produced `target/ripr/reports/gate-decision.json` and that `RIPR_GATE_BASELINE` points at a readable baseline.'
-            else
-              echo 'Baseline debt delta was not run. Set `RIPR_GATE_BASELINE` with an explicit gate mode to compare current evidence against reviewed baseline debt.'
-            fi
-            echo
-            echo '### RIPR Zero status'
-            if [ -f target/ripr/reports/ripr-zero-status.json ]; then
-              zero_json=target/ripr/reports/ripr-zero-status.json
-              zero_state="$(jq -r '.ripr_zero.state // "unknown"' "$zero_json" 2>/dev/null || echo unknown)"
-              visible_unresolved="$(jq -r '.ripr_zero.visible_unresolved // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_new_policy_eligible="$(jq -r '.ripr_zero.new_policy_eligible // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_blocking_candidates="$(jq -r '.ripr_zero.blocking_candidates // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_acknowledged="$(jq -r '.ripr_zero.acknowledged // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_suppressed="$(jq -r '.ripr_zero.suppressed // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_still_present="$(jq -r '.baseline.still_present // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_resolved="$(jq -r '.baseline.resolved // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_metadata_stale="$(jq -r '.baseline.metadata.stale // 0' "$zero_json" 2>/dev/null || echo 0)"
-              zero_metadata_missing="$(jq -r '.baseline.metadata.missing_metadata // 0' "$zero_json" 2>/dev/null || echo 0)"
-              top_area="$(jq -r '(.top_debt_areas[0].area // "none")' "$zero_json" 2>/dev/null || echo unknown)"
-              top_route="$(jq -r '(.repair_routes[0] | if . == null then "none" else ((.path // "unknown") + (if .line then ":" + (.line|tostring) else "" end) + " " + (.missing_discriminator // "missing discriminator unavailable")) end)' "$zero_json" 2>/dev/null || echo unknown)"
-              trend_source="$(jq -r '.trend.source // "not_available"' "$zero_json" 2>/dev/null || echo unknown)"
-              zero_state="$(markdown_inline "$zero_state")"
-              visible_unresolved="$(markdown_inline "$visible_unresolved")"
-              zero_new_policy_eligible="$(markdown_inline "$zero_new_policy_eligible")"
-              zero_blocking_candidates="$(markdown_inline "$zero_blocking_candidates")"
-              zero_acknowledged="$(markdown_inline "$zero_acknowledged")"
-              zero_suppressed="$(markdown_inline "$zero_suppressed")"
-              zero_still_present="$(markdown_inline "$zero_still_present")"
-              zero_resolved="$(markdown_inline "$zero_resolved")"
-              zero_metadata_stale="$(markdown_inline "$zero_metadata_stale")"
-              zero_metadata_missing="$(markdown_inline "$zero_metadata_missing")"
-              top_area="$(markdown_inline "$top_area")"
-              top_route="$(markdown_inline "$top_route")"
-              trend_source="$(markdown_inline "$trend_source")"
-              echo '#### RIPR Zero at a glance'
-              echo "- State: \`$zero_state\`"
-              echo "- Visible unresolved: \`$visible_unresolved\`"
-              echo "- New policy-eligible: \`$zero_new_policy_eligible\`"
-              echo "- Blocking candidates: \`$zero_blocking_candidates\`"
-              echo "- Acknowledged: \`$zero_acknowledged\`"
-              echo "- Suppressed: \`$zero_suppressed\`"
-              echo "- Baseline still present: \`$zero_still_present\`"
-              echo "- Baseline resolved: \`$zero_resolved\`"
-              echo "- Baseline metadata: stale=\`$zero_metadata_stale\`, missing=\`$zero_metadata_missing\`"
-              echo "- Top debt area: \`$top_area\`"
-              echo "- Top repair route: \`$top_route\`"
-              echo "- Trend source: \`$trend_source\`"
-              echo "- RIPR Zero artifacts: \`target/ripr/reports/ripr-zero-status.json\`, \`target/ripr/reports/ripr-zero-status.md\`"
-              echo
-            fi
-            if [ -f target/ripr/reports/ripr-zero-status.md ]; then
-              cat target/ripr/reports/ripr-zero-status.md
-            elif [ -f target/ripr/reports/baseline-debt-delta.json ]; then
-              echo 'RIPR Zero status was not generated. Inspect `target/ripr/reports/baseline-debt-delta.json` and rerun `ripr zero status` locally.'
-            else
-              echo 'RIPR Zero status was not run. It requires `baseline-debt-delta.json`, which is produced only after an explicit gate mode and reviewed baseline are configured.'
-            fi
-            echo
-            echo '### SARIF and badge status'
-            if [ "${RIPR_UPLOAD_SARIF:-}" = "true" ]; then
-              if [ -f target/ripr/reports/ripr-findings.sarif ]; then echo "- Diff SARIF: generated"; else echo "- Diff SARIF: missing or skipped"; fi
-              if [ -f target/ripr/reports/ripr-seams.sarif ]; then echo "- Repo seam SARIF: generated"; else echo "- Repo seam SARIF: missing or skipped"; fi
-            else
-              echo '- SARIF upload: disabled by `RIPR_UPLOAD_SARIF`'
-            fi
-            if [ -f target/ripr/reports/repo-ripr-badge.json ]; then echo "- Badge JSON: generated"; else echo "- Badge JSON: missing or skipped"; fi
-            if [ -f target/ripr/reports/repo-ripr-badge-shields.json ]; then echo "- Badge Shields JSON: generated"; else echo "- Badge Shields JSON: missing or skipped"; fi
-            echo
-            echo '### PR guidance annotations'
-            if [ -f target/ripr/review/comments.json ]; then
-              comments="$(jq -r '.summary.comments // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
-              summary_only="$(jq -r '.summary.summary_only // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
-              suppressed="$(jq -r '.summary.suppressed // 0' target/ripr/review/comments.json 2>/dev/null || echo 0)"
-              echo "- Changed-line annotations emitted: $comments"
-              echo "- Summary-only recommendations: $summary_only"
-              echo "- Suppressed recommendations: $suppressed"
-            else
-              echo 'No PR test guidance report was generated. When `ripr review-comments` writes `target/ripr/review/comments.json`, this workflow emits changed-line check annotations by default.'
-            fi
-            echo
-            echo '### Known limits'
-            echo "- Advisory static evidence only; review the named seam and write one focused test."
-            echo "- No automatic source edits or generated tests."
-            echo "- No runtime mutation execution is performed by this workflow."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload RIPR report artifacts
-        if: always()
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: ripr-reports
-          path: |
-            target/ripr/pilot
-            target/ripr/agent
-            target/ripr/workflow
-            target/ripr/reports
-            target/ripr/review
-            target/ci
-          if-no-files-found: ignore
-          retention-days: 14
-
-      - name: Upload RIPR diff findings
-        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && github.event_name == 'pull_request' && hashFiles('target/ripr/reports/ripr-findings.sarif') != ''
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: target/ripr/reports/ripr-findings.sarif
-          category: ripr-findings
-
-      - name: Upload RIPR repo seams
-        if: always() && env.RIPR_UPLOAD_SARIF == 'true' && hashFiles('target/ripr/reports/ripr-seams.sarif') != ''
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: target/ripr/reports/ripr-seams.sarif
-          category: ripr-seams
+      - name: Run RIPR
+        run: ripr reports ci-packet --root .
 ```
+
+#### Generated workflow settings and steps
+
+The generated file keeps one-line comments and points here for the reasons
+behind each setting (#5409). Each entry below is what the file used to say
+inline.
+
+Repository variables (Settings > Secrets and variables > Actions > Variables)
+configure the workflow, so changing a mode never means editing the file:
+
+- `RIPR_GATE_MODE` is the gate authority. Empty (the default) is advisory only
+  and the job never fails. `visible-only` runs the gate and prints its result
+  without blocking the job. `acknowledgeable` runs the gate and lets the PR
+  author acknowledge a finding to merge. `baseline-check` fails when exposure
+  is worse than the baseline. `calibrated-gate` fails only on new,
+  high-confidence, policy-eligible gaps and needs baseline and calibration
+  inputs. See [calibrated gate policy](CALIBRATED_GATE_POLICY.md).
+- `RIPR_GATE_BASELINE` is an optional path to a reviewed baseline ledger file,
+  such as `.ripr/gate-baseline.json`, that `baseline-check` and
+  `calibrated-gate` compare current evidence against. Empty by default.
+- `RIPR_COMMENT_MODE` controls PR review comments. `off` (the default) posts
+  nothing and leaves findings in artifacts; `plan` computes and uploads a
+  comment plan without posting; `inline` publishes inline review comments on
+  changed lines.
+- `RIPR_UPLOAD_SARIF` is set in the file, not as a variable. `"true"` uploads
+  SARIF to the Security tab; set `"false"` if the repository does not use code
+  scanning.
+
+Permissions and job settings:
+
+- `pull-requests: write` is used only when `RIPR_COMMENT_MODE` is `inline`.
+  With `off`, nothing writes to the pull request; set it to `read` if you keep
+  comments off.
+- `security-events: write` is used only for the SARIF upload. Remove it and set
+  `RIPR_UPLOAD_SARIF` to `"false"` if the repository does not use code
+  scanning.
+- `labeled` and `unlabeled` re-run the gate when a waiver label such as
+  `ripr-waive` is added or removed, since the gate reads labels from the event.
+  Any label change re-runs the job, and the concurrency group cancels the
+  superseded run.
+- Every run step is bash (arrays in the comment planner), so `defaults.run.shell`
+  pins bash; the steps still parse if the job moves to `windows-latest`, whose
+  default shell is PowerShell.
+- One run per pull request: a newer push cancels the older run. Only the
+  newest head's placements are valid, and two overlapping runs would each
+  snapshot the existing inline comments before either publishes, then both
+  create the same cards.
+- The job is `continue-on-error` unless `RIPR_GATE_MODE` names a blocking mode,
+  so with the default empty or `visible-only` mode a failure never fails the
+  PR.
+
+Steps:
+
+- **Checkout** analyzes the PR head, not GitHub's `refs/pull/N/merge` commit.
+  Review comments and `::warning` annotations are placed on the PR head's
+  lines; when the base branch has moved lines in a changed file, merge-commit
+  line numbers point at the wrong line, and GitHub rejects the whole review when
+  a line falls outside the PR diff. `upload-sarif` detects the head checkout and
+  reports it as `refs/pull/N/head`. A manual run keeps the dispatched commit.
+  `persist-credentials: false` leaves no token in `.git/config`, where
+  PR-controlled code (build scripts, analyzed sources) could read it; no step
+  pushes or fetches after checkout.
+- **Remove checked-in RIPR artifacts** deletes `target/ripr` and `target/ci`
+  before the first RIPR step. The gate, ledger, and policy steps read several
+  files there only when present (sarif-policy, agent-verify, agent-receipt,
+  calibration, coverage), and nothing in the workflow writes some of them, so a
+  pull request could commit forged copies (`git add -f`). Steps you add later
+  that write there still work. ripr's analysis cache lives outside the
+  checkout, so the cleanup never discards it.
+- **Install ripr** pins the version whose commands the steps use; an unpinned
+  install takes the newest release, whose CLI may not match. It downloads that
+  release's prebuilt binary and checks it against the published SHA-256, falls
+  back to `cargo install` where there is no prebuilt binary, and fails with the
+  fix when the runner has no cargo. The summary step reads this step's outcome
+  by its id.
+- **actions/cache** restores ripr's analysis cache. Entries are keyed on file
+  contents, configuration, and the ripr version, so an entry that no longer
+  matches is a miss, never stale evidence. GitHub scopes a cache a pull request
+  saves to that pull request, and the cache lives outside the checkout, so a
+  pull request cannot commit one. The action is pinned to a commit SHA because
+  the job holds a token with write scopes.
+- **Verify installed RIPR compatibility** rejects a binary reporting a version
+  other than the installed 0.10.0 contract before the report steps run.
+- **Capture existing RIPR inline comments** normalizes the pull request's review
+  comments with jq, keeping only comments the
+  workflow posted (author `github-actions[bot]`, type `Bot`) that carry a
+  `ripr:dedupe` marker. Anyone can write the marker; a marked comment from
+  another author must not suppress a RIPR card or be PATCHed by this job.
+- **Generate RIPR pilot packet** starts the compatible report pipeline. Report
+  commands read no token; only the comment capture and publish steps hold it.
+- **Run RIPR PR guidance report** uses the released check and review APIs. A
+  failed check stops this gate-critical producer; it cannot borrow a partial
+  check result and report success. Development's strict `--check-output` join
+  is not an API provided by installed 0.10.0.
+- **Evaluate RIPR gate decision** remains the pass/fail authority for a
+  configured mode. The step is not `continue-on-error`.
+- **Publish RIPR inline comments** turns
+  the publish plan into ordered GitHub API requests (updates first,
+  then one review for new cards), and the step sends each one with `gh api`.
+  It sends no request when the plan is not safe to publish, and folds CR/LF
+  in every message it prints so a repository path cannot start a line GitHub
+  reads as a workflow command.
+- **Upload RIPR diff findings** stays `continue-on-error`: upload infrastructure
+  is not analysis authority (#2009), so a code-scanning outage must not fail a
+  gate the analysis passed.
 
 For a first rollout, treat code-scanning annotations as review guidance. Do not
 make the job blocking until the repository has reviewed its initial SARIF
@@ -1814,10 +1407,8 @@ fail CI. The `cargo xtask sarif-policy` baseline modes shown above are
 repo-local automation today; a public package-level policy command is a future
 adoption surface.
 
-The generated workflow always uploads `target/ripr/pilot`,
-`target/ripr/workflow`, `target/ripr/agent`, `target/ripr/reports`,
-`target/ripr/review`, and `target/ci` as a `ripr-reports` artifact when files
-exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
+The generated workflow always uploads `target/ripr` and `target/ci` as a
+`ripr-reports` artifact when files exist. When `RIPR_GATE_BASELINE` is set and gate evaluation writes
 `target/ripr/reports/gate-decision.json`, the workflow also runs
 `ripr baseline diff`, then `ripr zero status`, and includes:
 
@@ -1954,6 +1545,23 @@ analysis, grade an agent, or change pass/fail authority.
 See [Assistant loop health workflow](ASSISTANT_LOOP_HEALTH_WORKFLOW.md) for how
 maintainers and coding agents read completeness, missing inputs, unchanged
 movement, repair queue entries, and advisory limits.
+
+For the artifact composition commands `ripr pr-summary`, `ripr first-action`,
+`ripr pr-review front-panel`, and `ripr reports index`, `--root <path>` names
+the selected repository; its default is the current working directory.
+`pr-summary` reads its fixed artifact locations and a relative `--baseline`
+under that root, and writes its three summary outputs there. The other three
+commands retain their explicit artifact and output path conventions: relative
+paths resolve from the process working directory. From a foreign directory,
+pass absolute artifact/output paths to those commands alongside `--root`.
+These commands compose existing artifacts rather than establishing new
+analysis or release qualification.
+
+On Windows, `pr-summary` accepts ordinary relative paths and fully qualified
+absolute paths for `--root` and `--baseline`, including UNC and verbatim paths.
+It rejects partially qualified paths such as `C:repo` or `\repo`, whose Windows
+join semantics can replace the selected root. This restriction applies only
+on Windows; colon-containing relative filenames remain valid on other systems.
 
 Generated CI also projects the first useful action when at least one explicit
 input artifact is already present. It runs `ripr first-action --root .` with
@@ -2153,10 +1761,13 @@ Recommended acknowledgement workflow:
 3. When the gate reports a policy-eligible gap, review the job summary,
    `target/ripr/reports/gate-decision.md`, and the PR guidance packet.
 4. If the finding is acceptable for this PR, add `ripr-waive`.
-5. Let the labeled PR workflow rerun. The next gate decision should say
+5. The generated workflow triggers on `labeled` and `unlabeled` pull-request
+   events, so adding the label reruns it. The next gate decision should say
    `Decision: acknowledged`, list `ripr-waive`, and keep the candidate visible.
-6. If a focused test is added instead, remove `ripr-waive` and rerun the gate so
-   the receipt records the current evidence without an acknowledgement label.
+6. If a focused test is added instead, remove `ripr-waive`; the `unlabeled`
+   event reruns the gate so the receipt records the current evidence without an
+   acknowledgement label. Any label change reruns the job, and the workflow's
+   concurrency group cancels the superseded run.
 
 The expected acknowledged summary looks like:
 
@@ -2321,8 +1932,11 @@ ledger shape. For compatibility with existing fixtures and reviewed hand-built
 baselines, it also accepts identities from `decisions`, `comments`,
 `summary_only`, and `suppressed` arrays when those fields are present in the
 baseline file. For each entry, it indexes `seam_id`, `id`, and `dedupe_key`
-when present. Keep the baseline small and reviewable; do not check in an
-uninspected copy of every PR guidance artifact.
+when present. A baseline file with none of those arrays, a JSON array, or a
+`kind` other than `gate_baseline` (or a `gate_baseline` without `entries`) is
+rejected as a `config_error` instead of acting as an empty baseline. Keep the
+baseline small and reviewable; do not check in an uninspected copy of every PR
+guidance artifact.
 
 Baseline review checklist:
 
@@ -2524,9 +2138,11 @@ Use the existing `vscode` label for a selected source editor candidate. The
 commands. Rust, MSRV and release-check conditions are unchanged; the label is
 not an integrated release qualification or publication decision.
 
-In Routed Rust, opened/synchronize/reopened, `full-ci` label additions, pushes
-and manual dispatches retain the existing typed receipt/aggregate path. Other
-label additions and removals use a separate concurrency group, skip proof
-selection, and never post `Ripr Rust Small Result`, including as a skipped job.
-Their cheap ignored-event summary proves no Rust subject. Existing proof for an
-exact head remains its own evidence and cannot be replaced by a label event.
+In Routed Rust, Draft -> Ready, protected-branch pushes and manual dispatches
+retain the public source hosted route and typed receipt/aggregate path.
+Opened, synchronize, reopened and label events do not trigger this workflow;
+a new PR head needs a new Draft -> Ready transition for this context. Those
+non-triggering events cannot replace an in-progress routed proof. A second
+Ready transition may cancel the previous admission attempt; completed receipts
+remain evidence only for the exact subject and tree they name. The public
+`ci.yml` required jobs retain their separate triggers and protected authority.

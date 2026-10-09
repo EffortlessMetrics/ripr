@@ -314,10 +314,11 @@ The JSON report uses schema version `0.1`:
     "focused_proof_intent": "Add an equality-boundary assertion.",
     "related_test": "tests/pricing.rs::applies_discount_above_threshold",
     "suggested_test": "Add an equality-boundary assertion.",
+    "repair_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before",
     "verify_command": "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
     "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id 67fc764ba37d77bd --json",
     "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
-    "agent_command": "ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "agent_command": "ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before",
     "receipt": {
       "artifact": "target/ripr/reports/agent-receipt.json",
       "status": "present"
@@ -417,6 +418,13 @@ Field contract:
   typed field. For legacy PR guidance, gate, baseline, and assistant-health
   artifacts, the front panel may normalize existing typed class/status fields,
   but must not derive the value from Markdown prose.
+- `top_issue.repair_command` is carried only (#3906): from first-action
+  `commands.repair`, a review card's `llm_guidance.repair_command`, or an
+  acknowledged gate route's `repair_route.repair_command`, each named upstream
+  only past the fail-closed repair-packet flip. `top_issue.agent_command` is
+  that command, else a carried read-only inspection command, else `null`. The
+  panel never builds an `agent start` or `agent repair` command from a bare
+  seam id.
 - `movement.*` preserves before/after static movement in the producer's
   vocabulary when supplied. The pair must use one vocabulary; the front panel
   does not normalize producer-owned movement classes. It is not runtime
@@ -464,8 +472,9 @@ Policy:
 - Gate authority: target/ripr/reports/gate-decision.md
 
 Repair:
-- Agent handoff: `ripr agent start --root . --seam-id 67fc764ba37d77bd --out target/ripr/workflow`
-- Verify: `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
+- Repair start: `ripr agent repair --root . --seam-id 67fc764ba37d77bd --phase before`
+- After the test edit: run the `--attempt ... --phase after` command the before phase prints; it verifies movement and writes the receipt.
+- Manual verify without a repair attempt (needs before and after snapshots taken around the test edit): `ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json`
 - Receipt: target/ripr/reports/agent-receipt.json
 
 Artifacts:

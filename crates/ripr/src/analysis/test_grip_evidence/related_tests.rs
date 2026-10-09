@@ -1,11 +1,13 @@
 use super::*;
+use crate::analysis::classify::{impl_self_type_name, method_call_resolves_to_impl_type};
+use std::sync::Arc;
 
 pub(super) mod context;
 
 pub(crate) use context::CompactGripContext;
 pub(super) use context::{CompactTest, call_text_contains_named_call};
 
-/// Walk `index.tests` and return tests that plausibly relate to `seam`,
+/// Walk `index.tests()` and return tests that plausibly relate to `seam`,
 /// each tagged with the single highest-priority `RelationReason` it
 /// satisfies. The two-step "match then rank" replaces the old binary
 /// `calls_owner || same_file_or_named` check from earlier campaigns.
@@ -51,12 +53,14 @@ pub(super) struct OwnerContext {
     file_stem: String,
     module_path: Option<String>,
     prefix: Option<String>,
-    fixture_names: BTreeSet<String>,
+    fixture_names: Arc<BTreeSet<String>>,
+    impl_type: Option<String>,
+    same_name_count: usize,
 }
 
 impl OwnerContext {
     fn resolve(seam: &RepoSeam, context: &CompactGripContext<'_>) -> Self {
-        let owner_fn = find_owner_function(seam, context.index);
+        let owner_fn = context.owner_function(seam.file(), seam.display_line());
         let name = owner_fn.map(|f| f.name.as_str()).unwrap_or("").to_string();
         let name_lower = name.to_ascii_lowercase();
         let owner_file = owner_fn.map(|f| f.file.as_path());
@@ -64,9 +68,10 @@ impl OwnerContext {
         let module_path = owner_file.and_then(|file| module_path_for_index(context.index, file));
         let prefix = owner_fn.and_then(|f| package_prefix(&f.file));
         let fixture_names = owner_file
-            .and_then(|file| context.index.files.get(file))
-            .map(fixture_names_for_owner_file)
+            .map(|file| context.fixture_names_for_owner_file(file))
             .unwrap_or_default();
+        let impl_type = owner_fn.and_then(|owner| impl_self_type_name(&owner.id.0));
+        let same_name_count = context.function_name_count(&name);
         Self {
             name,
             name_lower,
@@ -74,6 +79,8 @@ impl OwnerContext {
             module_path,
             prefix,
             fixture_names,
+            impl_type,
+            same_name_count,
         }
     }
 }
@@ -199,7 +206,19 @@ pub(super) fn match_direct_owner_call(
     let Some(indices) = context.tests_by_call_name.get(&owner.name) else {
         return;
     };
+    let require_impl_identity = owner.same_name_count > 1 && owner.impl_type.is_some();
     for test_index in indices {
+        if require_impl_identity {
+            let Some(indexed) = context.tests.get(*test_index) else {
+                continue;
+            };
+            let Some(impl_type) = owner.impl_type.as_deref() else {
+                continue;
+            };
+            if !method_call_resolves_to_impl_type(indexed.test, &owner.name, impl_type) {
+                continue;
+            }
+        }
         insert_related_candidate(
             candidates,
             context,
@@ -247,19 +266,24 @@ pub(super) fn match_target_affinity_owner_call(
     {
         return;
     }
-    for (test_index, test) in context.tests.iter().enumerate() {
-        if !test
-            .target_affinity_owner_call_names
-            .contains(owner.name.as_str())
-            || !test_assertion_mentions_any_target_token(test, target_tokens)
-        {
+    let Some(indices) = context
+        .tests_by_target_affinity_owner_call_name
+        .get(&owner.name)
+    else {
+        return;
+    };
+    for test_index in indices {
+        let Some(test) = context.tests.get(*test_index) else {
+            continue;
+        };
+        if !test_assertion_mentions_any_target_token(test, target_tokens) {
             continue;
         }
         insert_related_candidate(
             candidates,
             context,
             prefix,
-            test_index,
+            *test_index,
             RelationReason::HelperOwnerCall,
         );
     }
@@ -280,18 +304,60 @@ pub(super) fn match_assertion_target_affinity(
     prefix: Option<&str>,
     target_tokens: &BTreeSet<String>,
 ) {
+    let limit = crowded_relation_limit(context.tests.len());
+    let mut matched_tokens: BTreeMap<usize, usize> = BTreeMap::new();
     for token in target_tokens {
         if let Some(indices) = context.tests_by_assertion_token.get(token) {
-            for test_index in indices {
-                insert_related_candidate(
-                    candidates,
-                    context,
-                    prefix,
-                    *test_index,
-                    RelationReason::AssertionTargetAffinity,
-                );
+            // A token asserted across much of the suite (`status`, `path`)
+            // says nothing about which tests read this seam (#4434). Only
+            // tests in the seam's package count, so another crate's common
+            // token cannot silence the local tests that assert it.
+            if indices.len() > limit
+                && indices
+                    .iter()
+                    .filter(|&&test_index| {
+                        context.tests.get(test_index).is_some_and(|indexed| {
+                            prefix.is_none_or(|prefix| indexed.path_normalized.starts_with(prefix))
+                        })
+                    })
+                    .nth(limit)
+                    .is_some()
+            {
+                continue;
+            }
+            for &test_index in indices {
+                // Rank only tests this reason could still admit, so an
+                // out-of-package or already-related test takes no slot.
+                let admissible = !candidates.contains_key(&test_index)
+                    && context.tests.get(test_index).is_some_and(|indexed| {
+                        prefix.is_none_or(|prefix| indexed.path_normalized.starts_with(prefix))
+                    });
+                if admissible {
+                    *matched_tokens.entry(test_index).or_default() += 1;
+                }
             }
         }
+    }
+    // Several mid-frequency tokens from one long discriminator can still
+    // name thousands of tests together. Past the limit, keep the tests that
+    // assert the most target tokens, earliest index first on ties. The tie
+    // order only keeps output deterministic; index position carries no
+    // relevance.
+    let mut ranked = matched_tokens.into_iter().collect::<Vec<_>>();
+    if ranked.len() > limit {
+        ranked.sort_by(|(left_index, left), (right_index, right)| {
+            right.cmp(left).then(left_index.cmp(right_index))
+        });
+        ranked.truncate(limit);
+    }
+    for (test_index, _) in ranked {
+        insert_related_candidate(
+            candidates,
+            context,
+            prefix,
+            test_index,
+            RelationReason::AssertionTargetAffinity,
+        );
     }
 }
 
@@ -397,7 +463,7 @@ pub(super) fn match_fixture_owner_affinity(
     prefix: Option<&str>,
     owner: &OwnerContext,
 ) {
-    for fixture_name in &owner.fixture_names {
+    for fixture_name in owner.fixture_names.iter() {
         if let Some(indices) = context.tests_by_call_name.get(fixture_name) {
             for test_index in indices {
                 insert_related_candidate(
@@ -462,7 +528,8 @@ pub(super) fn find_related_tests_compact<'a>(
     context: &'a CompactGripContext<'_>,
 ) -> Vec<&'a CompactTest<'a>> {
     let mut related = find_related_tests_with_context(seam, context);
-    sort_related_tests_for_seam(seam, context, &mut related);
+    let owner_fn = context.owner_function(seam.file(), seam.display_line());
+    sort_related_tests_for_seam(seam, context, owner_fn, &mut related);
     related
         .into_iter()
         .take(COMPACT_RELATED_TEST_LIMIT)
@@ -484,11 +551,13 @@ pub(super) struct RelatedTestRankKey {
 pub(super) fn sort_related_tests_for_seam(
     seam: &RepoSeam,
     context: &CompactGripContext<'_>,
+    owner_fn: Option<&FunctionSummary>,
     related: &mut [(&CompactTest<'_>, RelationReason)],
 ) {
+    let owner = seam_owner_activation(seam, context);
     related.sort_by_cached_key(|entry| {
         let (indexed, reason) = *entry;
-        related_test_rank_key(seam, context, indexed, reason)
+        related_test_rank_key(seam, context, indexed, reason, owner.as_ref(), owner_fn)
     });
 }
 
@@ -497,20 +566,24 @@ pub(super) fn related_test_rank_key(
     context: &CompactGripContext<'_>,
     indexed: &CompactTest<'_>,
     reason: RelationReason,
+    owner: Option<&SeamOwnerActivation<'_>>,
+    owner_fn: Option<&FunctionSummary>,
 ) -> RelatedTestRankKey {
-    let (_oracle_kind, oracle_strength) = best_oracle(indexed.test, seam);
+    let (_oracle_kind, oracle_strength, _contradiction) = best_oracle(indexed.test, seam, owner_fn);
     RelatedTestRankKey {
         relation_confidence: reason.confidence().rank(),
         relation_reason: reason.priority(),
         oracle_strength: Reverse(oracle_strength.rank()),
-        activation_overlap: Reverse(activation_overlap_score(seam, context, indexed)),
+        activation_overlap: Reverse(activation_overlap_score(seam, context, indexed, owner)),
         file: indexed.test.file.clone(),
         test_name: indexed.test.name.clone(),
         line: indexed.test.start_line,
     }
 }
 
-pub(super) fn fixture_names_for_owner_file(facts: &rust_index::FileFacts) -> BTreeSet<String> {
+pub(super) fn fixture_names_for_owner_file(
+    facts: rust_index::FileFactsView<'_>,
+) -> BTreeSet<String> {
     facts
         .functions
         .iter()
@@ -618,6 +691,45 @@ pub(super) fn module_path_for_index(index: &RustIndex, file: &Path) -> Option<St
     module_path_for(&rust_index::compilation_unit_path(index, file))
 }
 
+/// Above this many tests, one relation key (an assertion token, a parent
+/// module) covers much of the suite rather than the changed code. The floor
+/// keeps small workspaces on the plain rules.
+pub(super) fn crowded_relation_limit(test_count: usize) -> usize {
+    (test_count / 100).max(64)
+}
+
+/// In a crowded parent module, keep only the tests that sit close to the
+/// owner: the parent itself, the owner's own module and its children, and a
+/// test-named sibling (`tests`, `*_tests`, `test_*`). Distant siblings such as
+/// `analysis/classify` for an `analysis/cancellation` owner stay unrelated.
+pub(super) fn close_module(owner_module: &str, test_module: &str) -> bool {
+    let Some((parent, leaf)) = owner_module.rsplit_once('/') else {
+        return false;
+    };
+    if test_module == parent {
+        return true;
+    }
+    let flattened = parent.replace('/', "_");
+    let Some(rest) = test_module
+        .strip_prefix(parent)
+        .and_then(|rest| rest.strip_prefix('/'))
+        .or_else(|| {
+            test_module
+                .strip_prefix(flattened.as_str())
+                .and_then(|rest| rest.strip_prefix('/'))
+        })
+    else {
+        return false;
+    };
+    let segment = rest.split('/').next().unwrap_or(rest);
+    segment == leaf
+        || segment == "test"
+        || segment == "tests"
+        || segment.ends_with("_test")
+        || segment.ends_with("_tests")
+        || segment.starts_with("test_")
+}
+
 /// Two files share a module if any non-leaf segment of the owner's
 /// module path appears as a prefix of the test's module path. The leaf
 /// stem is excluded so this does not duplicate `same_test_file`.
@@ -657,6 +769,8 @@ pub(super) fn test_imports_owner_compact(test: &CompactTest<'_>, owner_name: &st
         return false;
     }
     let qualified = format!("::{owner_name}");
+    // Both branches below imply `is_import_relevant_line`, which is the
+    // retention filter for `code_lines`; keep them inside that predicate.
     for code in &test.code_lines {
         if code.contains(&qualified) {
             return true;
@@ -672,11 +786,20 @@ pub(super) fn test_imports_owner_compact(test: &CompactTest<'_>, owner_name: &st
     false
 }
 
+/// The one eligibility rule shared by the import readers below and by
+/// `CompactTest::code_lines` retention. A stripped line that fails it can
+/// affect neither `import_affinity_tokens` nor `test_imports_owner_compact`
+/// (whose `::owner` branch implies `::` and whose `use` branch is this
+/// prefix), so the compact context keeps only lines that pass it. Widening
+/// either reader requires widening this predicate, never a private copy.
+pub(super) fn is_import_relevant_line(code: &str) -> bool {
+    code.contains("::") || code.trim_start().starts_with("use ")
+}
+
 pub(super) fn import_affinity_tokens(code_lines: &[String]) -> BTreeSet<String> {
     let mut tokens = BTreeSet::new();
     for code in code_lines {
-        let trimmed = code.trim_start();
-        if code.contains("::") || trimmed.starts_with("use ") {
+        if is_import_relevant_line(code) {
             tokens.extend(extract_identifier_tokens(code));
         }
     }
@@ -752,13 +875,6 @@ pub(super) fn is_fixture_named(name: &str) -> bool {
     let prefixes = ["fixture_", "setup_", "make_", "build_", "new_", "mock_"];
     let suffixes = ["_fixture", "_factory"];
     prefixes.iter().any(|p| name.starts_with(p)) || suffixes.iter().any(|s| name.ends_with(s))
-}
-
-pub(super) fn find_owner_function<'a>(
-    seam: &RepoSeam,
-    index: &'a RustIndex,
-) -> Option<&'a FunctionSummary> {
-    rust_index::find_owner_function(index, seam.file(), seam.display_line())
 }
 
 pub(super) fn normalize_path(path: &Path) -> String {

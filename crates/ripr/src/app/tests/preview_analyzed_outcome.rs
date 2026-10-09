@@ -64,6 +64,7 @@ fn shared_preview_completion_predicate_fails_closed_for_every_non_success_status
         language: "python".to_string(),
         file_count: 1,
         sample_paths: vec!["src/app.py".to_string()],
+        javascript_file_count: 0,
         enabled: true,
     };
     if !advisory.analyzed(&[]) {
@@ -155,6 +156,61 @@ fn malformed_perl_adapter_run_is_enabled_but_not_analyzed_in_every_renderer() ->
     cleanup
 }
 
+/// Perl enabled with no fact packet: the run is `unavailable`, the note agrees
+/// with one file ("1 Perl file was"), and the reason names what to pass in
+/// user terms rather than an internal campaign reference (2026-09-27 re-walk).
+#[cfg(feature = "lang-perl")]
+#[test]
+fn missing_perl_fact_packet_reason_is_user_facing() -> Result<(), String> {
+    let root = temp_root("preview-perl-missing-packet")?;
+    let proof = (|| -> Result<(), String> {
+        let diff = root.join("perl.diff");
+        write(
+            &diff,
+            "diff --git a/lib/App.pm b/lib/App.pm\n--- /dev/null\n+++ b/lib/App.pm\n@@ -0,0 +1 @@\n+sub discount { return 0 }\n",
+        )?;
+        let config =
+            crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"perl\"]\n")?;
+        let output = crate::app::check_workspace_with_config(
+            crate::CheckInput {
+                root: root.clone(),
+                base: None,
+                diff_file: Some(diff),
+                mode: crate::Mode::Draft,
+                format: crate::OutputFormat::Json,
+                include_unchanged_tests: false,
+                perl_facts_path: None,
+                suppression_policy: None,
+                git_timeout: None,
+                git_candidate: None,
+            },
+            &config,
+        )?;
+        let perl_run = output
+            .language_runs
+            .iter()
+            .find(|run| run.language == "perl")
+            .ok_or_else(|| "missing Perl language_run".to_string())?;
+        if perl_run.status != crate::analysis::LanguageRunStatus::Unavailable {
+            return Err(format!("expected unavailable Perl run, got {perl_run:?}"));
+        }
+        let human = crate::render_check(&output, &crate::OutputFormat::Human)?;
+        if !human.contains("so 1 Perl file was not analyzed") {
+            return Err(format!("expected singular verb for one file: {human}"));
+        }
+        if !human.contains("--perl-facts <packet.json>") || human.contains("Campaign") {
+            return Err(format!(
+                "reason must name the flag, not a campaign: {human}"
+            ));
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
+    proof?;
+    cleanup
+}
+
 #[cfg(feature = "lang-typescript")]
 fn typescript_output(enabled: bool) -> Result<(std::path::PathBuf, crate::CheckOutput), String> {
     let root = temp_root(if enabled {
@@ -210,4 +266,266 @@ fn disabled_preview_run_is_not_enabled_or_analyzed_in_every_renderer() -> Result
         fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
     proof?;
     cleanup
+}
+
+/// #4372 / RIPR-SPEC-0082: a changed file that the enabled TypeScript adapter
+/// refuses (#3743 excluded path, or a generated name) is not counted as
+/// analyzed, and is still disclosed as a typed skipped-scope limitation so the
+/// outcome is never a silently complete result.
+#[cfg(feature = "lang-typescript")]
+fn typescript_output_for_paths(
+    name: &str,
+    paths: &[&str],
+) -> Result<(std::path::PathBuf, crate::CheckOutput), String> {
+    let root = temp_root(name)?;
+    let diff = root.join("typescript.diff");
+    let text = paths
+        .iter()
+        .map(|path| {
+            format!(
+                "diff --git a/{path} b/{path}\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n\
+                 +export const discount = (amount: number) => amount > 10 ? amount - 1 : amount;\n"
+            )
+        })
+        .collect::<String>();
+    write(&diff, &text)?;
+    let config =
+        crate::config::tests_only_parse("[languages]\nenabled = [\"rust\", \"typescript\"]\n")?;
+    let output = crate::app::check_workspace_with_config(
+        crate::CheckInput {
+            root: root.clone(),
+            base: None,
+            diff_file: Some(diff),
+            mode: crate::Mode::Draft,
+            format: crate::OutputFormat::Json,
+            include_unchanged_tests: false,
+            perl_facts_path: None,
+            suppression_policy: None,
+            git_timeout: None,
+            git_candidate: None,
+        },
+        &config,
+    )?;
+    Ok((root, output))
+}
+
+#[cfg(feature = "lang-typescript")]
+fn skipped_scope_limitation(json: &str) -> Result<(String, Value), String> {
+    let value: Value =
+        serde_json::from_str(json).map_err(|error| format!("parse check JSON: {error}"))?;
+    let outcome = &value["analysis_outcome"]["outcome"];
+    let kind = outcome["kind"].as_str().unwrap_or_default().to_string();
+    let limitation = outcome["limitations"]
+        .as_array()
+        .and_then(|limitations| {
+            limitations
+                .iter()
+                .find(|limitation| limitation["kind"] == "language_scope_unsupported")
+        })
+        .cloned()
+        .ok_or_else(|| format!("missing language_scope_unsupported limitation: {json}"))?;
+    Ok((kind, limitation))
+}
+
+#[cfg(feature = "lang-typescript")]
+#[test]
+fn excluded_only_typescript_diff_discloses_skipped_scope_in_human_and_json() -> Result<(), String> {
+    let (root, output) =
+        typescript_output_for_paths("preview-typescript-excluded-only", &["vendor/lib.ts"])?;
+    let proof = (|| -> Result<(), String> {
+        let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+        let (kind, limitation) = skipped_scope_limitation(&json)?;
+        if kind != "partial_with_limitations"
+            || limitation["producer_stage"] != "language_adapter"
+            || limitation["affected_items"] != 1
+            || !limitation["recovery"]["detail"]
+                .as_str()
+                .is_some_and(|detail| detail.contains("vendor/lib.ts"))
+        {
+            return Err(format!("excluded file not disclosed as skipped: {json}"));
+        }
+        let human = crate::render_check(&output, &crate::OutputFormat::Human)?;
+        if !human.contains("(analysis incomplete; partial_with_limitations)")
+            || !human.contains("Limitation: some changed files were not analyzed during language analysis (language_scope_unsupported at language_adapter)")
+            || !human.contains("vendor/lib.ts")
+            || human.contains("analyzed under preview support")
+        {
+            return Err(format!("human output hides the skipped file: {human}"));
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
+    proof?;
+    cleanup
+}
+
+#[cfg(feature = "lang-typescript")]
+#[test]
+fn mixed_typescript_diff_counts_only_accepted_files_and_discloses_the_skipped() -> Result<(), String>
+{
+    let (root, output) = typescript_output_for_paths(
+        "preview-typescript-mixed-excluded",
+        &["src/discount.ts", "vendor/lib.ts"],
+    )?;
+    let proof = (|| -> Result<(), String> {
+        let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+        let preview = preview_entry(&json, "check JSON")?;
+        if preview["file_count"] != 1 || preview["sample_paths"][0] != "src/discount.ts" {
+            return Err(format!(
+                "analyzed count includes the excluded file: {preview}"
+            ));
+        }
+        let (_, limitation) = skipped_scope_limitation(&json)?;
+        if limitation["affected_items"] != 1 {
+            return Err(format!("skipped count wrong: {limitation}"));
+        }
+        let human = crate::render_check(&output, &crate::OutputFormat::Human)?;
+        if !human.contains("Note: 1 TypeScript file analyzed under preview support") {
+            return Err(format!("control file lost its preview note: {human}"));
+        }
+        Ok(())
+    })();
+    let cleanup =
+        fs::remove_dir_all(&root).map_err(|error| format!("remove {}: {error}", root.display()));
+    proof?;
+    cleanup
+}
+
+/// Real-repo finding (bat): a Rust-only change was reported as partial
+/// because an unrelated, deeply nested Python fixture exceeded the Python
+/// parse budget. A refusal in a language the diff does not touch must not
+/// degrade the outcome; the same refusal must still surface when the diff
+/// does touch Python.
+#[cfg(feature = "lang-python")]
+fn python_refusal_limitation_kinds(name: &str, changed: &[&str]) -> Result<Vec<String>, String> {
+    let nested = format!("x = {}1{}\n", "(".repeat(200), ")".repeat(200));
+    limitation_kinds_for_preview_diff(name, "python", ("fixture.py", &nested), changed)
+}
+
+/// Shared body: a Rust crate plus one refused preview-language fixture, then
+/// the outcome limitation kinds for a diff over `changed`.
+#[cfg(any(feature = "lang-python", feature = "lang-typescript"))]
+fn limitation_kinds_for_preview_diff(
+    name: &str,
+    enabled: &str,
+    fixture: (&str, &str),
+    changed: &[&str],
+) -> Result<Vec<String>, String> {
+    let root = temp_root(name)?;
+    fs::create_dir_all(root.join("src")).map_err(|error| format!("create src: {error}"))?;
+    write(
+        &root.join("src/lib.rs"),
+        "pub fn discount(amount: u32) -> u32 {\n    if amount > 10 { amount - 1 } else { amount }\n}\n",
+    )?;
+    write(&root.join(fixture.0), fixture.1)?;
+    let diff = root.join("change.diff");
+    let text = changed
+        .iter()
+        .map(|path| {
+            let body = if path.ends_with(".rs") {
+                "+pub fn discount(amount: u32) -> u32 {\n"
+            } else if path.ends_with(".py") {
+                "+x = 1\n"
+            } else {
+                "+export const x = 1;\n"
+            };
+            format!(
+                "diff --git a/{path} b/{path}\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n{body}"
+            )
+        })
+        .collect::<String>();
+    write(&diff, &text)?;
+    let config = crate::config::tests_only_parse(&format!(
+        "[languages]\nenabled = [\"rust\", \"{enabled}\"]\n"
+    ))?;
+    let output = crate::app::check_workspace_with_config(
+        crate::CheckInput {
+            root,
+            base: None,
+            diff_file: Some(diff),
+            mode: crate::Mode::Draft,
+            format: crate::OutputFormat::Json,
+            include_unchanged_tests: false,
+            perl_facts_path: None,
+            suppression_policy: None,
+            git_timeout: None,
+            git_candidate: None,
+        },
+        &config,
+    )?;
+    let json = crate::render_check(&output, &crate::OutputFormat::Json)?;
+    let value: Value = serde_json::from_str(&json).map_err(|error| format!("parse: {error}"))?;
+    let outcome = value
+        .get("analysis_outcome")
+        .ok_or_else(|| format!("missing analysis_outcome: {json}"))?;
+    let limitations = outcome
+        .pointer("/outcome/limitations")
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("missing limitations: {outcome}"))?;
+    Ok(limitations
+        .iter()
+        .filter_map(|entry| entry.get("kind").and_then(Value::as_str).map(str::to_owned))
+        .collect())
+}
+
+#[cfg(feature = "lang-python")]
+#[test]
+fn unrelated_python_refusal_does_not_degrade_a_rust_only_diff() -> Result<(), String> {
+    let rust_only = python_refusal_limitation_kinds("python-refusal-rust-only", &["src/lib.rs"])?;
+    assert!(
+        rust_only.is_empty(),
+        "a Python file the diff does not touch must not add limitations: {rust_only:?}"
+    );
+    let touches_python =
+        python_refusal_limitation_kinds("python-refusal-touched", &["src/lib.rs", "fixture.py"])?;
+    assert!(
+        touches_python
+            .iter()
+            .any(|kind| kind == "language_scope_unsupported"),
+        "the refusal must remain when the diff touches Python: {touches_python:?}"
+    );
+    Ok(())
+}
+
+/// #5421: `.js` routes to the TypeScript adapter (which `[languages]` enables
+/// as `typescript`), so a `.js`-only change counts as touching that adapter's
+/// language and the adapter's parse refusal of that changed file still
+/// qualifies the diff. The gate compares against the adapter's language, so a
+/// `.js` path must not read as "another language". A Rust-only diff stays
+/// complete.
+#[cfg(feature = "lang-typescript")]
+#[test]
+fn javascript_diff_keeps_the_typescript_adapter_refusal() -> Result<(), String> {
+    // Past the TypeScript adapter's 2_000-level PARSE_NESTING_BUDGET.
+    let depth = 2_500;
+    let nested = format!(
+        "export const deep = {}1{};\n",
+        "(".repeat(depth),
+        ")".repeat(depth)
+    );
+    let fixture = ("src/app.js", nested.as_str());
+    let rust_only = limitation_kinds_for_preview_diff(
+        "ts-refusal-rust-only",
+        "typescript",
+        fixture,
+        &["src/lib.rs"],
+    )?;
+    assert!(
+        rust_only.is_empty(),
+        "a TypeScript file the diff does not touch must not add limitations: {rust_only:?}"
+    );
+    let touches_javascript = limitation_kinds_for_preview_diff(
+        "ts-refusal-js-touched",
+        "typescript",
+        fixture,
+        &["src/lib.rs", "src/app.js"],
+    )?;
+    assert!(
+        touches_javascript
+            .iter()
+            .any(|kind| kind == "language_scope_unsupported"),
+        "a .js change must keep the TypeScript adapter's refusal: {touches_javascript:?}"
+    );
+    Ok(())
 }

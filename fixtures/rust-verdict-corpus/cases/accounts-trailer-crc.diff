@@ -1,0 +1,13 @@
+diff --git a/src/frame.rs b/src/frame.rs
+index 1039fe8..4aeac2f 100644
+--- a/src/frame.rs
++++ b/src/frame.rs
+@@ -26,7 +26,7 @@ pub fn header(kind: u8, body: &[u8]) -> Header {
+ pub fn trailer(body: &[u8]) -> Trailer {
+     Trailer {
+         len: body.len() as u32,
+-        crc: crc(body),
++        crc: crc(&body[..]),
+     }
+ }
+ 
