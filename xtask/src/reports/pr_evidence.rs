@@ -146,7 +146,7 @@ fn write_pr_evidence_with_runner(
         &changed_files,
         &options.root,
     )?;
-    let result = match run_check(repo, options) {
+    match run_check(repo, options) {
         Ok(check_json) => {
             match write_pr_evidence_packet(repo, options, &changed_files, &check_json) {
                 Ok(()) => Ok(()),
@@ -158,10 +158,11 @@ fn write_pr_evidence_with_runner(
                 }
             }
         }
-        Err(err) => write_pr_evidence_error_packet(repo, options, &changed_files, &err),
-    };
-    result?;
-    reject_error_packet(repo)
+        Err(err) => {
+            write_pr_evidence_error_packet(repo, options, &changed_files, &err)?;
+            reject_error_packet(repo)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -170,6 +171,7 @@ fn write_pr_evidence_from_check_json(
     options: &PrEvidenceOptions,
     check_json: &str,
 ) -> Result<(), String> {
+    remove_stale_check_artifact(repo)?;
     verify_revision(repo, &options.base)?;
     verify_revision(repo, &options.head)?;
 
@@ -277,11 +279,6 @@ fn write_pr_evidence_packet(
         PR_REVIEW_INPUT_JSON,
         review_input_text,
     )?;
-    write_parented_file(
-        &repo.join(PR_CHECK_SUBJECT_JSON),
-        PR_CHECK_SUBJECT_JSON,
-        subject_text,
-    )?;
 
     write_parented_file(
         &repo.join(PR_EVIDENCE_JSON),
@@ -302,9 +299,12 @@ fn write_pr_evidence_packet(
         ));
     }
 
+    // The saved status check is fallible, so it must precede authority.
+    reject_error_packet(repo)?;
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
-    Ok(())
+    // Commit admission authority only after every fallible producer operation.
+    publish_check_subject(repo, &subject_text)
 }
 
 fn producer_review_input(
@@ -369,7 +369,9 @@ fn producer_review_input(
 }
 
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
-    for relative in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+    // The subject is admission authority. Remove it before touching subordinate
+    // artifacts or attempting setup/analysis; only missing files are harmless.
+    for relative in [PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -377,6 +379,46 @@ fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn publish_check_subject(repo: &Path, contents: &str) -> Result<(), String> {
+    use std::io::Write;
+
+    static STAGE_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+    let destination = repo.join(PR_CHECK_SUBJECT_JSON);
+    let parent = destination.parent().ok_or("check subject has no parent")?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| format!("stage check subject clock: {error}"))?
+        .as_nanos();
+    let sequence = STAGE_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let stage = parent.join(format!(
+        ".ripr-pr-subject-{}-{nanos}-{sequence}.tmp",
+        std::process::id()
+    ));
+    // Exclusive creation cannot truncate an existing file or follow its link.
+    // An open failure leaves that unowned path untouched.
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&stage)
+        .map_err(|error| format!("create staged check subject failed: {error}"))?;
+    let result = (|| {
+        file.write_all(contents.as_bytes())
+            .map_err(|error| format!("write staged check subject failed: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("sync staged check subject failed: {error}"))?;
+        drop(file);
+        fs::rename(&stage, &destination)
+            .map_err(|error| format!("failed to finalize {PR_CHECK_SUBJECT_JSON}: {error}"))
+    })();
+    if result.is_err() {
+        // Only this invocation's exclusively created stage is ours to remove.
+        // Preserve the primary failure if cleanup also fails.
+        let _ = fs::remove_file(&stage);
+    }
+    result
 }
 
 fn write_pr_evidence_error_packet(
@@ -3107,6 +3149,248 @@ mod tests {
         assert!(!repo.join(PR_CHECK_JSON).exists());
         fs::remove_dir_all(&repo).map_err(|err| format!("cleanup {}: {err}", repo.display()))?;
         Ok(())
+    }
+
+    #[test]
+    fn failed_producer_rerun_does_not_replay_same_subject() -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        crate::reports::fixtures::ripr_fixture_binary()?;
+        let repo = temp_repo("ripr-pr-subject-transaction")?;
+        let result = (|| {
+            run_git(
+                &repo,
+                &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+            )?;
+            run_git(
+                &repo,
+                &["config", "user.email", "subject-fixture@example.invalid"],
+            )?;
+            run_git(&repo, &["config", "user.name", "RIPR Subject Fixture"])?;
+            run_git(&repo, &["config", "commit.gpgSign", "false"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"subject-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            run_git(&repo, &["add", "-A"])?;
+            run_git(&repo, &["commit", "--quiet", "-m", "base"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            run_git(&repo, &["commit", "--quiet", "-a", "-m", "predicate"])?;
+            let options = PrEvidenceOptions {
+                base: resolve_revision(&repo, "HEAD~1", "commit")?,
+                head: resolve_revision(&repo, "HEAD", "commit")?,
+                ..options()
+            };
+            let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+            let mut check = String::new();
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                let generated = run_ripr_check_binary(
+                    &binary,
+                    vec![
+                        "check".into(),
+                        "--root".into(),
+                        command_root_arg(repo, &options.root),
+                        "--base".into(),
+                        options.base.clone(),
+                        "--diff".into(),
+                        repo.join(PR_CANONICAL_DIFF).display().to_string(),
+                        "--no-unchanged-tests".into(),
+                        "--format".into(),
+                        "json".into(),
+                    ],
+                    options,
+                    Duration::from_mins(2),
+                )?;
+                check.clone_from(&generated);
+                Ok(generated)
+            })?;
+            let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
+            assert_eq!(value["schema_version"], "0.2");
+            assert_eq!(value["analysis_outcome"]["analysis_complete"], true);
+            assert!(
+                value["findings"]
+                    .as_array()
+                    .is_some_and(|findings| !findings.is_empty())
+            );
+            let review = || {
+                ripr::cli::run(vec![
+                    "ripr".into(),
+                    "review-comments".into(),
+                    "--root".into(),
+                    repo.display().to_string(),
+                    "--base".into(),
+                    options.base.clone(),
+                    "--head".into(),
+                    options.head.clone(),
+                    "--check-output".into(),
+                    repo.join(PR_CHECK_JSON).display().to_string(),
+                    "--out".into(),
+                    repo.join("target/review.json").display().to_string(),
+                ])
+                .map_err(|error| error.message().to_string())
+            };
+            let baseline = || -> Result<(), String> {
+                write_pr_evidence_with_runner(&repo, &options, |_, _| Ok(check.clone()))?;
+                check_pr_evidence(&repo, &options)?;
+                review()?;
+                let rendered: Value = serde_json::from_slice(
+                    &fs::read(repo.join("target/review.json"))
+                        .map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                assert_eq!(
+                    rendered["analysis_scope"]["basis"],
+                    "producer_check_projection"
+                );
+                assert!(
+                    rendered["analysis_scope"]["classified_seams_considered"]
+                        .as_u64()
+                        .is_some_and(|count| count > 0)
+                );
+                Ok(())
+            };
+            let refused = |label: &str| -> Result<(), String> {
+                let error = review()
+                    .err()
+                    .ok_or_else(|| format!("{label}: stale same-identity producer was admitted"))?;
+                assert!(
+                    error.contains("missing_producer") || error.contains("malformed_producer"),
+                    "{label}: unexpected review refusal: {error}"
+                );
+                assert!(
+                    check_pr_evidence(&repo, &options).is_err(),
+                    "{label}: saved check admitted failure"
+                );
+                Ok(())
+            };
+            let mut oversized = value.clone();
+            oversized["findings"] = Value::Array(vec![
+                value["findings"][0].clone();
+                REVIEW_INDEX_MAX_ENTRIES + 1
+            ]);
+            let oversized = serde_json::to_string(&oversized).map_err(|error| error.to_string())?;
+            for (label, replacement) in [
+                ("runner failure", None),
+                ("malformed conversion", Some("{")),
+                ("oversized conversion", Some(oversized.as_str())),
+            ] {
+                baseline()?;
+                let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                    replacement.map_or_else(
+                        || Err("injected runner failure".to_string()),
+                        |text| Ok(text.to_string()),
+                    )
+                })
+                .err()
+                .ok_or_else(|| format!("{label}: producer returned success"))?;
+                let expected = match label {
+                    "runner failure" => "injected runner failure",
+                    "malformed conversion" => "not valid JSON",
+                    "oversized conversion" => "exceeds entry limit",
+                    _ => return Err(format!("unknown failure control: {label}")),
+                };
+                assert!(
+                    failure.contains(expected),
+                    "{label}: wrong failure: {failure}"
+                );
+                refused(label)?;
+            }
+            // This late failure distinguishes subject-last publication from
+            // merely deleting a previous receipt before the runner.
+            baseline()?;
+            let markdown = repo.join(PR_EVIDENCE_MD);
+            fs::remove_file(&markdown).map_err(|error| error.to_string())?;
+            fs::create_dir(&markdown).map_err(|error| error.to_string())?;
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| Ok(check.clone()))
+                .err()
+                .ok_or_else(|| "Markdown write failure returned success".to_string())?;
+            assert!(failure.contains(PR_EVIDENCE_MD), "wrong failure: {failure}");
+            refused("Markdown write failure")?;
+            fs::remove_dir(&markdown).map_err(|error| error.to_string())?;
+
+            baseline()?;
+            let subject = repo.join(PR_CHECK_SUBJECT_JSON);
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                match fs::remove_file(&subject) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+                fs::create_dir(&subject).map_err(|error| error.to_string())?;
+                Ok(check.clone())
+            })
+            .err()
+            .ok_or_else(|| "blocked subject publication returned success".to_string())?;
+            assert!(
+                failure.contains("finalize"),
+                "wrong publication failure: {failure}"
+            );
+            refused("subject rename failure")?;
+            for entry in fs::read_dir(subject.parent().ok_or("subject has no parent")?)
+                .map_err(|error| error.to_string())?
+            {
+                let entry = entry.map_err(|error| error.to_string())?;
+                assert!(
+                    !entry.file_name().to_string_lossy().ends_with(".tmp"),
+                    "owned stage was stranded"
+                );
+            }
+            fs::remove_dir(&subject).map_err(|error| error.to_string())?;
+
+            baseline()?;
+            let retained_check =
+                fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
+            fs::remove_file(&subject).map_err(|error| error.to_string())?;
+            fs::create_dir(&subject).map_err(|error| error.to_string())?;
+            let mut runner_called = false;
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                runner_called = true;
+                Err("runner must not execute after invalidation failure".into())
+            })
+            .err()
+            .ok_or_else(|| "invalidation failure returned success".to_string())?;
+            assert!(!runner_called);
+            assert!(
+                failure.contains("remove stale"),
+                "wrong invalidation failure: {failure}"
+            );
+            assert_eq!(
+                fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?,
+                retained_check,
+                "subject authority must be invalidated before subordinate files"
+            );
+            refused("invalidation failure")?;
+            fs::remove_dir(&subject).map_err(|error| error.to_string())?;
+            for artifact in [PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+                fs::remove_file(repo.join(artifact)).map_err(|error| error.to_string())?;
+            }
+            let mut runner_called = false;
+            let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
+                runner_called = true;
+                Err("injected failure with no old artifacts".into())
+            });
+            assert!(
+                runner_called,
+                "missing old artifacts must not block the runner"
+            );
+            assert!(failure.is_err());
+            refused("missing old artifacts")?;
+            baseline()?;
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&repo)
+            .map_err(|error| format!("cleanup {}: {error}", repo.display()));
+        result.and(cleanup)
     }
 
     #[test]
