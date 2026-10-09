@@ -1,6 +1,6 @@
 //! Owned, hard-disabled complete-execution experiment. No guard override.
 use super::*;
-#[cfg(test)]
+#[cfg(all(test, target_os = "linux"))]
 use crate::run::capture_bytes_in_dir_with_budget;
 use crate::run::{ByteCaptureBudget, capture_complete_bytes_in_dir_with_budget};
 use serde::Deserialize;
