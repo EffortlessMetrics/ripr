@@ -540,6 +540,85 @@ pub(crate) fn run_git_output_with_deadline_and_limit_strict(
     )
 }
 
+
+/// Request-only repository authority. This selects environment checks; it is
+/// data and grants no analyzer execution or process-group authority.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum CompleteGitEnvironment {
+    Selector,
+    WholeInput,
+}
+
+#[cfg(test)]
+const COMPLETE_GIT_REDIRECTS: &[&str] = &[
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_REPLACE_REF_BASE",
+];
+#[cfg(test)]
+const COMPLETE_GIT_CONFIGURATION: &[&str] = &[
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_NOSYSTEM",
+];
+
+#[cfg(test)]
+fn validate_complete_git_environment(
+    environment: CompleteGitEnvironment,
+    mut present: impl FnMut(&str) -> bool,
+) -> Result<(), CoreError> {
+    for name in COMPLETE_GIT_REDIRECTS.iter().copied().chain(
+        COMPLETE_GIT_CONFIGURATION
+            .iter()
+            .copied()
+            .filter(|_| matches!(environment, CompleteGitEnvironment::WholeInput)),
+    ) {
+        if present(name) {
+            return Err(CoreError::message(format!(
+                "complete Git authority refuses inherited {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Uses the same command constructor, ownership, finite stream limit and strict
+/// clean-EOF collector. Environment changes apply to this command only.
+/// Callers share an aggregate deadline including the collector's drain grace.
+#[cfg(test)]
+pub(crate) fn run_git_complete_output_with_deadline_and_limit(
+    root: &Path,
+    args: &[&str],
+    timeout: Duration,
+    max_output_bytes: usize,
+    environment: CompleteGitEnvironment,
+) -> Result<Output, CoreError> {
+    if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
+        return Err(CoreError::message(
+            "complete Git capture requires a positive limit within 256 MiB",
+        ));
+    }
+    validate_complete_git_environment(environment, |name| std::env::var_os(name).is_some())?;
+    let describe = format!("complete git -C {} {:?}", root.display(), args);
+    let mut command = git_command(root, args);
+    command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    collect_output_with_reader_policy(
+        command,
+        Some(timeout),
+        max_output_bytes,
+        &describe,
+        true,
+    )
+}
+
 fn collect_output_with_optional_deadline_and_limit(
     command: Command,
     timeout: Option<Duration>,
@@ -1397,6 +1476,46 @@ fn drain_pipe_reader(
 mod tests {
 
     use super::*;
+    #[test]
+    fn complete_git_authority_refuses_redirects_without_changing_ordinary_commands(
+    ) -> Result<(), String> {
+        let refusal = |result: Result<(), CoreError>| match result {
+            Ok(()) => Err("inherited Git control was accepted".to_string()),
+            Err(error) => Ok(error.to_string()),
+        };
+        for name in COMPLETE_GIT_REDIRECTS {
+            for environment in [
+                CompleteGitEnvironment::Selector,
+                CompleteGitEnvironment::WholeInput,
+            ] {
+                let error = refusal(validate_complete_git_environment(
+                    environment,
+                    |key| key == *name,
+                ))?;
+                assert!(error.contains(name));
+            }
+        }
+        for name in COMPLETE_GIT_CONFIGURATION {
+            validate_complete_git_environment(
+                CompleteGitEnvironment::Selector,
+                |key| key == *name,
+            )
+            .map_err(|error| error.to_string())?;
+            let error = refusal(validate_complete_git_environment(
+                CompleteGitEnvironment::WholeInput,
+                |key| key == *name,
+            ))?;
+            assert!(error.contains(name));
+        }
+        let ordinary = git_command(Path::new("."), &["status", "--porcelain"]);
+        assert!(
+            !ordinary
+                .get_envs()
+                .any(|(key, _)| key == "GIT_NO_REPLACE_OBJECTS")
+        );
+        Ok(())
+    }
+
     #[test]
     fn strict_capture_requires_both_readers_with_legacy_parity() -> Result<(), String> {
         for stream in ["stdout", "stderr"] {

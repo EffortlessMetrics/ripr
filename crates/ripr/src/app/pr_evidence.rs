@@ -14,6 +14,8 @@ mod complete_execution;
 mod generation;
 
 #[cfg(test)]
+mod complete_request;
+#[cfg(test)]
 mod complete_contract;
 #[cfg(test)]
 mod complete_contract_tests;
