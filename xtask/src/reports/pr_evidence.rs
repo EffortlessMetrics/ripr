@@ -1,3 +1,5 @@
+mod complete_execution;
+
 use super::pr_causal_delta::write_canonical_delta;
 use super::write_parented_file;
 use crate::run::{
@@ -64,6 +66,12 @@ pub(crate) fn ripr_pr(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
+    if args
+        .iter()
+        .any(|arg| arg == complete_execution::EXPERIMENT_FLAG)
+    {
+        return complete_execution::run_experiment(args);
+    }
     let options = parse_options(args)?;
     let repo = repo_root()?;
     if options.check {
@@ -109,7 +117,9 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]");
+    println!(
+        "usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check] [--experimental-complete-execution]"
+    );
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
@@ -461,7 +471,12 @@ fn producer_review_input(
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
     // The subject is admission authority. Remove it before touching subordinate
     // artifacts or attempting setup/analysis; only missing files are harmless.
-    for relative in [PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+    for relative in [
+        PR_CHECK_SUBJECT_JSON,
+        PR_CHECK_JSON,
+        PR_REVIEW_INPUT_JSON,
+        complete_execution::RECEIPT,
+    ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -605,6 +620,9 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             )];
         }
     };
+    if let Some(error) = ripr::reject_pr_evidence_error_packet(&subject) {
+        return vec![error];
+    }
     let expected = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
         (
@@ -4461,7 +4479,7 @@ mod tests {
         ))
     }
 
-    fn temp_repo(name: &str) -> Result<PathBuf, String> {
+    pub(super) fn temp_repo(name: &str) -> Result<PathBuf, String> {
         let unique = format!(
             "{}-{}-{}",
             name,
@@ -4476,7 +4494,7 @@ mod tests {
         Ok(path)
     }
 
-    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+    pub(super) fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
         let path = repo.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -4485,7 +4503,7 @@ mod tests {
         fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
-    fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+    pub(super) fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
     }
 

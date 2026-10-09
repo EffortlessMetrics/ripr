@@ -361,6 +361,10 @@ fn validate_check_output_against_packet(
             return;
         }
     };
+    if let Some(error) = ripr::app::pr_evidence::reject_pr_evidence_error_packet(&subject) {
+        violations.push(format!("--check-output subject receipt: {error}"));
+        return;
+    }
     let receipt_root = PathBuf::from(command_root_arg(repo, &options.root));
     let expected_subject = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
@@ -421,15 +425,55 @@ fn validate_check_output_against_packet(
                     subject_path.display()
                 ));
             }
-            if let Ok(review) =
-                serde_json::from_slice::<ripr::review_input::ReviewInputV1>(&review_bytes)
-                && let Some(index_value) = subject.get("canonical_finding_index")
-                && let Ok(index) = serde_json::from_value::<
-                    ripr::review_input::CanonicalFindingIndexV1,
-                >(index_value.clone())
-                && let Ok(expected) = ripr::review_input::canonical_projection_from_index(&index)
-                && review.findings != expected
+            let raw_review: Value = match serde_json::from_slice(&review_bytes) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!(
+                        "--check-output review input is invalid JSON: {error}"
+                    ));
+                    return;
+                }
+            };
+            if let Some(error) =
+                ripr::app::pr_evidence::reject_pr_evidence_error_packet(&raw_review)
             {
+                violations.push(format!("--check-output review input: {error}"));
+                return;
+            }
+            let review =
+                match serde_json::from_slice::<ripr::review_input::ReviewInputV1>(&review_bytes) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        violations
+                            .push(format!("--check-output review input is malformed: {error}"));
+                        return;
+                    }
+                };
+            let Some(index_value) = subject.get("canonical_finding_index") else {
+                violations.push("--check-output canonical finding index is missing".to_string());
+                return;
+            };
+            let index = match serde_json::from_value::<ripr::review_input::CanonicalFindingIndexV1>(
+                index_value.clone(),
+            ) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!(
+                        "--check-output canonical finding index is malformed: {error}"
+                    ));
+                    return;
+                }
+            };
+            let expected = match ripr::review_input::canonical_projection_from_index(&index) {
+                Ok(value) => value,
+                Err(error) => {
+                    violations.push(format!(
+                        "--check-output canonical projection failed: {error}"
+                    ));
+                    return;
+                }
+            };
+            if review.findings != expected {
                 violations.push(format!(
                     "--check-output {} is not derived from the canonical finding index",
                     review_path.display()
@@ -912,6 +956,17 @@ fn static_gap_fallback(repo: &Path, options: &ReviewCommentsOptions) -> Option<V
     } else {
         repo.join(path)
     };
+    let subject_path = path.with_extension("subject.json");
+    match fs::read(&subject_path) {
+        Ok(bytes) => {
+            let subject: Value = serde_json::from_slice(&bytes).ok()?;
+            if ripr::app::pr_evidence::reject_pr_evidence_error_packet(&subject).is_some() {
+                return None;
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return None,
+    }
     let text = fs::read_to_string(&path).ok()?;
     let producer: Value = serde_json::from_str(&text).ok()?;
     if producer.get("tool").and_then(Value::as_str) != Some("ripr")
@@ -964,6 +1019,9 @@ fn producer_analysis_outcome(repo: &Path, options: &ReviewCommentsOptions) -> Op
     let subject_path = path.with_extension("subject.json");
     let text = fs::read_to_string(subject_path).ok()?;
     let producer: Value = serde_json::from_str(&text).ok()?;
+    if ripr::app::pr_evidence::reject_pr_evidence_error_packet(&producer).is_some() {
+        return None;
+    }
     producer
         .get("analysis_outcome")
         .filter(|outcome| !outcome.is_null())
@@ -2938,5 +2996,179 @@ mod tests {
             }
         }
         Ok(())
+    }
+    #[test]
+    fn saved_review_refuses_experimental_and_malformed_projection_with_exact_hashes()
+    -> Result<(), String> {
+        let repo = temp_repo("ripr-experimental-saved-review")?;
+        let result = (|| {
+            let mut options = options();
+            options.check_output = Some("target/check-output.json".to_string());
+            let mut packet = valid_packet_for_repo(&repo, &options);
+            packet["analysis_outcome"] = json!({"analysis_complete":true});
+            let producer = json!({
+                "tool":"ripr","mode":packet["mode"],"root":packet["root"],
+                "base":options.base,"summary":{},"findings":[],
+                "analysis_outcome":packet["analysis_outcome"]
+            });
+            write_check_output(&repo, &options, &producer)?;
+            let validate = || {
+                let mut violations = Vec::new();
+                validate_check_output_against_packet(&packet, &repo, &options, &mut violations);
+                violations
+            };
+            assert!(validate().is_empty(), "{:?}", validate());
+            let subject_path = repo.join("target/check-output.subject.json");
+            let review_path = repo.join("target/review-input.json");
+            let subject: Value = serde_json::from_slice(
+                &fs::read(&subject_path).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let review: Value =
+                serde_json::from_slice(&fs::read(&review_path).map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
+            for case in [
+                "subject_null",
+                "subject_complete",
+                "review_null",
+                "review_complete",
+                "malformed_review",
+                "missing_index",
+                "malformed_index",
+                "projection_error",
+            ] {
+                let mut subject = subject.clone();
+                let mut review = review.clone();
+                let expected = match case {
+                    "subject_null" => {
+                        subject["experimental_complete_execution"] = Value::Null;
+                        "experimental complete-execution"
+                    }
+                    "subject_complete" => {
+                        subject["experimental_complete_execution"] =
+                            json!({"coverage":"complete","production_admission":true});
+                        "experimental complete-execution"
+                    }
+                    "review_null" => {
+                        review["experimental_complete_execution"] = Value::Null;
+                        "experimental complete-execution"
+                    }
+                    "review_complete" => {
+                        review["experimental_complete_execution"] =
+                            json!({"coverage":"complete","production_admission":true});
+                        "experimental complete-execution"
+                    }
+                    "malformed_review" => {
+                        review = json!({});
+                        "review input is malformed"
+                    }
+                    "missing_index" => {
+                        subject
+                            .as_object_mut()
+                            .ok_or_else(|| "subject object".to_string())?
+                            .remove("canonical_finding_index");
+                        "index is missing"
+                    }
+                    "malformed_index" => {
+                        subject["canonical_finding_index"] = json!({});
+                        "index is malformed"
+                    }
+                    "projection_error" => {
+                        subject["canonical_finding_index"]["total_finding_count"] = json!(1);
+                        "canonical projection failed"
+                    }
+                    _ => return Err("unknown fixture case".to_string()),
+                };
+                let bytes = serde_json::to_vec(&review).map_err(|error| error.to_string())?;
+                subject["review_input_sha256"] =
+                    json!(format!("sha256:{:x}", Sha256::digest(&bytes)));
+                subject["review_input_byte_count"] = json!(bytes.len());
+                fs::write(&review_path, bytes).map_err(|error| error.to_string())?;
+                fs::write(
+                    &subject_path,
+                    serde_json::to_vec(&subject).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let violations = validate();
+                if !violations.iter().any(|error| error.contains(expected)) {
+                    return Err(format!(
+                        "{case} silently admitted matching hashes: {violations:?}"
+                    ));
+                }
+            }
+            write_check_output(&repo, &options, &producer)?;
+            assert!(validate().is_empty(), "{:?}", validate());
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
+    }
+
+    #[test]
+    fn error_fallback_does_not_launder_experimental_subject() -> Result<(), String> {
+        let repo = temp_repo("ripr-experimental-review-fallback")?;
+        let result = (|| {
+            let mut options = options();
+            options.check_output = Some("target/check-output.json".to_string());
+            let producer = json!({
+                "tool":"ripr","mode":"draft",
+                "root":normalize_path_text(&command_root_arg(&repo, &options.root)),
+                "base":options.base,"summary":{},
+                "findings":[{"id":"actual-seam","classification":STATIC_GAP_CLASSES[0],
+                    "probe":{"family":"Predicate","file":"src/lib.rs","line":7}}],
+                "analysis_outcome":{"analysis_complete":true}
+            });
+            write_check_output(&repo, &options, &producer)?;
+            let receipt =
+                review_comments_receipt(&repo, &options, "failed", Some("fixture refusal"));
+            let ordinary =
+                error_review_comments_packet(&repo, &options, "fixture refusal", &receipt);
+            assert_eq!(ordinary["status"], "error");
+            assert_eq!(
+                ordinary["static_gap_fallback"]["seams"]
+                    .as_array()
+                    .map(Vec::len),
+                Some(1)
+            );
+            assert_eq!(ordinary["analysis_outcome"], producer["analysis_outcome"]);
+            let subject_path = repo.join("target/check-output.subject.json");
+            let subject: Value = serde_json::from_slice(
+                &fs::read(&subject_path).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            for generation in [
+                Value::Null,
+                json!({"coverage":"complete","production_admission":true}),
+            ] {
+                let mut marked = subject.clone();
+                marked["experimental_complete_execution"] = generation;
+                fs::write(
+                    &subject_path,
+                    serde_json::to_vec(&marked).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                let packet =
+                    error_review_comments_packet(&repo, &options, "fixture refusal", &receipt);
+                assert_eq!(packet["status"], "error");
+                if packet.get("analysis_outcome").is_some()
+                    || packet.get("static_gap_fallback").is_some()
+                {
+                    return Err(
+                        "experimental subject laundered into unmarked error fallback".to_string(),
+                    );
+                }
+            }
+            write_check_output(&repo, &options, &producer)?;
+            let recovered =
+                error_review_comments_packet(&repo, &options, "fixture refusal", &receipt);
+            assert_eq!(recovered["analysis_outcome"], ordinary["analysis_outcome"]);
+            assert_eq!(
+                recovered["static_gap_fallback"],
+                ordinary["static_gap_fallback"]
+            );
+            Ok(())
+        })();
+        fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
+        result
     }
 }
