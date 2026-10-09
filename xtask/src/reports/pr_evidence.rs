@@ -3136,7 +3136,29 @@ mod tests {
                 head: resolve_revision(&repo, "HEAD", "commit")?,
                 ..options()
             };
-            let check = run_ripr_check(&repo, &options)?;
+            let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+            let mut check = String::new();
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                let generated = run_ripr_check_binary(
+                    &binary,
+                    vec![
+                        "check".into(),
+                        "--root".into(),
+                        command_root_arg(repo, &options.root),
+                        "--base".into(),
+                        options.base.clone(),
+                        "--diff".into(),
+                        repo.join(PR_CANONICAL_DIFF).display().to_string(),
+                        "--no-unchanged-tests".into(),
+                        "--format".into(),
+                        "json".into(),
+                    ],
+                    options,
+                    Duration::from_mins(2),
+                )?;
+                check.clone_from(&generated);
+                Ok(generated)
+            })?;
             let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
             assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["analysis_outcome"]["analysis_complete"], true);

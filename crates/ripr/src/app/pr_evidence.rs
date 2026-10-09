@@ -2117,7 +2117,12 @@ mod tests {
                 head: resolve_revision(&repo, "HEAD", "commit")?,
                 ..options()
             };
-            let check = run_ripr_check(&repo, &options)?;
+            let mut check = String::new();
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                let generated = run_ripr_check(repo, options)?;
+                check.clone_from(&generated);
+                Ok(generated)
+            })?;
             let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
             assert_eq!(value["schema_version"], "0.2");
             assert_eq!(value["analysis_outcome"]["analysis_complete"], true);
