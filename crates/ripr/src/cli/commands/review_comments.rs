@@ -1234,6 +1234,115 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "lang-rust")]
+    #[test]
+    fn direct_producer_review_reloads_configuration_after_diff_discovery() -> Result<(), String> {
+        crate::app::pr_evidence::with_live_configuration_admission_fixture(
+            |root, base, head, check_path, config_a, config_b| {
+                for (label, text, category, diagnostic) in [
+                    (
+                        "changed",
+                        Some(config_b),
+                        "producer_identity_mismatch",
+                        "config_identity",
+                    ),
+                    (
+                        "empty",
+                        Some(""),
+                        "producer_identity_mismatch",
+                        "config_identity",
+                    ),
+                    (
+                        "removed",
+                        None,
+                        "producer_identity_mismatch",
+                        "config_identity",
+                    ),
+                    (
+                        "invalid",
+                        Some("[analysis]\ninclude_unchanged_tests = [\n"),
+                        "malformed_producer",
+                        "load producer evidence configuration",
+                    ),
+                ] {
+                    let output_path = root.join(format!("target/timing-refusal-{label}.json"));
+                    let markdown_path = output_path.with_extension("md");
+                    assert!(!output_path.exists());
+                    assert!(!markdown_path.exists());
+                    let args = vec![
+                        "--root".to_string(),
+                        root.display().to_string(),
+                        "--base".to_string(),
+                        base.to_string(),
+                        "--head".to_string(),
+                        head.to_string(),
+                        "--check-output".to_string(),
+                        check_path.display().to_string(),
+                        "--out".to_string(),
+                        output_path.display().to_string(),
+                    ];
+                    let calls = std::cell::Cell::new(0_u32);
+                    let mutation = std::cell::RefCell::new(None);
+                    let result = review_comments_with_diff_loader(&args, |root, base, head| {
+                        let diff = load_review_comments_diff(root, base, head)?;
+                        calls.set(calls.get() + 1);
+                        let path = root.join("ripr.toml");
+                        let written = match text {
+                            Some(text) => std::fs::write(path, text),
+                            None => std::fs::remove_file(path),
+                        }
+                        .map_err(|error| error.to_string());
+                        let _ = mutation.replace(Some(written));
+                        Ok(diff)
+                    });
+                    assert_eq!(
+                        calls.get(),
+                        1,
+                        "actual diff loader was not reached exactly once"
+                    );
+                    mutation
+                        .into_inner()
+                        .ok_or("configuration mutation did not execute")??;
+                    let failure = result.err().ok_or(
+                        "direct review admitted cached A after discovery changed live config",
+                    )?;
+                    assert!(failure.contains(category), "{label}: {failure}");
+                    assert!(failure.contains(diagnostic), "{label}: {failure}");
+                    let receipt: serde_json::Value = serde_json::from_slice(
+                        &std::fs::read(root.join("target/run-receipt.json"))
+                            .map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    assert_eq!(receipt["status"], "failed");
+                    assert_eq!(
+                        receipt["primary_failure"]["phase"],
+                        "producer_evidence_admission"
+                    );
+                    assert_eq!(receipt["primary_failure"]["category"], category);
+                    assert!(!output_path.exists(), "refusal published new JSON");
+                    assert!(!markdown_path.exists(), "refusal published new Markdown");
+                    std::fs::write(root.join("ripr.toml"), config_a)
+                        .map_err(|error| error.to_string())?;
+                    review_comments(&args)?;
+                    let recovered: serde_json::Value = serde_json::from_slice(
+                        &std::fs::read(&output_path).map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    assert_eq!(
+                        recovered["analysis_scope"]["basis"],
+                        "producer_check_projection"
+                    );
+                    assert!(
+                        recovered["analysis_scope"]["classified_seams_considered"]
+                            .as_u64()
+                            .is_some_and(|count| count > 0)
+                    );
+                }
+                Ok(())
+            },
+        )
+    }
+
     #[test]
     fn review_comments_parses_required_revisions_and_out() {
         assert_eq!(
