@@ -7,15 +7,82 @@ use super::{
     parser_state,
 };
 
+/// A borrowed complete byte record. The slice includes its original LF/CRLF
+/// terminator; semantic text follows exactly the existing str::lines contract.
+/// Production currently supplies already-decoded strings, not original Git
+/// stdout. This view establishes no immutable subject or occurrence authority.
+struct RawDiffRecord<'a> {
+    bytes: &'a [u8],
+}
+
+struct RawDiffRecords<'a> {
+    records: std::slice::SplitInclusive<'a, u8, fn(&u8) -> bool>,
+}
+
+impl<'a> RawDiffRecords<'a> {
+    fn new(input: &'a [u8]) -> Self {
+        Self {
+            records: input.split_inclusive(is_record_line_feed as fn(&u8) -> bool),
+        }
+    }
+}
+
+fn is_record_line_feed(byte: &u8) -> bool {
+    *byte == b'\n'
+}
+
+impl<'a> Iterator for RawDiffRecords<'a> {
+    type Item = RawDiffRecord<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.records.next().map(|bytes| RawDiffRecord { bytes })
+    }
+}
+
+trait ParserLine {
+    fn semantic_text(&self) -> std::borrow::Cow<'_, str>;
+}
+
+impl ParserLine for RawDiffRecord<'_> {
+    fn semantic_text(&self) -> std::borrow::Cow<'_, str> {
+        let text = match self.bytes.strip_suffix(b"\n") {
+            Some(before_lf) => before_lf.strip_suffix(b"\r").unwrap_or(before_lf),
+            None => self.bytes,
+        };
+        String::from_utf8_lossy(text)
+    }
+}
+
+#[cfg(test)]
+impl ParserLine for &str {
+    fn semantic_text(&self) -> std::borrow::Cow<'_, str> {
+        std::borrow::Cow::Borrowed(self)
+    }
+}
+
 pub(super) fn parse_unbounded(input: &str) -> ParsedDiff {
-    match parse_lines(input.lines(), |_| Ok::<(), Infallible>(())) {
+    match parse_lines(RawDiffRecords::new(input.as_bytes()), |_| {
+        Ok::<(), Infallible>(())
+    }) {
         Ok(parsed) => parsed,
         Err(never) => match never {},
     }
 }
 
+pub(super) fn parse_bounded(input: &str, limit: usize) -> Result<ParsedDiff, String> {
+    parse_bounded_records(RawDiffRecords::new(input.as_bytes()), limit)
+}
+
+#[cfg(test)]
 pub(super) fn parse_bounded_lines<'a>(
     lines: impl Iterator<Item = &'a str>,
+    limit: usize,
+) -> Result<ParsedDiff, String> {
+    parse_bounded_records(lines, limit)
+}
+
+fn parse_bounded_records<L: ParserLine>(
+    lines: impl Iterator<Item = L>,
     limit: usize,
 ) -> Result<ParsedDiff, String> {
     parse_lines(lines, |count| {
@@ -44,8 +111,8 @@ pub(super) fn parse_bounded_lines<'a>(
 /// check runs at the two registration sites, before reading another input line.
 /// The unbounded caller has an infallible policy rather than a fallback that
 /// could accidentally turn a refused parse into an empty successful result.
-fn parse_lines<'a, E>(
-    lines: impl Iterator<Item = &'a str>,
+fn parse_lines<L: ParserLine, E>(
+    lines: impl Iterator<Item = L>,
     mut admit_file_count: impl FnMut(usize) -> Result<(), E>,
 ) -> Result<ParsedDiff, E> {
     let mut files: BTreeMap<PathBuf, ChangedFile> = BTreeMap::new();
@@ -54,7 +121,9 @@ fn parse_lines<'a, E>(
     // collecting the whole input. The input &str itself is already in memory;
     // this file-count policy does not bound its bytes or a single large hunk.
     let mut lines = lines.peekable();
-    while let Some(raw) = lines.next() {
+    while let Some(line) = lines.next() {
+        let semantic = line.semantic_text();
+        let raw = semantic.as_ref();
         if state.handle_diff_boundary(raw) {
             continue;
         }
@@ -81,7 +150,9 @@ fn parse_lines<'a, E>(
 
         if state.combined_quarantine()
             && parse_old_path_marker(raw)
-            && lines.peek().is_some_and(|next| is_new_path_marker(next))
+            && lines
+                .peek()
+                .is_some_and(|next| is_new_path_marker(&next.semantic_text()))
         {
             // Unprefixed plain markers may follow a combined hunk without a
             // diff --git boundary; quarantined parent columns must stay inert.
@@ -91,7 +162,9 @@ fn parse_lines<'a, E>(
         if state.in_hunk()
             && state.can_end_at_plain_boundary()
             && parse_old_path_marker(raw)
-            && lines.peek().is_some_and(|next| is_new_path_marker(next))
+            && lines
+                .peek()
+                .is_some_and(|next| is_new_path_marker(&next.semantic_text()))
         {
             state.close_hunk();
         }
