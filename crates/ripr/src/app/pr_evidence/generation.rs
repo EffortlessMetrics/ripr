@@ -64,8 +64,12 @@ pub(super) fn resolve_subject(
     )?;
     // Empty or multiple merge bases have no unique three-dot origin.
     let origin_sha = parse_single_oid(&origin, "three-dot origin")?;
-    let origin_tree =
-        resolve_object(&invocation_repo, origin_sha.as_str(), "tree", "three-dot origin tree")?;
+    let origin_tree = resolve_object(
+        &invocation_repo,
+        origin_sha.as_str(),
+        "tree",
+        "three-dot origin tree",
+    )?;
 
     Ok(ResolvedWholeSubject {
         invocation_repo,
@@ -171,7 +175,11 @@ fn single_line<'a>(bytes: &'a [u8], label: &str) -> Result<&'a str, String> {
         Some(line) => line.strip_suffix('\r').unwrap_or(line),
         None => text,
     };
-    if text.is_empty() || text.chars().any(|character| matches!(character, '\n' | '\r' | '\0')) {
+    if text.is_empty()
+        || text
+            .chars()
+            .any(|character| matches!(character, '\n' | '\r' | '\0'))
+    {
         return Err(format!(
             "whole-subject {label} must contain exactly one nonempty line"
         ));
@@ -227,7 +235,14 @@ mod tests {
                 base_tree: String::new(),
                 head_tree: String::new(),
             };
-            fixture.git(&["-c", "init.templateDir=", "init", "--quiet", "-b", "subject"])?;
+            fixture.git(&[
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--quiet",
+                "-b",
+                "subject",
+            ])?;
             fixture.git(&["config", "--local", "user.name", "RIPR subject fixture"])?;
             fixture.git(&[
                 "config",
@@ -276,7 +291,9 @@ mod tests {
             .map_err(|error| error.to_string())?;
             self.git(&["add", "--", "source.rs"])?;
             let tree = self.git_output(&["write-tree"])?;
-            Ok(parse_single_oid(tree.as_bytes(), "fixture tree")?.as_str().to_string())
+            Ok(parse_single_oid(tree.as_bytes(), "fixture tree")?
+                .as_str()
+                .to_string())
         }
 
         fn commit(&self, tree: &str, parents: &[&str], message: &str) -> Result<String, String> {
@@ -285,7 +302,9 @@ mod tests {
                 args.extend(["-p", *parent]);
             }
             let commit = self.git_output(&args)?;
-            Ok(parse_single_oid(commit.as_bytes(), "fixture commit")?.as_str().to_string())
+            Ok(parse_single_oid(commit.as_bytes(), "fixture commit")?
+                .as_str()
+                .to_string())
         }
 
         fn options(&self) -> PrEvidenceOptions {
@@ -392,7 +411,10 @@ mod tests {
         let unavailable = unavailable
             .err()
             .ok_or("unavailable Git identity became success")?;
-        assert!(unavailable.contains("whole-subject Git probe"), "{unavailable}");
+        assert!(
+            unavailable.contains("whole-subject Git probe"),
+            "{unavailable}"
+        );
         assert!(unavailable.contains("--show-toplevel"), "{unavailable}");
         validate_current(&fixture.repo, &options, &binding)?;
         Ok(())
@@ -415,7 +437,11 @@ mod tests {
         let first_merge = fixture.commit(&fixture.head_tree, &[&left, &right], "first merge")?;
         let second_merge = fixture.commit(&fixture.head_tree, &[&right, &left], "second merge")?;
         let actual = fixture.git_output(&["merge-base", "--all", &first_merge, &second_merge])?;
-        assert_eq!(actual.lines().count(), 2, "fixture must have two actual merge bases");
+        assert_eq!(
+            actual.lines().count(),
+            2,
+            "fixture must have two actual merge bases"
+        );
         options.base = first_merge;
         options.head = second_merge;
         let multiple = resolve_subject(&fixture.repo, &options)
@@ -466,8 +492,14 @@ mod tests {
     #[test]
     fn identity_output_requires_one_valid_oid_and_strict_utf8() -> Result<(), String> {
         let oid = "0123456789012345678901234567890123456789";
-        assert_eq!(parse_single_oid(format!("{oid}\n").as_bytes(), "test")?.as_str(), oid);
-        assert_eq!(parse_single_oid(format!("{oid}\r\n").as_bytes(), "test")?.as_str(), oid);
+        assert_eq!(
+            parse_single_oid(format!("{oid}\n").as_bytes(), "test")?.as_str(),
+            oid
+        );
+        assert_eq!(
+            parse_single_oid(format!("{oid}\r\n").as_bytes(), "test")?.as_str(),
+            oid
+        );
         for bytes in [
             Vec::new(),
             b"not-an-object\n".to_vec(),

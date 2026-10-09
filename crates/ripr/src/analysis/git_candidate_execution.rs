@@ -324,7 +324,9 @@ pub(crate) fn prepare_named_tree(
 
 fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> {
     if !listing.is_empty() && listing.last() != Some(&0) {
-        return Err(failed("configuration inventory is not NUL-terminated".into()));
+        return Err(failed(
+            "configuration inventory is not NUL-terminated".into(),
+        ));
     }
     let mut paths = std::collections::BTreeSet::new();
     if listing.is_empty() {
@@ -332,7 +334,9 @@ fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> 
     }
     for record in listing[..listing.len() - 1].split(|byte| *byte == 0) {
         if record.is_empty() {
-            return Err(failed("configuration inventory contains an empty record".into()));
+            return Err(failed(
+                "configuration inventory contains an empty record".into(),
+            ));
         }
         let text = std::str::from_utf8(record)
             .map_err(|error| failed(format!("configuration inventory is not UTF-8: {error}")))?;
@@ -341,7 +345,9 @@ fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> 
             .ok_or_else(|| failed("configuration inventory entry has no TAB".into()))?;
         let fields: Vec<_> = metadata.split_whitespace().collect();
         if fields.len() != 3 {
-            return Err(failed("configuration inventory metadata is malformed".into()));
+            return Err(failed(
+                "configuration inventory metadata is malformed".into(),
+            ));
         }
         GitObjectId::parse(fields[2])
             .map_err(|error| failed(format!("configuration inventory object ID: {error}")))?;
@@ -353,12 +359,14 @@ fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> 
             return Err(failed("configuration inventory path is malformed".into()));
         }
         if !paths.insert(path) {
-            return Err(failed(format!("configuration inventory duplicates path {path}")));
+            return Err(failed(format!(
+                "configuration inventory duplicates path {path}"
+            )));
         }
-        if (path == "ripr.toml" && fields[1] == "tree")
-            || path.starts_with("ripr.toml/")
-        {
-            return Err(failed("configuration inventory ripr.toml is a directory".into()));
+        if (path == "ripr.toml" && fields[1] == "tree") || path.starts_with("ripr.toml/") {
+            return Err(failed(
+                "configuration inventory ripr.toml is a directory".into(),
+            ));
         }
     }
     Ok(())
@@ -463,14 +471,12 @@ fn materialize_with_configuration(
     let budget = deadline.unwrap_or(Duration::from_mins(1));
     let budget_started = std::time::Instant::now();
     let listing = match capture {
-        ConfigurationCapture::NotRequested => {
-            crate::git::run_git_output_with_deadline_and_limit(
-                root,
-                &["ls-tree", "-r", "-z", candidate_tree],
-                budget.saturating_sub(budget_started.elapsed()),
-                MAX_ARCHIVE_BYTES,
-            )
-        }
+        ConfigurationCapture::NotRequested => crate::git::run_git_output_with_deadline_and_limit(
+            root,
+            &["ls-tree", "-r", "-z", candidate_tree],
+            budget.saturating_sub(budget_started.elapsed()),
+            MAX_ARCHIVE_BYTES,
+        ),
         ConfigurationCapture::Requested { .. } => {
             crate::git::run_git_output_with_deadline_and_limit_strict(
                 root,
@@ -822,26 +828,30 @@ mod tests {
         use super::super::committed_source::frozen;
         let (guard, _, candidate) = fixture_repo("frozen-source-authority")?;
         let expected = candidate_blob(&guard.0, &candidate, "src/lib.rs")?;
-        let prepared = prepare_named_tree(&guard.0, &candidate, None)
-            .map_err(|error| error.to_string())?;
+        let prepared =
+            prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
         let physical = prepared.physical_root().to_path_buf();
         let authority = prepared
             .frozen_source_authority(&guard.0)
             .map_err(|error| error.to_string())?;
-        std::fs::remove_file(guard.0.join("src/lib.rs"))
-            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?;
         std::fs::write(guard.0.join("live-only.rs"), b"untracked")
             .map_err(|error| error.to_string())?;
-        assert!(physical.is_dir(), "the worker Arc must retain materialization cleanup");
+        assert!(
+            physical.is_dir(),
+            "the worker Arc must retain materialization cleanup"
+        );
         frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
             assert_eq!(
                 frozen::fs::read(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?,
                 expected
             );
             assert!(!frozen::fs::exists(guard.0.join("live-only.rs")));
-            authority.ensure_clean().map_err(|error| error.to_string())?;
-            let entries = frozen::fs::read_dir(guard.0.join("src"))
+            authority
+                .ensure_clean()
                 .map_err(|error| error.to_string())?;
+            let entries =
+                frozen::fs::read_dir(guard.0.join("src")).map_err(|error| error.to_string())?;
             for entry in entries {
                 let entry = entry.map_err(|error| error.to_string())?;
                 assert!(entry.path().starts_with(&guard.0));
@@ -855,14 +865,21 @@ mod tests {
             std::fs::write(physical.join("src/lib.rs"), &changed)
                 .map_err(|error| error.to_string())?;
             let failure = frozen::fs::read(guard.0.join("src/lib.rs"))
-                .err().ok_or("a same-length snapshot replacement must fail")?;
+                .err()
+                .ok_or("a same-length snapshot replacement must fail")?;
             assert_eq!(failure.kind(), std::io::ErrorKind::InvalidData);
-            let failure = authority.ensure_clean().err().ok_or("snapshot replacement must remain fatal")?;
+            let failure = authority
+                .ensure_clean()
+                .err()
+                .ok_or("snapshot replacement must remain fatal")?;
             assert_eq!(failure.kind(), std::io::ErrorKind::InvalidData);
             Ok(())
         })?;
         drop(authority);
-        assert!(!physical.exists(), "the last authority Arc must remove the owned tree");
+        assert!(
+            !physical.exists(),
+            "the last authority Arc must remove the owned tree"
+        );
         Ok(())
     }
 
@@ -898,8 +915,8 @@ mod tests {
         std::fs::write(guard.0.join("ripr.toml"), "").map_err(|error| error.to_string())?;
         crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
         crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "empty config"])?;
-        let empty = prepare_named_tree(&guard.0, "HEAD", None)
-            .map_err(|error| error.to_string())?;
+        let empty =
+            prepare_named_tree(&guard.0, "HEAD", None).map_err(|error| error.to_string())?;
         assert!(matches!(
             &empty.configuration,
             CapturedConfiguration::Present { text, .. } if text.is_empty()
@@ -907,8 +924,8 @@ mod tests {
         std::fs::remove_file(guard.0.join("ripr.toml")).map_err(|error| error.to_string())?;
         crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
         crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "absent config"])?;
-        let absent = prepare_named_tree(&guard.0, "HEAD", None)
-            .map_err(|error| error.to_string())?;
+        let absent =
+            prepare_named_tree(&guard.0, "HEAD", None).map_err(|error| error.to_string())?;
         assert_eq!(absent.configuration, CapturedConfiguration::Absent);
         assert!(!absent._root.join("ripr.toml").exists());
         Ok(())
@@ -921,15 +938,18 @@ mod tests {
         std::fs::write(guard.0.join("ripr.toml"), [0xff_u8, 0xfe])
             .map_err(|error| error.to_string())?;
         crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
-        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "invalid config"])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &guard.0,
+            &["commit", "-qm", "invalid config"],
+        )?;
         let tree = git(&guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
             .map_err(|error| error.to_string())?;
         let failure = prepare_named_tree(&guard.0, "HEAD", None)
             .err()
             .ok_or("invalid UTF-8 config was accepted")?;
         assert!(failure.to_string().contains("not UTF-8"), "{failure}");
-        let (root, _cleanup) = materialize(&guard.0, &tree, None)
-            .map_err(|error| error.to_string())?;
+        let (root, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
         assert_eq!(
             std::fs::read(root.join("ripr.toml")).map_err(|error| error.to_string())?,
             [0xff_u8, 0xfe]
@@ -953,10 +973,7 @@ mod tests {
         let failure = prepare_named_tree(&guard.0, &candidate, None)
             .err()
             .ok_or("missing config blob became absent")?;
-        assert!(
-            failure.to_string().contains("git cat-file"),
-            "{failure}"
-        );
+        assert!(failure.to_string().contains("git cat-file"), "{failure}");
 
         let (directory_guard, _, _) = fixture_repo("capture-config-directory")?;
         std::fs::remove_file(directory_guard.0.join("ripr.toml"))
@@ -973,11 +990,18 @@ mod tests {
         let failure = prepare_named_tree(&directory_guard.0, "HEAD", None)
             .err()
             .ok_or("config directory alias became absent")?;
-        assert!(failure.to_string().contains("ripr.toml is a directory"), "{failure}");
-        let tree = git(&directory_guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
-            .map_err(|error| error.to_string())?;
-        let (ordinary, _cleanup) = materialize(&directory_guard.0, &tree, None)
-            .map_err(|error| error.to_string())?;
+        assert!(
+            failure.to_string().contains("ripr.toml is a directory"),
+            "{failure}"
+        );
+        let tree = git(
+            &directory_guard.0,
+            &["rev-parse", "HEAD^{tree}"],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let (ordinary, _cleanup) =
+            materialize(&directory_guard.0, &tree, None).map_err(|error| error.to_string())?;
         assert!(ordinary.join("ripr.toml/nested").is_file());
         Ok(())
     }
@@ -986,8 +1010,8 @@ mod tests {
     fn frozen_inventory_keeps_an_actual_empty_nonconfiguration_subtree() -> Result<(), String> {
         use super::super::committed_source::frozen;
         let (guard, _, _) = fixture_repo("frozen-empty-directory")?;
-        let empty_tree = git(&guard.0, &["mktree"], GIT_DEADLINE)
-            .map_err(|error| error.to_string())?;
+        let empty_tree =
+            git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
         let empty_tree = GitObjectId::parse(&empty_tree).map_err(|error| error.to_string())?;
         let mut record = b"40000 empty\0".to_vec();
         for pair in empty_tree.as_str().as_bytes().chunks_exact(2) {
@@ -996,15 +1020,17 @@ mod tests {
         }
         let input = guard.0.join("empty-source-tree-input");
         std::fs::write(&input, record).map_err(|error| error.to_string())?;
-        let input_name = input.to_str().ok_or("fixture tree-input path is not UTF-8")?;
+        let input_name = input
+            .to_str()
+            .ok_or("fixture tree-input path is not UTF-8")?;
         let tree = git(
             &guard.0,
             &["hash-object", "-w", "-t", "tree", input_name],
             GIT_DEADLINE,
         )
         .map_err(|error| error.to_string())?;
-        let prepared = prepare_named_tree(&guard.0, &tree, None)
-            .map_err(|error| error.to_string())?;
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
         let authority = prepared
             .frozen_source_authority(&guard.0)
             .map_err(|error| error.to_string())?;
@@ -1018,17 +1044,20 @@ mod tests {
             );
             authority.ensure_clean().map_err(|error| error.to_string())
         })?;
-        let (ordinary, _cleanup) = materialize(&guard.0, &tree, None)
-            .map_err(|error| error.to_string())?;
-        assert!(!ordinary.join("empty").exists(), "ordinary -r behavior remains unchanged");
+        let (ordinary, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert!(
+            !ordinary.join("empty").exists(),
+            "ordinary -r behavior remains unchanged"
+        );
         Ok(())
     }
 
     #[test]
     fn capture_refuses_an_actual_empty_configuration_subtree() -> Result<(), String> {
         let (guard, _, _) = fixture_repo("capture-empty-config-tree")?;
-        let empty_tree = git(&guard.0, &["mktree"], GIT_DEADLINE)
-            .map_err(|error| error.to_string())?;
+        let empty_tree =
+            git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
         let empty_tree = GitObjectId::parse(&empty_tree).map_err(|error| error.to_string())?;
         let mut record = b"40000 ripr.toml\0".to_vec();
         for pair in empty_tree.as_str().as_bytes().chunks_exact(2) {
@@ -1037,7 +1066,9 @@ mod tests {
         }
         let input_path = guard.0.join("empty-config-tree-input");
         std::fs::write(&input_path, &record).map_err(|error| error.to_string())?;
-        let input_name = input_path.to_str().ok_or("fixture tree-input path is not UTF-8")?;
+        let input_name = input_path
+            .to_str()
+            .ok_or("fixture tree-input path is not UTF-8")?;
         let tree = git(
             &guard.0,
             &["hash-object", "-w", "-t", "tree", input_name],
@@ -1051,13 +1082,19 @@ mod tests {
         )
         .map_err(|error| error.to_string())?;
         assert!(recursive.status.success());
-        assert!(recursive.stdout.is_empty(), "fixture is not an empty subtree");
+        assert!(
+            recursive.stdout.is_empty(),
+            "fixture is not an empty subtree"
+        );
         let failure = prepare_named_tree(&guard.0, &tree, None)
             .err()
             .ok_or("empty config subtree became Absent")?;
-        assert!(failure.to_string().contains("ripr.toml is a directory"), "{failure}");
-        let (ordinary, _cleanup) = materialize(&guard.0, &tree, None)
-            .map_err(|error| error.to_string())?;
+        assert!(
+            failure.to_string().contains("ripr.toml is a directory"),
+            "{failure}"
+        );
+        let (ordinary, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
         assert!(!ordinary.join("ripr.toml").exists());
         Ok(())
     }
@@ -1077,7 +1114,11 @@ mod tests {
         let truncated = &listing.stdout[..listing.stdout.len() - 1];
         assert!(validate_configuration_inventory(truncated).is_err());
         let mut duplicate = listing.stdout.clone();
-        let first = listing.stdout.split(|byte| *byte == 0).next().ok_or("no tree record")?;
+        let first = listing
+            .stdout
+            .split(|byte| *byte == 0)
+            .next()
+            .ok_or("no tree record")?;
         duplicate.extend_from_slice(first);
         duplicate.push(0);
         let failure = validate_configuration_inventory(&duplicate)
@@ -1097,8 +1138,12 @@ mod tests {
     #[test]
     fn configuration_capture_cap_refuses_before_growth() -> Result<(), String> {
         let (guard, _, candidate) = fixture_repo("capture-cap")?;
-        let tree = git(&guard.0, &["rev-parse", &format!("{candidate}^{{tree}}")], GIT_DEADLINE)
-            .map_err(|error| error.to_string())?;
+        let tree = git(
+            &guard.0,
+            &["rev-parse", &format!("{candidate}^{{tree}}")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
         let failure = materialize_with_configuration(
             &guard.0,
             &tree,
@@ -1107,12 +1152,14 @@ mod tests {
         )
         .err()
         .ok_or("oversize configuration was captured")?;
-        assert!(failure.to_string().contains("8-byte input limit"), "{failure}");
+        assert!(
+            failure.to_string().contains("8-byte input limit"),
+            "{failure}"
+        );
         let mut bytes = b"12".to_vec();
         assert!(append_captured_configuration(&mut bytes, b"3", 2).is_err());
         assert_eq!(bytes, b"12");
-        append_captured_configuration(&mut bytes, b"3", 3)
-            .map_err(|error| error.to_string())?;
+        append_captured_configuration(&mut bytes, b"3", 3).map_err(|error| error.to_string())?;
         assert_eq!(bytes, b"123");
         assert_eq!(crate::bounded_input::MAX_CLI_INPUT_BYTES, 256 * 1024 * 1024);
         Ok(())

@@ -336,8 +336,7 @@ fn is_root_contained_new_test_file(root: &Path, relative: &Path) -> bool {
     let Ok(canonical_root) = frozen_fs::canonicalize(root) else {
         return false;
     };
-    frozen_fs::canonicalize(parent)
-        .is_ok_and(|canonical| canonical.starts_with(&canonical_root))
+    frozen_fs::canonicalize(parent).is_ok_and(|canonical| canonical.starts_with(&canonical_root))
 }
 
 /// No-follow occupancy: only `NotFound` is a genuinely new leaf.
@@ -371,20 +370,26 @@ mod frozen_tests {
             std::fs::copy(fixture.physical.join(path), target)?;
         }
         crate::testing::fixture_git::fixture_git_ok(
-            &fixture.logical, &["init", "--initial-branch=main"],
+            &fixture.logical,
+            &["init", "--initial-branch=main"],
         )?;
         crate::testing::fixture_git::fixture_git_ok(
-            &fixture.logical, &["config", "user.name", "ripr fixture"],
+            &fixture.logical,
+            &["config", "user.name", "ripr fixture"],
         )?;
         crate::testing::fixture_git::fixture_git_ok(
-            &fixture.logical, &["config", "user.email", "ripr@example.invalid"],
+            &fixture.logical,
+            &["config", "user.email", "ripr@example.invalid"],
         )?;
         crate::testing::fixture_git::fixture_git_ok(&fixture.logical, &["add", "."])?;
         crate::testing::fixture_git::fixture_git_ok(
-            &fixture.logical, &["commit", "-qm", "admitted layout"],
+            &fixture.logical,
+            &["commit", "-qm", "admitted layout"],
         )?;
         let prepared = crate::analysis::git_candidate_execution::prepare_named_tree(
-            &fixture.logical, "HEAD", None,
+            &fixture.logical,
+            "HEAD",
+            None,
         )
         .map_err(|error| std::io::Error::other(error.to_string()))?;
         let physical = prepared.physical_root().to_path_buf();
@@ -395,35 +400,53 @@ mod frozen_tests {
         )?;
         std::fs::remove_file(fixture.logical.join("src/lib.rs"))?;
         std::fs::remove_dir_all(fixture.logical.join("tests"))?;
-        frozen::with_context(Some(authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
-            let package = owning_package(&fixture.logical, Path::new("src/lib.rs"))
-                .map_err(|error| format!("admitted package was rejected: {error:?}"))?;
-            assert_eq!(package.library_crate_name, "admitted");
-            assert!(package.autotests);
-            assert!(package.has_library_target);
-            assert!(package.has_established_tests_layout);
-            assert!(is_root_contained_new_test_file(
-                &fixture.logical, Path::new("tests/proposed.rs"),
-            ));
-            authority.ensure_clean()?;
-            std::fs::remove_file(physical.join("tests/existing.rs"))?;
-            let _after_loss = owning_package(&fixture.logical, Path::new("src/lib.rs"));
-            let failure = authority.ensure_clean().err()
-                .ok_or("package layout silently accepted missing snapshot test")?;
-            assert!(failure.to_string().contains("admitted snapshot child is missing"), "{failure}");
-            Ok(())
-        })?;
+        frozen::with_context(
+            Some(authority.clone()),
+            || -> Result<(), Box<dyn std::error::Error>> {
+                let package = owning_package(&fixture.logical, Path::new("src/lib.rs"))
+                    .map_err(|error| format!("admitted package was rejected: {error:?}"))?;
+                assert_eq!(package.library_crate_name, "admitted");
+                assert!(package.autotests);
+                assert!(package.has_library_target);
+                assert!(package.has_established_tests_layout);
+                assert!(is_root_contained_new_test_file(
+                    &fixture.logical,
+                    Path::new("tests/proposed.rs"),
+                ));
+                authority.ensure_clean()?;
+                std::fs::remove_file(physical.join("tests/existing.rs"))?;
+                let _after_loss = owning_package(&fixture.logical, Path::new("src/lib.rs"));
+                let failure = authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or("package layout silently accepted missing snapshot test")?;
+                assert!(
+                    failure
+                        .to_string()
+                        .contains("admitted snapshot child is missing"),
+                    "{failure}"
+                );
+                Ok(())
+            },
+        )?;
 
-        let escape = frozen::tests::Fixture::new(&[
-            ("Cargo.toml", b"[package]\nname='escaped'\nversion='0.1.0'\n[lib]\npath='../outside.rs'\n"),
-        ])?;
-        frozen::with_context(Some(escape.authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
-            let _package = owning_package(&escape.logical, Path::new("src/lib.rs"));
-            let failure = escape.authority.ensure_clean().err()
-                .ok_or("external library path did not poison frozen authority")?;
-            assert_eq!(failure.kind(), std::io::ErrorKind::PermissionDenied);
-            Ok(())
-        })?;
+        let escape = frozen::tests::Fixture::new(&[(
+            "Cargo.toml",
+            b"[package]\nname='escaped'\nversion='0.1.0'\n[lib]\npath='../outside.rs'\n",
+        )])?;
+        frozen::with_context(
+            Some(escape.authority.clone()),
+            || -> Result<(), Box<dyn std::error::Error>> {
+                let _package = owning_package(&escape.logical, Path::new("src/lib.rs"));
+                let failure = escape
+                    .authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or("external library path did not poison frozen authority")?;
+                assert_eq!(failure.kind(), std::io::ErrorKind::PermissionDenied);
+                Ok(())
+            },
+        )?;
         Ok(())
     }
 }

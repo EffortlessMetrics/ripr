@@ -18,8 +18,8 @@
 //! `typescript_package_root_unresolved` limitation is emitted. No value is
 //! ever invented from the file extension alone.
 
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 

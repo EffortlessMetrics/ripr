@@ -576,7 +576,10 @@ mod tests {
         let source = b"pub fn frozen_owner() -> u8 { 7 }\n";
         let fixture = crate::analysis::committed_source::frozen::tests::Fixture::new(&[
             ("src/lib.rs", source),
-            ("Cargo.toml", b"[package]\nname='frozen-owner'\nversion='0.1.0'\n"),
+            (
+                "Cargo.toml",
+                b"[package]\nname='frozen-owner'\nversion='0.1.0'\n",
+            ),
         ])?;
         std::fs::create_dir_all(fixture.logical.join("src"))?;
         std::fs::write(fixture.logical.join("src/lib.rs"), b"this is a live decoy")?;
@@ -585,7 +588,10 @@ mod tests {
             build_index(&fixture.logical, std::slice::from_ref(&file))
         })?;
         assert!(
-            frozen_direct.functions().iter().any(|function| function.name == "frozen_owner"),
+            frozen_direct
+                .functions()
+                .iter()
+                .any(|function| function.name == "frozen_owner"),
             "the actual source-reading Rayon worker must see the named-tree bytes"
         );
         let frozen_loaded = frozen::with_context(Some(fixture.authority.clone()), || {
@@ -621,10 +627,18 @@ mod tests {
                 MissAttribution::Skipped,
             )
         });
-        let failure = failure.err().ok_or("live decoy loaded bytes were accepted")?;
-        assert!(failure.contains("loaded bytes differ from admitted blob"), "{failure}");
-        let retained = fixture.authority.ensure_clean()
-            .err().ok_or("loaded-byte mismatch must remain fatal")?;
+        let failure = failure
+            .err()
+            .ok_or("live decoy loaded bytes were accepted")?;
+        assert!(
+            failure.contains("loaded bytes differ from admitted blob"),
+            "{failure}"
+        );
+        let retained = fixture
+            .authority
+            .ensure_clean()
+            .err()
+            .ok_or("loaded-byte mismatch must remain fatal")?;
         assert_eq!(retained.kind(), std::io::ErrorKind::InvalidData);
         Ok(())
     }

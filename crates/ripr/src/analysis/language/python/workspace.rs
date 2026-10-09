@@ -1,6 +1,6 @@
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::source_utils::normalized_path;
 use super::{ChangedFile, LanguageAdapter, PythonAdapter, PythonOwner};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::config::{is_detectable_generated_python_path, is_python_excluded_dir_everywhere};
 use std::{
     ops::RangeInclusive,
@@ -145,21 +145,18 @@ fn frozen_discovery_keeps_snapshot_membership_and_logical_paths() -> Result<(), 
     let authority = prepared
         .frozen_source_authority(&fixture.root)
         .map_err(|error| error.to_string())?;
-    std::fs::remove_file(fixture.root.join(&snapshot_path))
-        .map_err(|error| error.to_string())?;
+    std::fs::remove_file(fixture.root.join(&snapshot_path)).map_err(|error| error.to_string())?;
     fixture.seed("src/live.py", b"live = 2\n")?;
-    let ordinary = frozen::with_context(None, || {
-        collect_workspace_python_files(&fixture.root)
-    });
+    let ordinary = frozen::with_context(None, || collect_workspace_python_files(&fixture.root));
     assert_eq!(ordinary, vec![live_path.clone()]);
     let actual = frozen::with_context(Some(authority.clone()), || {
         collect_workspace_python_files(&fixture.root)
     });
     assert_eq!(actual, vec![snapshot_path]);
-    authority.ensure_clean().map_err(|error| error.to_string())?;
-    let recovered = frozen::with_context(None, || {
-        collect_workspace_python_files(&fixture.root)
-    });
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
+    let recovered = frozen::with_context(None, || collect_workspace_python_files(&fixture.root));
     assert_eq!(recovered, vec![live_path]);
     Ok(())
 }

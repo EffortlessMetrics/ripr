@@ -34,8 +34,8 @@
 //! positively recognize fails closed: no evidence line, and the projection
 //! keeps the packet non-delegatable.
 
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use oxc_parser::Kind;
 use oxc_parser::config::TokensParserConfig;
 

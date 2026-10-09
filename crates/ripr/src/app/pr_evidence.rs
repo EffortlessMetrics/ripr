@@ -204,7 +204,9 @@ fn write_pr_evidence_with_generation(
     let binding = generation
         .map(|_| self::generation::resolve_subject(repo, options))
         .transpose()?;
-    let pinned = binding.as_ref().map(self::generation::ResolvedWholeSubject::pinned_options);
+    let pinned = binding
+        .as_ref()
+        .map(self::generation::ResolvedWholeSubject::pinned_options);
     let execution_options = pinned.as_ref().unwrap_or(options);
     verify_revision(repo, &execution_options.base)?;
     verify_revision(repo, &execution_options.head)?;
@@ -214,7 +216,12 @@ fn write_pr_evidence_with_generation(
         let prepared = match prepare_experimental_configuration(repo, execution_options) {
             Ok(prepared) => prepared,
             Err(error) => {
-                return write_pr_evidence_error_packet(repo, execution_options, &changed_files, &error);
+                return write_pr_evidence_error_packet(
+                    repo,
+                    execution_options,
+                    &changed_files,
+                    &error,
+                );
             }
         };
         let canonical = crate::bounded_input::read_to_string(repo.join(PR_CANONICAL_DIFF))
@@ -228,7 +235,9 @@ fn write_pr_evidence_with_generation(
             || {
                 crate::analysis::committed_source::frozen::with_canonical_diff(canonical, || {
                     let result = run_check(repo, execution_options).and_then(|check_json| {
-                        authority.ensure_clean().map_err(|error| error.to_string())?;
+                        authority
+                            .ensure_clean()
+                            .map_err(|error| error.to_string())?;
                         validate_frozen_configuration(repo, options, &authority)?;
                         if let Some(binding) = binding.as_ref() {
                             self::generation::validate_current(repo, options, binding)?;
@@ -263,7 +272,14 @@ fn write_pr_evidence_with_generation(
         };
     }
     let result = run_check(repo, execution_options);
-    finish_pr_evidence_check(repo, execution_options, &changed_files, result, generation, None)
+    finish_pr_evidence_check(
+        repo,
+        execution_options,
+        &changed_files,
+        result,
+        generation,
+        None,
+    )
 }
 
 fn finish_pr_evidence_check(
@@ -361,7 +377,9 @@ fn validate_frozen_configuration(
 ) -> Result<(), String> {
     use crate::analysis::git_candidate_execution::CapturedConfiguration;
 
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     if resolve_revision(repo, &options.head, "tree")? != authority.head_tree().as_str() {
         return Err("experimental prepared head changed before publication".into());
     }
@@ -626,7 +644,9 @@ fn write_pr_evidence_packet_with_generation(
         if canonical_diff.as_slice() != owned.as_bytes() {
             return Err("owned canonical check input changed before publication".into());
         }
-        authority.ensure_clean().map_err(|error| error.to_string())?;
+        authority
+            .ensure_clean()
+            .map_err(|error| error.to_string())?;
     }
     if let Some((requested, binding)) = binding {
         self::generation::validate_current(repo, requested, binding)?;
@@ -2252,7 +2272,10 @@ mod tests {
                     serde_json::from_str(baseline).map_err(|error| error.to_string())?;
                 let actual: Value =
                     serde_json::from_str(&frozen).map_err(|error| error.to_string())?;
-                assert_eq!(actual, expected, "full result must preserve logical paths and IDs");
+                assert_eq!(
+                    actual, expected,
+                    "full result must preserve logical paths and IDs"
+                );
                 let packet: Value = serde_json::from_str(
                     &fs::read_to_string(repo.join(PR_EVIDENCE_JSON))
                         .map_err(|error| error.to_string())?,
@@ -3320,8 +3343,8 @@ mod tests {
     /// ordinary producer retains its live-config contract.
     #[cfg(feature = "lang-rust")]
     #[test]
-    fn experimental_preparation_refuses_committed_config_drift_before_runner()
-    -> Result<(), String> {
+    fn experimental_preparation_refuses_committed_config_drift_before_runner() -> Result<(), String>
+    {
         use crate::testing::fixture_git::fixture_git_ok;
 
         struct Fixture(PathBuf);
@@ -3394,14 +3417,20 @@ mod tests {
                 && failure.contains("does not match the live loaded configuration"),
             "{failure}"
         );
-        assert!(!entered, "config mismatch reached the experimental analyzer");
+        assert!(
+            !entered,
+            "config mismatch reached the experimental analyzer"
+        );
         let packet: Value = serde_json::from_slice(
             &fs::read(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
         assert_eq!(packet["status"], "error");
         for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
-            assert!(!repo.join(path).exists(), "stale authority survived: {path}");
+            assert!(
+                !repo.join(path).exists(),
+                "stale authority survived: {path}"
+            );
         }
         assert!(check_pr_evidence(&repo, &options).is_err());
         write_pr_evidence(&repo, &options)?;
@@ -3448,7 +3477,11 @@ mod tests {
         .err()
         .ok_or("experimental preparation manufactured production admission")?;
         assert_eq!(admission.category, "malformed_producer");
-        assert!(admission.message.contains("experimental"), "{}", admission.message);
+        assert!(
+            admission.message.contains("experimental"),
+            "{}",
+            admission.message
+        );
         assert!(check_pr_evidence(&repo, &options).is_err());
 
         let mut postflight_entered = false;
@@ -3466,9 +3499,15 @@ mod tests {
         .err()
         .ok_or("configuration drift during analyzer escaped postflight validation")?;
         assert!(postflight_entered);
-        assert!(postflight.contains("committed configuration"), "{postflight}");
+        assert!(
+            postflight.contains("committed configuration"),
+            "{postflight}"
+        );
         for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
-            assert!(!repo.join(path).exists(), "postflight left authority: {path}");
+            assert!(
+                !repo.join(path).exists(),
+                "postflight left authority: {path}"
+            );
         }
         write_repo_file(&repo, "ripr.toml", committed)?;
         write_pr_evidence(&repo, &options)?;
@@ -3483,7 +3522,10 @@ mod tests {
                 head_change_entered = true;
                 let check = run_ripr_check(repo, options)?;
                 write_repo_file(repo, "src/lib.rs", &original.replace("> 10", "> 11"))?;
-                fixture_git_ok(repo, &["commit", "--quiet", "-a", "-m", "move fixture head"])?;
+                fixture_git_ok(
+                    repo,
+                    &["commit", "--quiet", "-a", "-m", "move fixture head"],
+                )?;
                 Ok(check)
             },
             Some(&generation),
@@ -3491,9 +3533,15 @@ mod tests {
         .err()
         .ok_or("HEAD tree movement escaped postflight validation")?;
         assert!(head_change_entered);
-        assert!(head_change.contains("prepared head changed"), "{head_change}");
+        assert!(
+            head_change.contains("prepared head changed"),
+            "{head_change}"
+        );
         for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
-            assert!(!repo.join(path).exists(), "head movement left authority: {path}");
+            assert!(
+                !repo.join(path).exists(),
+                "head movement left authority: {path}"
+            );
         }
         fixture_git_ok(&repo, &["reset", "--hard", &original_head])?;
         write_pr_evidence(&repo, &options)?;

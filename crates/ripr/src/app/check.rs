@@ -2,12 +2,12 @@ use super::progress::{
     AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage, ProgressRun,
 };
 use super::{CheckInput, CheckOutput, OutputFormat};
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use crate::analysis::{
     AnalysisResult, run_analysis_with_oracle_policy_and_rust_config,
     run_repo_analysis_with_oracle_policy_and_rust_config,
     run_worktree_analysis_with_oracle_policy_and_rust_config,
 };
-use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use crate::config::RiprConfig;
 use crate::core_error::CoreError;
 use crate::domain::LanguageId;
@@ -196,10 +196,15 @@ fn check_with_progress_and_origins_with_open_rust_paths(
     if let Some(authority) = frozen::current()
         && (input.perl_facts_path.is_some()
             || input.suppression_policy.is_some()
-            || config.perl().producer().is_some_and(is_managed_perl_producer))
+            || config
+                .perl()
+                .producer()
+                .is_some_and(is_managed_perl_producer))
     {
         return Err(authority
-            .refuse_external_effect("Perl facts, managed exporters and suppression policies are unbound")
+            .refuse_external_effect(
+                "Perl facts, managed exporters and suppression policies are unbound",
+            )
             .to_string()
             .into());
     }

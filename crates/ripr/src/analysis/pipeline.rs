@@ -64,7 +64,9 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy_and_rust_config(
             || options.resolved_subject_identity.is_some()
         {
             return Err(authority
-                .refuse_external_effect("frozen diff requires its exact logical root and no GitCandidate")
+                .refuse_external_effect(
+                    "frozen diff requires its exact logical root and no GitCandidate",
+                )
                 .to_string()
                 .into());
         }
@@ -1954,9 +1956,17 @@ mod tests {
                 &[LanguageId::Rust],
                 &crate::config::RustLanguageConfig::default(),
             )
-        }).err().ok_or("frozen entry accepted missing owned canonical diff")?;
-        assert!(missing.to_string().contains("no owned canonical input"), "{missing}");
-        let retained = fixture.authority.ensure_clean().err()
+        })
+        .err()
+        .ok_or("frozen entry accepted missing owned canonical diff")?;
+        assert!(
+            missing.to_string().contains("no owned canonical input"),
+            "{missing}"
+        );
+        let retained = fixture
+            .authority
+            .ensure_clean()
+            .err()
             .ok_or("missing canonical input did not poison authority")?;
         assert_eq!(retained.kind(), std::io::ErrorKind::PermissionDenied);
 
@@ -1971,8 +1981,13 @@ mod tests {
                     &crate::config::RustLanguageConfig::default(),
                 )
             })
-        }).err().ok_or("frozen entry accepted a different logical root spelling")?;
-        assert!(mismatch.to_string().contains("exact logical root"), "{mismatch}");
+        })
+        .err()
+        .ok_or("frozen entry accepted a different logical root spelling")?;
+        assert!(
+            mismatch.to_string().contains("exact logical root"),
+            "{mismatch}"
+        );
         Ok(())
     }
 

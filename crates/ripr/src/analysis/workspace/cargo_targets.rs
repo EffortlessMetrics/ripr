@@ -1018,17 +1018,25 @@ fn unique_workspace(tag: &str) -> PathBuf {
 #[cfg(test)]
 mod context {
     #[test]
-    fn actual_cargo_probe_refuses_frozen_context_before_any_process() -> Result<(), Box<dyn std::error::Error>> {
-        let fixture = frozen::tests::Fixture::new(&[
-            ("Cargo.toml", b"[package]\nname='frozen'\nversion='0.1.0'\n"),
-        ])?;
-        frozen::with_context(Some(fixture.authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
-            assert!(super::run_workspace_cargo_metadata(&fixture.logical).is_none());
-            let failure = fixture.authority.ensure_clean().err()
-                .ok_or("cargo probe was not retained as an unbound effect")?;
-            assert!(failure.to_string().contains("cargo metadata"), "{failure}");
-            Ok(())
-        })?;
+    fn actual_cargo_probe_refuses_frozen_context_before_any_process()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = frozen::tests::Fixture::new(&[(
+            "Cargo.toml",
+            b"[package]\nname='frozen'\nversion='0.1.0'\n",
+        )])?;
+        frozen::with_context(
+            Some(fixture.authority.clone()),
+            || -> Result<(), Box<dyn std::error::Error>> {
+                assert!(super::run_workspace_cargo_metadata(&fixture.logical).is_none());
+                let failure = fixture
+                    .authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or("cargo probe was not retained as an unbound effect")?;
+                assert!(failure.to_string().contains("cargo metadata"), "{failure}");
+                Ok(())
+            },
+        )?;
         Ok(())
     }
 

@@ -1,4 +1,3 @@
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::module_constants::{module_literal_constants, with_module_rebinding};
 use super::owners_tests::{
     TestImportContext, collect_imports_from_statements, collect_owners_from_statements,
@@ -6,6 +5,7 @@ use super::owners_tests::{
 };
 use super::source_utils::{SourceText, line_for_range_end, line_for_range_start, text_for_range};
 use super::{PythonOwner, PythonTest, expr_full_name};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::domain::{LanguageId as DomainLanguageId, StaticLimitKind};
 use rustpython_parser::{
     Mode,

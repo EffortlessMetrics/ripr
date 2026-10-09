@@ -17,8 +17,8 @@
 //!   disclosure (#4103 shape 4: `vi.spyOn(module, name).mockReturnValue(...)`;
 //!   the fabricated value is observed, not the changed sink)
 
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 
 /// A named TypeScript limitation derived from a real detected TypeScript construct.
 ///

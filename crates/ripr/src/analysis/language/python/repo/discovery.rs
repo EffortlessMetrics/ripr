@@ -13,9 +13,9 @@
 //! The cap source and the operator recovery route are retained as typed
 //! fields so every surface can disclose the same remediation.
 
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::super::{LanguageAdapter, PythonAdapter};
 use super::roles::{PythonFileRole, classify_python_file_role, role_is_excluded_from_analysis};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::config::is_python_dir_pruned_from_repo_discovery;
 use std::path::{Path, PathBuf};
 

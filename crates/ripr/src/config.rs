@@ -1259,8 +1259,7 @@ mod captured_snapshot_tests {
             fs::create_dir(root.join(".git"))
                 .map_err(|error| format!("create fixture boundary: {error}"))?;
             let snapshot = root.join("snapshot");
-            fs::create_dir(&snapshot)
-                .map_err(|error| format!("create snapshot root: {error}"))?;
+            fs::create_dir(&snapshot).map_err(|error| format!("create snapshot root: {error}"))?;
             run(&root, &snapshot)
         })();
         let cleanup = fs::remove_dir_all(&root)
@@ -1301,7 +1300,8 @@ mod captured_snapshot_tests {
                 Some(Mode::Fast),
                 "the live decoy must affect the ordinary loader"
             );
-            let text = "# captured Δ\n[analysis]\nmode = \"deep\"\ninclude_unchanged_tests = false\n";
+            let text =
+                "# captured Δ\n[analysis]\nmode = \"deep\"\ninclude_unchanged_tests = false\n";
             let logical = Path::new("logical/repository/ripr.toml");
             let captured = present(text)?;
             let config = config_for_captured_snapshot(snapshot, logical, &captured)?;
@@ -1336,8 +1336,14 @@ mod captured_snapshot_tests {
     #[test]
     fn captured_snapshot_absent_ignores_ancestor_policy_and_python_markers() -> Result<(), String> {
         with_snapshot_fixture("absent-ancestor", |root, snapshot| {
-            write_fixture(&root.join(CONFIG_FILE_NAME), "[analysis]\nmode = \"ready\"\n")?;
-            write_fixture(&root.join("pyproject.toml"), "[project]\nname = \"ambient\"\n")?;
+            write_fixture(
+                &root.join(CONFIG_FILE_NAME),
+                "[analysis]\nmode = \"ready\"\n",
+            )?;
+            write_fixture(
+                &root.join("pyproject.toml"),
+                "[project]\nname = \"ambient\"\n",
+            )?;
             assert!(detect_python_project(root));
             assert!(!detect_python_project(snapshot));
             assert_eq!(
@@ -1395,7 +1401,10 @@ mod captured_snapshot_tests {
     #[test]
     fn captured_snapshot_empty_is_explicit_without_python_detection() -> Result<(), String> {
         with_snapshot_fixture("present-empty", |root, snapshot| {
-            write_fixture(&snapshot.join("pyproject.toml"), "[project]\nname = \"snapshot\"\n")?;
+            write_fixture(
+                &snapshot.join("pyproject.toml"),
+                "[project]\nname = \"snapshot\"\n",
+            )?;
             write_fixture(&root.join(CONFIG_FILE_NAME), "not valid TOML")?;
             assert!(detect_python_project(snapshot));
             let logical = Path::new("logical/empty/ripr.toml");
@@ -1419,8 +1428,14 @@ mod captured_snapshot_tests {
     #[test]
     fn captured_snapshot_not_requested_refuses_live_config_and_defaults() -> Result<(), String> {
         with_snapshot_fixture("not-requested", |root, snapshot| {
-            write_fixture(&snapshot.join("pyproject.toml"), "[project]\nname = \"snapshot\"\n")?;
-            write_fixture(&snapshot.join(CONFIG_FILE_NAME), "[analysis]\nmode = \"fast\"\n")?;
+            write_fixture(
+                &snapshot.join("pyproject.toml"),
+                "[project]\nname = \"snapshot\"\n",
+            )?;
+            write_fixture(
+                &snapshot.join(CONFIG_FILE_NAME),
+                "[analysis]\nmode = \"fast\"\n",
+            )?;
             assert!(detect_python_project(snapshot));
             load_for_root(snapshot)?;
             let error = config_for_captured_snapshot(
@@ -1438,7 +1453,10 @@ mod captured_snapshot_tests {
     #[test]
     fn captured_snapshot_malformed_text_preserves_logical_diagnostic() -> Result<(), String> {
         with_snapshot_fixture("malformed-capture", |root, snapshot| {
-            write_fixture(&snapshot.join(CONFIG_FILE_NAME), "[analysis]\nmode = \"fast\"\n")?;
+            write_fixture(
+                &snapshot.join(CONFIG_FILE_NAME),
+                "[analysis]\nmode = \"fast\"\n",
+            )?;
             assert_eq!(load_for_root(snapshot)?.analysis.mode, Some(Mode::Fast));
             let text = "[analysis]\nmode = \"unknown-captured-mode\"\n";
             let logical = root.join("logical").join(CONFIG_FILE_NAME);

@@ -1,7 +1,7 @@
 //! Workspace discovery for the TypeScript preview adapter.
 
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 
 const TEST_FILE_STEM_SUFFIXES: &[&str] = &[".test", "-test", "_test", ".spec"];
 const TEST_DIRECTORY_NAMES: &[&str] = &["test", "tests", "__tests__"];
@@ -768,8 +768,7 @@ fn frozen_discovery_keeps_snapshot_membership_and_logical_paths() -> Result<(), 
     let authority = prepared
         .frozen_source_authority(&fixture.root)
         .map_err(|error| error.to_string())?;
-    std::fs::remove_file(fixture.root.join(&snapshot_path))
-        .map_err(|error| error.to_string())?;
+    std::fs::remove_file(fixture.root.join(&snapshot_path)).map_err(|error| error.to_string())?;
     fixture.seed("src/live.ts", b"export const live = 2;\n")?;
     let ordinary = frozen::with_context(None, || visit_workspace(&fixture.root, 100));
     assert_eq!(ordinary.files, vec![live_path.clone()]);
@@ -780,7 +779,9 @@ fn frozen_discovery_keeps_snapshot_membership_and_logical_paths() -> Result<(), 
     assert_eq!(actual.files, vec![snapshot_path]);
     assert!(!actual.truncated);
     assert_eq!(actual.skipped_links, 0);
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     let recovered = frozen::with_context(None, || visit_workspace(&fixture.root, 100));
     assert_eq!(recovered.files, vec![live_path]);
     Ok(())

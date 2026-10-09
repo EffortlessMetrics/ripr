@@ -517,15 +517,16 @@ fn frozen_python_detection_uses_snapshot_markers_and_restores_live_reads() -> Re
     let authority = prepared
         .frozen_source_authority(&fixture.root)
         .map_err(|error| error.to_string())?;
-    std::fs::remove_file(fixture.root.join("src/owned.py"))
-        .map_err(|error| error.to_string())?;
+    std::fs::remove_file(fixture.root.join("src/owned.py")).map_err(|error| error.to_string())?;
     assert!(!frozen::with_context(None, || {
         detect_python_project(&fixture.root)
     }));
     assert!(frozen::with_context(Some(authority.clone()), || {
         detect_python_project(&fixture.root)
     }));
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     assert!(!frozen::with_context(None, || {
         detect_python_project(&fixture.root)
     }));

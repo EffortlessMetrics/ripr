@@ -358,8 +358,8 @@ fn visit(
     adapter: &RustAdapter,
     out: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
-    let entries =
-        frozen_fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
+    let entries = frozen_fs::read_dir(dir)
+        .map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
     for entry in entries {
         cancellation::checkpoint()?;
         let entry = entry.map_err(|err| format!("failed to read dir entry: {err}"))?;
@@ -385,23 +385,37 @@ fn visit(
 #[cfg(test)]
 mod tests {
     #[test]
-    fn actual_preview_discovery_refuses_deleted_snapshot_children() -> Result<(), Box<dyn std::error::Error>> {
+    fn actual_preview_discovery_refuses_deleted_snapshot_children()
+    -> Result<(), Box<dyn std::error::Error>> {
         use crate::analysis::committed_source::frozen;
         let fixture = frozen::tests::Fixture::new(&[
             ("src/a.ts", b"export const value = 1;\n"),
             ("src/b.py", b"value = 1\n"),
         ])?;
-        frozen::with_context(Some(fixture.authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
-            let before = super::discover_preview_language_files(&fixture.logical);
-            assert_eq!(before.len(), 2, "the intact admitted preview files must be discovered");
-            fixture.authority.ensure_clean()?;
-            std::fs::remove_file(fixture.physical.join("src/a.ts"))?;
-            let _after = super::discover_preview_language_files(&fixture.logical);
-            let failure = fixture.authority.ensure_clean().err()
-                .ok_or("actual preview discovery silently omitted an admitted snapshot child")?;
-            assert!(failure.to_string().contains("admitted snapshot child is missing"), "{failure}");
-            Ok(())
-        })?;
+        frozen::with_context(
+            Some(fixture.authority.clone()),
+            || -> Result<(), Box<dyn std::error::Error>> {
+                let before = super::discover_preview_language_files(&fixture.logical);
+                assert_eq!(
+                    before.len(),
+                    2,
+                    "the intact admitted preview files must be discovered"
+                );
+                fixture.authority.ensure_clean()?;
+                std::fs::remove_file(fixture.physical.join("src/a.ts"))?;
+                let _after = super::discover_preview_language_files(&fixture.logical);
+                let failure = fixture.authority.ensure_clean().err().ok_or(
+                    "actual preview discovery silently omitted an admitted snapshot child",
+                )?;
+                assert!(
+                    failure
+                        .to_string()
+                        .contains("admitted snapshot child is missing"),
+                    "{failure}"
+                );
+                Ok(())
+            },
+        )?;
         Ok(())
     }
 

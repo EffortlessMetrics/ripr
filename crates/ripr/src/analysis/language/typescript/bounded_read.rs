@@ -806,7 +806,9 @@ fn frozen_source_read_uses_snapshot_caps_and_sticky_refusal() -> Result<(), Stri
     })
     .map_err(|error| format!("{error:?}"))?;
     assert_eq!(actual, snapshot);
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     let files = [std::path::PathBuf::from(relative)];
     for inherited in [Some(&b"legacy overlay decoy\n"[..]), None] {
         let overlay = std::sync::Arc::new(CommittedSourceOverlay::from_entries(
@@ -837,7 +839,9 @@ fn frozen_source_read_uses_snapshot_caps_and_sticky_refusal() -> Result<(), Stri
         );
         assert!(actual.limits.is_empty());
         assert!(actual.io_failures.is_empty());
-        authority.ensure_clean().map_err(|error| error.to_string())?;
+        authority
+            .ensure_clean()
+            .map_err(|error| error.to_string())?;
     }
     let file_refusal = frozen::with_context(Some(authority.clone()), || {
         read_source_capped(&path, 1, None)
@@ -856,7 +860,9 @@ fn frozen_source_read_uses_snapshot_caps_and_sticky_refusal() -> Result<(), Stri
         CappedReadError::OverWorkspaceBudget { remaining: 1 }
     );
     assert_eq!(remaining, 1);
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
 
     frozen::with_context(Some(authority.clone()), || {
         let refused = read_source_capped(&fixture.root.join("../outside-source.ts"), 4096, None)

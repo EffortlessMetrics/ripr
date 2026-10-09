@@ -3,7 +3,11 @@
 //! are experimental preparation, and every consumer must still refuse them.
 //! Dependency: RustAdapter::with_forced_diff_limits_for_test is an assembly-only
 //! forwarding bridge to the existing thread-local limit lookup, not a new policy.
-#![cfg(all(feature = "lang-rust", feature = "lang-typescript", feature = "lang-python"))]
+#![cfg(all(
+    feature = "lang-rust",
+    feature = "lang-typescript",
+    feature = "lang-python"
+))]
 
 use super::*;
 use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
@@ -59,7 +63,8 @@ fn with_fixture(
         .map_err(|error| error.to_string())?
         .as_nanos();
     let owned = std::env::temp_dir().join(format!(
-        "ripr-complete-contract-{name}-{}-{stamp}", std::process::id()
+        "ripr-complete-contract-{name}-{}-{stamp}",
+        std::process::id()
     ));
     struct Cleanup(PathBuf);
     impl Drop for Cleanup {
@@ -71,7 +76,10 @@ fn with_fixture(
     let repo = owned.join("repo");
     fs::create_dir_all(&repo).map_err(|error| error.to_string())?;
     let result = (|| {
-        fixture_git_ok(&repo, &["-c", "init.templateDir=", "init", "-q", "-b", "trunk"])?;
+        fixture_git_ok(
+            &repo,
+            &["-c", "init.templateDir=", "init", "-q", "-b", "trunk"],
+        )?;
         for (key, value) in [
             ("user.name", "RIPR Contract Fixture"),
             ("user.email", "contract@example.invalid"),
@@ -80,25 +88,64 @@ fn with_fixture(
             fixture_git_ok(&repo, &["config", key, value])?;
         }
         write(&repo, ".gitignore", "target/\n")?;
-        write(&repo, "Cargo.toml", "[package]\nname = \"boundary-contract\"\nversion = \"0.1.0\"\nedition = \"2021\"\n")?;
+        write(
+            &repo,
+            "Cargo.toml",
+            "[package]\nname = \"boundary-contract\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+        )?;
         write(&repo, "ripr.toml", CONFIG)?;
         write(&repo, "src/lib.rs", RUST_BASE)?;
-        write(&repo, "tests/eligible.rs", "#[test]\nfn boundary() { assert!(!boundary_contract::eligible(1)); }\n")?;
-        write(&repo, "src/eligible.ts", "export function eligible(value: number): boolean { return value > 0; }\n")?;
-        write(&repo, "src/index.ts", "export { eligible } from './eligible';\n")?;
-        write(&repo, "tests/eligible.test.ts", "import { eligible } from '../src/index';\nit('boundary', () => { expect(eligible(1)).toBe(false); });\n")?;
-        write(&repo, "service.py", "def eligible(value):\n    return value > 0\n")?;
-        write(&repo, "test_service.py", "from service import eligible\n\ndef test_boundary():\n    assert not eligible(1)\n")?;
+        write(
+            &repo,
+            "tests/eligible.rs",
+            "#[test]\nfn boundary() { assert!(!boundary_contract::eligible(1)); }\n",
+        )?;
+        write(
+            &repo,
+            "src/eligible.ts",
+            "export function eligible(value: number): boolean { return value > 0; }\n",
+        )?;
+        write(
+            &repo,
+            "src/index.ts",
+            "export { eligible } from './eligible';\n",
+        )?;
+        write(
+            &repo,
+            "tests/eligible.test.ts",
+            "import { eligible } from '../src/index';\nit('boundary', () => { expect(eligible(1)).toBe(false); });\n",
+        )?;
+        write(
+            &repo,
+            "service.py",
+            "def eligible(value):\n    return value > 0\n",
+        )?;
+        write(
+            &repo,
+            "test_service.py",
+            "from service import eligible\n\ndef test_boundary():\n    assert not eligible(1)\n",
+        )?;
         fixture_git_ok(&repo, &["add", "-A"])?;
         fixture_git_ok(&repo, &["commit", "-q", "-m", "base"])?;
         let base = resolve_revision(&repo, "HEAD", "commit")?;
         write(&repo, "src/lib.rs", RUST_HEAD)?;
-        write(&repo, "src/eligible.ts", "export function eligible(value: number): boolean { return value > 1; }\n")?;
-        write(&repo, "service.py", "def eligible(value):\n    return value > 1\n")?;
+        write(
+            &repo,
+            "src/eligible.ts",
+            "export function eligible(value: number): boolean { return value > 1; }\n",
+        )?;
+        write(
+            &repo,
+            "service.py",
+            "def eligible(value):\n    return value > 1\n",
+        )?;
         fixture_git_ok(&repo, &["commit", "-q", "-a", "-m", "all three predicates"])?;
         let options = PrEvidenceOptions {
-            root: ".".into(), base, base_explicit: true,
-            head: resolve_revision(&repo, "HEAD", "commit")?, check: false,
+            root: ".".into(),
+            base,
+            base_explicit: true,
+            head: resolve_revision(&repo, "HEAD", "commit")?,
+            check: false,
         };
         test(&repo, &options)
     })();
@@ -107,13 +154,22 @@ fn with_fixture(
 }
 
 fn direct_review_admission(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
-    let input = CheckInput { root: repo.to_path_buf(), ..CheckInput::default() };
+    let input = CheckInput {
+        root: repo.to_path_buf(),
+        ..CheckInput::default()
+    };
     let config = load_for_root(repo)?;
-    let diff = fs::read_to_string(repo.join(PR_CANONICAL_DIFF))
-        .map_err(|error| error.to_string())?;
+    let diff =
+        fs::read_to_string(repo.join(PR_CANONICAL_DIFF)).map_err(|error| error.to_string())?;
     let admitted = crate::app::review_comments::admit_producer_evidence(
-        &repo.join(PR_CHECK_JSON), &input, &config, &options.base, &options.head, &diff,
-    ).map_err(|error| error.message)?;
+        &repo.join(PR_CHECK_JSON),
+        &input,
+        &config,
+        &options.base,
+        &options.head,
+        &diff,
+    )
+    .map_err(|error| error.message)?;
     if admitted.producer_projection.is_empty() {
         return Err("direct review admitted an empty ordinary projection".into());
     }
@@ -126,7 +182,9 @@ fn baseline(repo: &Path, options: &PrEvidenceOptions) -> Result<Value, String> {
     direct_review_admission(repo, options)?;
     let check = read_json(repo, PR_CHECK_JSON)?;
     assert_eq!(check["analysis_outcome"]["analysis_complete"], true);
-    let findings = check["findings"].as_array().ok_or("missing findings array")?;
+    let findings = check["findings"]
+        .as_array()
+        .ok_or("missing findings array")?;
     if findings.is_empty() {
         return Err("fixture did not execute nonempty analysis".into());
     }
@@ -135,7 +193,8 @@ fn baseline(repo: &Path, options: &PrEvidenceOptions) -> Result<Value, String> {
 
 #[cfg(all(feature = "lang-typescript", feature = "lang-python"))]
 #[test]
-fn mixed_whole_output_survives_live_source_test_manifest_and_directory_drift() -> Result<(), String> {
+fn mixed_whole_output_survives_live_source_test_manifest_and_directory_drift() -> Result<(), String>
+{
     with_fixture("mixed-whole-output", |repo, options| {
         let expected = baseline(repo, options)?;
         let findings = expected["findings"].as_array().ok_or("missing findings")?;
@@ -145,57 +204,123 @@ fn mixed_whole_output_survives_live_source_test_manifest_and_directory_drift() -
             ("service.py", "test_service.py"),
         ] {
             if !findings.iter().any(|finding| {
-                finding["probe"]["file"].as_str().is_some_and(|file| {
-                    file.replace('\\', "/").ends_with(changed)
-                }) && finding["related_tests"].as_array().is_some_and(|related| {
-                    related.iter().any(|related| {
-                        related["file"].as_str().is_some_and(|file| {
-                            file.replace('\\', "/").ends_with(test)
+                finding["probe"]["file"]
+                    .as_str()
+                    .is_some_and(|file| file.replace('\\', "/").ends_with(changed))
+                    && finding["related_tests"].as_array().is_some_and(|related| {
+                        related.iter().any(|related| {
+                            related["file"]
+                                .as_str()
+                                .is_some_and(|file| file.replace('\\', "/").ends_with(test))
                         })
                     })
-                })
             }) {
-                return Err(format!("ordinary baseline has no {changed} -> {test} relation"));
+                return Err(format!(
+                    "ordinary baseline has no {changed} -> {test} relation"
+                ));
             }
         }
         // Before capture, both working tree and index disagree with literal
         // head. A snapshot copied from ambient files/index must fail equality.
-        write(repo, "Cargo.toml", "[package]\nname = \"ambient-decoy\"\nversion = \"0.0.0\"\nedition = \"2021\"\n")?;
-        write(repo, "src/lib.rs", "pub fn unrelated_live_owner() -> bool { false }\n")?;
-        write(repo, "src/eligible.ts", "export const unrelated_live_owner = false;\n")?;
-        write(repo, "src/index.ts", "export const unrelated_live_barrel = false;\n")?;
+        write(
+            repo,
+            "Cargo.toml",
+            "[package]\nname = \"ambient-decoy\"\nversion = \"0.0.0\"\nedition = \"2021\"\n",
+        )?;
+        write(
+            repo,
+            "src/lib.rs",
+            "pub fn unrelated_live_owner() -> bool { false }\n",
+        )?;
+        write(
+            repo,
+            "src/eligible.ts",
+            "export const unrelated_live_owner = false;\n",
+        )?;
+        write(
+            repo,
+            "src/index.ts",
+            "export const unrelated_live_barrel = false;\n",
+        )?;
         write(repo, "service.py", "unrelated_live_owner = False\n")?;
-        for path in ["tests/eligible.rs", "tests/eligible.test.ts", "test_service.py"] {
+        for path in [
+            "tests/eligible.rs",
+            "tests/eligible.test.ts",
+            "test_service.py",
+        ] {
             write(repo, path, "# ambient test decoy\n")?;
         }
-        fixture_git_ok(repo, &["add", "Cargo.toml", "src", "tests", "service.py", "test_service.py"])?;
+        fixture_git_ok(
+            repo,
+            &[
+                "add",
+                "Cargo.toml",
+                "src",
+                "tests",
+                "service.py",
+                "test_service.py",
+            ],
+        )?;
         let status = run_git_output(repo, &["status", "--porcelain", "--untracked-files=no"])?;
         if status.trim().is_empty() {
             return Err("preparation fixture has no staged live drift".into());
         }
         let marker = generation();
-        write_pr_evidence_with_generation(repo, options, |repo, options| {
-            for path in [
-                "Cargo.toml", "src/lib.rs", "src/eligible.ts", "src/index.ts",
-                "tests/eligible.rs", "tests/eligible.test.ts", "service.py", "test_service.py",
-            ] {
-                fs::remove_file(repo.join(path)).map_err(|error| error.to_string())?;
-            }
-            write(repo, "src/live_only.rs", "pub fn live_decoy() -> bool { false }\n")?;
-            write(repo, "tests/live_only.rs", "#[test] fn decoy() { assert!(true); }\n")?;
-            write(repo, "src/live_only.ts", "export const live_decoy = false;\n")?;
-            write(repo, "live_only.py", "live_decoy = False\n")?;
-            run_ripr_check(repo, options)
-        }, Some(&marker))?;
+        write_pr_evidence_with_generation(
+            repo,
+            options,
+            |repo, options| {
+                for path in [
+                    "Cargo.toml",
+                    "src/lib.rs",
+                    "src/eligible.ts",
+                    "src/index.ts",
+                    "tests/eligible.rs",
+                    "tests/eligible.test.ts",
+                    "service.py",
+                    "test_service.py",
+                ] {
+                    fs::remove_file(repo.join(path)).map_err(|error| error.to_string())?;
+                }
+                write(
+                    repo,
+                    "src/live_only.rs",
+                    "pub fn live_decoy() -> bool { false }\n",
+                )?;
+                write(
+                    repo,
+                    "tests/live_only.rs",
+                    "#[test] fn decoy() { assert!(true); }\n",
+                )?;
+                write(
+                    repo,
+                    "src/live_only.ts",
+                    "export const live_decoy = false;\n",
+                )?;
+                write(repo, "live_only.py", "live_decoy = False\n")?;
+                run_ripr_check(repo, options)
+            },
+            Some(&marker),
+        )?;
         // Same logical root and exact canonical diff: no path, ID, finding,
         // outcome, limitation, test-role, or summary fields may be discarded.
         assert_eq!(read_json(repo, PR_CHECK_JSON)?, expected);
-        for path in [PR_EVIDENCE_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
-            assert_eq!(read_json(repo, path)?["experimental_complete_execution"], marker);
+        for path in [
+            PR_EVIDENCE_JSON,
+            PR_CHECK_SUBJECT_JSON,
+            PR_REVIEW_INPUT_JSON,
+        ] {
+            assert_eq!(
+                read_json(repo, path)?["experimental_complete_execution"],
+                marker
+            );
         }
         let error = refused(check_pr_evidence(repo, options), "experimental saved check")?;
         assert!(error.contains("experimental complete-execution"), "{error}");
-        let error = refused(direct_review_admission(repo, options), "experimental direct review")?;
+        let error = refused(
+            direct_review_admission(repo, options),
+            "experimental direct review",
+        )?;
         assert!(error.contains("experimental complete-execution"), "{error}");
         Ok(())
     })
@@ -208,19 +333,40 @@ fn late_configuration_head_and_canonical_input_drift_revoke_then_recover() -> Re
             let expected = baseline(repo, options)?;
             let mut moving = options.clone();
             moving.head = "HEAD".into();
-            let error = refused(write_pr_evidence_with_generation(repo, &moving, |repo, options| {
-                let check = run_ripr_check(repo, options)?;
-                match drift {
-                    "configuration" => write(repo, "ripr.toml", &CONFIG.replace("include_unchanged_tests = true", "include_unchanged_tests = false"))?,
-                    "head" => {
-                        write(repo, "src/lib.rs", "pub fn eligible(value: i32) -> bool { value > 2 }\n")?;
-                        fixture_git_ok(repo, &["commit", "-q", "-a", "-m", "moved head"])?;
-                    }
-                    "canonical" => write(repo, PR_CANONICAL_DIFF, "changed after actual analysis\n")?,
-                    _ => return Err("unknown drift fixture".into()),
-                }
-                Ok(check)
-            }, Some(&generation())), drift)?;
+            let error = refused(
+                write_pr_evidence_with_generation(
+                    repo,
+                    &moving,
+                    |repo, options| {
+                        let check = run_ripr_check(repo, options)?;
+                        match drift {
+                            "configuration" => write(
+                                repo,
+                                "ripr.toml",
+                                &CONFIG.replace(
+                                    "include_unchanged_tests = true",
+                                    "include_unchanged_tests = false",
+                                ),
+                            )?,
+                            "head" => {
+                                write(
+                                    repo,
+                                    "src/lib.rs",
+                                    "pub fn eligible(value: i32) -> bool { value > 2 }\n",
+                                )?;
+                                fixture_git_ok(repo, &["commit", "-q", "-a", "-m", "moved head"])?;
+                            }
+                            "canonical" => {
+                                write(repo, PR_CANONICAL_DIFF, "changed after actual analysis\n")?
+                            }
+                            _ => return Err("unknown drift fixture".into()),
+                        }
+                        Ok(check)
+                    },
+                    Some(&generation()),
+                ),
+                drift,
+            )?;
             let needle = match drift {
                 "configuration" => "committed configuration",
                 "head" => "prepared head changed",
@@ -237,7 +383,8 @@ fn late_configuration_head_and_canonical_input_drift_revoke_then_recover() -> Re
                 fixture_git_ok(repo, &["commit", "-q", "-a", "-m", "recovered head"])?;
             }
             let recovered = PrEvidenceOptions {
-                head: resolve_revision(repo, "HEAD", "commit")?, ..options.clone()
+                head: resolve_revision(repo, "HEAD", "commit")?,
+                ..options.clone()
             };
             let actual = baseline(repo, &recovered)?;
             if drift != "head" {
@@ -253,26 +400,39 @@ fn late_configuration_head_and_canonical_input_drift_revoke_then_recover() -> Re
 fn actual_module_escape_refuses_an_existing_external_source_then_recovers() -> Result<(), String> {
     with_fixture("module-escape", |repo, options| {
         baseline(repo, options)?;
-        let outside = repo.parent().ok_or("fixture has no parent")?.join("outside.rs");
+        let outside = repo
+            .parent()
+            .ok_or("fixture has no parent")?
+            .join("outside.rs");
         fs::write(&outside, "pub fn external_marker() -> bool { true }\n")
             .map_err(|error| error.to_string())?;
         if !outside.is_file() {
             return Err("external source control was not created".into());
         }
-        write(repo, "src/lib.rs", "#[path = \"../../outside.rs\"]\nmod outside;\npub fn eligible(value: i32) -> bool { value > 1 && outside::external_marker() }\n")?;
+        write(
+            repo,
+            "src/lib.rs",
+            "#[path = \"../../outside.rs\"]\nmod outside;\npub fn eligible(value: i32) -> bool { value > 1 && outside::external_marker() }\n",
+        )?;
         fixture_git_ok(repo, &["commit", "-q", "-a", "-m", "escaped module"])?;
         let escaped = PrEvidenceOptions {
-            head: resolve_revision(repo, "HEAD", "commit")?, ..options.clone()
+            head: resolve_revision(repo, "HEAD", "commit")?,
+            ..options.clone()
         };
-        let error = refused(write_pr_evidence_with_generation(
-            repo, &escaped, run_ripr_check, Some(&generation())
-        ), "actual module escape")?;
-        assert!(error.contains("frozen source") && error.contains("outside"), "{error}");
+        let error = refused(
+            write_pr_evidence_with_generation(repo, &escaped, run_ripr_check, Some(&generation())),
+            "actual module escape",
+        )?;
+        assert!(
+            error.contains("frozen source") && error.contains("outside"),
+            "{error}"
+        );
         no_authority(repo)?;
         write(repo, "src/lib.rs", RUST_HEAD)?;
         fixture_git_ok(repo, &["commit", "-q", "-a", "-m", "confined recovery"])?;
         let recovered = PrEvidenceOptions {
-            head: resolve_revision(repo, "HEAD", "commit")?, ..options.clone()
+            head: resolve_revision(repo, "HEAD", "commit")?,
+            ..options.clone()
         };
         baseline(repo, &recovered)?;
         Ok(())
@@ -292,13 +452,18 @@ fn owner_7038() -> String {
 }
 
 #[test]
-fn ordinary_5400_guard_refuses_one_7038_line_owner_before_partial_selection() -> Result<(), String> {
+fn ordinary_5400_guard_refuses_one_7038_line_owner_before_partial_selection() -> Result<(), String>
+{
     with_fixture("7038-owner", |repo, options| {
         let owner = owner_7038();
         assert_eq!(owner.lines().count(), 7038);
         assert_eq!(owner.lines().nth(7033), Some("    if value > 5400 {"));
         // A reachable module in both trees, then one added semantic owner.
-        write(repo, "src/lib.rs", &format!("{RUST_HEAD}pub mod oversized;\n"))?;
+        write(
+            repo,
+            "src/lib.rs",
+            &format!("{RUST_HEAD}pub mod oversized;\n"),
+        )?;
         write(repo, "src/oversized.rs", "")?;
         fixture_git_ok(repo, &["add", "src/lib.rs", "src/oversized.rs"])?;
         fixture_git_ok(repo, &["commit", "-q", "-m", "declare empty module"])?;
@@ -309,17 +474,24 @@ fn ordinary_5400_guard_refuses_one_7038_line_owner_before_partial_selection() ->
         let subject = PrEvidenceOptions {
             // Isolate exactly the single added owner; use literal commits.
             base,
-            head: resolve_revision(repo, "HEAD", "commit")?, ..options.clone()
+            head: resolve_revision(repo, "HEAD", "commit")?,
+            ..options.clone()
         };
         let numstat = run_git_output(repo, &["diff", "--numstat", &subject.base, &subject.head])?;
         assert_eq!(numstat.trim(), "7038\t0\tsrc/oversized.rs");
         write_diff(repo, &subject)?;
         for partial in ["1", "invalid"] {
             let error = crate::analysis::language::RustAdapter::with_forced_diff_limits_for_test(
-                &[(LINE_LIMIT, "5400"), ("RIPR_PARTIAL_DIFF_LINE_BUDGET", partial)],
+                &[
+                    (LINE_LIMIT, "5400"),
+                    ("RIPR_PARTIAL_DIFF_LINE_BUDGET", partial),
+                ],
                 || refused(run_ripr_check(repo, &subject), "ordinary oversized owner"),
             )?;
-            assert_eq!(error, "diff_scope_oversized: 7038 changed Rust lines across 1 Rust files exceed the RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (5400); analysis was not run to protect runner memory before probe expansion. Repair route: reduce the diff scope, split the extraction PR, run a narrower diff, or raise the limit via RIPR_MAX_DIFF_CHANGED_RUST_LINES=<number>.");
+            assert_eq!(
+                error,
+                "diff_scope_oversized: 7038 changed Rust lines across 1 Rust files exceed the RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (5400); analysis was not run to protect runner memory before probe expansion. Repair route: reduce the diff scope, split the extraction PR, run a narrower diff, or raise the limit via RIPR_MAX_DIFF_CHANGED_RUST_LINES=<number>."
+            );
         }
         Ok(())
     })

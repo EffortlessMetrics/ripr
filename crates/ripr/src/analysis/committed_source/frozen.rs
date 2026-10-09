@@ -167,10 +167,9 @@ impl FrozenSourceAuthority {
     }
 
     pub(crate) fn ensure_clean(&self) -> io::Result<()> {
-        let fault = self
-            .fault
-            .lock()
-            .map_err(|error| io::Error::other(format!("frozen source fault state is poisoned: {error}")))?;
+        let fault = self.fault.lock().map_err(|error| {
+            io::Error::other(format!("frozen source fault state is poisoned: {error}"))
+        })?;
         match &*fault {
             Some(fault) => Err(io::Error::new(fault.kind, fault.message.clone())),
             None => Ok(()),
@@ -238,14 +237,16 @@ impl FrozenSourceAuthority {
     }
 
     fn known(&self, relative: &Path) -> bool {
-        self.inventory.files.contains_key(relative)
-            || self.inventory.directories.contains(relative)
+        self.inventory.files.contains_key(relative) || self.inventory.directories.contains(relative)
     }
 
     fn absent(relative: &Path) -> io::Error {
         io::Error::new(
             io::ErrorKind::NotFound,
-            format!("path is absent from frozen named tree: {}", relative.display()),
+            format!(
+                "path is absent from frozen named tree: {}",
+                relative.display()
+            ),
         )
     }
 
@@ -359,7 +360,10 @@ impl FrozenSourceAuthority {
             hasher.update(&scratch[..count]);
             let keep = retain.saturating_sub(bytes.len() as u64).min(count as u64) as usize;
             bytes.try_reserve_exact(keep).map_err(|error| {
-                self.changed(&relative, &format!("source buffer reservation failed: {error}"))
+                self.changed(
+                    &relative,
+                    &format!("source buffer reservation failed: {error}"),
+                )
             })?;
             bytes.extend_from_slice(&scratch[..keep]);
         }
@@ -367,7 +371,10 @@ impl FrozenSourceAuthority {
         if consumed != expected.size || digest != expected.sha256 {
             return Err(self.changed(
                 &relative,
-                &format!("source bytes differ from admitted blob {}", expected.blob_oid.as_str()),
+                &format!(
+                    "source bytes differ from admitted blob {}",
+                    expected.blob_oid.as_str()
+                ),
             ));
         }
         self.ensure_clean()?;
@@ -382,7 +389,8 @@ impl FrozenSourceAuthority {
 
     #[cfg(test)]
     pub(crate) fn worker_contexts(&self) -> u8 {
-        self.worker_contexts.load(std::sync::atomic::Ordering::SeqCst)
+        self.worker_contexts
+            .load(std::sync::atomic::Ordering::SeqCst)
     }
 }
 
@@ -412,8 +420,14 @@ fn open_source_no_follow(path: &Path) -> io::Result<std::fs::File> {
     }
     #[cfg(not(any(
         windows,
-        all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")),
-        all(target_os = "macos", any(target_arch = "x86_64", target_arch = "aarch64"))
+        all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+        all(
+            target_os = "macos",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )
     )))]
     {
         return Err(io::Error::new(
@@ -463,9 +477,8 @@ pub(crate) mod fs {
         match current() {
             Some(authority) => {
                 let bytes = authority.read_verified(path.as_ref(), u64::MAX)?;
-                String::from_utf8(bytes).map_err(|error| {
-                    io::Error::new(io::ErrorKind::InvalidData, error.utf8_error())
-                })
+                String::from_utf8(bytes)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.utf8_error()))
             }
             None => std::fs::read_to_string(path),
         }
@@ -491,7 +504,9 @@ pub(crate) mod fs {
             Some(authority) => authority.read_verified(path.as_ref(), limit),
             None => {
                 let mut bytes = Vec::new();
-                std::fs::File::open(path)?.take(limit).read_to_end(&mut bytes)?;
+                std::fs::File::open(path)?
+                    .take(limit)
+                    .read_to_end(&mut bytes)?;
                 Ok(bytes)
             }
         }
@@ -677,6 +692,7 @@ pub(crate) mod fs {
             }
         }
 
+        #[cfg(test)]
         pub(crate) fn metadata(&self) -> io::Result<std::fs::Metadata> {
             match self {
                 Self::Ordinary(inner) => inner.metadata(),
@@ -817,15 +833,13 @@ pub(crate) mod tests {
         let fixture = Fixture::new(&[("one/a.rs", b"one"), ("two/b.rs", b"two")])?;
         std::fs::write(fixture.logical.join("live-only.rs"), b"live")?;
         with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
-            assert_eq!(
-                fs::read(fixture.logical.join("one/../two/b.rs"))?,
-                b"two"
-            );
+            assert_eq!(fs::read(fixture.logical.join("one/../two/b.rs"))?, b"two");
             assert!(!fs::exists(fixture.logical.join("live-only.rs")));
             fixture.authority.ensure_clean()?;
             let before = fixture.authority.opened_reads.load(Ordering::SeqCst);
             let refused = fs::read(fixture.logical.join("../outside.rs"));
-            let refused = refused.err()
+            let refused = refused
+                .err()
                 .ok_or_else(|| io::Error::other("outside source requests must fail"))?;
             assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
             assert_eq!(
@@ -833,7 +847,10 @@ pub(crate) mod tests {
                 before,
                 "outside requests must refuse before the actual open boundary"
             );
-            let failure = fixture.authority.ensure_clean().err()
+            let failure = fixture
+                .authority
+                .ensure_clean()
+                .err()
                 .ok_or_else(|| io::Error::other("authority must retain source refusal"))?;
             assert!(!failure.to_string().is_empty());
             let failure = fs::read(fixture.logical.join("one/a.rs"))
@@ -855,13 +872,16 @@ pub(crate) mod tests {
             missing.authority.ensure_clean()?;
             std::fs::remove_file(missing.physical.join("src/a.rs"))?;
             assert!(!fs::is_file(missing.logical.join("src/a.rs")));
-            let failure = missing.authority.ensure_clean()
-                .err()
-                .ok_or_else(|| io::Error::other("missing admitted source must poison authority"))?;
+            let failure =
+                missing.authority.ensure_clean().err().ok_or_else(|| {
+                    io::Error::other("missing admitted source must poison authority")
+                })?;
             assert_eq!(failure.kind(), io::ErrorKind::NotFound);
             let failure = super::super::read_source_bytes(&missing.logical, Path::new("src/a.rs"))
                 .err()
-                .ok_or_else(|| io::Error::other("missing admitted files must not become successful absence"))?;
+                .ok_or_else(|| {
+                    io::Error::other("missing admitted files must not become successful absence")
+                })?;
             assert_eq!(failure.kind(), io::ErrorKind::NotFound);
             Ok(())
         })?;
@@ -871,12 +891,14 @@ pub(crate) mod tests {
             let failure = fs::read(changed.logical.join("src/a.rs"))
                 .err()
                 .ok_or_else(|| io::Error::other("same-size source replacement must fail"))?;
-                assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
             Ok(())
         })?;
-        let failure = changed.authority.ensure_clean()
+        let failure = changed
+            .authority
+            .ensure_clean()
             .err()
-                .ok_or_else(|| io::Error::other("same-size tamper must remain fatal"))?;
+            .ok_or_else(|| io::Error::other("same-size tamper must remain fatal"))?;
         assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
         Ok(())
     }
@@ -895,9 +917,12 @@ pub(crate) mod tests {
                 .err()
                 .ok_or_else(|| io::Error::other("prefix read must authenticate changed tail"))?;
             assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
-            let failure = fixture.authority.ensure_clean().err()
+            let failure = fixture
+                .authority
+                .ensure_clean()
+                .err()
                 .ok_or_else(|| io::Error::other("changed prefix tail refusal must stick"))?;
-        assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
+            assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
             Ok(())
         })?;
         Ok(())
@@ -919,7 +944,10 @@ pub(crate) mod tests {
             entries.sort();
             assert_eq!(
                 entries,
-                vec![fixture.logical.join("src/a.rs"), fixture.logical.join("src/b.rs")]
+                vec![
+                    fixture.logical.join("src/a.rs"),
+                    fixture.logical.join("src/b.rs")
+                ]
             );
             assert_eq!(
                 fs::canonicalize(fixture.logical.join("src/../src/a.rs"))?,
@@ -936,27 +964,34 @@ pub(crate) mod tests {
         let normal = Fixture::new(&[("a.rs", b"head")])?;
         let physical = normal.physical.clone();
         normal.authority.finalize()?;
-        assert!(!physical.exists(), "checked cleanup must remove the snapshot");
+        assert!(
+            !physical.exists(),
+            "checked cleanup must remove the snapshot"
+        );
 
         let busy = Fixture::new(&[("a.rs", b"head")])?;
         let lease = busy.authority.clone();
-        let failure = busy.authority.finalize()
-            .err()
-                .ok_or_else(|| io::Error::other("an outstanding source lease must prevent checked completion"))?;
+        let failure = busy.authority.finalize().err().ok_or_else(|| {
+            io::Error::other("an outstanding source lease must prevent checked completion")
+        })?;
         assert_eq!(failure.kind(), io::ErrorKind::WouldBlock);
-        let retained = lease.ensure_clean()
-            .err()
-                .ok_or_else(|| io::Error::other("early cleanup refusal must remain fatal to retained workers"))?;
+        let retained = lease.ensure_clean().err().ok_or_else(|| {
+            io::Error::other("early cleanup refusal must remain fatal to retained workers")
+        })?;
         assert_eq!(retained.kind(), io::ErrorKind::WouldBlock);
         drop(lease);
 
         let blocked = Fixture::new(&[("a.rs", b"head")])?;
-        let owned_root = blocked.logical.parent().ok_or("fixture has no parent")?.to_path_buf();
+        let owned_root = blocked
+            .logical
+            .parent()
+            .ok_or("fixture has no parent")?
+            .to_path_buf();
         std::fs::remove_dir_all(&owned_root)?;
         std::fs::write(&owned_root, b"owned cleanup failure fixture")?;
-        let failure = blocked.authority.finalize()
-            .err()
-                .ok_or_else(|| io::Error::other("a root replaced by a file must fail actual checked cleanup"))?;
+        let failure = blocked.authority.finalize().err().ok_or_else(|| {
+            io::Error::other("a root replaced by a file must fail actual checked cleanup")
+        })?;
         assert!(failure.to_string().contains("checked cleanup failed"));
         std::fs::remove_file(&owned_root)?;
         Ok(())
@@ -972,10 +1007,14 @@ pub(crate) mod tests {
                 .err()
                 .ok_or_else(|| io::Error::other("missing admitted child was silently omitted"))?;
             assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
-            assert!(failure.to_string().contains("admitted snapshot child is missing"));
-            let retained = fixture.authority.ensure_clean()
-                .err()
-                .ok_or_else(|| io::Error::other("directory EOF omission must poison the authority"))?;
+            assert!(
+                failure
+                    .to_string()
+                    .contains("admitted snapshot child is missing")
+            );
+            let retained = fixture.authority.ensure_clean().err().ok_or_else(|| {
+                io::Error::other("directory EOF omission must poison the authority")
+            })?;
             assert_eq!(retained.kind(), io::ErrorKind::InvalidData);
             Ok(())
         })?;
@@ -994,14 +1033,18 @@ pub(crate) mod tests {
                         Err(inner.authority.refuse_external_effect("fixture helper"))
                     })
                 });
-                let refused = refused.err()
-                .ok_or_else(|| io::Error::other("unbound helper must fail"))?;
+                let refused = refused
+                    .err()
+                    .ok_or_else(|| io::Error::other("unbound helper must fail"))?;
                 assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
                 assert!(current().is_some_and(|current| Arc::ptr_eq(&current, &outer.authority)));
                 assert_eq!(canonical_diff().as_deref(), Some("outer diff"));
                 outer.authority.ensure_clean()?;
-                let failure = inner.authority.ensure_clean().err()
-                .ok_or_else(|| io::Error::other("inner helper refusal must stick"))?;
+                let failure = inner
+                    .authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or_else(|| io::Error::other("inner helper refusal must stick"))?;
                 assert_eq!(failure.kind(), io::ErrorKind::PermissionDenied);
                 Ok(())
             })
@@ -1031,8 +1074,11 @@ pub(crate) mod tests {
             0,
             "replacement links must refuse before the source open"
         );
-        let failure = fixture.authority.ensure_clean().err()
-                .ok_or_else(|| io::Error::other("snapshot refusal must remain fatal"))?;
+        let failure = fixture
+            .authority
+            .ensure_clean()
+            .err()
+            .ok_or_else(|| io::Error::other("snapshot refusal must remain fatal"))?;
         assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
         Ok(())
     }

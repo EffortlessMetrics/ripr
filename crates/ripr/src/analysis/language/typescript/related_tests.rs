@@ -1,8 +1,8 @@
 //! Related test candidate discovery for the TypeScript preview adapter.
 
-use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::tsconfig::{TsAliasMap, TsOutDirMap, load_out_dir_map};
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use std::collections::{HashMap, HashSet};
 
 // ── Re-export index ───────────────────────────────────────────────────────────
@@ -3229,16 +3229,20 @@ fn reexport_worker_preserves_frozen_paths_and_swallowed_refusal() -> Result<(), 
     assert_eq!(sources.sources.len(), files.len());
     assert!(sources.limits.is_empty());
     assert!(sources.io_failures.is_empty());
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     fixture.seed("src/pkg/package.json", br#"{"main":"decoy.ts"}"#)?;
     fixture.seed(
         "tsconfig.json",
         br#"{"compilerOptions":{"outDir":"dist","rootDir":"live_src"}}"#,
     )?;
-    fixture.seed("live_src/owner.ts", b"export function owner() { return 4; }\n")?;
+    fixture.seed(
+        "live_src/owner.ts",
+        b"export function owner() { return 4; }\n",
+    )?;
 
-    let build =
-        |root: &Path| ReExportIndex::build(&files, &sources.sources, root, None, |_| false);
+    let build = |root: &Path| ReExportIndex::build(&files, &sources.sources, root, None, |_| false);
     let directory_key = ("src/barrel".to_string(), "directoryOwner".to_string());
     let output_key = ("src/barrel".to_string(), "outputOwner".to_string());
     let ordinary = frozen::with_context(None, || build(&fixture.root));
@@ -3259,7 +3263,9 @@ fn reexport_worker_preserves_frozen_paths_and_swallowed_refusal() -> Result<(), 
         actual.entries.get(&output_key),
         Some(&("owner".to_string(), "src/owner".to_string()))
     );
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     let recovered = frozen::with_context(None, || build(&fixture.root));
     assert_eq!(recovered.entries, ordinary.entries);
     assert_eq!(recovered.local_exports, ordinary.local_exports);
