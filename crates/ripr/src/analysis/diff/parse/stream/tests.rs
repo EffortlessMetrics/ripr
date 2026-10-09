@@ -1077,13 +1077,21 @@ fn unsupported_original_path_token_is_explicit_and_not_lossy_identity() -> Resul
 #[test]
 fn overflowing_declared_ranges_have_no_raw_coordinates() -> Result<(), String> {
     let input = format!("diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +{},2 @@\n+first\n+second\n", usize::MAX - 1);
-    let (_, ledger) = observed(input.as_bytes(), 1)?;
+    let (parsed, ledger) = observed(input.as_bytes(), 1)?;
+    assert!(!parsed.limitations.is_empty());
+    assert_eq!(ledger.reductions[3].kind, super::RawRecordKind::MalformedHunk);
     for reduction in &ledger.reductions[4..] {
         assert!(reduction.coordinates.is_none());
+        assert!(reduction.projection.is_none());
+        assert_eq!(reduction.kind, super::RawRecordKind::Body(super::BodyDisposition::Outside));
     }
-    assert_eq!(ledger.reductions[4].projection, Some((super::RawChangeSide::Added, 0)));
-    assert_eq!(ledger.reductions[5].projection, None);
-    assert_eq!(ledger.reductions[5].kind, super::RawRecordKind::Body(super::BodyDisposition::CoordinateOverflow));
+    let valid = format!("diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +{},1 @@\n+first\n+excess\n", usize::MAX - 1);
+    let (_, valid_ledger) = observed(valid.as_bytes(), 1)?;
+    assert_eq!(valid_ledger.reductions[4].coordinates, Some((0, usize::MAX - 1)));
+    assert_eq!(valid_ledger.reductions[4].projection, Some((super::RawChangeSide::Added, 0)));
+    assert_eq!(valid_ledger.reductions[5].coordinates, None);
+    assert_eq!(valid_ledger.reductions[5].projection, None);
+    assert_eq!(valid_ledger.reductions[5].kind, super::RawRecordKind::Body(super::BodyDisposition::CoordinateOverflow));
     Ok(())
 }
 
