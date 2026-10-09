@@ -1154,7 +1154,9 @@ pub(super) mod tests {
         }
     }
 
-    pub(in crate::app::pr_evidence) fn fixture_manifest(binding: CompleteBinding) -> Result<CompleteManifest, String> {
+    pub(in crate::app::pr_evidence) fn fixture_manifest(
+        binding: CompleteBinding,
+    ) -> Result<CompleteManifest, String> {
         let mut artifacts = ArtifactRole::ALL
             .iter()
             .map(|role| ArtifactDescriptor {
