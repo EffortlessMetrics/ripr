@@ -12,6 +12,7 @@
 //! visibility on the EXISTING diff::load::decode_diff_text. No fallback exists.
 
 use super::complete_contract::*;
+use super::complete_request::POLICY_PATH;
 use super::raw_coverage::{RawCoverageLimits, RawCoverageSummary, verify_raw_coverage};
 use crate::analysis::committed_source::frozen;
 use crate::analysis_outcome::AnalysisOutcome;
@@ -96,6 +97,7 @@ fn verify_inner(
     {
         return Err("frozen source subject differs from expected complete binding".into());
     }
+    verify_committed_request(&authority, expected)?;
     verify_inventory(&authority, expected)?;
     verify_configuration(&authority, expected)?;
 
@@ -293,6 +295,40 @@ fn verify_raw_summary(summary: &RawCoverageSummary, expected: &RawBinding) -> Re
     };
     if actual != *expected {
         return Err("raw replay digest/count/EOF identity differs from expected binding".into());
+    }
+    Ok(())
+}
+
+fn verify_committed_request(
+    authority: &frozen::FrozenSourceAuthority,
+    expected: &CompleteBinding,
+) -> Result<(), String> {
+    let request = &expected.committed_request;
+    let (_, actual) = authority
+        .inventory()
+        .files()
+        .find(|(path, _)| *path == Path::new(POLICY_PATH))
+        .ok_or("committed request is missing from frozen inventory")?;
+    use std::fmt::Write as _;
+    let mut digest = String::from("sha256:");
+    for byte in actual.sha256 {
+        write!(&mut digest, "{byte:02x}").map_err(|error| error.to_string())?;
+    }
+    if actual.mode.git_mode() != "100644"
+        || actual.mode.git_mode() != request.git_mode
+        || actual.blob_oid.as_str() != request.blob_oid
+        || actual.size != request.original_bytes.len() as u64
+        || digest != request.sha256
+    {
+        return Err("frozen committed request mode/blob/size/digest differs from binding".into());
+    }
+    let original = frozen::fs::read_with_limit(
+        authority.logical_root().join(POLICY_PATH),
+        request.original_bytes.len() as u64,
+    )
+    .map_err(|error| format!("read original frozen committed request: {error}"))?;
+    if original.as_slice() != request.original_bytes.as_slice() {
+        return Err("original frozen committed request bytes differ from binding".into());
     }
     Ok(())
 }
@@ -1073,6 +1109,10 @@ impl StagedFile {
 #[cfg(test)]
 mod tests {
     use super::super::complete_contract::tests::{fixture_binding, fixture_manifest};
+    #[cfg(target_os = "linux")]
+    use super::super::complete_contract::tests::fixture_policy_bytes;
+    #[cfg(target_os = "linux")]
+    use super::super::complete_request::CommittedRequestBinding;
     use super::*;
 
     #[test]
@@ -1200,6 +1240,15 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(target_os = "linux")]
+    fn frozen_source_fixture() -> Result<frozen::tests::Fixture, String> {
+        frozen::tests::Fixture::new(&[
+            ("a.rs", b"value > 1\n"),
+            (POLICY_PATH, fixture_policy_bytes()),
+        ])
+        .map_err(|error| error.to_string())
+    }
+
     /// Core's actual owned frozen fixture, actual config capture and actual
     /// reducers; no analyzer, Git command, execution capability or fake runner.
     #[cfg(target_os = "linux")]
@@ -1241,6 +1290,20 @@ mod tests {
                 })
             })
             .collect::<Result<Vec<_>, String>>()?;
+        let (_, request_file) = source
+            .authority
+            .inventory()
+            .files()
+            .find(|(path, _)| *path == Path::new(POLICY_PATH))
+            .ok_or("fixture committed request is missing")?;
+        if request_file.mode.git_mode() != "100644" {
+            return Err("fixture committed request is not a regular 100644 file".into());
+        }
+        binding.committed_request = CommittedRequestBinding::from_original_blob(
+            request_file.blob_oid.as_str(),
+            frozen::fs::read_with_limit(source.logical.join(POLICY_PATH), request_file.size)
+                .map_err(|error| error.to_string())?,
+        )?;
         binding.inventory.logical_bytes = binding.inventory.files.iter().map(|f| f.bytes).sum();
         binding.inventory.directories = source
             .authority
@@ -1443,8 +1506,7 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn all_nine_nonempty_saved_relations_and_resigned_tampering() -> Result<(), String> {
-        let source =
-            frozen::tests::Fixture::new(&[("a.rs", b"value > 1\n")]).map_err(|e| e.to_string())?;
+        let source = frozen_source_fixture()?;
         let stage = stage()?;
         frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
             let (binding, original) = saved_fixture(&source)?;
@@ -1661,9 +1723,150 @@ mod tests {
 
     #[test]
     #[cfg(target_os = "linux")]
+    fn resigned_committed_request_drift_refuses_before_stage_and_recovers() -> Result<(), String> {
+        let source = frozen_source_fixture()?;
+        let stage = stage()?;
+        frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
+            let (binding, original) = saved_fixture(&source)?;
+            let old_generation = binding.generation_id()?;
+            save_fixture(&stage.0, &binding, &original)?;
+            verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            for change in 0..3 {
+                let mut wrong = binding.clone();
+                let mut original_bytes = wrong.committed_request.original_bytes.clone();
+                let blob_oid = if change == 0 {
+                    "2".repeat(wrong.committed_request.blob_oid.len())
+                } else {
+                    wrong.committed_request.blob_oid.clone()
+                };
+                match change {
+                    1 => original_bytes.push(b'\n'),
+                    2 => original_bytes.insert(0, b' '),
+                    _ => {}
+                }
+                wrong.committed_request =
+                    CommittedRequestBinding::from_original_blob(&blob_oid, original_bytes)?;
+                let file = wrong
+                    .inventory
+                    .files
+                    .iter_mut()
+                    .find(|file| file.path == POLICY_PATH)
+                    .ok_or("fixture request inventory entry is missing")?;
+                file.blob_oid.clone_from(&wrong.committed_request.blob_oid);
+                file.bytes = wrong.committed_request.original_bytes.len() as u64;
+                file.sha256.clone_from(&wrong.committed_request.sha256);
+                wrong.inventory.logical_bytes =
+                    wrong.inventory.files.iter().map(|file| file.bytes).sum();
+                wrong.validate()?;
+                assert_ne!(wrong.generation_id()?, old_generation);
+                let resigned = resign_policy_fixture(&wrong, &original, &old_generation)?;
+                save_fixture(&stage.0, &wrong, &resigned)?;
+                let absent = stage.0.join("absent-generation");
+                for root in [&stage.0, &absent] {
+                    let error = verify_staged_generation(root, &wrong, &wrong.profile)
+                        .expect_err("re-signed committed request drift was accepted");
+                    assert_eq!(
+                        error.to_string(),
+                        "frozen committed request mode/blob/size/digest differs from binding"
+                    );
+                }
+            }
+            save_fixture(&stage.0, &binding, &original)?;
+            let recovered = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(recovered.generation_id(), old_generation);
+            assert_eq!(recovered.total_finding_count(), 1);
+            Ok(())
+        })
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn frozen_committed_request_removal_refuses_before_absent_stage() -> Result<(), String> {
+        let source = frozen_source_fixture()?;
+        let (binding, original) =
+            frozen::with_context(Some(source.authority.clone()), || saved_fixture(&source))?;
+        let missing = frozen::tests::Fixture::new(&[("a.rs", b"value > 1\n")])
+            .map_err(|error| error.to_string())?;
+        let stage = stage()?;
+        let mut wrong = binding.clone();
+        let root = missing.logical.to_str().ok_or("fixture root is not UTF8")?;
+        wrong.subject.logical_root = root.into();
+        wrong.subject.work_tree = root.into();
+        wrong.subject.invocation_repository = root.into();
+        wrong.subject.head_tree = missing.authority.head_tree().as_str().into();
+        wrong.validate()?;
+        let old_generation = binding.generation_id()?;
+        let resigned = resign_policy_fixture(&wrong, &original, &old_generation)?;
+        save_fixture(&stage.0, &wrong, &resigned)?;
+        frozen::with_context(Some(missing.authority.clone()), || -> Result<(), String> {
+            let absent = stage.0.join("absent-generation");
+            for root in [&stage.0, &absent] {
+                let error = verify_staged_generation(root, &wrong, &wrong.profile)
+                    .expect_err("missing frozen committed request was accepted");
+                assert_eq!(
+                    error.to_string(),
+                    "committed request is missing from frozen inventory"
+                );
+            }
+            Ok(())
+        })?;
+        save_fixture(&stage.0, &binding, &original)?;
+        frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
+            let recovered = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(recovered.generation_id(), old_generation);
+            assert_eq!(recovered.total_finding_count(), 1);
+            Ok(())
+        })
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn original_frozen_request_bytes_are_read_before_absent_stage() -> Result<(), String> {
+        let source = frozen_source_fixture()?;
+        let (binding, _) =
+            frozen::with_context(Some(source.authority.clone()), || saved_fixture(&source))?;
+        let mut changed = binding.committed_request.original_bytes.clone();
+        let byte = changed.first_mut().ok_or("fixture policy is empty")?;
+        *byte = b'[';
+        std::fs::write(source.physical.join(POLICY_PATH), &changed)
+            .map_err(|error| error.to_string())?;
+        frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
+            let error = verify_staged_generation(
+                &source.logical.join("absent-generation"),
+                &binding,
+                &binding.profile,
+            )
+            .expect_err("changed original frozen request bytes were accepted");
+            let error = error.to_string();
+            assert!(error.starts_with("read original frozen committed request: "));
+            assert!(error.contains("source bytes differ from admitted blob"));
+            Ok(())
+        })?;
+        // The frozen fault is sticky. Recovery requires a fresh owned source,
+        // rather than resetting or laundering the mutated authority.
+        let recovered_source = frozen_source_fixture()?;
+        let stage = stage()?;
+        frozen::with_context(
+            Some(recovered_source.authority.clone()),
+            || -> Result<(), String> {
+                let (binding, original) = saved_fixture(&recovered_source)?;
+                save_fixture(&stage.0, &binding, &original)?;
+                let recovered = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                    .map_err(|error| error.to_string())?;
+                assert_eq!(recovered.generation_id(), binding.generation_id()?);
+                assert_eq!(recovered.total_finding_count(), 1);
+                Ok(())
+            },
+        )
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
     fn resigned_policy_drift_refuses_before_reads_and_baseline_recovers() -> Result<(), String> {
-        let source =
-            frozen::tests::Fixture::new(&[("a.rs", b"value > 1\n")]).map_err(|e| e.to_string())?;
+        let source = frozen_source_fixture()?;
         let stage = stage()?;
         frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
             let (binding, original) = saved_fixture(&source)?;

@@ -5,16 +5,17 @@
 //! generation ID precedes payload hashes. The final saved proof hashes the
 //! manifest bytes and is never embedded in the manifest or a payload.
 //!
-//! V1 refuses the configured Perl external-producer route. Capturing every
+//! This contract refuses the configured Perl external-producer route. Capturing every
 //! Perl configuration field as data does not authenticate its external inputs
 //! or authorize a process. Extending supported execution requires its owner.
 
+use super::complete_request::{CommittedRequestBinding, POLICY_PATH};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use std::path::{Component, Path};
 
-pub(super) const BINDING_SCHEMA: &str = "ripr.complete_binding.v2";
+pub(super) const BINDING_SCHEMA: &str = "ripr.complete_binding.v3";
 pub(super) const MANIFEST_SCHEMA: &str = "ripr.complete_manifest.v1";
 pub(super) const PAYLOAD_SCHEMA: &str = "ripr.complete_payload.v1";
 pub(super) const MANIFEST_FILE: &str = "complete-manifest.json";
@@ -598,6 +599,7 @@ impl RustExecutionPolicy {
 pub(super) struct CompleteBinding {
     pub(super) schema_version: String,
     pub(super) subject: SubjectBinding,
+    pub(super) committed_request: CommittedRequestBinding,
     pub(super) raw: RawBinding,
     /// Original bounded three-context capture, pinned by the caller before
     /// payload generation. It cannot be reconstructed from zero-context raw.
@@ -702,6 +704,7 @@ impl CompleteVerificationLimits {
 impl CompleteBinding {
     pub(super) fn validate(&self) -> Result<(), String> {
         self.profile.validate()?;
+        self.committed_request.validate()?;
         self.rust_execution_policy.validate()?;
         if self.schema_version != BINDING_SCHEMA {
             return Err("unsupported complete binding schema".into());
@@ -725,6 +728,9 @@ impl CompleteBinding {
                 return Err("invalid absolute native root identity".into());
             }
         }
+        if s.logical_root != s.work_tree {
+            return Err("whole-head-v1 requires repository-root analysis".into());
+        }
         if !Path::new(&s.logical_root).starts_with(&s.work_tree)
             || !Path::new(&s.invocation_repository).starts_with(&s.work_tree)
         {
@@ -739,6 +745,7 @@ impl CompleteBinding {
             validate_relative(path)?;
         }
         let width = s.base_commit.len();
+        validate_oid(&self.committed_request.blob_oid, width)?;
         for oid in [
             &s.base_commit,
             &s.head_commit,
@@ -772,6 +779,20 @@ impl CompleteBinding {
             .checked_add(self.raw.removed_lines)
             .ok_or("raw side total overflow")?;
         validate_inventory(&self.inventory, &self.profile, width)?;
+        let request = &self.committed_request;
+        let request_file = self
+            .inventory
+            .files
+            .iter()
+            .find(|file| file.path == POLICY_PATH)
+            .ok_or("committed request is missing from full inventory")?;
+        if request_file.git_mode != request.git_mode
+            || request_file.blob_oid != request.blob_oid
+            || request_file.bytes != request.original_bytes.len() as u64
+            || request_file.sha256 != request.sha256
+        {
+            return Err("committed request disagrees with admitted inventory".into());
+        }
         match &self.configuration {
             ConfigurationBinding::Absent => {
                 if self.full_configuration.source_path.is_some()
@@ -1144,7 +1165,27 @@ fn serialize_bounded<T: Serialize>(value: &T, limit: u64) -> Result<Vec<u8>, Str
 pub(super) mod tests {
     use super::*;
 
+    pub(in crate::app::pr_evidence) fn fixture_policy_bytes() -> &'static [u8] {
+        br#"{"schema_version":"ripr.complete_request.v1","request":"complete","profile":"whole-head-v1"}"#
+    }
+
     pub(in crate::app::pr_evidence) fn fixture_binding() -> Result<CompleteBinding, String> {
+        let committed_request = CommittedRequestBinding::from_original_blob(
+            &"6".repeat(40),
+            fixture_policy_bytes().to_vec(),
+        )?;
+        let inventory = InventoryBinding {
+            representation: INVENTORY_REPRESENTATION.into(),
+            files: vec![InventoryFile {
+                path: committed_request.path.clone(),
+                git_mode: committed_request.git_mode.clone(),
+                blob_oid: committed_request.blob_oid.clone(),
+                bytes: committed_request.original_bytes.len() as u64,
+                sha256: committed_request.sha256.clone(),
+            }],
+            directories: vec!["".into(), ".ripr".into()],
+            logical_bytes: committed_request.original_bytes.len() as u64,
+        };
         Ok(CompleteBinding {
             schema_version: BINDING_SCHEMA.into(),
             subject: SubjectBinding {
@@ -1162,6 +1203,7 @@ pub(super) mod tests {
                 origin_tree: "3".repeat(40),
                 changed_paths: vec![],
             },
+            committed_request,
             raw: RawBinding {
                 raw_sha256: sha256_bytes(b""),
                 ledger_sha256: sha256_bytes(b"ledger"),
@@ -1179,12 +1221,7 @@ pub(super) mod tests {
                 bytes: 0,
                 sha256: sha256_bytes(b""),
             },
-            inventory: InventoryBinding {
-                representation: INVENTORY_REPRESENTATION.into(),
-                files: vec![],
-                directories: vec!["".into()],
-                logical_bytes: 0,
-            },
+            inventory,
             configuration: ConfigurationBinding::Absent,
             full_configuration: FullConfiguration {
                 analysis_mode: None,
@@ -1363,7 +1400,7 @@ pub(super) mod tests {
             bytes: 1,
             sha256: sha256_bytes(b"#"),
         });
-        binding.inventory.logical_bytes = 1;
+        binding.inventory.logical_bytes += 1;
         binding.configuration = ConfigurationBinding::Present {
             blob_oid: "6".repeat(40),
             sha256: sha256_bytes(b"#"),
@@ -1409,6 +1446,104 @@ pub(super) mod tests {
         assert!(serialized_digest(&vec!["oversized"; 100], 1, b"").is_err());
         Ok(())
     }
+    #[test]
+    fn committed_request_is_required_closed_inventory_bound_and_generation_bound()
+    -> Result<(), String> {
+        let binding = fixture_binding()?;
+        binding.validate()?;
+        let mut missing = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
+        missing
+            .as_object_mut()
+            .ok_or("binding is not an object")?
+            .remove("committed_request");
+        let error = serde_json::from_value::<CompleteBinding>(missing)
+            .expect_err("missing committed request was accepted");
+        assert!(error.to_string().contains("missing field `committed_request`"));
+        let mut unknown = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
+        unknown["committed_request"]["grant"] = serde_json::json!(true);
+        let error = serde_json::from_value::<CompleteBinding>(unknown)
+            .expect_err("unknown committed request field was accepted");
+        assert!(error.to_string().contains("unknown field `grant`"));
+        let mut stale = binding.clone();
+        stale.schema_version = "ripr.complete_binding.v2".into();
+        assert_eq!(
+            stale.validate().expect_err("stale binding v2 was accepted"),
+            "unsupported complete binding schema"
+        );
+        let mut missing = binding.clone();
+        missing.inventory.files.clear();
+        missing.inventory.logical_bytes = 0;
+        assert_eq!(
+            missing
+                .validate()
+                .expect_err("request absent from inventory was accepted"),
+            "committed request is missing from full inventory"
+        );
+        for change in 0..4 {
+            let mut wrong = binding.clone();
+            let file = wrong
+                .inventory
+                .files
+                .first_mut()
+                .ok_or("request file missing")?;
+            match change {
+                0 => file.git_mode = "100755".into(),
+                1 => file.blob_oid = "7".repeat(40),
+                2 => file.bytes += 1,
+                _ => file.sha256 = sha256_bytes(b"stale request"),
+            }
+            wrong.inventory.logical_bytes = wrong.inventory.files.iter().map(|file| file.bytes).sum();
+            assert_eq!(
+                wrong
+                    .validate()
+                    .expect_err("request inventory mismatch was accepted"),
+                "committed request disagrees with admitted inventory"
+            );
+        }
+        // Semantically equivalent policy JSON is still distinct original input.
+        let mut equivalent = binding.clone();
+        let mut original_bytes = equivalent.committed_request.original_bytes.clone();
+        original_bytes.push(b'\n');
+        equivalent.committed_request = CommittedRequestBinding::from_original_blob(
+            &equivalent.committed_request.blob_oid,
+            original_bytes,
+        )?;
+        let file = equivalent
+            .inventory
+            .files
+            .first_mut()
+            .ok_or("request file missing")?;
+        file.bytes = equivalent.committed_request.original_bytes.len() as u64;
+        file.sha256.clone_from(&equivalent.committed_request.sha256);
+        equivalent.inventory.logical_bytes = file.bytes;
+        equivalent.validate()?;
+        assert_eq!(
+            equivalent.committed_request.effective_request,
+            binding.committed_request.effective_request
+        );
+        assert_ne!(equivalent.generation_id()?, binding.generation_id()?);
+        Ok(())
+    }
+
+    #[test]
+    fn whole_head_request_requires_repository_root_without_rewriting_literals()
+    -> Result<(), String> {
+        let binding = fixture_binding()?;
+        let mut subroot = binding.clone();
+        subroot.subject.logical_root = "/repo/sub".into();
+        assert_eq!(
+            subroot.validate().expect_err("whole-head subroot was accepted"),
+            "whole-head-v1 requires repository-root analysis"
+        );
+        let mut nested_invocation = binding.clone();
+        nested_invocation.subject.invocation_repository = "/repo/nested".into();
+        nested_invocation.subject.requested_root = "..".into();
+        nested_invocation.validate()?;
+        assert_eq!(nested_invocation.subject.requested_root, "..");
+        assert_eq!(nested_invocation.subject.logical_root, "/repo");
+        Ok(())
+    }
+
     #[test]
     fn rust_execution_policy_is_required_closed_bounded_and_generation_bound()
     -> Result<(), String> {
