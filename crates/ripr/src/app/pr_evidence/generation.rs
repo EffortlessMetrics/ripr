@@ -423,7 +423,7 @@ mod tests {
             .ok_or("multiple actual merge bases were accepted")?;
         assert_eq!(
             multiple,
-            "three-dot origin must contain exactly one nonempty line"
+            "whole-subject three-dot origin must contain exactly one nonempty line"
         );
         Ok(())
     }
