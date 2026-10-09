@@ -163,6 +163,8 @@ pub(crate) struct RawReduction<'a> {
     pub(crate) raw_path_token: Option<&'a [u8]>,
     /// None means no token or unsupported/malformed token, never clean success.
     pub(crate) decoded_path_bytes: Option<Vec<u8>>,
+    /// Current semantic path after the winning handler; an old token may
+    /// describe a different path. Only projection identifies an insertion.
     pub(crate) native_path: Option<&'a Path>,
     /// Exact side-vector insertion slot; several occurrences may share a path.
     pub(crate) projection: Option<(RawChangeSide, usize)>,
@@ -176,8 +178,9 @@ pub(crate) struct RawEnd {
     pub(crate) hunks: usize,
 }
 
-/// Callbacks are synchronous and fallible. A refused callback/admission
-/// yields Err with no end callback. End reports consumption, not eligibility.
+/// Callbacks are synchronous and fallible. Record/reduction/admission refusal
+/// yields Err without calling finish. Finish refusal yields Err without a
+/// successful end. End reports consumption, not eligibility.
 pub(crate) trait RawDiffObserver {
     fn record(&mut self, record: RawRecord<'_>) -> Result<(), String>;
     fn reduction(&mut self, reduction: RawReduction<'_>) -> Result<(), String>;
