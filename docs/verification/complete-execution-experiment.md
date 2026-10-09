@@ -10,8 +10,19 @@ is introduced.
 ## Experimental invocation and containment
 
 `cargo xtask ripr-pr --experimental-complete-execution --base <literal-base>
---head <literal-head>` builds with the pinned Cargo authority and selects the actual\nexecutable from successful Cargo JSON artifact output, preserving inherited\ncompiler/target/config selection. The build keeps its existing 900-second\ndefault/positive environment override, with a new 8 MiB stdout/64 KiB stderr\nconstruction cap. Missing, malformed, ambiguous or over-budget artifact output\nrefuses; there is no guessed-path fallback. The new experiment rejects RIPR_BIN overrides; the ordinary
-compatibility path retains its existing override behavior. After valid launcher options and repository resolution, subject authority, prior\npacket JSON/Markdown and any experimental receipt are revoked before resource\ndiscovery, build, limiter setup or spawn. Direct worker failures before repository\nresolution cannot identify a repository for cleanup.
+--head <literal-head>` builds with the pinned Cargo authority and selects the actual
+executable from successful Cargo JSON artifact output, preserving inherited
+compiler/target/config selection, including the original invocation directory's
+Cargo configuration discovery. The build keeps its existing 900-second
+default/positive environment override, with a new 8 MiB stdout/64 KiB stderr
+construction cap. Missing, malformed, ambiguous or over-budget artifact output
+refuses; there is no guessed-path fallback. The new experiment rejects RIPR_BIN overrides; the ordinary
+compatibility path retains its existing override behavior. After valid launcher options and repository resolution, subject authority, prior
+packet JSON/Markdown and any experimental receipt are revoked before resource
+discovery, build, limiter setup or spawn. Direct worker failures before repository
+resolution cannot identify a repository for cleanup. The launcher attempts every
+owned authority removal even when an earlier path fails, then reports all cleanup
+failures; the subject is attempted first.
 
 On Linux, the launcher invokes `/usr/bin/prlimit` with equal finite soft/hard
 RLIMIT_AS and RLIMIT_FSIZE ceilings. The address-space maximum is 2 GiB;
@@ -52,16 +63,24 @@ Every successfully published experimental packet, subject and review input carri
 refuses any presence of that field, including null or a claimed complete
 generation. Installed saved-check, xtask saved-check and both review subject
 and review-input admission use that authority. Production activation is
-hard disabled. Experimental Markdown and legacy summaries state inadmissibility\nand suppress stale routing/review guidance. Shared impacted-evidence refuses\nmarked input. Saved review checks refuse marked subjects/review input and all\ncanonical projection failures; error fallback does not copy experimental data.\nThere is no admissible unmarked legacy subject from this route.
+hard disabled. Experimental Markdown and legacy summaries state inadmissibility
+and suppress stale routing/review guidance. Shared impacted-evidence refuses
+marked input. Saved review checks refuse marked subjects/review input and all
+canonical projection failures; error fallback does not copy experimental data.
+There is no admissible unmarked legacy subject from this route.
 
 The compact receipt binds this invocation's nonce, resource profile, exact
-base/head/head tree, check/diff identities and a fixed set of artifact digests.\nConfiguration fingerprint and index counts/bytes remain bounded worker-reported\nmetadata, not independently validated by the parent; completion reports label\nthis limit explicitly. It carries `coverage: not_established`
+base/head/head tree, check/diff identities and a fixed set of artifact digests.
+Configuration fingerprint and index counts/bytes remain bounded worker-reported
+metadata, not independently validated by the parent; completion reports label
+this limit explicitly. It carries `coverage: not_established`
 and `production_admission: false`. It does not embed the full canonical index.
 A successful worker exit plus receipt records only a completed under-cap
 ordinary producer experiment. The public experimental launcher deliberately
 returns failure so it cannot satisfy a gate.
 
-After repository resolution and successful initial revocation, worker analysis/serialization\nfailure revokes authority. Pre-repository option/resource failures cannot promise cleanup. Existing error
+After repository resolution and successful initial revocation, worker analysis/serialization
+failure revokes authority. Pre-repository option/resource failures cannot promise cleanup. Existing error
 packets remain unmarked status=error artifacts, rejected by the same authority,
 and never gain an experimental completion receipt. A failed or
 absent native status, timeout, incomplete capture, missing/malformed/stale

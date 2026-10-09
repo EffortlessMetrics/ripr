@@ -269,10 +269,11 @@ fn executable_from_cargo(repo: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
 }
 
 fn build_worker(repo: &Path) -> Result<PathBuf, String> {
-    build_worker_with_target_dir(repo, None)
+    let cwd = env::current_dir().map_err(|error| format!("experimental worker build cwd: {error}"))?;
+    build_worker_in(repo, &cwd, None)
 }
 
-fn build_worker_with_target_dir(repo: &Path, target_dir: Option<&Path>) -> Result<PathBuf, String> {
+fn build_worker_in(repo: &Path, cwd: &Path, target_dir: Option<&Path>) -> Result<PathBuf, String> {
     let mut args = vec![
         "build".to_string(),
         "--locked".to_string(),
@@ -289,7 +290,7 @@ fn build_worker_with_target_dir(repo: &Path, target_dir: Option<&Path>) -> Resul
     let output = capture_bytes_in_dir_with_budget(
         Path::new("cargo"),
         &args,
-        (repo, None),
+        (cwd, None),
         &[],
         ByteCaptureBudget {
             timeout: tool_build_timeout()?,
@@ -317,19 +318,23 @@ fn completion_report(receipt: &Receipt) -> String {
 }
 
 fn revoke(repo: &Path) -> Result<(), String> {
-    // Revoke before resource discovery, binary build, limiter setup or spawn.
-    remove_stale_check_artifact(repo)?;
-    for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD] {
+    // Subject first, then every experiment-owned authority. A blocked earlier
+    // path must not leave an ordinary packet available to mutation routing.
+    let mut errors = Vec::new();
+    for relative in [
+        PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON,
+        PR_EVIDENCE_JSON, PR_EVIDENCE_MD, RECEIPT,
+    ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(format!("experimental launcher {relative} revocation: {error}")),
+            Err(error) => errors.push(format!("experimental launcher {relative} revocation: {error}")),
         }
     }
-    match fs::remove_file(repo.join(RECEIPT)) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(format!("experimental launcher receipt revocation: {error}")),
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
     }
 }
 
@@ -440,10 +445,13 @@ fn run_candidate(
             &head_tree,
         )
     })();
-    if result.is_err() {
-        revoke(repo)?;
+    match result {
+        Ok(receipt) => Ok(receipt),
+        Err(primary) => match revoke(repo) {
+            Ok(()) => Err(primary),
+            Err(cleanup) => Err(format!("{primary}; cleanup failed: {cleanup}")),
+        },
     }
-    result
 }
 
 fn read_receipt(
@@ -1030,12 +1038,15 @@ mod tests {
             super::super::tests::write_repo_file(&repo, "Cargo.lock",
                 "version = 4\n\n[[package]]\nname = \"ripr\"\nversion = \"0.0.0\"\n")?;
             super::super::tests::write_repo_file(&repo, "crates/ripr/src/main.rs",
-                "fn main() { println!(\"RIPR_ACTUAL_COMPILED_ARTIFACT\"); }\n")?;
+                "fn main() { println!(\"{}\", env!(\"RIPR_ARTIFACT_CONTEXT\")); }\n")?;
             super::super::tests::write_repo_file(&repo, "target/debug/ripr", "STALE_GUESSED_PATH_DECOY")?;
             // The fixture owns its construction directory; production keeps
             // inherited Cargo target/config selection with no override.
             let target = repo.join("actual-built-artifacts");
-            let binary = build_worker_with_target_dir(&repo, Some(&target))?;
+            let cwd = repo.join("nested-invocation");
+            super::super::tests::write_repo_file(&repo, "nested-invocation/.cargo/config.toml",
+                "[env]\nRIPR_ARTIFACT_CONTEXT = { value = \"RIPR_ACTUAL_COMPILED_ARTIFACT\", force = true }\n")?;
+            let binary = build_worker_in(&repo, &cwd, Some(&target))?;
             assert_ne!(binary, repo.join("target/debug/ripr"));
             let output = capture_bytes_in_dir_with_budget(
                 &binary, &[], (&repo, None), &[],
@@ -1072,6 +1083,17 @@ mod tests {
                 PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON, RECEIPT] {
                 assert!(!repo.join(relative).exists(), "{relative} retained");
             }
+            fs::create_dir(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
+            for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD] {
+                super::super::tests::write_repo_file(&repo, relative, "old ordinary routing")?;
+            }
+            let error = refusal(run_candidate(&repo, "unused", &PrEvidenceOptions::default(),
+                Path::new("/missing-limiter"), (0, FILE_MAX)), "earlier cleanup failure")?;
+            assert!(error.contains(PR_CHECK_JSON) && error.contains("revocation"), "{error}");
+            assert!(repo.join(PR_CHECK_JSON).is_dir());
+            assert!(!repo.join(PR_EVIDENCE_JSON).exists());
+            assert!(!repo.join(PR_EVIDENCE_MD).exists());
+            fs::remove_dir(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
             fs::create_dir(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?;
             let error = refusal(revoke(&repo), "packet cleanup failure")?;
             assert!(error.contains("revocation"), "{error}");
