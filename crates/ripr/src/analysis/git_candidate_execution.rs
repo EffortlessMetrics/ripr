@@ -228,12 +228,6 @@ fn derive_diff(
     )
 }
 
-/// Materialize the candidate tree into a fresh temp directory through ONE
-/// streaming `git cat-file --batch` process (#5015; before this, one
-/// sequential `git cat-file` subprocess per file, each carrying the full
-/// per-invocation deadline, multiplied the worst case to N × git_timeout and
-/// paid a process spawn per file). Every byte still comes from the bound
-/// blobs; the worktree and index are never consulted.
 #[derive(Clone, Copy)]
 enum ConfigurationCapture {
     NotRequested,
@@ -316,7 +310,9 @@ fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> 
         if !paths.insert(path) {
             return Err(failed(format!("configuration inventory duplicates path {path}")));
         }
-        if path.starts_with("ripr.toml/") {
+        if (path == "ripr.toml" && fields[1] == "tree")
+            || path.starts_with("ripr.toml/")
+        {
             return Err(failed("configuration inventory ripr.toml is a directory".into()));
         }
     }
@@ -337,12 +333,18 @@ fn append_captured_configuration(
         )));
     }
     bytes
-        .try_reserve(chunk.len())
+        .try_reserve_exact(chunk.len())
         .map_err(|error| failed(format!("configuration capture reservation failed: {error}")))?;
     bytes.extend_from_slice(chunk);
     Ok(())
 }
 
+/// Materialize the candidate tree into a fresh temp directory through ONE
+/// streaming `git cat-file --batch` process (#5015; before this, one
+/// sequential `git cat-file` subprocess per file, each carrying the full
+/// per-invocation deadline, multiplied the worst case to N × git_timeout and
+/// paid a process spawn per file). Every byte still comes from the bound
+/// blobs; the worktree and index are never consulted.
 fn materialize(
     root: &Path,
     candidate_tree: &str,
@@ -407,12 +409,24 @@ fn materialize_with_configuration(
     // batch stream still cannot exceed one deadline.
     let budget = deadline.unwrap_or(Duration::from_mins(1));
     let budget_started = std::time::Instant::now();
-    let listing = crate::git::run_git_output_with_deadline_and_limit(
-        root,
-        &["ls-tree", "-r", "-z", candidate_tree],
-        budget.saturating_sub(budget_started.elapsed()),
-        MAX_ARCHIVE_BYTES,
-    )
+    let listing = match capture {
+        ConfigurationCapture::NotRequested => {
+            crate::git::run_git_output_with_deadline_and_limit(
+                root,
+                &["ls-tree", "-r", "-z", candidate_tree],
+                budget.saturating_sub(budget_started.elapsed()),
+                MAX_ARCHIVE_BYTES,
+            )
+        }
+        ConfigurationCapture::Requested { .. } => {
+            crate::git::run_git_output_with_deadline_and_limit(
+                root,
+                &["ls-tree", "-r", "-t", "-z", candidate_tree],
+                budget.saturating_sub(budget_started.elapsed()),
+                MAX_ARCHIVE_BYTES,
+            )
+        }
+    }
     .map_err(|error| failed(format!("git ls-tree failed: {error}")))?;
     if !listing.status.success() {
         return Err(failed(
@@ -454,6 +468,12 @@ fn materialize_with_configuration(
         let mode = meta_parts.next().unwrap_or_default();
         let kind = meta_parts.next().unwrap_or_default();
         let object = meta_parts.next().unwrap_or_default();
+        if matches!(capture, ConfigurationCapture::Requested { .. })
+            && kind == "tree"
+            && mode == "040000"
+        {
+            continue;
+        }
         if kind != "blob" || !(mode == "100644" || mode == "100755") {
             return Err(failed(format!(
                 "unsupported tree entry mode `{mode}` (`{kind}`) for `{path}`: the candidate tree contains a non-file object ripr cannot faithfully materialize"
@@ -827,6 +847,44 @@ mod tests {
         let (ordinary, _cleanup) = materialize(&directory_guard.0, &tree, None)
             .map_err(|error| error.to_string())?;
         assert!(ordinary.join("ripr.toml/nested").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn capture_refuses_an_actual_empty_configuration_subtree() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("capture-empty-config-tree")?;
+        let empty_tree = git(&guard.0, &["mktree"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let empty_tree = GitObjectId::parse(&empty_tree).map_err(|error| error.to_string())?;
+        let mut record = b"40000 ripr.toml\0".to_vec();
+        for pair in empty_tree.as_str().as_bytes().chunks_exact(2) {
+            let hex = std::str::from_utf8(pair).map_err(|error| error.to_string())?;
+            record.push(u8::from_str_radix(hex, 16).map_err(|error| error.to_string())?);
+        }
+        let input_path = guard.0.join("empty-config-tree-input");
+        std::fs::write(&input_path, &record).map_err(|error| error.to_string())?;
+        let input_name = input_path.to_str().ok_or("fixture tree-input path is not UTF-8")?;
+        let tree = git(
+            &guard.0,
+            &["hash-object", "-w", "-t", "tree", input_name],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let recursive = crate::git::run_git_output_with_deadline(
+            &guard.0,
+            &["ls-tree", "-r", "-z", &tree],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(recursive.status.success());
+        assert!(recursive.stdout.is_empty(), "fixture is not an empty subtree");
+        let failure = prepare_named_tree(&guard.0, &tree, None)
+            .err()
+            .ok_or("empty config subtree became Absent")?;
+        assert!(failure.to_string().contains("ripr.toml is a directory"), "{failure}");
+        let (ordinary, _cleanup) = materialize(&guard.0, &tree, None)
+            .map_err(|error| error.to_string())?;
+        assert!(!ordinary.join("ripr.toml").exists());
         Ok(())
     }
 

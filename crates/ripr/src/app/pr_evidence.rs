@@ -2627,6 +2627,31 @@ mod tests {
         write_repo_file(&repo, "ripr.toml", committed)?;
         write_pr_evidence(&repo, &options)?;
         check_pr_evidence(&repo, &options)?;
+
+        let original_head = resolve_revision(&repo, "HEAD", "commit")?;
+        let mut head_change_entered = false;
+        let head_change = write_pr_evidence_with_generation(
+            &repo,
+            &options,
+            |repo, options| {
+                head_change_entered = true;
+                let check = run_ripr_check(repo, options)?;
+                write_repo_file(repo, "src/lib.rs", &original.replace("> 10", "> 11"))?;
+                fixture_git_ok(repo, &["commit", "--quiet", "-a", "-m", "move fixture head"])?;
+                Ok(check)
+            },
+            Some(&generation),
+        )
+        .err()
+        .ok_or("HEAD tree movement escaped postflight validation")?;
+        assert!(head_change_entered);
+        assert!(head_change.contains("prepared head changed"), "{head_change}");
+        for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+            assert!(!repo.join(path).exists(), "head movement left authority: {path}");
+        }
+        fixture_git_ok(&repo, &["reset", "--hard", &original_head])?;
+        write_pr_evidence(&repo, &options)?;
+        check_pr_evidence(&repo, &options)?;
         Ok(())
     }
 
