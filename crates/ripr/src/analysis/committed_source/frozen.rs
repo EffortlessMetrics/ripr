@@ -136,10 +136,6 @@ impl FrozenSourceAuthority {
         &self.logical_root
     }
 
-    pub(crate) fn physical_root(&self) -> &Path {
-        &self.physical_root
-    }
-
     pub(crate) fn captured_configuration(
         &self,
     ) -> &super::super::git_candidate_execution::CapturedConfiguration {
