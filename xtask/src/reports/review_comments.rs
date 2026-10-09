@@ -950,7 +950,7 @@ fn static_gap_fallback(repo: &Path, options: &ReviewCommentsOptions) -> Option<V
     match fs::read(&subject_path) {
         Ok(bytes) => {
             let subject: Value = serde_json::from_slice(&bytes).ok()?;
-            if subject.get("experimental_complete_execution").is_some() {
+            if ripr::app::pr_evidence::reject_pr_evidence_error_packet(&subject).is_some() {
                 return None;
             }
         }
