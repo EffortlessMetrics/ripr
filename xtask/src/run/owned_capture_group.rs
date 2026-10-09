@@ -574,9 +574,9 @@ wait
             }
             thread::sleep(Duration::from_millis(5));
         }
-        let mut text = String::new();
-        match witness.take(PROC_BYTES + 1).read_to_string(&mut text) {
-            Err(err) if err.raw_os_error() == Some(3) && text.is_empty() => {}
+        let mut bytes = Vec::new();
+        match witness.take(PROC_BYTES + 1).read_to_end(&mut bytes) {
+            Err(err) if err.raw_os_error() == Some(3) && bytes.is_empty() => {}
             observed => {
                 return Err(format!(
                     "native unread stat disappearance did not produce empty ESRCH: {observed:?}"
@@ -638,7 +638,10 @@ wait
             "stream did not contain valid UTF-8",
         )?;
         let oversized = "a".repeat((PROC_BYTES + 1) as usize);
-        require_error(read_scanned_identity(oversized.as_bytes(), 9), "exceeds its bound")?;
+        require_error(
+            read_scanned_identity(oversized.as_bytes(), 9),
+            "exceeds its bound",
+        )?;
         Ok(())
     }
 
