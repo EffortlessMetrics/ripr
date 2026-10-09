@@ -41,6 +41,8 @@ mod value_resolution;
 mod witness;
 mod workspace;
 
+/// Original canonical analysis-range stdout before semantic decoding.
+pub use diff::load_canonical_pr_evidence_diff_bytes;
 /// Bounded canonical analysis input shared by the installed and xtask PR producers.
 pub use diff::load_canonical_pr_evidence_diff_range;
 /// Shared pinned PR-evidence diff assembly (#3930, #4004): the one named
