@@ -201,7 +201,17 @@ fn write_pr_evidence_with_generation(
     verify_revision(repo, &options.head)?;
     let changed_files = changed_files(repo, options)?;
     write_diff(repo, options)?;
-    match run_check(repo, options) {
+    let check_result: Result<String, String> = (|| {
+        let prepared = generation
+            .map(|_| prepare_experimental_configuration(repo, options))
+            .transpose()?;
+        let check_json = run_check(repo, options)?;
+        if let Some(prepared) = &prepared {
+            validate_prepared_configuration(repo, options, prepared)?;
+        }
+        Ok(check_json)
+    })();
+    match check_result {
         Ok(check_json) => {
             match write_pr_evidence_packet_with_generation(
                 repo,
@@ -221,6 +231,61 @@ fn write_pr_evidence_with_generation(
         }
         Err(err) => write_pr_evidence_error_packet(repo, options, &changed_files, &err),
     }
+}
+
+fn prepare_experimental_configuration(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+) -> Result<crate::analysis::git_candidate_execution::PreparedNamedTree, String> {
+    let invocation = repo.canonicalize().map_err(|error| error.to_string())?;
+    let selected = command_root_path(repo, &options.root)
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    let toplevel = crate::git::discovered_work_tree_toplevel(repo, PR_EVIDENCE_GIT_DEADLINE)
+        .ok_or("experimental preparation unavailable: Git work-tree root was not discovered")?
+        .canonicalize()
+        .map_err(|error| error.to_string())?;
+    if invocation != toplevel || selected != toplevel {
+        return Err(
+            "experimental preparation unavailable: invocation and selected root must be the Git work-tree top level".into(),
+        );
+    }
+    let prepared = crate::analysis::git_candidate_execution::prepare_named_tree(
+        &invocation,
+        &options.head,
+        Some(PR_EVIDENCE_GIT_DEADLINE),
+    )
+    .map_err(|error| format!("experimental configuration preparation failed: {error}"))?;
+    validate_prepared_configuration(repo, options, &prepared)?;
+    Ok(prepared)
+}
+
+fn validate_prepared_configuration(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    prepared: &crate::analysis::git_candidate_execution::PreparedNamedTree,
+) -> Result<(), String> {
+    use crate::analysis::git_candidate_execution::CapturedConfiguration;
+
+    if resolve_revision(repo, &options.head, "tree")? != prepared.tree.as_str() {
+        return Err("experimental prepared head changed before publication".into());
+    }
+    let config = load_for_root(&command_root_path(repo, &options.root))?;
+    let (expected, expected_blob) = match &prepared.configuration {
+        CapturedConfiguration::Absent => (None, "absent"),
+        CapturedConfiguration::Present { blob_oid, text } => {
+            (Some(text.as_str()), blob_oid.as_str())
+        }
+        CapturedConfiguration::NotRequested => {
+            return Err("experimental configuration capture was not requested".into());
+        }
+    };
+    if config.source_text() != expected {
+        return Err(format!(
+            "experimental committed configuration ({expected_blob}) does not match the live loaded configuration"
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -2477,6 +2542,12 @@ mod tests {
             result.is_err(),
             "experimental producer accepted live config different from committed head"
         );
+        let failure = result.err().ok_or("configuration mismatch did not fail")?;
+        assert!(
+            failure.contains("committed configuration")
+                && failure.contains("does not match the live loaded configuration"),
+            "{failure}"
+        );
         assert!(!entered, "config mismatch reached the experimental analyzer");
         let packet: Value = serde_json::from_slice(
             &fs::read(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?,
@@ -2487,6 +2558,73 @@ mod tests {
             assert!(!repo.join(path).exists(), "stale authority survived: {path}");
         }
         assert!(check_pr_evidence(&repo, &options).is_err());
+        write_pr_evidence(&repo, &options)?;
+        check_pr_evidence(&repo, &options)?;
+
+        // A matching committed/live config must execute and produce marked,
+        // explicitly non-production evidence; unconditional refusal is not a repair.
+        write_repo_file(&repo, "ripr.toml", committed)?;
+        let mut matching_entered = false;
+        write_pr_evidence_with_generation(
+            &repo,
+            &options,
+            |repo, options| {
+                matching_entered = true;
+                run_ripr_check(repo, options)
+            },
+            Some(&generation),
+        )?;
+        assert!(matching_entered);
+        let experimental: Value = serde_json::from_slice(
+            &fs::read(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(experimental["analysis_outcome"]["analysis_complete"], true);
+        assert!(
+            experimental["findings"]
+                .as_array()
+                .is_some_and(|findings| !findings.is_empty())
+        );
+        let config = load_for_root(&repo)?;
+        let mut input = CheckInput {
+            root: repo.clone(),
+            ..CheckInput::default()
+        };
+        apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
+        let admission = crate::app::review_comments::admit_producer_evidence(
+            &repo.join(PR_CHECK_JSON),
+            &input,
+            &config,
+            &options.base,
+            &options.head,
+            &load_canonical_check_diff(&repo, &options)?,
+        )
+        .err()
+        .ok_or("experimental preparation manufactured production admission")?;
+        assert_eq!(admission.category, "malformed_producer");
+        assert!(admission.message.contains("experimental"), "{}", admission.message);
+        assert!(check_pr_evidence(&repo, &options).is_err());
+
+        let mut postflight_entered = false;
+        let postflight = write_pr_evidence_with_generation(
+            &repo,
+            &options,
+            |repo, options| {
+                postflight_entered = true;
+                let check = run_ripr_check(repo, options)?;
+                write_repo_file(repo, "ripr.toml", &committed.replace("draft", "fast"))?;
+                Ok(check)
+            },
+            Some(&generation),
+        )
+        .err()
+        .ok_or("configuration drift during analyzer escaped postflight validation")?;
+        assert!(postflight_entered);
+        assert!(postflight.contains("committed configuration"), "{postflight}");
+        for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+            assert!(!repo.join(path).exists(), "postflight left authority: {path}");
+        }
+        write_repo_file(&repo, "ripr.toml", committed)?;
         write_pr_evidence(&repo, &options)?;
         check_pr_evidence(&repo, &options)?;
         Ok(())

@@ -20,7 +20,7 @@
 //!   identity — never an empty analysis.
 
 use crate::domain::{
-    GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError,
+    GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError, GitObjectId,
 };
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -234,11 +234,135 @@ fn derive_diff(
 /// per-invocation deadline, multiplied the worst case to N × git_timeout and
 /// paid a process spawn per file). Every byte still comes from the bound
 /// blobs; the worktree and index are never consulted.
+#[derive(Clone, Copy)]
+enum ConfigurationCapture {
+    NotRequested,
+    Requested { limit: u64 },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum CapturedConfiguration {
+    NotRequested,
+    Absent,
+    Present { blob_oid: GitObjectId, text: String },
+}
+
+pub(crate) struct PreparedNamedTree {
+    pub(crate) tree: GitObjectId,
+    pub(crate) configuration: CapturedConfiguration,
+    _root: PathBuf,
+    _cleanup: TempRootGuard,
+}
+
+/// Prepare one named tree and its configuration through the same object stream.
+/// This does not change the analyzer's source root or freeze effective defaults.
+pub(crate) fn prepare_named_tree(
+    root: &Path,
+    head: &str,
+    deadline: Option<Duration>,
+) -> Result<PreparedNamedTree, SubjectError> {
+    let tree = git(
+        root,
+        &["rev-parse", "--verify", &format!("{head}^{{tree}}")],
+        deadline.or(GIT_DEADLINE),
+    )?;
+    let tree = GitObjectId::parse(&tree).map_err(|error| failed(error.to_string()))?;
+    let (materialized, cleanup, configuration) = materialize_with_configuration(
+        root,
+        tree.as_str(),
+        deadline,
+        ConfigurationCapture::Requested {
+            limit: crate::bounded_input::MAX_CLI_INPUT_BYTES,
+        },
+    )?;
+    Ok(PreparedNamedTree {
+        tree,
+        configuration,
+        _root: materialized,
+        _cleanup: cleanup,
+    })
+}
+
+fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> {
+    if !listing.is_empty() && listing.last() != Some(&0) {
+        return Err(failed("configuration inventory is not NUL-terminated".into()));
+    }
+    let mut paths = std::collections::BTreeSet::new();
+    if listing.is_empty() {
+        return Ok(());
+    }
+    for record in listing[..listing.len() - 1].split(|byte| *byte == 0) {
+        if record.is_empty() {
+            return Err(failed("configuration inventory contains an empty record".into()));
+        }
+        let text = std::str::from_utf8(record)
+            .map_err(|error| failed(format!("configuration inventory is not UTF-8: {error}")))?;
+        let (metadata, path) = text
+            .split_once('\t')
+            .ok_or_else(|| failed("configuration inventory entry has no TAB".into()))?;
+        let fields: Vec<_> = metadata.split_whitespace().collect();
+        if fields.len() != 3 {
+            return Err(failed("configuration inventory metadata is malformed".into()));
+        }
+        GitObjectId::parse(fields[2])
+            .map_err(|error| failed(format!("configuration inventory object ID: {error}")))?;
+        if path.is_empty()
+            || Path::new(path)
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        {
+            return Err(failed("configuration inventory path is malformed".into()));
+        }
+        if !paths.insert(path) {
+            return Err(failed(format!("configuration inventory duplicates path {path}")));
+        }
+        if path.starts_with("ripr.toml/") {
+            return Err(failed("configuration inventory ripr.toml is a directory".into()));
+        }
+    }
+    Ok(())
+}
+
+fn append_captured_configuration(
+    bytes: &mut Vec<u8>,
+    chunk: &[u8],
+    limit: u64,
+) -> Result<(), SubjectError> {
+    let next = (bytes.len() as u64)
+        .checked_add(chunk.len() as u64)
+        .ok_or_else(|| failed("configuration capture length overflowed".into()))?;
+    if next > limit {
+        return Err(failed(format!(
+            "configuration capture exceeds the {limit}-byte input limit"
+        )));
+    }
+    bytes
+        .try_reserve(chunk.len())
+        .map_err(|error| failed(format!("configuration capture reservation failed: {error}")))?;
+    bytes.extend_from_slice(chunk);
+    Ok(())
+}
+
 fn materialize(
     root: &Path,
     candidate_tree: &str,
     deadline: Option<Duration>,
 ) -> Result<(PathBuf, TempRootGuard), SubjectError> {
+    let (root, cleanup, _) = materialize_with_configuration(
+        root,
+        candidate_tree,
+        deadline,
+        ConfigurationCapture::NotRequested,
+    )?;
+    Ok((root, cleanup))
+}
+
+fn materialize_with_configuration(
+    root: &Path,
+    candidate_tree: &str,
+    deadline: Option<Duration>,
+    capture: ConfigurationCapture,
+) -> Result<(PathBuf, TempRootGuard, CapturedConfiguration), SubjectError> {
     // Unique per invocation: concurrent runs (or racing tests) never
     // share a materialization directory, and a stale directory from a
     // crashed run can never be silently reused.
@@ -299,6 +423,14 @@ fn materialize(
     // and traversal attempts fail closed with the existing named errors
     // before any byte is materialized, so a partially written tree can
     // never be mistaken for a complete one.
+    if matches!(capture, ConfigurationCapture::Requested { .. }) {
+        validate_configuration_inventory(&listing.stdout)?;
+    }
+    let mut configuration = match capture {
+        ConfigurationCapture::NotRequested => CapturedConfiguration::NotRequested,
+        ConfigurationCapture::Requested { .. } => CapturedConfiguration::Absent,
+    };
+    let mut pending_configuration: Option<(GitObjectId, Vec<u8>)> = None;
     let mut entries: Vec<(String, String)> = Vec::new();
     for entry in listing.stdout.split(|byte| *byte == 0) {
         if entry.is_empty() {
@@ -333,7 +465,7 @@ fn materialize(
         entries.push((path.to_string(), object.to_string()));
     }
     if entries.is_empty() {
-        return Ok((target.clone(), cleanup));
+        return Ok((target.clone(), cleanup, configuration));
     }
     // The batch session gets only the budget left after listing and
     // validation.
@@ -362,6 +494,21 @@ fn materialize(
                 "candidate tree materialization exceeded the {MAX_ARCHIVE_BYTES}-byte total limit"
             )));
         }
+        let capture_limit = match capture {
+            ConfigurationCapture::Requested { limit } if path == "ripr.toml" => {
+                if size > limit {
+                    return Err(failed(format!(
+                        "configuration capture exceeds the {limit}-byte input limit"
+                    )));
+                }
+                pending_configuration = Some((
+                    GitObjectId::parse(object).map_err(|error| failed(error.to_string()))?,
+                    Vec::new(),
+                ));
+                Some(limit)
+            }
+            _ => None,
+        };
         let mut file = std::fs::File::create(&destination)
             .map_err(|error| failed(format!("materialization write failed: {error}")))?;
         let mut remaining = size;
@@ -370,6 +517,12 @@ fn materialize(
             session
                 .read_blob_bytes(&mut chunk[..take as usize])
                 .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+            if let Some(limit) = capture_limit {
+                let (_, bytes) = pending_configuration
+                    .as_mut()
+                    .ok_or_else(|| failed("configuration capture state is missing".into()))?;
+                append_captured_configuration(bytes, &chunk[..take as usize], limit)?;
+            }
             // The budget is enforced on every git stream read above and by
             // `finish` below. One residual limitation, unchanged from the
             // per-blob path: a single stalled OS-level `write_all` is
@@ -387,7 +540,12 @@ fn materialize(
     session
         .finish()
         .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
-    Ok((target.clone(), cleanup))
+    if let Some((blob_oid, bytes)) = pending_configuration {
+        let text = String::from_utf8(bytes)
+            .map_err(|error| failed(format!("captured configuration is not UTF-8: {error}")))?;
+        configuration = CapturedConfiguration::Present { blob_oid, text };
+    }
+    Ok((target.clone(), cleanup, configuration))
 }
 
 /// Join a tree entry path under the target, rejecting traversal.
@@ -554,6 +712,178 @@ mod tests {
         run(&["commit", "-m", "candidate"])?;
         let candidate = run(&["rev-parse", "HEAD"])?;
         Ok((RepoGuard(root), base, candidate))
+    }
+
+    #[test]
+    fn named_configuration_is_captured_from_the_materialized_blob() -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-config")?;
+        let expected = candidate_blob(&guard.0, &candidate, "ripr.toml")?;
+        let expected_oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{candidate}:ripr.toml")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(guard.0.join("ripr.toml"), "[analysis]\nmode = \"fast\"\n")
+            .map_err(|error| error.to_string())?;
+        let prepared =
+            prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
+        let CapturedConfiguration::Present { blob_oid, text } = &prepared.configuration else {
+            return Err("committed configuration was not captured".into());
+        };
+        assert_eq!(blob_oid.as_str(), expected_oid);
+        assert_eq!(text.as_bytes(), expected);
+        assert_eq!(
+            std::fs::read(prepared._root.join("ripr.toml")).map_err(|error| error.to_string())?,
+            expected
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn captured_empty_and_absent_configuration_remain_distinct() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("capture-empty-absent")?;
+        std::fs::write(guard.0.join("ripr.toml"), "").map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "empty config"])?;
+        let empty = prepare_named_tree(&guard.0, "HEAD", None)
+            .map_err(|error| error.to_string())?;
+        assert!(matches!(
+            &empty.configuration,
+            CapturedConfiguration::Present { text, .. } if text.is_empty()
+        ));
+        std::fs::remove_file(guard.0.join("ripr.toml")).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "absent config"])?;
+        let absent = prepare_named_tree(&guard.0, "HEAD", None)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(absent.configuration, CapturedConfiguration::Absent);
+        assert!(!absent._root.join("ripr.toml").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn capture_rejects_invalid_utf8_without_changing_ordinary_blob_materialization()
+    -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("capture-invalid-config")?;
+        std::fs::write(guard.0.join("ripr.toml"), [0xff_u8, 0xfe])
+            .map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "invalid config"])?;
+        let tree = git(&guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let failure = prepare_named_tree(&guard.0, "HEAD", None)
+            .err()
+            .ok_or("invalid UTF-8 config was accepted")?;
+        assert!(failure.to_string().contains("not UTF-8"), "{failure}");
+        let (root, _cleanup) = materialize(&guard.0, &tree, None)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            std::fs::read(root.join("ripr.toml")).map_err(|error| error.to_string())?,
+            [0xff_u8, 0xfe]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn capture_refuses_a_config_directory_and_missing_config_object() -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-missing-object")?;
+        let oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{candidate}:ripr.toml")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let parsed = GitObjectId::parse(&oid).map_err(|error| error.to_string())?;
+        let (prefix, suffix) = parsed.as_str().split_at(2);
+        std::fs::remove_file(guard.0.join(".git/objects").join(prefix).join(suffix))
+            .map_err(|error| format!("remove fixture's loose config blob: {error}"))?;
+        let failure = prepare_named_tree(&guard.0, &candidate, None)
+            .err()
+            .ok_or("missing config blob became absent")?;
+        assert!(
+            failure.to_string().contains("git cat-file"),
+            "{failure}"
+        );
+
+        let (directory_guard, _, _) = fixture_repo("capture-config-directory")?;
+        std::fs::remove_file(directory_guard.0.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+        std::fs::create_dir(directory_guard.0.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+        std::fs::write(directory_guard.0.join("ripr.toml/nested"), b"alias")
+            .map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&directory_guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &directory_guard.0,
+            &["commit", "-qm", "config directory"],
+        )?;
+        let failure = prepare_named_tree(&directory_guard.0, "HEAD", None)
+            .err()
+            .ok_or("config directory alias became absent")?;
+        assert!(failure.to_string().contains("ripr.toml is a directory"), "{failure}");
+        let tree = git(&directory_guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let (ordinary, _cleanup) = materialize(&directory_guard.0, &tree, None)
+            .map_err(|error| error.to_string())?;
+        assert!(ordinary.join("ripr.toml/nested").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn capture_inventory_refuses_truncation_duplicates_and_malformed_object_ids()
+    -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-inventory")?;
+        let listing = crate::git::run_git_output_with_deadline(
+            &guard.0,
+            &["ls-tree", "-r", "-z", &candidate],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(listing.status.success());
+        validate_configuration_inventory(&listing.stdout).map_err(|error| error.to_string())?;
+        let truncated = &listing.stdout[..listing.stdout.len() - 1];
+        assert!(validate_configuration_inventory(truncated).is_err());
+        let mut duplicate = listing.stdout.clone();
+        let first = listing.stdout.split(|byte| *byte == 0).next().ok_or("no tree record")?;
+        duplicate.extend_from_slice(first);
+        duplicate.push(0);
+        let failure = validate_configuration_inventory(&duplicate)
+            .err()
+            .ok_or("duplicate path was accepted")?;
+        assert!(failure.to_string().contains("duplicates path"), "{failure}");
+        let malformed = b"100644 blob invalid\tripr.toml\0";
+        assert!(validate_configuration_inventory(malformed).is_err());
+        let oid = "a".repeat(40);
+        let extra = format!("100644 blob {oid} extra\tripr.toml\0");
+        assert!(validate_configuration_inventory(extra.as_bytes()).is_err());
+        let empty_record = [listing.stdout.as_slice(), &[0]].concat();
+        assert!(validate_configuration_inventory(&empty_record).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_capture_cap_refuses_before_growth() -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-cap")?;
+        let tree = git(&guard.0, &["rev-parse", &format!("{candidate}^{{tree}}")], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let failure = materialize_with_configuration(
+            &guard.0,
+            &tree,
+            None,
+            ConfigurationCapture::Requested { limit: 8 },
+        )
+        .err()
+        .ok_or("oversize configuration was captured")?;
+        assert!(failure.to_string().contains("8-byte input limit"), "{failure}");
+        let mut bytes = b"12".to_vec();
+        assert!(append_captured_configuration(&mut bytes, b"3", 2).is_err());
+        assert_eq!(bytes, b"12");
+        append_captured_configuration(&mut bytes, b"3", 3)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(bytes, b"123");
+        assert_eq!(crate::bounded_input::MAX_CLI_INPUT_BYTES, 256 * 1024 * 1024);
+        Ok(())
     }
 
     #[test]
