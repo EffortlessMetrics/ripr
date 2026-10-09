@@ -360,7 +360,12 @@ fn producer_review_input(
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
     // The subject is admission authority. Remove it before touching subordinate
     // artifacts or attempting setup/analysis; only missing files are harmless.
-    for relative in [PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+    for relative in [
+        PR_CHECK_SUBJECT_JSON,
+        PR_CHECK_JSON,
+        PR_REVIEW_INPUT_JSON,
+        complete_execution::RECEIPT,
+    ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}

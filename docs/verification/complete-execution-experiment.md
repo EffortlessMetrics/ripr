@@ -31,6 +31,9 @@ authority. Stdout and stderr are each capped at 64 KiB; incomplete or
 over-limit byte capture refuses. Producer progress stdout is diagnostic only.
 One designated receipt file is read with a 16 KiB limit and exact-document,
 typed parsing; unknown/duplicate fields and extra documents refuse.
+The parent stream-verifies the fixed six artifact digests with 64 KiB scratch,
+individual file bounds, a finite total bound and the configured deadline;
+post-worker body mutation, duplicate artifact keys and stale identities refuse.
 The normal configured producer timeout remains in effect.
 
 RLIMIT_AS is an address-space ceiling per process, not RSS or a process-tree

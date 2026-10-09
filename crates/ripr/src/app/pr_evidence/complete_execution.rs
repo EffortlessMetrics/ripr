@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 pub(super) const WORKER_FLAG: &str = "--experimental-complete-execution-worker";
 pub(super) const GENERATION_FIELD: &str = "experimental_complete_execution";
-const RECEIPT: &str = "target/ripr/pr/complete-execution.receipt.json";
+pub(super) const RECEIPT: &str = "target/ripr/pr/complete-execution.receipt.json";
 const ADDRESS_SPACE_MAX: u64 = 2 * 1024 * 1024 * 1024;
 const FILE_MAX: u64 = 256 * 1024 * 1024;
 #[cfg(target_os = "linux")]
