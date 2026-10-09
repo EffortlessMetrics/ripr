@@ -28,7 +28,7 @@ fn limits(text: &str, name: &str) -> Result<(u64, u64), String> {
     let number = |value: &str| {
         value
             .parse::<u64>()
-            .map_err(|_| format!("experimental worker nonfinite {name}"))
+            .map_err(|error| format!("experimental worker nonfinite {name}: {error}"))
     };
     Ok((number(values[0])?, number(values[1])?))
 }
