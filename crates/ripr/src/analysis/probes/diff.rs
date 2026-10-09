@@ -929,11 +929,9 @@ mod tests {
         assert_eq!(fields(actual), fields(expected));
     }
 
-
     fn many_retarget_uses(count: usize) -> (RustIndex, ChangedFile) {
-        let mut source = String::from(
-            "pub fn classify(count: usize) -> usize {\n    let ceiling = 60;\n",
-        );
+        let mut source =
+            String::from("pub fn classify(count: usize) -> usize {\n    let ceiling = 60;\n");
         for value in 0..count {
             source.push_str(&format!("    if count > ceiling {{ return {value}; }}\n"));
         }
@@ -1000,7 +998,6 @@ mod tests {
         Ok(())
     }
 
-
     fn assert_cursor_matches_every_pause(
         index: &RustIndex,
         changed: &ChangedFile,
@@ -1059,11 +1056,20 @@ mod tests {
         let source = include_str!(
             "../../../../../fixtures/binding_predicate_scope_controls/input/src/lib.rs"
         )
-        .replace("let end = input.len();", "let end = input.trim_end().len();")
+        .replace(
+            "let end = input.len();",
+            "let end = input.trim_end().len();",
+        )
         .replace("let end = 1;", "let end = 3;")
         .replace("let mut end = seed;", "let mut end = seed + 1;")
-        .replace("let end = delim.len_utf8();", "let end = delim.len_utf8() + 1;")
-        .replace("let (end, other) = pair;", "let (end, other) = (pair.0 + 1, pair.1);");
+        .replace(
+            "let end = delim.len_utf8();",
+            "let end = delim.len_utf8() + 1;",
+        )
+        .replace(
+            "let (end, other) = pair;",
+            "let (end, other) = (pair.0 + 1, pair.1);",
+        );
         let files = crate::analysis::diff::parse_unified_diff(include_str!(
             "../../../../../fixtures/binding_predicate_scope_controls/diff.patch"
         ));
@@ -1079,8 +1085,8 @@ mod tests {
     }
 
     #[test]
-    fn probe_cursor_preserves_shifted_removed_coordinates_and_original_ordinals(
-    ) -> Result<(), String> {
+    fn probe_cursor_preserves_shifted_removed_coordinates_and_original_ordinals()
+    -> Result<(), String> {
         let changed = ChangedFile {
             path: PathBuf::from("src/lib.rs"),
             added_lines: [2, 3]
@@ -1119,7 +1125,6 @@ mod tests {
         }
         assert_cursor_matches_every_pause(&index, &changed)
     }
-
 
     #[test]
     fn probe_cursor_deduped_canonical_shapes_do_not_fall_back() -> Result<(), String> {

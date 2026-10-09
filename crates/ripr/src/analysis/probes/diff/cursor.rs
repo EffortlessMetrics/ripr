@@ -143,12 +143,9 @@ impl<'a> RustProbeCursor<'a> {
             {
                 return;
             }
-            if let Some(family) = bounded_subprocess_family(
-                self.index,
-                &self.changed.path,
-                added.new_side_line,
-                text,
-            ) {
+            if let Some(family) =
+                bounded_subprocess_family(self.index, &self.changed.path, added.new_side_line, text)
+            {
                 self.pending = Pending::AddedFamilies {
                     line,
                     families: vec![family].into_iter(),
@@ -296,7 +293,11 @@ impl<'a> RustProbeCursor<'a> {
                 for shape in shapes {
                     if *canonical {
                         let key = (shape.start_byte, shape.family.as_str().to_string());
-                        if self.emitted_parser_shapes.iter().any(|current| current == &key) {
+                        if self
+                            .emitted_parser_shapes
+                            .iter()
+                            .any(|current| current == &key)
+                        {
                             continue;
                         }
                         self.emitted_parser_shapes.push(key);
@@ -312,7 +313,11 @@ impl<'a> RustProbeCursor<'a> {
                                 &context,
                                 &canonical_line,
                                 shape.family,
-                                nearby_removed_line(shape.start_line, &canonical_text, self.changed),
+                                nearby_removed_line(
+                                    shape.start_line,
+                                    &canonical_text,
+                                    self.changed,
+                                ),
                                 Some(canonical_text),
                             ),
                             span,
