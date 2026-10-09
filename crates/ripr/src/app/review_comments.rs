@@ -111,6 +111,25 @@ impl ProducerAdmissionError {
         }
     }
 }
+fn validate_configuration_for_producer_admission(
+    outcome_envelope: &Value,
+    config: &RiprConfig,
+) -> Result<(), ProducerAdmissionError> {
+    super::pr_evidence::validate_pr_evidence_check_configuration_core(outcome_envelope, config)
+        .map_err(|error| ProducerAdmissionError {
+            category: match error {
+                super::pr_evidence::PrEvidenceConfigurationError::Missing
+                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => {
+                    "malformed_producer"
+                }
+                super::pr_evidence::PrEvidenceConfigurationError::Mismatch => {
+                    "producer_identity_mismatch"
+                }
+            },
+            message: error.message().to_string(),
+        })
+}
+
 pub(crate) fn admit_producer_evidence(
     check_path: &Path,
     input: &CheckInput,
@@ -224,19 +243,7 @@ pub(crate) fn admit_producer_evidence(
             "producer review input analysis_outcome is missing outcome",
         )
     })?;
-    super::pr_evidence::validate_pr_evidence_check_configuration_core(outcome_envelope, config)
-        .map_err(|error| ProducerAdmissionError {
-            category: match error {
-                super::pr_evidence::PrEvidenceConfigurationError::Missing
-                | super::pr_evidence::PrEvidenceConfigurationError::Malformed => {
-                    "malformed_producer"
-                }
-                super::pr_evidence::PrEvidenceConfigurationError::Mismatch => {
-                    "producer_identity_mismatch"
-                }
-            },
-            message: error.message().to_string(),
-        })?;
+    validate_configuration_for_producer_admission(outcome_envelope, config)?;
     let outcome: AnalysisOutcome = serde_json::from_value(outcome_value).map_err(|error| {
         ProducerAdmissionError::malformed(format!(
             "producer review input analysis_outcome is invalid: {error}"
@@ -256,6 +263,16 @@ pub(crate) fn admit_producer_evidence(
                 "producer review input projection is invalid: {error}"
             ))
         })?;
+    // Diff discovery and receipt validation may outlive the caller's config load.
+    let current_config = crate::config::load_for_root(&input.root).map_err(|error| {
+        ProducerAdmissionError::malformed(format!("load producer evidence configuration: {error}"))
+    })?;
+    validate_configuration_for_producer_admission(outcome_envelope, &current_config)?;
+    require_equal(
+        "configuration_fingerprint",
+        &repo_exposure_config_identity_hash(&current_config),
+        &identity.configuration_fingerprint,
+    )?;
     Ok(AdmittedReviewAnalysis {
         identity,
         outcome,

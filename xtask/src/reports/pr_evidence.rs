@@ -179,6 +179,24 @@ fn write_pr_evidence_from_check_json(
     write_pr_evidence_packet(repo, options, &changed_files, check_json)
 }
 
+fn validate_current_pr_evidence_configuration(
+    root: &Path,
+    analysis_outcome: &Value,
+    expected_config: &ripr::config::RiprConfig,
+) -> Result<(), String> {
+    let current_config = ripr::config::load_for_root(root)
+        .map_err(|error| format!("load producer evidence configuration: {error}"))?;
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(analysis_outcome, &current_config)?;
+    if ripr::config::repo_exposure_config_identity_hash(&current_config)
+        != ripr::config::repo_exposure_config_identity_hash(expected_config)
+    {
+        return Err(
+            "producer configuration_fingerprint does not match the current configuration".to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn write_pr_evidence_packet(
     repo: &Path,
     options: &PrEvidenceOptions,
@@ -294,10 +312,15 @@ fn write_pr_evidence_packet(
     reject_error_packet(repo)?;
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
+    // Reobserve configuration immediately before committing admission authority.
+    validate_current_pr_evidence_configuration(
+        &root,
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
     // Commit admission authority only after every fallible producer operation.
     publish_check_subject(repo, &subject_text)
 }
-
 
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -313,7 +336,10 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn mutate_configuration_after_load(root: &Path, point: ConfigurationObservation) -> Result<(), String> {
+fn mutate_configuration_after_load(
+    root: &Path,
+    point: ConfigurationObservation,
+) -> Result<(), String> {
     let selected = CONFIGURATION_MUTATION.with(|slot| {
         slot.borrow().as_ref().is_some_and(|entry| entry.0 == point)
     });
@@ -715,6 +741,13 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
                 &config,
             ) {
                 violations.push(error);
+            }
+            if subject.get("configuration_fingerprint").and_then(Value::as_str)
+                != Some(ripr::config::repo_exposure_config_identity_hash(&config).as_str())
+            {
+                violations.push(format!(
+                    "{PR_CHECK_SUBJECT_JSON} configuration_fingerprint does not match the current configuration"
+                ));
             }
         }
         Err(error) => violations.push(format!("load producer evidence configuration: {error}")),

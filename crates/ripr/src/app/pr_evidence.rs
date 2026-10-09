@@ -271,6 +271,23 @@ pub(crate) fn validate_pr_evidence_check_configuration_core(
     Ok(())
 }
 
+fn validate_current_pr_evidence_configuration(
+    root: &Path,
+    analysis_outcome: &Value,
+    expected_config: &crate::config::RiprConfig,
+) -> Result<(), String> {
+    let current_config = load_for_root(root)?;
+    validate_pr_evidence_check_configuration(analysis_outcome, &current_config)?;
+    if repo_exposure_config_identity_hash(&current_config)
+        != repo_exposure_config_identity_hash(expected_config)
+    {
+        return Err(
+            "producer configuration_fingerprint does not match the current configuration".to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn write_pr_evidence_packet(
     repo: &Path,
     options: &PrEvidenceOptions,
@@ -383,6 +400,12 @@ fn write_pr_evidence_packet(
 
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
+    // Reobserve configuration immediately before committing admission authority.
+    validate_current_pr_evidence_configuration(
+        &root,
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
     // Commit admission authority only after every fallible producer operation.
     crate::atomic_file::write(
         &repo.join(PR_CHECK_SUBJECT_JSON),
@@ -390,7 +413,6 @@ fn write_pr_evidence_packet(
         PR_CHECK_SUBJECT_JSON,
     )
 }
-
 
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -407,7 +429,10 @@ thread_local! {
 }
 
 #[cfg(test)]
-fn mutate_configuration_after_load(root: &Path, point: ConfigurationObservation) -> Result<(), String> {
+fn mutate_configuration_after_load(
+    root: &Path,
+    point: ConfigurationObservation,
+) -> Result<(), String> {
     let selected = CONFIGURATION_MUTATION.with(|slot| {
         slot.borrow().as_ref().is_some_and(|entry| entry.0 == point)
     });
@@ -819,6 +844,11 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
         ));
     }
     validate_pr_evidence_check_configuration(
+        subject.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
+    validate_current_pr_evidence_configuration(
+        &expected_input.root,
         subject.get("analysis_outcome").unwrap_or(&Value::Null),
         &config,
     )?;
@@ -1656,7 +1686,6 @@ fn write_parented_file(path: &Path, label: &str, contents: impl AsRef<[u8]>) -> 
     }
     fs::write(path, contents).map_err(|err| format!("failed to write {label}: {err}"))
 }
-
 
 #[cfg(all(test, feature = "lang-rust"))]
 pub(crate) fn with_live_configuration_admission_fixture(
