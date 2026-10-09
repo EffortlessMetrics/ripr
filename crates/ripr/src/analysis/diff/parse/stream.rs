@@ -115,7 +115,6 @@ fn admit_count(limit: usize) -> impl FnMut(usize) -> Result<(), String> {
 
 /// Original-byte data only. The producer owns subject authentication,
 /// retention budgets, inventory reconciliation and completion authority.
-#[cfg_attr(not(test), expect(dead_code, reason = "Producer-owned inactive observation fields; activation remains disabled"))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct RawRecord<'a> {
     pub(crate) ordinal: usize,

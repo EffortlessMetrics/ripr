@@ -590,13 +590,13 @@ fn intake_record_bytes_for_witness(input: &[u8]) -> Vec<Vec<u8>> {
 
 #[test]
 fn borrowed_intake_records_preserve_original_bytes_and_terminators() -> Result<(), String> {
-    let input = b"body:\xff\r\nbody:\xfe\nlast\r";
+    let input = b"body:\xff\r\nbody:\xfe\nlast\r".to_vec();
     let expected: &[&[u8]] = &[b"body:\xff\r\n", b"body:\xfe\n", b"last\r"];
     assert_eq!(expected.concat(), input);
-    let Err(_) = std::str::from_utf8(input) else {
+    let Err(_) = std::str::from_utf8(&input) else {
         return Err("raw record fixture unexpectedly became valid UTF8".to_string());
     };
-    let semantic = String::from_utf8_lossy(input);
+    let semantic = String::from_utf8_lossy(&input);
     assert_eq!(
         semantic.lines().collect::<Vec<_>>(),
         vec!["body:\u{fffd}", "body:\u{fffd}", "last\r"]
@@ -607,7 +607,7 @@ fn borrowed_intake_records_preserve_original_bytes_and_terminators() -> Result<(
         .collect::<Vec<_>>();
     assert_ne!(reconstructed.concat(), input);
 
-    let actual = intake_record_bytes_for_witness(input);
+    let actual = intake_record_bytes_for_witness(&input);
     let actual = actual.iter().map(Vec::as_slice).collect::<Vec<_>>();
     assert_eq!(
         actual, expected,
