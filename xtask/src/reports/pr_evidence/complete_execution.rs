@@ -151,13 +151,9 @@ fn inherited_limit(text: &str, name: &str, maximum: u64) -> Result<u64, String> 
     let mut limit = maximum;
     for field in &fields[..2] {
         if *field != "unlimited" {
-            limit = limit.min(
-                field
-                    .parse::<u64>()
-                    .map_err(|error| {
-                        format!("experimental launcher malformed {name} ceiling: {error}")
-                    })?,
-            );
+            limit = limit.min(field.parse::<u64>().map_err(|error| {
+                format!("experimental launcher malformed {name} ceiling: {error}")
+            })?);
         }
     }
     if limit == 0 {
