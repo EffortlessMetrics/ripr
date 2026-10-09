@@ -101,6 +101,7 @@ pub use ripr::output::CargoMutantsOutcomeRecord
 pub use ripr::output::parse_cargo_mutants_outcomes_json
 pub fn ripr::output::start_here_state::normalize_start_here_output_state
 pub fn ripr::output::start_here_state::start_here_output_state_is_known
+pub fn ripr::review_input::canonical_finding_index
 pub fn ripr::review_input::canonical_projection
 pub fn ripr::review_input::canonical_projection_all
 pub fn ripr::review_input::canonical_projection_from_index

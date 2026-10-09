@@ -5,10 +5,9 @@ use crate::run::{
     run_output_owned_with_timeout, tool_build_timeout,
 };
 use ripr::review_input::{
-    CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
-    REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
-    REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
-    canonical_projection, canonical_projection_all,
+    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION, REVIEW_INPUT_SELECTION_POLICY,
+    REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1, canonical_finding_index,
+    canonical_projection,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -227,26 +226,11 @@ fn write_pr_evidence_packet(
         .get("findings")
         .and_then(Value::as_array)
         .ok_or_else(|| "ripr check output findings must be an array".to_string())?;
-    let entries = canonical_projection_all(findings, &root)
-        .map_err(|error| format!("derive canonical finding index: {error}"))?;
-    if entries.len() > REVIEW_INDEX_MAX_ENTRIES {
-        return Err("canonical finding index exceeds entry limit".to_string());
-    }
-    let encoded_entries = serde_json::to_vec(&entries)
-        .map_err(|error| format!("serialize canonical finding index: {error}"))?;
-    if encoded_entries.len() > REVIEW_INDEX_MAX_BYTES {
-        return Err("canonical finding index exceeds byte limit".to_string());
-    }
-    let index = CanonicalFindingIndexV1 {
-        schema_version: REVIEW_INDEX_SCHEMA_VERSION.to_string(),
-        total_finding_count: entries.len() as u64,
-        index_sha256: format!("sha256:{:x}", Sha256::digest(&encoded_entries)),
-        entries,
-    };
+    let (index, index_byte_count) = canonical_finding_index(findings, &root)?;
     subject["canonical_finding_index"] = serde_json::to_value(index)
         .map_err(|error| format!("serialize canonical finding index: {error}"))?;
     subject["canonical_finding_index_entry_count"] = json!(findings.len());
-    subject["canonical_finding_index_byte_count"] = json!(encoded_entries.len());
+    subject["canonical_finding_index_byte_count"] = json!(index_byte_count);
     let review_input = producer_review_input(&check_value, repo, options, &subject)?;
     let review_input_text = format!(
         "{}\n",
@@ -1678,6 +1662,7 @@ fn repo_root() -> Result<PathBuf, String> {
 mod tests {
     use super::*;
     use ripr::review_input::projection_summary;
+    use ripr::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
 
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {
@@ -3279,10 +3264,46 @@ mod tests {
                 REVIEW_INDEX_MAX_ENTRIES + 1
             ]);
             let oversized = serde_json::to_string(&oversized).map_err(|error| error.to_string())?;
+            let mut excess_bytes = value.clone();
+            excess_bytes["findings"] = Value::Array(
+                (0..REVIEW_INDEX_MAX_ENTRIES)
+                    .map(|i| {
+                        let mut finding = value["findings"][0].clone();
+                        finding["id"] = json!(format!("index-byte-{i:04}"));
+                        finding["suggested_next_action"] = json!("x".repeat(600));
+                        finding
+                    })
+                    .collect(),
+            );
+            let byte_findings = excess_bytes["findings"]
+                .as_array()
+                .ok_or_else(|| "byte fixture findings are missing".to_string())?;
+            let entries = ripr::review_input::canonical_projection_all(byte_findings, &repo)?;
+            let legacy = serde_json::to_vec(&entries).map_err(|error| error.to_string())?;
+            assert!(legacy.len() > REVIEW_INDEX_MAX_BYTES);
+            let selected = ripr::review_input::canonical_projection(byte_findings, &repo)?;
+            assert!(
+                serde_json::to_vec(&selected)
+                    .map_err(|error| error.to_string())?
+                    .len()
+                    < REVIEW_INPUT_MAX_BYTES
+            );
+            let excess_bytes =
+                serde_json::to_string(&excess_bytes).map_err(|error| error.to_string())?;
+            let mut malformed_oversized = value.clone();
+            malformed_oversized["findings"] =
+                Value::Array(vec![Value::Null; REVIEW_INDEX_MAX_ENTRIES + 1]);
+            let malformed_oversized =
+                serde_json::to_string(&malformed_oversized).map_err(|error| error.to_string())?;
             for (label, replacement) in [
                 ("runner failure", None),
                 ("malformed conversion", Some("{")),
                 ("oversized conversion", Some(oversized.as_str())),
+                ("index byte limit", Some(excess_bytes.as_str())),
+                (
+                    "entry guard before projection",
+                    Some(malformed_oversized.as_str()),
+                ),
             ] {
                 baseline()?;
                 let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
@@ -3296,7 +3317,10 @@ mod tests {
                 let expected = match label {
                     "runner failure" => "injected runner failure",
                     "malformed conversion" => "not valid JSON",
-                    "oversized conversion" => "exceeds entry limit",
+                    "oversized conversion" | "entry guard before projection" => {
+                        "exceeds entry limit"
+                    }
+                    "index byte limit" => "exceeds byte limit",
                     _ => return Err(format!("unknown failure control: {label}")),
                 };
                 assert!(
