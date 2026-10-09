@@ -118,12 +118,15 @@ fn summary_text(repo: &Path) -> String {
     let review_comments = load_json(repo, REVIEW_COMMENTS_JSON);
     let start_here = load_json(repo, START_HERE_JSON);
     for packet in [pr_evidence.value.as_ref(), review_comments.value.as_ref()]
-        .into_iter().flatten()
+        .into_iter()
+        .flatten()
     {
         if packet.get("experimental_complete_execution").is_some()
             && let Some(error) = crate::app::pr_evidence::reject_pr_evidence_error_packet(packet)
         {
-            return format!("# Experimental PR Evidence Summary\n\n**{error}.**\n\nComplete coverage is not established. Mutation routing and review guidance are withheld, including any previously saved guidance.\n");
+            return format!(
+                "# Experimental PR Evidence Summary\n\n**{error}.**\n\nComplete coverage is not established. Mutation routing and review guidance are withheld, including any previously saved guidance.\n"
+            );
         }
     }
     render_pr_evidence_summary(&SummaryRenderInput {
@@ -390,8 +393,13 @@ mod tests {
     #[test]
     fn experimental_summary_withholds_preexisting_review_guidance() -> Result<(), String> {
         let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH).map_err(|error| error.to_string())?.as_nanos();
-        let repo = std::env::temp_dir().join(format!("ripr-experimental-summary-{}-{unique}", std::process::id()));
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let repo = std::env::temp_dir().join(format!(
+            "ripr-experimental-summary-{}-{unique}",
+            std::process::id()
+        ));
         fs::create_dir_all(repo.join("target/ripr/pr")).map_err(|error| error.to_string())?;
         fs::create_dir_all(repo.join("target/ripr/review")).map_err(|error| error.to_string())?;
         let result = (|| {
@@ -399,8 +407,11 @@ mod tests {
                 "comments":17,"requires_targeted_mutation":true
             }});
             let write = |relative: &str, value: &serde_json::Value| -> Result<(), String> {
-                fs::write(repo.join(relative), serde_json::to_vec(value)
-                    .map_err(|error| error.to_string())?).map_err(|error| error.to_string())
+                fs::write(
+                    repo.join(relative),
+                    serde_json::to_vec(value).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())
             };
             write(PR_EVIDENCE_JSON, &ordinary)?;
             write(REVIEW_COMMENTS_JSON, &ordinary)?;
@@ -418,7 +429,10 @@ mod tests {
                         || summary.contains("- changed-line comments: 17")
                         || summary.contains("- requires_targeted_mutation:")
                     {
-                        return Err("experimental legacy summary published stale ordinary guidance".to_string());
+                        return Err(
+                            "experimental legacy summary published stale ordinary guidance"
+                                .to_string(),
+                        );
                     }
                     write_summary(&repo.join(PR_SUMMARY_MD), &summary)?;
                     check_summary(&repo.join(PR_SUMMARY_MD), &summary)?;
@@ -431,5 +445,4 @@ mod tests {
         fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
         result
     }
-
 }

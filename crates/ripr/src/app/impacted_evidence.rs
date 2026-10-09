@@ -308,7 +308,9 @@ fn require_pr_evidence(repo: &Path, relative: &str) -> Result<PrEvidenceInput, S
     let input = load_pr_evidence(repo, relative);
     match &input.state {
         InputState::Present => {
-            if let Some(error) = input.value.as_ref()
+            if let Some(error) = input
+                .value
+                .as_ref()
                 .and_then(crate::app::pr_evidence::reject_pr_evidence_error_packet)
             {
                 return Err(format!("impacted-evidence: {error}"));
@@ -1204,7 +1206,8 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn experimental_evidence_cannot_route_mutation_and_recovery_is_ordinary() -> Result<(), String> {
+    fn experimental_evidence_cannot_route_mutation_and_recovery_is_ordinary() -> Result<(), String>
+    {
         let repo = fresh_repo("experimental-routing")?;
         fs::create_dir_all(repo.join("target/ripr/pr")).map_err(|error| error.to_string())?;
         let result = (|| {
@@ -1215,23 +1218,30 @@ mod tests {
                 Value::Null,
                 json!({"coverage":"complete","production_admission":true}),
             ] {
-                fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
-                    serde_json::to_vec(&ordinary).map_err(|error| error.to_string())?
-                ).map_err(|error| error.to_string())?;
+                fs::write(
+                    repo.join(DEFAULT_PR_EVIDENCE_JSON),
+                    serde_json::to_vec(&ordinary).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
                 run_impacted_evidence_at(&repo, &[])?;
                 assert!(repo.join(IMPACTED_JSON).exists());
                 assert!(repo.join(IMPACTED_MD).exists());
                 let routed: Value = serde_json::from_slice(
-                    &fs::read(repo.join(IMPACTED_JSON)).map_err(|error| error.to_string())?
-                ).map_err(|error| error.to_string())?;
+                    &fs::read(repo.join(IMPACTED_JSON)).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
                 assert_eq!(routed["summary"]["ripr_severe_gap"], true);
-                assert!(routed["summary"]["requires_targeted_mutation"] == true
-                    || routed["summary"]["requires_full_owner_mutation"] == true);
+                assert!(
+                    routed["summary"]["requires_targeted_mutation"] == true
+                        || routed["summary"]["requires_full_owner_mutation"] == true
+                );
                 let mut marked = ordinary.clone();
                 marked["experimental_complete_execution"] = generation;
-                fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
-                    serde_json::to_vec(&marked).map_err(|error| error.to_string())?
-                ).map_err(|error| error.to_string())?;
+                fs::write(
+                    repo.join(DEFAULT_PR_EVIDENCE_JSON),
+                    serde_json::to_vec(&marked).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
                 let Err(error) = run_impacted_evidence_at(&repo, &[]) else {
                     return Err("experimental evidence routed mutation".to_string());
                 };
@@ -1239,9 +1249,11 @@ mod tests {
                 assert!(!repo.join(IMPACTED_JSON).exists());
                 assert!(!repo.join(IMPACTED_MD).exists());
             }
-            fs::write(repo.join(DEFAULT_PR_EVIDENCE_JSON),
-                serde_json::to_vec(&ordinary).map_err(|error| error.to_string())?
-            ).map_err(|error| error.to_string())?;
+            fs::write(
+                repo.join(DEFAULT_PR_EVIDENCE_JSON),
+                serde_json::to_vec(&ordinary).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
             run_impacted_evidence_at(&repo, &[])?;
             run_impacted_evidence_at(&repo, &["--check".to_string()])?;
             Ok(())
@@ -1249,5 +1261,4 @@ mod tests {
         fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
         result
     }
-
 }
