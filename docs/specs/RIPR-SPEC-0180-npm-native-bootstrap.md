@@ -32,7 +32,10 @@ suffixes cannot be normalized into an otherwise expected artifact or wheel membe
 This refusal applies on both Unix and Windows readers before member bytes are read.
 
 Native execution and qualification retain explicit denominators. Each selected
-client must independently install the actual tarball project-locally, globally,
+route, including fresh reinstall, retains an explanation naming its selected
+follow-up finding from the retained check output. Unrelated nonempty explanation
+bytes cannot satisfy that journey.
+Each selected client must independently install the actual tarball project-locally, globally,
 through npm exec and the actual public npx executable, then produce nonempty
 findings and a follow-up action. A missing or broken npx wrapper fails
 qualification. Reinstallation requires observed package/bin-link absence before
