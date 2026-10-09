@@ -4,8 +4,7 @@
 //! declared crate root outside `src/`) seeded diff probes even when no `mod`
 //! names it, so rustc never compiles it; and the out-of-line modules of an
 //! external crate root (`[lib] path = "../shared/lib.rs"`) never seeded,
-//! because crate::analysis::committed_source::frozen::fs as frozen_fs;
-use their nearest manifest is not the declaring package.
+//! because their nearest manifest is not the declaring package.
 //!
 //! This pass walks the module tree of the packages that could compile a
 //! changed file, from every Cargo target root, following `mod`, `#[path]` and
@@ -51,6 +50,7 @@ use super::cargo_targets::{
     normalize, owning_package_dir,
 };
 use super::source_role::SourceRoleContext;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::analysis::syntax::{RustModuleTreeEdge, RustModuleTreeScan, rust_module_tree_scan};
 
 /// Files one package walk may visit before it stops and reports itself
