@@ -24,6 +24,8 @@ use crate::analysis::language::changed_let_binding;
 use crate::domain::{Probe, ProbeFamily, SourceLocation};
 use std::path::Path;
 
+mod cursor;
+
 /// Test surface: the probe vec without the #3294 relations. Production
 /// callers use [`try_for_each_probe_with_relations`].
 #[cfg(test)]
@@ -57,177 +59,13 @@ pub(crate) fn try_for_each_probe_with_relations<E>(
     root: &Path,
     changed: &ChangedFile,
     index: &RustIndex,
-    mut emit: impl FnMut(SeededProbe) -> Result<(), E>,
+    emit: impl FnMut(SeededProbe) -> Result<(), E>,
 ) -> Result<(), E> {
-    let mut seen = std::collections::HashMap::new();
-    let mut emit = |mut seeded: SeededProbe| {
-        dedup_probe_id(&mut seeded, &mut seen);
-        emit(seeded)
-    };
-    // Use `new_side_line` for all lines: for added lines this equals `line`; for
-    // removed lines `new_side_line` is the new-file coordinate, which is what
-    // the RustIndex (built from the new file) expects (RANK-1 fix, #1222).
-    let changed_lines = changed
-        .added_lines
-        .iter()
-        .chain(changed.removed_lines.iter())
-        .map(|line| line.new_side_line)
-        .collect::<Vec<_>>();
-    let changed_nodes = changed_owner_spans_for_lines(index, &changed.path, &changed_lines);
-    // Inline test-module scopes are file structure, not per-line evidence:
-    // build once per file so ownerless-line checks stay linear (#3718).
-    let test_module_ranges = test_module_ranges_for(index, &changed.path);
-    let build_context = ProbeBuildContext {
-        root,
-        changed,
-        index,
-        changed_nodes: &changed_nodes,
-    };
-    let mut emitted_parser_shapes = Vec::<(usize, String)>::new();
-    let skip_added = structural_lines_covered_by_run(&changed.added_lines);
-    let skip_removed = structural_lines_covered_by_run(&changed.removed_lines);
-
-    for (added_index, added) in changed.added_lines.iter().enumerate() {
-        let text = added.text.trim();
-        if should_ignore_changed_line(text) || skip_added[added_index] {
-            continue;
-        }
-        if changed_line_is_test_evidence(
-            index,
-            &changed.path,
-            added.new_side_line,
-            &test_module_ranges,
-        ) {
-            continue;
-        }
-        if opens_new_function_with_added_body(index, changed, added.new_side_line, text) {
-            continue;
-        }
-        // RIPR-SPEC-0178: recognize a bounded literal allowlisted subprocess
-        // adapter ahead of generic parser shapes, retaining the seeded API.
-        if let Some(family) =
-            bounded_subprocess_family(index, &changed.path, added.new_side_line, text)
-        {
-            emit(SeededProbe::from_probe(build_probe(
-                &build_context,
-                added,
-                family,
-                nearby_removed_line(added.new_side_line, text, changed),
-                Some(text.to_string()),
-            )))?;
-            continue;
-        }
-        let parser_shapes =
-            parser_probe_shapes_for_changed_line(index, &changed.path, added.new_side_line, text);
-        let parser_shapes = parser_shapes
-            .into_iter()
-            .filter(|shape| shape.family != ProbeFamily::CallDeletion || shape.standalone_call)
-            .collect::<Vec<_>>();
-        let canonical_shapes = parser_shapes
-            .iter()
-            .filter(|shape| {
-                changed
-                    .added_lines
-                    .iter()
-                    .any(|line| line.new_side_line == shape.start_line)
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        if !canonical_shapes.is_empty() {
-            for shape in canonical_shapes {
-                let key = (shape.start_byte, shape.family.as_str().to_string());
-                if emitted_parser_shapes.iter().any(|current| current == &key) {
-                    continue;
-                }
-                emitted_parser_shapes.push(key);
-                let canonical_text = canonical_probe_text(text, shape.text);
-                let parser_span = parser_span_for_canonical_shape(&canonical_text, &shape);
-                let canonical_line = ChangedLine {
-                    line: shape.start_line,
-                    new_side_line: shape.start_line,
-                    text: canonical_text.clone(),
-                };
-                let probe = build_probe(
-                    &build_context,
-                    &canonical_line,
-                    shape.family,
-                    nearby_removed_line(shape.start_line, &canonical_text, changed),
-                    Some(canonical_text.clone()),
-                );
-                emit(SeededProbe::maybe_with_span(probe, parser_span))?;
-            }
-            continue;
-        }
-        if !parser_shapes.is_empty() {
-            for shape in parser_shapes {
-                emit(SeededProbe::from_probe(build_probe(
-                    &build_context,
-                    added,
-                    shape.family,
-                    nearby_removed_line(added.new_side_line, text, changed),
-                    Some(text.to_string()),
-                )))?;
-            }
-            continue;
-        }
-        let families = classify_changed_line(text);
-        // #3294: a changed simple `let` initializer that only lands in the
-        // static-unknown catch-all retargets to its same-function predicate
-        // uses when the binding reaches them directly. The changed
-        // initializer stays causal evidence (before/after), so the finding
-        // names the actual behavioral predicate instead of a generic
-        // changed-syntax limitation.
-        if families == [ProbeFamily::StaticUnknown]
-            && let Some(retargeted) =
-                retarget_changed_binding_predicates(&build_context, added, text, &changed_lines)
-        {
-            for seeded in retargeted {
-                emit(seeded)?;
-            }
-            continue;
-        }
-        for family in families {
-            emit(SeededProbe::from_probe(build_probe(
-                &build_context,
-                added,
-                family,
-                nearby_removed_line(added.new_side_line, text, changed),
-                Some(text.to_string()),
-            )))?;
-        }
-    }
-
-    for (removed_index, removed) in changed.removed_lines.iter().enumerate() {
-        let text = removed.text.trim();
-        if should_ignore_changed_line(text) || skip_removed[removed_index] {
-            continue;
-        }
-        // Use new_side_line so the owner lookup queries the new-file index at the
-        // correct position (RANK-1 fix: `removed.line` is an old-side coordinate
-        // and diverges from the new file when an earlier hunk shifted lines).
-        if changed_line_is_test_evidence(
-            index,
-            &changed.path,
-            removed.new_side_line,
-            &test_module_ranges,
-        ) {
-            continue;
-        }
-        for family in classify_changed_line(text) {
-            if has_matching_added_line(removed, &family, changed) {
-                continue;
-            }
-            emit(SeededProbe::from_probe(build_probe(
-                &build_context,
-                removed,
-                family,
-                Some(text.to_string()),
-                None,
-            )))?;
-        }
-    }
-
-    Ok(())
+    // A fresh cursor with unlimited quotas drains the original semantic file.
+    // The ordinary adapter still admits the complete subject before this call.
+    cursor::RustProbeCursor::new(root, changed, index)
+        .advance(usize::MAX, usize::MAX, emit)
+        .map(|_| ())
 }
 
 /// Which changed lines of one diff side are structural delimiters
@@ -283,6 +121,7 @@ fn structural_lines_covered_by_run(lines: &[ChangedLine]) -> Vec<bool> {
 /// generic static-unknown path — unless at least one direct use
 /// survives the scope rules at a line the diff itself does not change
 /// (a directly changed predicate already carries its own probe).
+#[cfg(test)]
 fn retarget_changed_binding_predicates(
     context: &ProbeBuildContext<'_>,
     added: &ChangedLine,
@@ -675,7 +514,6 @@ struct ProbeBuildContext<'a> {
     index: &'a RustIndex,
     changed_nodes: &'a [ChangedOwnerSpan],
 }
-
 
 #[cfg(test)]
 std::thread_local! {
@@ -1093,7 +931,9 @@ mod tests {
 
 
     fn many_retarget_uses(count: usize) -> (RustIndex, ChangedFile) {
-        let mut source = String::from("pub fn classify(count: usize) -> usize {\n    let ceiling = 60;\n");
+        let mut source = String::from(
+            "pub fn classify(count: usize) -> usize {\n    let ceiling = 60;\n",
+        );
         for value in 0..count {
             source.push_str(&format!("    if count > ceiling {{ return {value}; }}\n"));
         }
@@ -1121,12 +961,21 @@ mod tests {
     }
 
     #[test]
-    fn probe_callback_does_not_construct_retargeted_tail_after_sink_refusal() -> Result<(), String> {
+    fn probe_callback_does_not_construct_retargeted_tail_after_sink_refusal() -> Result<(), String>
+    {
         let (index, changed) = many_retarget_uses(16);
         let expected =
             legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
-        assert_eq!(expected.len(), 16, "fixture must reach all direct predicate uses");
-        assert!(expected.iter().all(|seeded| seeded.binding_relation.is_some()));
+        assert_eq!(
+            expected.len(),
+            16,
+            "fixture must reach all direct predicate uses",
+        );
+        assert!(
+            expected
+                .iter()
+                .all(|seeded| seeded.binding_relation.is_some())
+        );
         PROBE_BUILD_COUNT.with(|count| count.set(0));
         let mut delivered = 0;
         let error = match try_for_each_probe_with_relations(
@@ -1149,6 +998,267 @@ mod tests {
             "the actual probe constructor must not build the refused retarget tail",
         );
         Ok(())
+    }
+
+
+    fn assert_cursor_matches_every_pause(
+        index: &RustIndex,
+        changed: &ChangedFile,
+    ) -> Result<(), String> {
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), changed, index);
+        assert!(
+            !expected.is_empty(),
+            "equivalence requires a nonempty probe subject",
+        );
+        let before_cursor = crate::analysis::syntax::ra::changed_owner_body_materialization_count();
+        for first_pause in 1..=expected.len() + 1 {
+            let mut cursor = cursor::RustProbeCursor::new(Path::new("workspace"), changed, index);
+            let mut actual = Vec::new();
+            let mut state = cursor.advance(usize::MAX, first_pause, |seeded| {
+                actual.push(seeded);
+                Ok::<(), String>(())
+            })?;
+            assert_same_seeded_probes(&actual, &expected[..actual.len()]);
+            let maximum_calls =
+                changed.added_lines.len() + changed.removed_lines.len() + expected.len() + 2;
+            for _ in 0..maximum_calls {
+                if state == cursor::AdvanceState::Exhausted {
+                    break;
+                }
+                assert_eq!(state, cursor::AdvanceState::Paused);
+                state = cursor.advance(1, 1, |seeded| {
+                    actual.push(seeded);
+                    Ok::<(), String>(())
+                })?;
+                assert_same_seeded_probes(&actual, &expected[..actual.len()]);
+            }
+            assert_eq!(state, cursor::AdvanceState::Exhausted);
+            assert_same_seeded_probes(&actual, &expected);
+            assert_eq!(
+                crate::analysis::syntax::ra::changed_owner_body_materialization_count(),
+                before_cursor,
+                "cursor preparation and resumes must not copy owner bodies",
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn probe_cursor_resumes_inside_retarget_expansion_with_legacy_identity() -> Result<(), String> {
+        let (index, changed) = many_retarget_uses(16);
+        assert_cursor_matches_every_pause(&index, &changed)
+    }
+
+    #[test]
+    fn probe_cursor_preserves_whole_file_masks_shapes_and_scope_controls() -> Result<(), String> {
+        for signature in [false, true] {
+            let (index, changed) = loyalty_index_and_change(signature);
+            assert_cursor_matches_every_pause(&index, &changed)?;
+        }
+        let source = include_str!(
+            "../../../../../fixtures/binding_predicate_scope_controls/input/src/lib.rs"
+        )
+        .replace("let end = input.len();", "let end = input.trim_end().len();")
+        .replace("let end = 1;", "let end = 3;")
+        .replace("let mut end = seed;", "let mut end = seed + 1;")
+        .replace("let end = delim.len_utf8();", "let end = delim.len_utf8() + 1;")
+        .replace("let (end, other) = pair;", "let (end, other) = (pair.0 + 1, pair.1);");
+        let files = crate::analysis::diff::parse_unified_diff(include_str!(
+            "../../../../../fixtures/binding_predicate_scope_controls/diff.patch"
+        ));
+        let [changed] = files.as_slice() else {
+            return Err("scope fixture must retain exactly one semantic file".to_string());
+        };
+        let mut index = RustIndex::default();
+        index.insert_file_only(
+            changed.path.clone(),
+            crate::analysis::rust_index::summarize_file(changed.path.clone(), source),
+        );
+        assert_cursor_matches_every_pause(&index, changed)
+    }
+
+    #[test]
+    fn probe_cursor_preserves_shifted_removed_coordinates_and_original_ordinals(
+    ) -> Result<(), String> {
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: [2, 3]
+                .into_iter()
+                .map(|line| ChangedLine {
+                    line,
+                    new_side_line: line,
+                    text: "if amount > threshold {".to_string(),
+                })
+                .collect(),
+            removed_lines: [(90, 9), (100, 10)]
+                .into_iter()
+                .map(|(line, new_side_line)| ChangedLine {
+                    line,
+                    new_side_line,
+                    text: "if amount > threshold {".to_string(),
+                })
+                .collect(),
+        };
+        let index = RustIndex::default();
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert_eq!(expected.len(), 4);
+        assert_eq!(
+            expected
+                .iter()
+                .map(|seeded| seeded.probe.location.line)
+                .collect::<Vec<_>>(),
+            vec![2, 3, 9, 10],
+        );
+        for (ordinal, seeded) in expected.iter().enumerate().skip(1) {
+            assert_eq!(
+                seeded.probe.id.0,
+                format!("{}.{}", expected[0].probe.id.0, ordinal + 1)
+            );
+        }
+        assert_cursor_matches_every_pause(&index, &changed)
+    }
+
+
+    #[test]
+    fn probe_cursor_deduped_canonical_shapes_do_not_fall_back() -> Result<(), String> {
+        let (index, mut changed) = loyalty_index_and_change(false);
+        changed.added_lines = [2, 2]
+            .into_iter()
+            .map(|line| ChangedLine {
+                line,
+                new_side_line: line,
+                text: "if member_years >= 5 {".to_string(),
+            })
+            .collect();
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert_eq!(expected.len(), 1, "repeated canonical shape must emit once");
+        assert!(expected[0].parser_span.is_some());
+        assert_cursor_matches_every_pause(&index, &changed)
+    }
+
+    #[test]
+    fn probe_cursor_keeps_all_filtered_retarget_fallback() -> Result<(), String> {
+        let (index, mut changed) = many_retarget_uses(3);
+        for line in 3..=5 {
+            changed.added_lines.push(ChangedLine {
+                line,
+                new_side_line: line,
+                text: format!("if count > ceiling {{ return {}; }}", line - 3),
+            });
+        }
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert!(
+            expected
+                .iter()
+                .all(|seeded| seeded.binding_relation.is_none())
+        );
+        assert!(expected.iter().any(|seeded| {
+            seeded.probe.location.line == 2 && seeded.probe.family == ProbeFamily::StaticUnknown
+        }));
+        assert_cursor_matches_every_pause(&index, &changed)
+    }
+
+    #[test]
+    fn probe_cursor_sink_failure_is_sticky_and_does_not_construct_a_retry() -> Result<(), String> {
+        let (index, changed) = many_retarget_uses(16);
+        let mut cursor = cursor::RustProbeCursor::new(Path::new("workspace"), &changed, &index);
+        PROBE_BUILD_COUNT.with(|count| count.set(0));
+        let mut calls = 0;
+        let error = match cursor.advance(1, 1, |_| {
+            calls += 1;
+            Err::<(), _>("sink refused".to_string())
+        }) {
+            Err(error) => error,
+            Ok(state) => return Err(format!("sink failure must be returned, got {state:?}")),
+        };
+        assert_eq!(error, "sink refused");
+        assert_eq!(calls, 1);
+        assert_eq!(PROBE_BUILD_COUNT.with(|count| count.get()), 1);
+        let state = cursor.advance(usize::MAX, usize::MAX, |_| {
+            calls += 1;
+            Ok::<(), String>(())
+        })?;
+        assert_eq!(state, cursor::AdvanceState::Poisoned);
+        assert_eq!(calls, 1);
+        assert_eq!(PROBE_BUILD_COUNT.with(|count| count.get()), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn probe_cursor_invalid_quota_and_ignored_inputs_are_not_exhaustion() -> Result<(), String> {
+        let index = RustIndex::default();
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: vec![
+                ChangedLine {
+                    line: 1,
+                    new_side_line: 1,
+                    text: "// ignored".to_string(),
+                },
+                ChangedLine {
+                    line: 2,
+                    new_side_line: 2,
+                    text: "if amount > 3 {".to_string(),
+                },
+            ],
+            removed_lines: vec![],
+        };
+        let mut cursor = cursor::RustProbeCursor::new(Path::new("workspace"), &changed, &index);
+        PROBE_BUILD_COUNT.with(|count| count.set(0));
+        let state = cursor.advance(0, 1, |_| Ok::<(), String>(()))?;
+        assert_eq!(state, cursor::AdvanceState::InvalidQuota);
+        assert_eq!(PROBE_BUILD_COUNT.with(|count| count.get()), 0);
+        let state = cursor.advance(1, 1, |_| Ok::<(), String>(()))?;
+        assert_eq!(state, cursor::AdvanceState::Paused);
+        assert_eq!(PROBE_BUILD_COUNT.with(|count| count.get()), 0);
+        let mut actual = Vec::new();
+        let state = cursor.advance(1, 1, |seeded| {
+            actual.push(seeded);
+            Ok::<(), String>(())
+        })?;
+        assert_eq!(state, cursor::AdvanceState::Paused);
+        assert_eq!(actual.len(), 1);
+        let state = cursor.advance(1, 1, |_| Err::<(), _>("EOF must emit nothing".to_string()))?;
+        assert_eq!(state, cursor::AdvanceState::Exhausted);
+        Ok(())
+    }
+
+    #[test]
+    fn probe_cursor_retains_one_original_7038_line_owner() -> Result<(), String> {
+        let source = format!(
+            "pub fn large(amount: usize) -> usize {{\n{}    if amount > 10 {{ return amount + 1; }}\n    amount\n}}\n",
+            "    // original owner context\n".repeat(7_034),
+        );
+        let path = PathBuf::from("src/lib.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: source
+                .lines()
+                .enumerate()
+                .map(|(offset, text)| ChangedLine {
+                    line: offset + 1,
+                    new_side_line: offset + 1,
+                    text: text.to_string(),
+                })
+                .collect(),
+            removed_lines: vec![],
+        };
+        assert_eq!(changed.added_lines.len(), 7_038);
+        let mut index = RustIndex::default();
+        index.insert_file_only(
+            path.clone(),
+            crate::analysis::rust_index::summarize_file(path, source),
+        );
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert!(!expected.is_empty());
+        // This invokes the original extractor directly; the unchanged adapter
+        // total-subject guard still refuses an oversized production subject.
+        assert_cursor_matches_every_pause(&index, &changed)
     }
 
     #[test]
