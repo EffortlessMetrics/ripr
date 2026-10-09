@@ -314,6 +314,10 @@ impl Write for CanonicalIndexWriter {
         Ok(buffer.len())
     }
 
+    fn write_all(&mut self, buffer: &[u8]) -> io::Result<()> {
+        self.write(buffer).map(|_| ())
+    }
+
     fn flush(&mut self) -> io::Result<()> {
         match &self.failure {
             Some(error) => Err(io::Error::other(error.clone())),
@@ -564,13 +568,13 @@ mod tests {
 
     #[test]
     fn canonical_index_writer_refuses_before_growth_and_retains_failure() -> Result<(), String> {
-        let mut writer = CanonicalIndexWriter::new(8);
+        let mut writer = CanonicalIndexWriter::new(2048);
         writer.write_all(b"1234").map_err(|error| error.to_string())?;
-        assert!(writer.requested_capacity <= 8);
+        assert_eq!(writer.requested_capacity, 1024);
         let bytes = writer.bytes.clone();
         let request = writer.requested_capacity;
         let failure = writer
-            .write(b"56789")
+            .write(&vec![b'x'; 2045])
             .err()
             .ok_or_else(|| "oversized write accepted".to_string())?
             .to_string();
@@ -578,6 +582,7 @@ mod tests {
         assert_eq!(writer.bytes, bytes);
         assert_eq!(writer.requested_capacity, request);
         assert_eq!(writer.write(b"").err().map(|error| error.to_string()), Some(failure.clone()));
+        assert_eq!(writer.write_all(b"").err().map(|error| error.to_string()), Some(failure.clone()));
         assert_eq!(writer.flush().err().map(|error| error.to_string()), Some(failure.clone()));
         assert_eq!(writer.finish().err(), Some(failure));
         assert_eq!(encoded_length(usize::MAX, 1, usize::MAX), Err(
@@ -586,13 +591,14 @@ mod tests {
         assert_eq!(encoded_length(8, 1, 8), Err("canonical finding index exceeds byte limit"));
         assert_eq!(encoded_length(8, 0, 8), Ok(8));
 
-        let mut writer = CanonicalIndexWriter::new(4096);
-        for size in [1, 1024, 1024, 2047] {
+        let mut writer = CanonicalIndexWriter::new(3000);
+        for (size, request) in [(1, 1024), (1024, 2048), (1024, 3000), (951, 3000)] {
             writer.write_all(&vec![b'x'; size]).map_err(|error| error.to_string())?;
-            assert!(writer.requested_capacity <= 4096);
+            assert_eq!(writer.requested_capacity, request);
+            assert!(writer.requested_capacity <= 3000);
             assert!(writer.bytes.len() <= writer.requested_capacity);
         }
-        assert_eq!(writer.finish()?.len(), 4096);
+        assert_eq!(writer.finish()?.len(), 3000);
         Ok(())
     }
 
