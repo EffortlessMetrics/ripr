@@ -1190,9 +1190,23 @@ fn load_canonical_check_diff(repo: &Path, options: &PrEvidenceOptions) -> Result
 fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, String> {
     let diff_path = repo.join(PR_CANONICAL_DIFF);
     let root_path = command_root_path(repo, &options.root);
-    let config = configuration_for_analysis(&root_path)?;
+    let analysis_root =
+        if let Some(authority) = crate::analysis::committed_source::frozen::current() {
+            // Path equality accepts the caller's trailing `.` component without
+            // consulting mutable live files. The pipeline receives the authority's
+            // exact spelling; a different logical root remains a sticky refusal.
+            if root_path != authority.logical_root() {
+                return Err(authority
+                    .refuse_external_effect("PR evidence checker requires its bound logical root")
+                    .to_string());
+            }
+            authority.logical_root().to_path_buf()
+        } else {
+            root_path.clone()
+        };
+    let config = configuration_for_analysis(&analysis_root)?;
     let mut input = CheckInput {
-        root: root_path,
+        root: analysis_root,
         base: None,
         diff_file: Some(diff_path),
         mode: Mode::Draft,
@@ -1204,7 +1218,10 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
         git_candidate: None,
     };
     apply_to_check_input(&mut input, &config, CheckInputExplicit::default());
-    let output = check_workspace_with_config(input, &config)?;
+    let mut output = check_workspace_with_config(input, &config)?;
+    // Keep the ordinary caller-facing root while all frozen reads and analysis
+    // use the authority's exact logical root.
+    output.root = root_path;
     // #5203: the internal packet input renders unbounded. Routing counts
     // the full finding set; the external findings-array byte budget must
     // not silently truncate the counts this packet routes from (Codex P1:
