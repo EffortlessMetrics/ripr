@@ -1525,6 +1525,288 @@ mod tests {
     use super::*;
     use crate::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
 
+
+    #[cfg(feature = "lang-rust")]
+    const CONFIGURATION_A: &str = "[analysis]\ninclude_unchanged_tests = true\n";
+    #[cfg(feature = "lang-rust")]
+    const CONFIGURATION_B: &str = "[analysis]\ninclude_unchanged_tests = false\n";
+
+    #[cfg(feature = "lang-rust")]
+    fn with_configuration_fixture(
+        name: &str,
+        initial_config: Option<&str>,
+        test: impl FnOnce(
+            &Path,
+            &PrEvidenceOptions,
+            &str,
+            &dyn Fn(&Path, &PrEvidenceOptions) -> Result<String, String>,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
+
+        let repo = temp_repo(name)?;
+        let result = (|| {
+            run_git(
+                &repo,
+                &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+            )?;
+            run_git(
+                &repo,
+                &["config", "user.email", "config-fixture@example.invalid"],
+            )?;
+            run_git(&repo, &["config", "user.name", "RIPR Config Fixture"])?;
+            run_git(&repo, &["config", "commit.gpgSign", "false"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"config-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            if let Some(config) = initial_config {
+                write_repo_file(&repo, "ripr.toml", config)?;
+            }
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            // This unchanged evidence is present in the whole head. Preserve
+            // each adapter's existing choice about selecting it.
+            write_repo_file(
+                &repo,
+                "tests/eligible.rs",
+                "#[test]\nfn boundary() { assert!(!config_probe::eligible(1)); }\n",
+            )?;
+            run_git(&repo, &["add", "-A"])?;
+            run_git(&repo, &["commit", "--quiet", "-m", "base"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            run_git(&repo, &["commit", "--quiet", "-a", "-m", "predicate"])?;
+            let options = PrEvidenceOptions {
+                base: resolve_revision(&repo, "HEAD~1", "commit")?,
+                head: resolve_revision(&repo, "HEAD", "commit")?,
+                ..options()
+            };
+            let run_check = |repo: &Path, options: &PrEvidenceOptions| {
+                run_ripr_check(repo, options)
+            };
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                run_check(repo, options)
+            })?;
+            let check = fs::read_to_string(repo.join(PR_CHECK_JSON))
+                .map_err(|error| error.to_string())?;
+            let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
+            if value
+                .pointer("/analysis_outcome/analysis_complete")
+                .and_then(Value::as_bool)
+                != Some(true)
+                || value
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .is_none_or(Vec::is_empty)
+            {
+                return Err("configuration fixture must execute complete nonempty analysis".into());
+            }
+            check_pr_evidence(&repo, &options)?;
+            configuration_fixture_review(&repo, &options)?;
+            test(&repo, &options, &check, &run_check)
+        })();
+        let cleanup = fs::remove_dir_all(&repo)
+            .map_err(|error| format!("cleanup {}: {error}", repo.display()));
+        result.and(cleanup)
+    }
+
+    #[cfg(feature = "lang-rust")]
+    fn configuration_fixture_review(
+        repo: &Path,
+        options: &PrEvidenceOptions,
+    ) -> Result<(), String> {
+        crate::cli::run(vec![
+            "ripr".into(),
+            "review-comments".into(),
+            "--root".into(),
+            repo.display().to_string(),
+            "--base".into(),
+            options.base.clone(),
+            "--head".into(),
+            options.head.clone(),
+            "--check-output".into(),
+            repo.join(PR_CHECK_JSON).display().to_string(),
+            "--out".into(),
+            repo.join("target/config-review.json").display().to_string(),
+        ])
+        .map_err(|error| error.message().to_string())
+    }
+
+    #[cfg(feature = "lang-rust")]
+    #[test]
+    fn producer_configuration_drift_is_rejected_after_actual_check() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-config-drift",
+            Some(CONFIGURATION_A),
+            |repo, options, check, run_check| {
+                let first: Value =
+                    serde_json::from_str(check).map_err(|error| error.to_string())?;
+                let recorded = first
+                    .pointer("/analysis_outcome/outcome/identity/config_identity")
+                    .and_then(Value::as_str)
+                    .ok_or("actual configured check must carry a text identity")?;
+                let config_a = crate::config::load_for_root(repo)?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                let config_b = crate::config::load_for_root(repo)?;
+                if crate::config::repo_exposure_config_identity_hash(&config_a)
+                    != crate::config::repo_exposure_config_identity_hash(&config_b)
+                {
+                    return Err("fixture must preserve the seven-field seam fingerprint".into());
+                }
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                let result = write_pr_evidence_with_runner(repo, options, |repo, options| {
+                    let generated = run_check(repo, options)?;
+                    let value: Value =
+                        serde_json::from_str(&generated).map_err(|error| error.to_string())?;
+                    if value
+                        .pointer("/analysis_outcome/outcome/identity/config_identity")
+                        .and_then(Value::as_str)
+                        != Some(recorded)
+                    {
+                        return Err("fresh runner did not analyze configuration A".into());
+                    }
+                    // Change only live configuration after this actual check,
+                    // before the existing packet writer reloads it.
+                    write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                    Ok(generated)
+                });
+                let failure = result.err().ok_or_else(|| {
+                    format!("configuration drift published old analysis {recorded}")
+                })?;
+                if !failure.contains("config_identity") || repo.join(PR_CHECK_SUBJECT_JSON).exists()
+                {
+                    return Err(format!(
+                        "wrong drift refusal or retained authority: {failure}"
+                    ));
+                }
+                let packet: Value = serde_json::from_slice(
+                    &fs::read(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                if packet["status"] != "error" {
+                    return Err("configuration drift did not publish an error packet".into());
+                }
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                write_pr_evidence_with_runner(repo, options, |_, _| Ok(check.to_string()))?;
+                check_pr_evidence(repo, options)?;
+                configuration_fixture_review(repo, options)
+            },
+        )
+    }
+
+    #[cfg(feature = "lang-rust")]
+    #[test]
+    fn stale_configuration_is_rejected_by_saved_check_and_review() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-config-stale",
+            Some(CONFIGURATION_A),
+            |repo, options, _, _| {
+                for config in [Some(CONFIGURATION_B), Some(""), None] {
+                    match config {
+                        Some(text) => write_repo_file(repo, "ripr.toml", text)?,
+                        None => fs::remove_file(repo.join("ripr.toml"))
+                            .map_err(|error| error.to_string())?,
+                    }
+                    let saved = check_pr_evidence(repo, options)
+                        .err()
+                        .ok_or("saved check admitted stale loaded configuration")?;
+                    if !saved.contains("config_identity") {
+                        return Err(format!("wrong saved configuration refusal: {saved}"));
+                    }
+                    let review = configuration_fixture_review(repo, options)
+                        .err()
+                        .ok_or("direct review admitted stale loaded configuration")?;
+                    if !review.contains("config_identity") {
+                        return Err(format!("wrong review configuration refusal: {review}"));
+                    }
+                    write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                    check_pr_evidence(repo, options)?;
+                    configuration_fixture_review(repo, options)?;
+                }
+                Ok(())
+            },
+        )
+    }
+
+    #[cfg(feature = "lang-rust")]
+    #[test]
+    fn copied_configuration_identity_requires_present_string_or_null() -> Result<(), String> {
+        for initial in [Some(CONFIGURATION_A), Some(""), None] {
+            with_configuration_fixture(
+                "ripr-pr-config-shape",
+                initial,
+                |repo, options, _, _| {
+                    let path = repo.join(PR_CHECK_SUBJECT_JSON);
+                    let original = fs::read(&path).map_err(|error| error.to_string())?;
+                    let subject: Value =
+                        serde_json::from_slice(&original).map_err(|error| error.to_string())?;
+                    let actual = subject
+                        .pointer("/analysis_outcome/outcome/identity/config_identity")
+                        .ok_or("actual producer did not carry config_identity")?;
+                    if initial.is_some() != actual.is_string()
+                        || initial.is_none() != actual.is_null()
+                    {
+                        return Err(
+                            "loaded-empty config and no config lost their distinction".into(),
+                        );
+                    }
+                    for wrong in [
+                        None,
+                        Some(json!(7)),
+                        Some(json!(false)),
+                        Some(json!([])),
+                        Some(json!({})),
+                        Some(json!("fnv1a64:foreign")),
+                    ] {
+                        let mut mutated = subject.clone();
+                        let identity = mutated
+                            .pointer_mut("/analysis_outcome/outcome/identity")
+                            .and_then(Value::as_object_mut)
+                            .ok_or("actual outcome identity is not an object")?;
+                        match wrong {
+                            Some(value) => {
+                                identity.insert("config_identity".into(), value);
+                            }
+                            None => {
+                                identity.remove("config_identity");
+                            }
+                        }
+                        fs::write(
+                            &path,
+                            serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+                        )
+                        .map_err(|error| error.to_string())?;
+                        let saved = check_pr_evidence(repo, options)
+                            .err()
+                            .ok_or("saved check admitted missing or malformed config identity")?;
+                        if !saved.contains("config_identity") {
+                            return Err(format!("wrong saved shape refusal: {saved}"));
+                        }
+                        let review = configuration_fixture_review(repo, options)
+                            .err()
+                            .ok_or("review admitted missing or malformed config identity")?;
+                        if !review.contains("config_identity") {
+                            return Err(format!("wrong review shape refusal: {review}"));
+                        }
+                        fs::write(&path, &original).map_err(|error| error.to_string())?;
+                        check_pr_evidence(repo, options)?;
+                        configuration_fixture_review(repo, options)?;
+                    }
+                    Ok(())
+                },
+            )?;
+        }
+        Ok(())
+    }
+
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {
             root: ".".to_string(),
