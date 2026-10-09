@@ -94,15 +94,25 @@ fn signal_authority(
     members
 }
 fn read_scanned_identity(reader: impl Read, pid: u32) -> Result<Option<Identity>, String> {
-    let mut text = String::new();
-    reader
-        .take(PROC_BYTES + 1)
-        .read_to_string(&mut text)
-        .map_err(|err| format!("owned capture /proc/{pid}/stat: {err}"))?;
-    if text.len() as u64 > PROC_BYTES {
+    // An opened /proc task descriptor can return ESRCH after that task exits.
+    // Keep raw partial bytes: read_to_string can discard invalid UTF-8 while
+    // retaining the I/O error, so an empty String cannot establish disappearance.
+    let mut bytes = Vec::new();
+    if let Err(err) = reader.take(PROC_BYTES + 1).read_to_end(&mut bytes) {
+        if err.raw_os_error() == Some(3) && bytes.is_empty() {
+            // One absent entry grants no leader lease or settlement credit.
+            return Ok(None);
+        }
+        return Err(format!("owned capture /proc/{pid}/stat: {err}"));
+    }
+    // Preserve successful-read UTF-8 error precedence over the size guard.
+    let text = std::str::from_utf8(&bytes).map_err(|_| {
+        format!("owned capture /proc/{pid}/stat: stream did not contain valid UTF-8")
+    })?;
+    if bytes.len() as u64 > PROC_BYTES {
         return Err("owned capture scanned stat exceeds its bound".to_string());
     }
-    parse_identity(&text, pid).map(Some)
+    parse_identity(text, pid).map(Some)
 }
 fn scan_group(group: u32, deadline: Instant) -> Result<Vec<u32>, String> {
     let entries = fs::read_dir("/proc")
@@ -680,6 +690,48 @@ wait
         }
         Ok(())
     }
+    #[test]
+    fn scanned_stat_accepts_only_zero_byte_esrch_as_absent() -> Result<(), String> {
+        let failure = ReadFailure {
+            prefix: std::io::Cursor::new(Vec::new()),
+            code: 3,
+        };
+        assert_eq!(read_scanned_identity(failure, 9)?, None);
+        // Successful empty EOF is an invalid stat, not a disappearance receipt.
+        require_error(read_scanned_identity(&[][..], 9), "no PID")?;
+        Ok(())
+    }
+
+    #[test]
+    fn scanned_stat_preserves_exact_byte_bound_and_utf8_error_precedence() -> Result<(), String> {
+        let mut text = "9 (owned) S 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17".to_string();
+        text.extend(std::iter::repeat_n(' ', PROC_BYTES as usize - text.len()));
+        let observed = read_scanned_identity(text.as_bytes(), 9)?
+            .ok_or_else(|| "exact-bound identity was discarded".to_string())?;
+        assert_eq!(
+            observed,
+            Identity {
+                pid: 9,
+                parent: 1,
+                group: 9,
+                start: 17,
+                state: 'S',
+            }
+        );
+        text.push(' ');
+        require_error(
+            read_scanned_identity(text.as_bytes(), 9),
+            "exceeds its bound",
+        )?;
+        let mut bytes = text.into_bytes();
+        bytes[0] = 0xff;
+        require_error(
+            read_scanned_identity(bytes.as_slice(), 9),
+            "stream did not contain valid UTF-8",
+        )?;
+        Ok(())
+    }
+
     fn members(marker: &Path) -> Result<(u32, u32), String> {
         let text =
             fs::read_to_string(marker).map_err(|err| format!("owned member marker: {err}"))?;
