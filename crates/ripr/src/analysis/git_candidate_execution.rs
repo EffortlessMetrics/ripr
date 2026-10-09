@@ -62,6 +62,10 @@ pub(crate) struct ResolvedGitCandidate {
 pub(crate) struct TempRootGuard(PathBuf);
 
 impl TempRootGuard {
+    pub(crate) fn checked_cleanup(&self) -> std::io::Result<()> {
+        remove_temp_root(&self.0)
+    }
+
     #[cfg(test)]
     pub(crate) fn for_test(path: PathBuf) -> Self {
         Self(path)
@@ -849,8 +853,11 @@ mod tests {
             *first ^= 1;
             std::fs::write(physical.join("src/lib.rs"), &changed)
                 .map_err(|error| error.to_string())?;
-            assert!(frozen::fs::read(guard.0.join("src/lib.rs")).is_err());
-            assert!(authority.ensure_clean().is_err());
+            let failure = frozen::fs::read(guard.0.join("src/lib.rs"))
+                .err().ok_or("a same-length snapshot replacement must fail")?;
+            assert_eq!(failure.kind(), std::io::ErrorKind::InvalidData);
+            let failure = authority.ensure_clean().err().ok_or("snapshot replacement must remain fatal")?;
+            assert_eq!(failure.kind(), std::io::ErrorKind::InvalidData);
             Ok(())
         })?;
         drop(authority);

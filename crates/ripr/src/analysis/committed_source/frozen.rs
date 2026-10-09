@@ -174,10 +174,51 @@ impl FrozenSourceAuthority {
         let fault = self
             .fault
             .lock()
-            .map_err(|_| io::Error::other("frozen source fault state is poisoned"))?;
+            .map_err(|error| io::Error::other(format!("frozen source fault state is poisoned: {error}")))?;
         match &*fault {
             Some(fault) => Err(io::Error::new(fault.kind, fault.message.clone())),
             None => Ok(()),
+        }
+    }
+
+    /// Checked generation closeout. A detached worker or another scoped lease
+    /// prevents completion; ordinary Drop remains the fallback on every error.
+    pub(crate) fn finalize(self: Arc<Self>) -> io::Result<()> {
+        let authority = match Arc::try_unwrap(self) {
+            Ok(authority) => authority,
+            Err(authority) => {
+                return Err(authority.refuse(
+                    io::ErrorKind::WouldBlock,
+                    format!(
+                        "frozen snapshot cleanup has {} outstanding source-context leases",
+                        Arc::strong_count(&authority).saturating_sub(1)
+                    ),
+                ));
+            }
+        };
+        let primary = authority.ensure_clean().err();
+        let owner = Arc::try_unwrap(authority._owner).map_err(|owner| {
+            io::Error::new(
+                io::ErrorKind::WouldBlock,
+                format!(
+                    "frozen snapshot cleanup has {} outstanding materialization leases",
+                    Arc::strong_count(&owner).saturating_sub(1)
+                ),
+            )
+        })?;
+        let cleanup = owner.checked_cleanup();
+        match (primary, cleanup) {
+            (None, Ok(())) => Ok(()),
+            (Some(primary), Ok(())) => Err(primary),
+            (primary, Err(cleanup)) => Err(io::Error::new(
+                primary.as_ref().map_or(cleanup.kind(), io::Error::kind),
+                match primary {
+                    Some(primary) => {
+                        format!("{primary}; frozen snapshot checked cleanup failed: {cleanup}")
+                    }
+                    None => format!("frozen snapshot checked cleanup failed: {cleanup}"),
+                },
+            )),
         }
     }
 
@@ -189,10 +230,13 @@ impl FrozenSourceAuthority {
         logical
             .strip_prefix(&self.logical_root)
             .map(Path::to_path_buf)
-            .map_err(|_| {
+            .map_err(|error| {
                 self.refuse(
                     io::ErrorKind::PermissionDenied,
-                    format!("frozen source request is outside repository: {}", logical.display()),
+                    format!(
+                        "frozen source request is outside repository: {} ({error})",
+                        logical.display()
+                    ),
                 )
             })
     }
@@ -510,6 +554,7 @@ pub(crate) mod fs {
             authority: Arc<FrozenSourceAuthority>,
             relative: PathBuf,
             failed: bool,
+            seen: BTreeSet<PathBuf>,
         },
     }
 
@@ -539,6 +584,7 @@ pub(crate) mod fs {
                     authority,
                     relative,
                     failed: false,
+                    seen: BTreeSet::new(),
                 })
             }
             None => std::fs::read_dir(path).map(FrozenReadDir::Ordinary),
@@ -558,6 +604,7 @@ pub(crate) mod fs {
                     authority,
                     relative,
                     failed,
+                    seen,
                 } => {
                     if *failed {
                         return None;
@@ -566,23 +613,38 @@ pub(crate) mod fs {
                         *failed = true;
                         return Some(Err(error));
                     }
-                    let result = inner.next().map(|entry| {
+                    let Some(entry) = inner.next() else {
+                        let missing = authority
+                            .inventory
+                            .files
+                            .keys()
+                            .chain(authority.inventory.directories.iter())
+                            .find(|path| {
+                                path.parent() == Some(relative.as_path()) && !seen.contains(*path)
+                            });
+                        *failed = true;
+                        return missing.map(|path| {
+                            Err(authority.changed(path, "admitted snapshot child is missing"))
+                        });
+                    };
+                    let result = (|| {
                         let inner =
                             entry.map_err(|error| authority.physical_error(relative, error))?;
                         let child = relative.join(inner.file_name());
                         if !authority.known(&child) {
                             return Err(authority.changed(&child, "unexpected snapshot entry"));
                         }
+                        seen.insert(child.clone());
                         Ok(FrozenDirEntry::NamedTree {
                             inner,
                             authority: authority.clone(),
                             relative: child,
                         })
-                    });
-                    if matches!(&result, Some(Err(_))) {
+                    })();
+                    if result.is_err() {
                         *failed = true;
                     }
-                    result
+                    Some(result)
                 }
             }
         }
@@ -765,14 +827,21 @@ pub(crate) mod tests {
             fixture.authority.ensure_clean()?;
             let before = fixture.authority.opened_reads.load(Ordering::SeqCst);
             let refused = fs::read(fixture.logical.join("../outside.rs"));
-            assert!(refused.is_err());
+            let refused = refused.err()
+                .ok_or_else(|| io::Error::other("outside source requests must fail"))?;
+            assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
             assert_eq!(
                 fixture.authority.opened_reads.load(Ordering::SeqCst),
                 before,
                 "outside requests must refuse before the actual open boundary"
             );
-            assert!(fixture.authority.ensure_clean().is_err());
-            assert!(fs::read(fixture.logical.join("one/a.rs")).is_err());
+            let failure = fixture.authority.ensure_clean().err()
+                .ok_or_else(|| io::Error::other("authority must retain source refusal"))?;
+            assert!(!failure.to_string().is_empty());
+            let failure = fs::read(fixture.logical.join("one/a.rs"))
+                .err()
+                .ok_or_else(|| io::Error::other("poisoned authority cannot resume source reads"))?;
+            assert_eq!(failure.kind(), io::ErrorKind::PermissionDenied);
             Ok(())
         })?;
         assert!(current().is_none());
@@ -788,19 +857,29 @@ pub(crate) mod tests {
             missing.authority.ensure_clean()?;
             std::fs::remove_file(missing.physical.join("src/a.rs"))?;
             assert!(!fs::is_file(missing.logical.join("src/a.rs")));
-            assert!(missing.authority.ensure_clean().is_err());
-            assert!(
-                super::super::read_source_bytes(&missing.logical, Path::new("src/a.rs")).is_err(),
-                "missing admitted files must not become successful absence"
-            );
+            let failure = missing.authority.ensure_clean()
+                .err()
+                .ok_or_else(|| io::Error::other("missing admitted source must poison authority"))?;
+            assert_eq!(failure.kind(), io::ErrorKind::NotFound);
+            let failure = super::super::read_source_bytes(&missing.logical, Path::new("src/a.rs"))
+                .err()
+                .ok_or_else(|| io::Error::other("missing admitted files must not become successful absence"))?;
+            assert_eq!(failure.kind(), io::ErrorKind::NotFound);
             Ok(())
         })?;
         let changed = Fixture::new(&[("src/a.rs", b"head")])?;
         std::fs::write(changed.physical.join("src/a.rs"), b"evil")?;
-        with_context(Some(changed.authority.clone()), || {
-            assert!(fs::read(changed.logical.join("src/a.rs")).is_err());
-        });
-        assert!(changed.authority.ensure_clean().is_err());
+        with_context(Some(changed.authority.clone()), || -> io::Result<()> {
+            let failure = fs::read(changed.logical.join("src/a.rs"))
+                .err()
+                .ok_or_else(|| io::Error::other("same-size source replacement must fail"))?;
+                assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
+            Ok(())
+        })?;
+        let failure = changed.authority.ensure_clean()
+            .err()
+                .ok_or_else(|| io::Error::other("same-size tamper must remain fatal"))?;
+        assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
         Ok(())
     }
 
@@ -814,8 +893,13 @@ pub(crate) mod tests {
             assert_eq!(fs::read_with_limit(&path, 2)?, b"abc");
             assert_eq!(fs::read_with_limit(&path, 8)?, b"abcdefgh");
             std::fs::write(fixture.physical.join("large.rs"), b"abcdefgX")?;
-            assert!(fs::read_prefix(&path, 2).is_err());
-            assert!(fixture.authority.ensure_clean().is_err());
+            let failure = fs::read_prefix(&path, 2)
+                .err()
+                .ok_or_else(|| io::Error::other("prefix read must authenticate changed tail"))?;
+            assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
+            let failure = fixture.authority.ensure_clean().err()
+                .ok_or_else(|| io::Error::other("changed prefix tail refusal must stick"))?;
+        assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
             Ok(())
         })?;
         Ok(())
@@ -849,24 +933,81 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn checked_cleanup_requires_last_lease_and_reports_actual_removal_failure()
+    -> Result<(), Box<dyn Error>> {
+        let normal = Fixture::new(&[("a.rs", b"head")])?;
+        let physical = normal.physical.clone();
+        normal.authority.finalize()?;
+        assert!(!physical.exists(), "checked cleanup must remove the snapshot");
+
+        let busy = Fixture::new(&[("a.rs", b"head")])?;
+        let lease = busy.authority.clone();
+        let failure = busy.authority.finalize()
+            .err()
+                .ok_or_else(|| io::Error::other("an outstanding source lease must prevent checked completion"))?;
+        assert_eq!(failure.kind(), io::ErrorKind::WouldBlock);
+        let retained = lease.ensure_clean()
+            .err()
+                .ok_or_else(|| io::Error::other("early cleanup refusal must remain fatal to retained workers"))?;
+        assert_eq!(retained.kind(), io::ErrorKind::WouldBlock);
+        drop(lease);
+
+        let blocked = Fixture::new(&[("a.rs", b"head")])?;
+        let owned_root = blocked.logical.parent().ok_or("fixture has no parent")?.to_path_buf();
+        std::fs::remove_dir_all(&owned_root)?;
+        std::fs::write(&owned_root, b"owned cleanup failure fixture")?;
+        let failure = blocked.authority.finalize()
+            .err()
+                .ok_or_else(|| io::Error::other("a root replaced by a file must fail actual checked cleanup"))?;
+        assert!(failure.to_string().contains("checked cleanup failed"));
+        std::fs::remove_file(&owned_root)?;
+        Ok(())
+    }
+
+    #[test]
+    fn directory_eof_reconciles_deleted_admitted_children() -> Result<(), Box<dyn Error>> {
+        let fixture = Fixture::new(&[("src/a.rs", b"a"), ("src/b.rs", b"b")])?;
+        std::fs::remove_file(fixture.physical.join("src/a.rs"))?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            let failure = fs::read_dir(fixture.logical.join("src"))?
+                .collect::<io::Result<Vec<_>>>()
+                .err()
+                .ok_or_else(|| io::Error::other("missing admitted child was silently omitted"))?;
+            assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
+            assert!(failure.to_string().contains("admitted snapshot child is missing"));
+            let retained = fixture.authority.ensure_clean()
+                .err()
+                .ok_or_else(|| io::Error::other("directory EOF omission must poison the authority"))?;
+            assert_eq!(retained.kind(), io::ErrorKind::InvalidData);
+            Ok(())
+        })?;
+        Ok(())
+    }
+
+    #[test]
     fn frozen_context_and_owned_diff_restore_after_early_failure() -> Result<(), Box<dyn Error>> {
         let outer = Fixture::new(&[("a.rs", b"outer")])?;
         let inner = Fixture::new(&[("a.rs", b"inner")])?;
-        with_context(Some(outer.authority.clone()), || {
-            with_canonical_diff(Arc::from("outer diff"), || {
+        with_context(Some(outer.authority.clone()), || -> io::Result<()> {
+            with_canonical_diff(Arc::from("outer diff"), || -> io::Result<()> {
                 let refused: io::Result<()> = with_context(Some(inner.authority.clone()), || {
                     with_canonical_diff(Arc::from("inner diff"), || {
                         assert_eq!(canonical_diff().as_deref(), Some("inner diff"));
                         Err(inner.authority.refuse_external_effect("fixture helper"))
                     })
                 });
-                assert!(refused.is_err());
+                let refused = refused.err()
+                .ok_or_else(|| io::Error::other("unbound helper must fail"))?;
+                assert_eq!(refused.kind(), io::ErrorKind::PermissionDenied);
                 assert!(current().is_some_and(|current| Arc::ptr_eq(&current, &outer.authority)));
                 assert_eq!(canonical_diff().as_deref(), Some("outer diff"));
-                assert!(outer.authority.ensure_clean().is_ok());
-                assert!(inner.authority.ensure_clean().is_err());
-            });
-        });
+                outer.authority.ensure_clean()?;
+                let failure = inner.authority.ensure_clean().err()
+                .ok_or_else(|| io::Error::other("inner helper refusal must stick"))?;
+                assert_eq!(failure.kind(), io::ErrorKind::PermissionDenied);
+                Ok(())
+            })
+        })?;
         assert!(current().is_none());
         assert!(canonical_diff().is_none());
         Ok(())
@@ -880,15 +1021,21 @@ pub(crate) mod tests {
         std::fs::write(&outside, b"evil")?;
         std::fs::remove_file(fixture.physical.join("a.rs"))?;
         std::os::unix::fs::symlink(&outside, fixture.physical.join("a.rs"))?;
-        with_context(Some(fixture.authority.clone()), || {
-            assert!(fs::read(fixture.logical.join("a.rs")).is_err());
-        });
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            let failure = fs::read(fixture.logical.join("a.rs"))
+                .err()
+                .ok_or_else(|| io::Error::other("snapshot replacement link must fail"))?;
+            assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
+            Ok(())
+        })?;
         assert_eq!(
             fixture.authority.opened_reads.load(Ordering::SeqCst),
             0,
             "replacement links must refuse before the source open"
         );
-        assert!(fixture.authority.ensure_clean().is_err());
+        let failure = fixture.authority.ensure_clean().err()
+                .ok_or_else(|| io::Error::other("snapshot refusal must remain fatal"))?;
+        assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
         Ok(())
     }
 }

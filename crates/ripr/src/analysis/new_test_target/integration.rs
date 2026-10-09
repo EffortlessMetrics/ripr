@@ -8,6 +8,7 @@ use super::{
     NewTestKind, NewTestProposalBlocker, NewTestProposalProvenance, NewTestTargetAdmission,
     NewTestTargetProposal, is_relative_without_parent, normalize_relative,
 };
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::analysis::facts::FunctionSourceRole;
 use crate::analysis::rust_index::{self, FunctionSummary, RustIndex};
 use crate::analysis::seams::{RepoSeam, SeamKind};
@@ -118,8 +119,8 @@ fn owning_package(
     while let Some(directory) = cursor {
         let relative_manifest = directory.join("Cargo.toml");
         let manifest = root.join(&relative_manifest);
-        if manifest.is_file() {
-            let text = std::fs::read_to_string(&manifest)
+        if frozen_fs::is_file(&manifest) {
+            let text = frozen_fs::read_to_string(&manifest)
                 .map_err(|_read| NewTestProposalBlocker::LibraryTargetUnresolved)?;
             let value = text
                 .parse::<toml::Table>()
@@ -155,13 +156,13 @@ fn owning_package(
                 .unwrap_or_else(|| PathBuf::from("src/lib.rs"));
             let lib_source = root.join(&directory).join(&lib_path);
             let has_library_target = if explicit_lib.is_some() || autolib {
-                lib_source.is_file()
+                frozen_fs::is_file(&lib_source)
             } else {
                 false
             };
             let tests_dir = root.join(&directory).join("tests");
-            let has_established_tests_layout = tests_dir.is_dir()
-                && std::fs::read_dir(&tests_dir)
+            let has_established_tests_layout = frozen_fs::is_dir(&tests_dir)
+                && frozen_fs::read_dir(&tests_dir)
                     .map(|entries| {
                         entries.filter_map(Result::ok).any(|entry| {
                             entry.path().extension().and_then(|ext| ext.to_str()) == Some("rs")
@@ -332,19 +333,96 @@ fn is_root_contained_new_test_file(root: &Path, relative: &Path) -> bool {
     let Some(parent) = full.parent() else {
         return false;
     };
-    let Ok(canonical_root) = root.canonicalize() else {
+    let Ok(canonical_root) = frozen_fs::canonicalize(root) else {
         return false;
     };
-    parent
-        .canonicalize()
+    frozen_fs::canonicalize(parent)
         .is_ok_and(|canonical| canonical.starts_with(&canonical_root))
 }
 
 /// No-follow occupancy: only `NotFound` is a genuinely new leaf.
 fn leaf_is_absent(path: &Path) -> Result<bool, NewTestProposalBlocker> {
-    match std::fs::symlink_metadata(path) {
+    match frozen_fs::symlink_metadata(path) {
         Ok(_) => Ok(false),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(true),
         Err(_) => Err(NewTestProposalBlocker::PathUnsafe),
+    }
+}
+
+#[cfg(test)]
+mod frozen_tests {
+    use super::*;
+    use crate::analysis::committed_source::frozen;
+
+    #[test]
+    fn actual_package_layout_uses_named_tree_and_refuses_snapshot_loss_and_escape()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest = b"[package]\nname='admitted'\nversion='0.1.0'\n";
+        let fixture = frozen::tests::Fixture::new(&[
+            ("Cargo.toml", manifest),
+            ("src/lib.rs", b"pub fn owner() -> u8 { 1 }\n"),
+            ("tests/existing.rs", b"#[test]\nfn existing() {}\n"),
+        ])?;
+        for path in ["Cargo.toml", "src/lib.rs", "tests/existing.rs"] {
+            let target = fixture.logical.join(path);
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::copy(fixture.physical.join(path), target)?;
+        }
+        crate::testing::fixture_git::fixture_git_ok(
+            &fixture.logical, &["init", "--initial-branch=main"],
+        )?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &fixture.logical, &["config", "user.name", "ripr fixture"],
+        )?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &fixture.logical, &["config", "user.email", "ripr@example.invalid"],
+        )?;
+        crate::testing::fixture_git::fixture_git_ok(&fixture.logical, &["add", "."])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &fixture.logical, &["commit", "-qm", "admitted layout"],
+        )?;
+        let prepared = crate::analysis::git_candidate_execution::prepare_named_tree(
+            &fixture.logical, "HEAD", None,
+        )?;
+        let physical = prepared.physical_root().to_path_buf();
+        let authority = prepared.frozen_source_authority(&fixture.logical)?;
+        std::fs::write(
+            fixture.logical.join("Cargo.toml"),
+            "[package]\nname='live-decoy'\nversion='0.1.0'\nautotests=false\n",
+        )?;
+        std::fs::remove_file(fixture.logical.join("src/lib.rs"))?;
+        std::fs::remove_dir_all(fixture.logical.join("tests"))?;
+        frozen::with_context(Some(authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
+            let package = owning_package(&fixture.logical, Path::new("src/lib.rs"))
+                .map_err(|error| format!("admitted package was rejected: {error:?}"))?;
+            assert_eq!(package.library_crate_name, "admitted");
+            assert!(package.autotests);
+            assert!(package.has_library_target);
+            assert!(package.has_established_tests_layout);
+            assert!(is_root_contained_new_test_file(
+                &fixture.logical, Path::new("tests/proposed.rs"),
+            ));
+            authority.ensure_clean()?;
+            std::fs::remove_file(physical.join("tests/existing.rs"))?;
+            let _after_loss = owning_package(&fixture.logical, Path::new("src/lib.rs"));
+            let failure = authority.ensure_clean().err()
+                .ok_or("package layout silently accepted missing snapshot test")?;
+            assert!(failure.to_string().contains("admitted snapshot child is missing"), "{failure}");
+            Ok(())
+        })?;
+
+        let escape = frozen::tests::Fixture::new(&[
+            ("Cargo.toml", b"[package]\nname='escaped'\nversion='0.1.0'\n[lib]\npath='../outside.rs'\n"),
+        ])?;
+        frozen::with_context(Some(escape.authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
+            let _package = owning_package(&escape.logical, Path::new("src/lib.rs"));
+            let failure = escape.authority.ensure_clean().err()
+                .ok_or("external library path did not poison frozen authority")?;
+            assert_eq!(failure.kind(), std::io::ErrorKind::PermissionDenied);
+            Ok(())
+        })?;
+        Ok(())
     }
 }

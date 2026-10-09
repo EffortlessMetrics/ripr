@@ -229,6 +229,11 @@ pub(crate) fn committed_paths_missing_on_disk(root: &Path) -> Vec<String> {
 /// What a read of `root.join(relative)` should observe under the installed
 /// overlay. Without an overlay every path reads the working tree.
 pub(crate) fn lookup(root: &Path, relative: &Path) -> CommittedSourceRead {
+    if frozen::current().is_some() {
+        // Active complete contexts own every read; bypass legacy overlay
+        // shortcuts so the adapter reaches its verified frozen filesystem.
+        return CommittedSourceRead::Worktree;
+    }
     CURRENT_OVERLAY.with(|slot| {
         slot.borrow()
             .as_ref()

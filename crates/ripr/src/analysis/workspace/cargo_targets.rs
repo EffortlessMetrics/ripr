@@ -45,6 +45,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use super::source_role::SourceRoleContext;
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 
 /// Declared explicit target paths for one workspace, keyed by nothing —
 /// a flat set is all the role model needs.
@@ -101,7 +102,7 @@ fn build_script_from_manifest(value: &toml::Value, manifest_dir: &Path) -> Optio
         Some(toml::Value::String(path)) => manifest_dir.join(path.trim()),
         Some(toml::Value::Boolean(true)) | None => {
             let default = manifest_dir.join("build.rs");
-            if !default.is_file() {
+            if !frozen_fs::is_file(&default) {
                 return None;
             }
             default
@@ -338,7 +339,7 @@ impl ManifestInventory {
                     // verbatim keys cargo never echoes, so a miss
                     // there is harmless — the alias-form lookup
                     // above already covered the Windows behavior.
-                    let real = std::fs::canonicalize(&absolute).ok()?;
+                    let real = frozen_fs::canonicalize(&absolute).ok()?;
                     targets.get(&lexical(&normalize(&real))).cloned()
                 })
             }
@@ -419,13 +420,13 @@ impl ManifestInventory {
     }
 
     fn manifest_at(&mut self, dir: &Path) -> OwnedManifest {
-        if !dir.join("Cargo.toml").is_file() {
+        if !frozen_fs::is_file(dir.join("Cargo.toml")) {
             return OwnedManifest::Absent;
         }
         if let Some(cached) = self.manifests.get(dir) {
             return cached.clone();
         }
-        let parsed = match std::fs::read_to_string(dir.join("Cargo.toml"))
+        let parsed = match frozen_fs::read_to_string(dir.join("Cargo.toml"))
             .ok()
             .and_then(|text| toml::from_str::<toml::Value>(&text).ok())
         {
@@ -500,8 +501,12 @@ fn cargo_metadata_command(workspace_root: &Path) -> std::process::Command {
 fn run_workspace_cargo_metadata(
     workspace_root: &Path,
 ) -> Option<BTreeMap<PathBuf, Vec<(PathBuf, String)>>> {
+    if let Some(authority) = frozen::current() {
+        let _refusal = authority.refuse_external_effect("cargo metadata");
+        return None;
+    }
     let manifest_path = workspace_root.join("Cargo.toml");
-    if !manifest_path.is_file() {
+    if !frozen_fs::is_file(&manifest_path) {
         return None;
     }
     // A repository toolchain `path` would make rustup run the repository's
@@ -537,7 +542,7 @@ fn run_workspace_cargo_metadata(
             );
             match outcome {
                 crate::git::ChildWait::Exited(status) if status.success() => {
-                    std::fs::read(&stdout_path)
+                    frozen_fs::read(&stdout_path)
                         .ok()
                         .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
                         .map(|value| workspace_test_target_owners(&value))
@@ -707,7 +712,7 @@ where
             continue;
         };
         if !manifests.contains_key(&root) {
-            let targets = std::fs::read_to_string(root.join("Cargo.toml"))
+            let targets = frozen_fs::read_to_string(root.join("Cargo.toml"))
                 .map(|text| declared_targets_from_manifest(&text, &root))
                 .unwrap_or_default();
             manifests.insert(root.clone(), targets);
@@ -801,7 +806,7 @@ pub(super) fn nearest_manifest_dir(workspace_root: &Path, file: &Path) -> Option
     file.ancestors()
         .skip(1)
         .take_while(|dir| dir.starts_with(workspace_root))
-        .find(|dir| dir.join("Cargo.toml").is_file())
+        .find(|dir| frozen_fs::is_file(dir.join("Cargo.toml")))
         .map(Path::to_path_buf)
 }
 
@@ -1012,6 +1017,21 @@ fn unique_workspace(tag: &str) -> PathBuf {
 
 #[cfg(test)]
 mod context {
+    #[test]
+    fn actual_cargo_probe_refuses_frozen_context_before_any_process() -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = frozen::tests::Fixture::new(&[
+            ("Cargo.toml", b"[package]\nname='frozen'\nversion='0.1.0'\n"),
+        ])?;
+        frozen::with_context(Some(fixture.authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
+            assert!(super::run_workspace_cargo_metadata(&fixture.logical).is_none());
+            let failure = fixture.authority.ensure_clean().err()
+                .ok_or("cargo probe was not retained as an unbound effect")?;
+            assert!(failure.to_string().contains("cargo metadata"), "{failure}");
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     use super::*;
 
     #[test]

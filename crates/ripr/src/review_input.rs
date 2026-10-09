@@ -1,5 +1,6 @@
 //! Typed, bounded input exchanged between the PR producer and review-comments.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -24,7 +25,7 @@ pub const REVIEW_INDEX_MAX_BYTES: usize = 2 * 1024 * 1024;
 /// representation details; POSIX backslashes remain filename characters.
 /// Unavailable paths retain their spelling and do not gain existence authority.
 pub fn canonical_root_identity(root: &Path) -> String {
-    let canonical = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+    let canonical = frozen_fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
     review_root_spelling(&canonical.to_string_lossy(), cfg!(windows))
 }
 
@@ -113,8 +114,7 @@ fn canonical_relative_file(
     } else {
         root.join(file_path)
     };
-    let relative_file = absolute_file
-        .canonicalize()
+    let relative_file = frozen_fs::canonicalize(&absolute_file)
         .map_err(|error| format!("canonicalize producer finding file: {error}"))?
         .strip_prefix(root)
         .map_err(|error| format!("producer finding file escapes root: {error}"))?
@@ -148,8 +148,7 @@ pub fn canonical_projection_all(
     findings: &[Value],
     root: &Path,
 ) -> Result<Vec<ReviewFindingProjectionV1>, String> {
-    let root = root
-        .canonicalize()
+    let root = frozen_fs::canonicalize(root)
         .map_err(|error| format!("canonicalize review input root: {error}"))?;
     let mut canonical_files = HashMap::new();
     let mut projected = findings

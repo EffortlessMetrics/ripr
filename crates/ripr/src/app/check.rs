@@ -7,6 +7,7 @@ use crate::analysis::{
     run_repo_analysis_with_oracle_policy_and_rust_config,
     run_worktree_analysis_with_oracle_policy_and_rust_config,
 };
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use crate::config::RiprConfig;
 use crate::core_error::CoreError;
 use crate::domain::LanguageId;
@@ -192,6 +193,17 @@ fn check_with_progress_and_origins_with_open_rust_paths(
     // acquisition, so a subject input can never fall through to worktree
     // analysis or an empty diff.
     super::analysis_subject::validate_input_subject(&input).map_err(|error| error.to_string())?;
+    if let Some(authority) = frozen::current()
+        && (input.perl_facts_path.is_some()
+            || input.suppression_policy.is_some()
+            || config.perl().producer().is_some_and(is_managed_perl_producer))
+    {
+        return Err(authority
+            .refuse_external_effect("Perl facts, managed exporters and suppression policies are unbound")
+            .to_string()
+            .into());
+    }
+
     // Managed producer mode (Campaign 31 Phase D, #1407; architecture
     // corrected post perl-lsp-swarm #3294): when a Perl facts exporter is
     // configured (`producer = "perl-ripr-facts"` or `producer = "perllsp"`
@@ -636,7 +648,7 @@ fn invoke_perl_lsp_producer(
                      packet rejected even if a partial file exists"
                 ));
             }
-            if tmp_path.is_file() {
+            if frozen_fs::is_file(&tmp_path) {
                 std::fs::rename(&tmp_path, &packet_path).map_err(|e| {
                     format!(
                         "failed to finalize Perl facts packet `{}`: {e}",
@@ -685,7 +697,7 @@ fn invoke_perl_lsp_producer(
 /// future content-keyed implementation.
 #[allow(dead_code, reason = "retained for future content-keyed cache reuse")]
 fn cached_packet_is_fresh(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
+    let Ok(metadata) = frozen_fs::metadata(path) else {
         return false;
     };
     if !metadata.is_file() {
@@ -704,7 +716,7 @@ fn cached_packet_is_fresh(path: &Path) -> bool {
         return false;
     }
     // schema_version field must match the current schema.
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Ok(text) = frozen_fs::read_to_string(path) else {
         return false;
     };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {

@@ -1,4 +1,5 @@
 use crate::analysis::cancellation;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::analysis::language::{
     LanguageAdapter, LanguageId, RustAdapter, route, unanalyzed_source_language,
 };
@@ -117,7 +118,7 @@ fn is_regular_source_below_root(root: &Path, relative: &Path) -> bool {
             return false;
         };
         path.push(name);
-        let Ok(metadata) = std::fs::symlink_metadata(&path) else {
+        let Ok(metadata) = frozen_fs::symlink_metadata(&path) else {
             return false;
         };
         if components.peek().is_none() {
@@ -256,7 +257,7 @@ pub(crate) fn discover_python_test_files(
     let mut capped = false;
     'walk: while let Some(dir) = stack.pop() {
         cancellation::checkpoint()?;
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = frozen_fs::read_dir(&dir) else {
             // An unreadable directory means part of the tree was not inspected,
             // so a count found elsewhere is only a lower bound.
             capped = true;
@@ -327,7 +328,7 @@ fn visit_classified<T>(
     out: &mut Vec<(T, PathBuf)>,
     classify: &dyn Fn(&Path) -> Option<T>,
 ) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+    let Ok(entries) = frozen_fs::read_dir(dir) else {
         return;
     };
     for entry in entries.flatten() {
@@ -358,7 +359,7 @@ fn visit(
     out: &mut Vec<PathBuf>,
 ) -> Result<(), String> {
     let entries =
-        std::fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
+        frozen_fs::read_dir(dir).map_err(|err| format!("failed to read {}: {err}", dir.display()))?;
     for entry in entries {
         cancellation::checkpoint()?;
         let entry = entry.map_err(|err| format!("failed to read dir entry: {err}"))?;
@@ -383,6 +384,27 @@ fn visit(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn actual_preview_discovery_refuses_deleted_snapshot_children() -> Result<(), Box<dyn std::error::Error>> {
+        use crate::analysis::committed_source::frozen;
+        let fixture = frozen::tests::Fixture::new(&[
+            ("src/a.ts", b"export const value = 1;\n"),
+            ("src/b.py", b"value = 1\n"),
+        ])?;
+        frozen::with_context(Some(fixture.authority.clone()), || -> Result<(), Box<dyn std::error::Error>> {
+            let before = super::discover_preview_language_files(&fixture.logical);
+            assert_eq!(before.len(), 2, "the intact admitted preview files must be discovered");
+            fixture.authority.ensure_clean()?;
+            std::fs::remove_file(fixture.physical.join("src/a.ts"))?;
+            let _after = super::discover_preview_language_files(&fixture.logical);
+            let failure = fixture.authority.ensure_clean().err()
+                .ok_or("actual preview discovery silently omitted an admitted snapshot child")?;
+            assert!(failure.to_string().contains("admitted snapshot child is missing"), "{failure}");
+            Ok(())
+        })?;
+        Ok(())
+    }
+
     use super::*;
     use std::fs;
 

@@ -38,6 +38,7 @@ use super::rust_index::{
 };
 use super::seams::{ExpectedSink, RepoSeam, SeamId, SeamKind};
 use crate::analysis::cancellation;
+use crate::analysis::committed_source::frozen;
 use crate::domain::{
     Confidence, MissingDiscriminatorFact, OracleKind, OracleStrength, StageEvidence, StageState,
     SymbolId, ValueContext, ValueFact,
@@ -267,25 +268,28 @@ impl<'index> EvidencePass<'index> {
         // partial vector exactly as it did for the serial loop.
         let token = cancellation::current_token();
         let overlay = crate::analysis::committed_source::current_overlay();
+        let source_context = frozen::current();
         let processed = AtomicUsize::new(0);
         let mut out: Vec<TestGripEvidence> = seams
             .par_iter()
             .filter_map(|seam| {
-                cancellation::with_optional_token(token.as_ref(), || {
-                    crate::analysis::committed_source::with_overlay(overlay.clone(), || {
-                        cancellation::checkpoint().ok()?;
-                        let evidence = evidence_for_seam_with_context(seam, context);
-                        let processed = processed.fetch_add(1, Ordering::Relaxed) + 1;
-                        if processed.is_multiple_of(EVIDENCE_PROGRESS_CHUNK)
-                            || processed == seams.len()
-                        {
-                            trace_latency_phase(
-                                "evidence_for_seams_progress",
-                                &format!("processed_{processed}_of_{}", seams.len()),
-                                evidence_started.elapsed(),
-                            );
-                        }
-                        Some(evidence)
+                frozen::with_context(source_context.clone(), || {
+                    cancellation::with_optional_token(token.as_ref(), || {
+                        crate::analysis::committed_source::with_overlay(overlay.clone(), || {
+                            cancellation::checkpoint().ok()?;
+                            let evidence = evidence_for_seam_with_context(seam, context);
+                            let processed = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                            if processed.is_multiple_of(EVIDENCE_PROGRESS_CHUNK)
+                                || processed == seams.len()
+                            {
+                                trace_latency_phase(
+                                    "evidence_for_seams_progress",
+                                    &format!("processed_{processed}_of_{}", seams.len()),
+                                    evidence_started.elapsed(),
+                                );
+                            }
+                            Some(evidence)
+                        })
                     })
                 })
             })

@@ -621,8 +621,11 @@ mod tests {
                 MissAttribution::Skipped,
             )
         });
-        assert!(failure.is_err());
-        assert!(fixture.authority.ensure_clean().is_err());
+        let failure = failure.err().ok_or("live decoy loaded bytes were accepted")?;
+        assert!(failure.contains("loaded bytes differ from admitted blob"), "{failure}");
+        let retained = fixture.authority.ensure_clean()
+            .err().ok_or("loaded-byte mismatch must remain fatal")?;
+        assert_eq!(retained.kind(), std::io::ErrorKind::InvalidData);
         Ok(())
     }
 
