@@ -203,6 +203,7 @@ pub use ripr::analysis::PartialDiffStopReason
 pub use ripr::analysis::PathRecordError
 pub use ripr::analysis::StatusRecord
 pub use ripr::analysis::cache_layer_names
+pub use ripr::analysis::load_canonical_pr_evidence_diff_bytes
 pub use ripr::analysis::load_canonical_pr_evidence_diff_range
 pub use ripr::analysis::load_diff_range
 pub use ripr::analysis::load_pr_evidence_diff_range

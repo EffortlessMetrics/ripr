@@ -494,12 +494,11 @@ fn explicit_diff_file_remains_verbatim_and_needs_no_git_base() -> io::Result<()>
 }
 
 
-// #1627: this adapter is intentionally wrong in the test-only predecessor.
-// Reconstructing bytes after semantic decoding cannot preserve raw intake.
-// The repair replaces this body with the retained raw loader entry point;
-// assertions and fixture bytes remain the same.
+// #1627: the retained public raw boundary must run before semantic decode.
+// The test-only predecessor used legacy_string.into_bytes here deliberately;
+// the same assertions below discriminate that reconstruction from raw intake.
 fn canonical_intake_bytes(root: &Path, base: &str, head: &str) -> Result<Vec<u8>, String> {
-    super::load_canonical_pr_evidence_diff_range(root, base, head).map(String::into_bytes)
+    crate::analysis::load_canonical_pr_evidence_diff_bytes(root, base, head)
 }
 
 fn contains_bytes(bytes: &[u8], needle: &[u8]) -> bool {
@@ -680,5 +679,31 @@ fn raw_canonical_range_keeps_c_quoted_invalid_path_and_literal_octal_distinct() 
     let mut expected_paths = vec![invalid, literal];
     expected_paths.sort();
     assert_eq!(paths, expected_paths);
+    Ok(())
+}
+
+#[test]
+fn raw_canonical_range_retains_cooperative_deadline_refusal() -> io::Result<()> {
+    let repo = Repo::new("raw-deadline")?;
+    let head = git(&repo.root, &["rev-parse", "HEAD"])?.trim().to_string();
+    let raw_error = super::load_diff_range_bytes_with_deadline_core(
+        &repo.root,
+        &repo.base,
+        &head,
+        Some(Duration::ZERO),
+    )
+    .err()
+    .ok_or_else(|| io::Error::other("raw loader accepted an expired deadline"))?;
+    let semantic_error = super::load_diff_range_with_deadline_core(
+        &repo.root,
+        &repo.base,
+        &head,
+        Some(Duration::ZERO),
+    )
+    .err()
+    .ok_or_else(|| io::Error::other("semantic loader accepted an expired deadline"))?;
+    assert!(raw_error.is_git_invocation_timeout(), "{raw_error}");
+    assert!(semantic_error.is_git_invocation_timeout(), "{semantic_error}");
+    assert_eq!(raw_error.to_string(), semantic_error.to_string());
     Ok(())
 }
