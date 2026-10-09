@@ -66,7 +66,10 @@ pub(crate) fn ripr_pr(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
-    if args.iter().any(|arg| arg == complete_execution::EXPERIMENT_FLAG) {
+    if args
+        .iter()
+        .any(|arg| arg == complete_execution::EXPERIMENT_FLAG)
+    {
         return complete_execution::run_experiment(args);
     }
     let options = parse_options(args)?;
@@ -114,7 +117,9 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check] [--experimental-complete-execution]");
+    println!(
+        "usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check] [--experimental-complete-execution]"
+    );
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {

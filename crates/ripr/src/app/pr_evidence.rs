@@ -80,7 +80,10 @@ impl Default for PrEvidenceOptions {
 /// When the check fails, an `error` packet is still written so downstream
 /// consumers see a contract-valid, actionable artifact rather than a gap.
 pub(crate) fn run_pr_evidence(args: &[String]) -> Result<(), String> {
-    if args.first().is_some_and(|arg| arg == complete_execution::WORKER_FLAG) {
+    if args
+        .first()
+        .is_some_and(|arg| arg == complete_execution::WORKER_FLAG)
+    {
         return complete_execution::run_worker(&args[1..]);
     }
     if args.iter().any(|arg| arg == "--help" || arg == "-h") {
@@ -201,7 +204,11 @@ fn write_pr_evidence_with_generation(
     match run_check(repo, options) {
         Ok(check_json) => {
             match write_pr_evidence_packet_with_generation(
-                repo, options, &changed_files, &check_json, generation,
+                repo,
+                options,
+                &changed_files,
+                &check_json,
+                generation,
             ) {
                 Ok(()) => Ok(()),
                 Err(err) => write_pr_evidence_error_packet(
@@ -485,7 +492,10 @@ fn write_pr_evidence_error_packet(
 /// public `ripr pr-evidence` command and the xtask compatibility wrapper.
 pub fn reject_pr_evidence_error_packet(packet: &Value) -> Option<String> {
     if packet.get(complete_execution::GENERATION_FIELD).is_some() {
-        return Some("experimental complete-execution evidence is not qualified for production admission".to_string());
+        return Some(
+            "experimental complete-execution evidence is not qualified for production admission"
+                .to_string(),
+        );
     }
     (packet.get("status").and_then(Value::as_str) == Some("error")).then(|| {
         format!(
@@ -2894,11 +2904,16 @@ mod tests {
 
     #[test]
     fn experimental_complete_generation_cannot_be_laundered_through_status_ok() {
-        for generation in [Value::Null, json!({"coverage":"complete","production_admission":true})] {
+        for generation in [
+            Value::Null,
+            json!({"coverage":"complete","production_admission":true}),
+        ] {
             let mut packet = json!({"status":"ok","analysis_complete":true});
             packet["experimental_complete_execution"] = generation;
-            assert!(reject_pr_evidence_error_packet(&packet).is_some(),
-                "experimental generation is not qualified for production admission");
+            assert!(
+                reject_pr_evidence_error_packet(&packet).is_some(),
+                "experimental generation is not qualified for production admission"
+            );
         }
     }
 }
