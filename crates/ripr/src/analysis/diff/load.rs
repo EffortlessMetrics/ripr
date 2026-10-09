@@ -32,7 +32,7 @@ pub struct LoadedDiff {
 /// decode would merge distinct names onto one U+FFFD path (#3601). A
 /// file-header line that is not UTF-8 therefore fails closed, naming the
 /// regeneration command.
-fn decode_diff_text(source: &str, bytes: Vec<u8>) -> Result<String, String> {
+pub(crate) fn decode_diff_text(source: &str, bytes: Vec<u8>) -> Result<String, String> {
     let error = match String::from_utf8(bytes) {
         Ok(text) => return Ok(text),
         Err(error) => error,
