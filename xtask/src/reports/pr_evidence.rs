@@ -5,10 +5,9 @@ use crate::run::{
     run_output_owned_with_timeout, tool_build_timeout,
 };
 use ripr::review_input::{
-    CanonicalFindingIndexV1, REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES,
-    REVIEW_INDEX_SCHEMA_VERSION, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
+    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
     REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
-    canonical_projection, canonical_projection_all,
+    canonical_finding_index, canonical_projection,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -227,26 +226,11 @@ fn write_pr_evidence_packet(
         .get("findings")
         .and_then(Value::as_array)
         .ok_or_else(|| "ripr check output findings must be an array".to_string())?;
-    let entries = canonical_projection_all(findings, &root)
-        .map_err(|error| format!("derive canonical finding index: {error}"))?;
-    if entries.len() > REVIEW_INDEX_MAX_ENTRIES {
-        return Err("canonical finding index exceeds entry limit".to_string());
-    }
-    let encoded_entries = serde_json::to_vec(&entries)
-        .map_err(|error| format!("serialize canonical finding index: {error}"))?;
-    if encoded_entries.len() > REVIEW_INDEX_MAX_BYTES {
-        return Err("canonical finding index exceeds byte limit".to_string());
-    }
-    let index = CanonicalFindingIndexV1 {
-        schema_version: REVIEW_INDEX_SCHEMA_VERSION.to_string(),
-        total_finding_count: entries.len() as u64,
-        index_sha256: format!("sha256:{:x}", Sha256::digest(&encoded_entries)),
-        entries,
-    };
+    let (index, index_byte_count) = canonical_finding_index(findings, &root)?;
     subject["canonical_finding_index"] = serde_json::to_value(index)
         .map_err(|error| format!("serialize canonical finding index: {error}"))?;
     subject["canonical_finding_index_entry_count"] = json!(findings.len());
-    subject["canonical_finding_index_byte_count"] = json!(encoded_entries.len());
+    subject["canonical_finding_index_byte_count"] = json!(index_byte_count);
     let review_input = producer_review_input(&check_value, repo, options, &subject)?;
     let review_input_text = format!(
         "{}\n",
@@ -1677,6 +1661,7 @@ fn repo_root() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ripr::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
     use ripr::review_input::projection_summary;
 
     fn options() -> PrEvidenceOptions {
@@ -3329,7 +3314,9 @@ mod tests {
                 let expected = match label {
                     "runner failure" => "injected runner failure",
                     "malformed conversion" => "not valid JSON",
-                    "oversized conversion" | "entry guard before projection" => "exceeds entry limit",
+                    "oversized conversion" | "entry guard before projection" => {
+                        "exceeds entry limit"
+                    }
                     "index byte limit" => "exceeds byte limit",
                     _ => return Err(format!("unknown failure control: {label}")),
                 };

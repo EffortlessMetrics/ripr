@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::io::{self, Write};
 use std::path::Path;
 
 pub const REVIEW_INPUT_SCHEMA_VERSION: &str = "ripr.review_input.v1";
@@ -221,6 +222,106 @@ pub fn canonical_projection_all(
     Ok(projected)
 }
 
+/// Build the exhaustive producer index with entry admission before projection
+/// and a bounded compact encoding. The byte limit bounds encoded length and
+/// admitted reservation requests, not projection allocation or physical RSS.
+pub fn canonical_finding_index(
+    findings: &[Value],
+    root: &Path,
+) -> Result<(CanonicalFindingIndexV1, usize), String> {
+    if findings.len() > REVIEW_INDEX_MAX_ENTRIES {
+        return Err("canonical finding index exceeds entry limit".to_string());
+    }
+    let entries = canonical_projection_all(findings, root)
+        .map_err(|error| format!("derive canonical finding index: {error}"))?;
+    let mut writer = CanonicalIndexWriter::new(REVIEW_INDEX_MAX_BYTES);
+    if let Err(error) = serde_json::to_writer(&mut writer, &entries) {
+        return Err(writer
+            .failure
+            .unwrap_or_else(|| format!("serialize canonical finding index: {error}")));
+    }
+    let encoded = writer.finish()?;
+    let byte_count = encoded.len();
+    let index = CanonicalFindingIndexV1 {
+        schema_version: REVIEW_INDEX_SCHEMA_VERSION.to_string(),
+        total_finding_count: entries.len() as u64,
+        index_sha256: format!("sha256:{:x}", Sha256::digest(&encoded)),
+        entries,
+    };
+    drop(encoded);
+    Ok((index, byte_count))
+}
+
+fn encoded_length(current: usize, additional: usize, limit: usize) -> Result<usize, &'static str> {
+    current
+        .checked_add(additional)
+        .filter(|length| *length <= limit)
+        .ok_or("canonical finding index exceeds byte limit")
+}
+
+struct CanonicalIndexWriter {
+    bytes: Vec<u8>,
+    limit: usize,
+    requested_capacity: usize,
+    failure: Option<String>,
+}
+
+impl CanonicalIndexWriter {
+    fn new(limit: usize) -> Self {
+        Self {
+            bytes: Vec::new(),
+            limit,
+            requested_capacity: 0,
+            failure: None,
+        }
+    }
+
+    fn fail(&mut self, message: String) -> io::Error {
+        let first = self.failure.get_or_insert(message);
+        io::Error::other(first.clone())
+    }
+
+    fn finish(self) -> Result<Vec<u8>, String> {
+        match self.failure {
+            Some(error) => Err(error),
+            None => Ok(self.bytes),
+        }
+    }
+}
+
+impl Write for CanonicalIndexWriter {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        if let Some(error) = &self.failure {
+            return Err(io::Error::other(error.clone()));
+        }
+        let length = match encoded_length(self.bytes.len(), buffer.len(), self.limit) {
+            Ok(length) => length,
+            Err(error) => return Err(self.fail(error.to_string())),
+        };
+        if length > self.requested_capacity {
+            let target = length
+                .max(self.requested_capacity.saturating_mul(2))
+                .max(1024)
+                .min(self.limit);
+            if let Err(error) = self.bytes.try_reserve_exact(target - self.bytes.len()) {
+                return Err(self.fail(format!(
+                    "serialize canonical finding index: reserve encoded entries: {error}"
+                )));
+            }
+            self.requested_capacity = target;
+        }
+        self.bytes.extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        match &self.failure {
+            Some(error) => Err(io::Error::other(error.clone())),
+            None => Ok(()),
+        }
+    }
+}
+
 pub fn canonical_projection_from_index(
     index: &CanonicalFindingIndexV1,
 ) -> Result<Vec<ReviewFindingProjectionV1>, String> {
@@ -364,6 +465,135 @@ mod tests {
             "suggested_next_action": "Inspect the finding.",
             "related_tests": []
         })
+    }
+
+    #[test]
+    fn bounded_canonical_index_preserves_legacy_bytes_order_and_digest() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let mut alternate = finding();
+        alternate["id"] = serde_json::json!("finding-雪");
+        alternate["severity"] = serde_json::json!("critical");
+        alternate["suggested_next_action"] = serde_json::json!("雪 \" \\ \n\t\u{0001}");
+        alternate["related_tests"] = serde_json::json!([{
+            "name": "test-雪", "file": "Cargo.toml", "line": 2
+        }]);
+        for values in [vec![], vec![finding()], vec![finding(), alternate.clone()]] {
+            let entries = canonical_projection_all(&values, &root)?;
+            let legacy = serde_json::to_vec(&entries).map_err(|error| error.to_string())?;
+            let (index, bytes) = canonical_finding_index(&values, &root)?;
+            assert_eq!(index.entries, entries);
+            assert_eq!(bytes, legacy.len());
+            assert_eq!(index.total_finding_count, values.len() as u64);
+            assert_eq!(index.schema_version, REVIEW_INDEX_SCHEMA_VERSION);
+            assert_eq!(index.index_sha256, format!("sha256:{:x}", Sha256::digest(&legacy)));
+            let encoded = serde_json::to_vec(&index.entries).map_err(|error| error.to_string())?;
+            assert_eq!(encoded, legacy);
+        }
+        let (duplicate, _) = canonical_finding_index(&[finding(), finding()], &root)?;
+        assert_eq!(duplicate.entries.len(), 2);
+        assert!(canonical_projection_from_index(&duplicate)
+            .err()
+            .ok_or_else(|| "duplicate consumer accepted index".to_string())?
+            .contains("duplicate stable IDs"));
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_canonical_index_admits_entries_before_projection() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let values = vec![finding(); REVIEW_INDEX_MAX_ENTRIES];
+        let (index, _) = canonical_finding_index(&values, &root)?;
+        assert_eq!(index.entries.len(), REVIEW_INDEX_MAX_ENTRIES);
+        let oversized = vec![Value::Null; REVIEW_INDEX_MAX_ENTRIES + 1];
+        for candidate_root in [root.as_path(), Path::new("")] {
+            assert_eq!(
+                canonical_finding_index(&oversized, candidate_root).err(),
+                Some("canonical finding index exceeds entry limit".to_string())
+            );
+        }
+        for (values, candidate_root) in [
+            (vec![Value::Null], root.as_path()),
+            (vec![finding()], Path::new("")),
+        ] {
+            let legacy = canonical_projection_all(&values, candidate_root)
+                .err()
+                .ok_or_else(|| "malformed fixture unexpectedly projected".to_string())?;
+            assert_eq!(
+                canonical_finding_index(&values, candidate_root).err(),
+                Some(format!("derive canonical finding index: {legacy}"))
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_canonical_index_enforces_exact_encoded_boundary() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let mut entry = canonical_projection_all(&[finding()], &root)?
+            .pop()
+            .ok_or_else(|| "missing boundary fixture".to_string())?;
+        entry.summary.clear();
+        let overhead = serde_json::to_vec(&[entry]).map_err(|error| error.to_string())?.len();
+        let mut value = finding();
+        value["suggested_next_action"] =
+            serde_json::json!("x".repeat(REVIEW_INDEX_MAX_BYTES - overhead));
+        let (index, size) = canonical_finding_index(&[value.clone()], &root)?;
+        let legacy = serde_json::to_vec(&index.entries).map_err(|error| error.to_string())?;
+        assert_eq!(size, REVIEW_INDEX_MAX_BYTES);
+        assert_eq!(legacy.len(), size);
+        assert_eq!(index.index_sha256, format!("sha256:{:x}", Sha256::digest(&legacy)));
+        value["suggested_next_action"] =
+            serde_json::json!("x".repeat(REVIEW_INDEX_MAX_BYTES - overhead + 1));
+        assert_eq!(
+            canonical_finding_index(&[value.clone()], &root).err(),
+            Some("canonical finding index exceeds byte limit".to_string())
+        );
+        value["suggested_next_action"] =
+            serde_json::json!("\u{0001}".repeat(REVIEW_INDEX_MAX_BYTES / 6));
+        assert!(projection_summary(&value).len() < REVIEW_INDEX_MAX_BYTES);
+        let escaped = canonical_projection_all(&[value.clone()], &root)?;
+        assert!(serde_json::to_vec(&escaped)
+            .map_err(|error| error.to_string())?
+            .len() > REVIEW_INDEX_MAX_BYTES);
+        assert_eq!(
+            canonical_finding_index(&[value], &root).err(),
+            Some("canonical finding index exceeds byte limit".to_string())
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn canonical_index_writer_refuses_before_growth_and_retains_failure() -> Result<(), String> {
+        let mut writer = CanonicalIndexWriter::new(8);
+        writer.write_all(b"1234").map_err(|error| error.to_string())?;
+        assert!(writer.requested_capacity <= 8);
+        let bytes = writer.bytes.clone();
+        let request = writer.requested_capacity;
+        let failure = writer
+            .write(b"56789")
+            .err()
+            .ok_or_else(|| "oversized write accepted".to_string())?
+            .to_string();
+        assert!(failure.contains("exceeds byte limit"));
+        assert_eq!(writer.bytes, bytes);
+        assert_eq!(writer.requested_capacity, request);
+        assert_eq!(writer.write(b"").err().map(|error| error.to_string()), Some(failure.clone()));
+        assert_eq!(writer.flush().err().map(|error| error.to_string()), Some(failure.clone()));
+        assert_eq!(writer.finish().err(), Some(failure));
+        assert_eq!(encoded_length(usize::MAX, 1, usize::MAX), Err(
+            "canonical finding index exceeds byte limit"
+        ));
+        assert_eq!(encoded_length(8, 1, 8), Err("canonical finding index exceeds byte limit"));
+        assert_eq!(encoded_length(8, 0, 8), Ok(8));
+
+        let mut writer = CanonicalIndexWriter::new(4096);
+        for size in [1, 1024, 1024, 2047] {
+            writer.write_all(&vec![b'x'; size]).map_err(|error| error.to_string())?;
+            assert!(writer.requested_capacity <= 4096);
+            assert!(writer.bytes.len() <= writer.requested_capacity);
+        }
+        assert_eq!(writer.finish()?.len(), 4096);
+        Ok(())
     }
 
     #[test]
