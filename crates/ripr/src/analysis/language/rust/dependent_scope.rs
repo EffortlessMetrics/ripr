@@ -112,7 +112,7 @@ impl DependentScopeMode {
         Self::from_env_value(std::env::var(DEPENDENT_SCOPE_ENV))
     }
 
-    fn from_env_value(value: Result<String, std::env::VarError>) -> Result<Self, String> {
+    pub(super) fn from_env_value(value: Result<String, std::env::VarError>) -> Result<Self, String> {
         match value {
             Err(std::env::VarError::NotPresent) => Ok(Self::Auto),
             Err(std::env::VarError::NotUnicode(_)) => {

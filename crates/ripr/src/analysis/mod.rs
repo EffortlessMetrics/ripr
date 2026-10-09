@@ -80,6 +80,9 @@ pub(crate) use generated_rust_corpus::{
     CorpusPayloadSize, analyzable_corpus_payload_size, review_guidance_input_paths,
 };
 pub(crate) use language::{
+    CompleteDependentScopePolicy, CompleteRustPolicySnapshot, capture_complete_rust_policy,
+};
+pub(crate) use language::{
     DIFF_SCOPE_OVERSIZED_PREFIX, JAVASCRIPT_SOURCE_EXTENSIONS, TYPESCRIPT_SOURCE_EXTENSIONS,
     TsJsSourceKind, is_diff_scope_oversized, is_generated_rust_file_with_patterns,
     is_ts_js_source_extension, ts_js_source_kind,

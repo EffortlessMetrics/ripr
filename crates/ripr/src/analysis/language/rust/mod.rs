@@ -602,6 +602,455 @@ fn partial_budget_from_env(
     }
 }
 
+/// Effective Rust diff-selection policy data. Construction reads the existing
+/// parsers; this value grants no execution, scope or resource permission.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct CompleteRustPolicySnapshot {
+    changed_rust_lines: usize,
+    diff_index_files: usize,
+    narrow_index_files: usize,
+    partial_budgets: PartialDiffBudgets,
+    dependent_scope: CompleteDependentScopePolicy,
+    partial_selection_version: &'static str,
+    partial_language_tier_version: &'static str,
+}
+
+/// Closed data projection of the existing dependent-scope mode. Selection
+/// remains owned by `DependentScopeMode`, including its contextual conditions.
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum CompleteDependentScopePolicy {
+    Auto,
+    NameAdmitted,
+    Full,
+}
+
+impl CompleteDependentScopePolicy {
+    pub(crate) const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::NameAdmitted => "named",
+            Self::Full => "full",
+        }
+    }
+}
+
+impl CompleteRustPolicySnapshot {
+    pub(crate) const fn changed_rust_line_limit(&self) -> usize {
+        self.changed_rust_lines
+    }
+
+    pub(crate) const fn diff_index_file_limit(&self) -> usize {
+        self.diff_index_files
+    }
+
+    pub(crate) const fn diff_narrow_index_limit(&self) -> usize {
+        self.narrow_index_files
+    }
+
+    pub(crate) const fn partial_diff_file_budget(&self) -> usize {
+        self.partial_budgets.file_budget
+    }
+
+    pub(crate) const fn partial_diff_line_budget(&self) -> usize {
+        self.partial_budgets.line_budget
+    }
+
+    pub(crate) fn partial_budget_disclosures(&self) -> &[String] {
+        &self.partial_budgets.disclosures
+    }
+
+    pub(crate) const fn dependent_scope_mode(&self) -> &CompleteDependentScopePolicy {
+        &self.dependent_scope
+    }
+
+    pub(crate) const fn partial_selection_version(&self) -> &'static str {
+        self.partial_selection_version
+    }
+
+    pub(crate) const fn partial_language_tier_version(&self) -> &'static str {
+        self.partial_language_tier_version
+    }
+}
+
+/// Capture data in the diff adapter's existing policy encounter order. Helper
+/// re-reads, parsing errors and clamps are retained. These ordered environment
+/// reads are not an atomic environment snapshot; the complete caller must
+/// compare fresh captures at its execution checkpoints in its owned worker.
+pub(crate) fn capture_complete_rust_policy() -> Result<CompleteRustPolicySnapshot, String> {
+    let changed_rust_lines = diff_changed_rust_line_limit()?;
+    let partial_budgets = partial_diff_budgets()?;
+    let diff_index_files = diff_index_file_limit()?;
+    let narrow_index_files = diff_narrow_index_files(diff_index_files)?;
+    let dependent_scope = match dependent_scope::DependentScopeMode::from_env()? {
+        dependent_scope::DependentScopeMode::Auto => CompleteDependentScopePolicy::Auto,
+        dependent_scope::DependentScopeMode::NameAdmitted => {
+            CompleteDependentScopePolicy::NameAdmitted
+        }
+        dependent_scope::DependentScopeMode::Full => CompleteDependentScopePolicy::Full,
+        #[cfg(test)]
+        dependent_scope::DependentScopeMode::CoreOnly => {
+            return Err("complete Rust policy refuses test-only core-only dependent scope".into());
+        }
+    };
+    Ok(CompleteRustPolicySnapshot {
+        changed_rust_lines,
+        diff_index_files,
+        narrow_index_files,
+        partial_budgets,
+        dependent_scope,
+        partial_selection_version: PARTIAL_DIFF_SELECTION_VERSION,
+        partial_language_tier_version: PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
+    })
+}
+
+#[cfg(test)]
+mod complete_rust_policy_tests {
+    use super::*;
+    use super::dependent_scope::DependentScopeMode;
+    use std::env::VarError;
+
+    const VALID: &[(&str, &str)] = &[
+        (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "5400"),
+        (DIFF_INDEX_FILE_LIMIT_ENV, "10000"),
+        (DIFF_NARROW_INDEX_FILES_ENV, "1200"),
+        (PARTIAL_DIFF_FILE_BUDGET_ENV, "200"),
+        (PARTIAL_DIFF_LINE_BUDGET_ENV, "1000"),
+    ];
+
+    fn capture(
+        values: &[(&'static str, &str)],
+        mode: DependentScopeMode,
+    ) -> Result<CompleteRustPolicySnapshot, String> {
+        with_forced_diff_limit_env(values, || {
+            dependent_scope::with_forced_mode(mode, capture_complete_rust_policy)
+        })
+    }
+
+    fn refusal<T>(result: Result<T, String>, detail: &str) -> Result<String, String> {
+        match result {
+            Ok(_) => Err(format!("{detail} was accepted")),
+            Err(message) => Ok(message),
+        }
+    }
+
+    fn numeric_value(name: &'static str, value: Result<String, VarError>) -> Result<usize, String> {
+        match name {
+            DIFF_CHANGED_RUST_LINE_LIMIT_ENV => diff_changed_rust_line_limit_from_env(value),
+            DIFF_INDEX_FILE_LIMIT_ENV => diff_index_file_limit_from_env(value),
+            DIFF_NARROW_INDEX_FILES_ENV => diff_narrow_index_files_from_env(value, 10_000),
+            PARTIAL_DIFF_FILE_BUDGET_ENV => partial_budget_from_env(
+                PARTIAL_DIFF_FILE_BUDGET_ENV,
+                PARTIAL_DIFF_FILE_BUDGET_DEFAULT,
+                10_000,
+                value,
+            )
+            .map(|(budget, _)| budget),
+            PARTIAL_DIFF_LINE_BUDGET_ENV => partial_budget_from_env(
+                PARTIAL_DIFF_LINE_BUDGET_ENV,
+                PARTIAL_DIFF_LINE_BUDGET_DEFAULT,
+                2_000,
+                value,
+            )
+            .map(|(budget, _)| budget),
+            other => Err(format!("unexpected numeric policy name {other}")),
+        }
+    }
+
+    #[test]
+    fn capture_retains_clamps_and_versions() -> Result<(), String> {
+        for (index, lines, narrow, files, partial_lines) in [
+            ("3", "7", "11", "9", "11"),
+            ("12000", "5400", "13000", "20000", "10000"),
+        ] {
+            let values = [
+                (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, lines),
+                (DIFF_INDEX_FILE_LIMIT_ENV, index),
+                (DIFF_NARROW_INDEX_FILES_ENV, narrow),
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, files),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, partial_lines),
+            ];
+            let snapshot = capture(&values, DependentScopeMode::Auto)?;
+            let index = index.parse::<usize>().map_err(|error| error.to_string())?;
+            let lines = lines.parse::<usize>().map_err(|error| error.to_string())?;
+            assert_eq!(snapshot.diff_index_file_limit(), index);
+            assert_eq!(snapshot.changed_rust_line_limit(), lines);
+            assert_eq!(snapshot.diff_narrow_index_limit(), index);
+            assert_eq!(snapshot.partial_diff_file_budget(), index);
+            assert_eq!(snapshot.partial_diff_line_budget(), lines);
+            let disclosures = [
+                format!(
+                    "{PARTIAL_DIFF_FILE_BUDGET_ENV}={files} exceeds the effective analysis-cost limit ({index}); clamped to {index}"
+                ),
+                format!(
+                    "{PARTIAL_DIFF_LINE_BUDGET_ENV}={partial_lines} exceeds the effective analysis-cost limit ({lines}); clamped to {lines}"
+                ),
+            ];
+            assert_eq!(snapshot.partial_budget_disclosures(), disclosures.as_slice());
+            assert_eq!(snapshot.partial_selection_version(), "partial-diff-v1");
+            assert_eq!(snapshot.partial_language_tier_version(), "lang-tier-v1");
+            assert_eq!(
+                snapshot.dependent_scope_mode(),
+                &CompleteDependentScopePolicy::Auto
+            );
+        }
+        let snapshot = capture(
+            &[
+                (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "7"),
+                (DIFF_INDEX_FILE_LIMIT_ENV, "3"),
+                (DIFF_NARROW_INDEX_FILES_ENV, "3"),
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, "3"),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, "7"),
+            ],
+            DependentScopeMode::Full,
+        )?;
+        assert!(snapshot.partial_budget_disclosures().is_empty());
+        assert_eq!(snapshot.dependent_scope_mode().as_str(), "full");
+        let snapshot = capture(
+            &[
+                (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "7"),
+                (DIFF_INDEX_FILE_LIMIT_ENV, "3"),
+                (DIFF_NARROW_INDEX_FILES_ENV, "99"),
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, "2"),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, "5"),
+            ],
+            DependentScopeMode::NameAdmitted,
+        )?;
+        assert_eq!(snapshot.diff_narrow_index_limit(), 3);
+        assert_eq!(snapshot.partial_diff_file_budget(), 2);
+        assert_eq!(snapshot.partial_diff_line_budget(), 5);
+        assert!(snapshot.partial_budget_disclosures().is_empty());
+        assert_eq!(snapshot.dependent_scope_mode().as_str(), "named");
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_parsers_keep_all_refusals() -> Result<(), String> {
+        let overflow = format!("{}0", usize::MAX);
+        for (name, _) in VALID {
+            for invalid in ["", "0", "lots", overflow.as_str()] {
+                let message = refusal(
+                    numeric_value(name, Ok(invalid.to_string())),
+                    &format!("{name}={invalid:?}"),
+                )?;
+                assert!(
+                    message.contains(name) && message.contains("positive integer"),
+                    "existing parser changed refusal: {message}"
+                );
+                if matches!(*name, PARTIAL_DIFF_FILE_BUDGET_ENV | PARTIAL_DIFF_LINE_BUDGET_ENV) {
+                    assert!(
+                        message.starts_with("partial_budget_invalid: "),
+                        "partial parser lost its typed prefix: {message}"
+                    );
+                }
+                let values = VALID
+                    .iter()
+                    .map(|(candidate, value)| {
+                        (*candidate, if candidate == name { invalid } else { *value })
+                    })
+                    .collect::<Vec<_>>();
+                let actual = refusal(capture(&values, DependentScopeMode::Auto), name)?;
+                assert_eq!(actual, message, "capture changed {name} refusal");
+            }
+            let message = refusal(
+                numeric_value(name, Err(VarError::NotUnicode("non-unicode".into()))),
+                name,
+            )?;
+            let expected = if matches!(
+                *name,
+                PARTIAL_DIFF_FILE_BUDGET_ENV | PARTIAL_DIFF_LINE_BUDGET_ENV
+            ) {
+                format!("partial_budget_invalid: {name} must be valid UTF-8")
+            } else {
+                format!("{name} must be valid UTF-8")
+            };
+            assert_eq!(message, expected);
+        }
+        for (name, expected) in [
+            (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, 2_000),
+            (DIFF_INDEX_FILE_LIMIT_ENV, 10_000),
+            (DIFF_NARROW_INDEX_FILES_ENV, 1_200),
+            (PARTIAL_DIFF_FILE_BUDGET_ENV, 200),
+            (PARTIAL_DIFF_LINE_BUDGET_ENV, 1_000),
+        ] {
+            assert_eq!(numeric_value(name, Err(VarError::NotPresent))?, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capture_keeps_competing_error_order() -> Result<(), String> {
+        let cases = [
+            (
+                DIFF_CHANGED_RUST_LINE_LIMIT_ENV,
+                vec![
+                    (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "0"),
+                    (DIFF_INDEX_FILE_LIMIT_ENV, "0"),
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, "0"),
+                ],
+            ),
+            (
+                DIFF_INDEX_FILE_LIMIT_ENV,
+                vec![
+                    (DIFF_INDEX_FILE_LIMIT_ENV, "0"),
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, "0"),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "0"),
+                ],
+            ),
+            (
+                PARTIAL_DIFF_FILE_BUDGET_ENV,
+                vec![
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, "0"),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "0"),
+                    (DIFF_NARROW_INDEX_FILES_ENV, "0"),
+                ],
+            ),
+            (
+                PARTIAL_DIFF_LINE_BUDGET_ENV,
+                vec![
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "0"),
+                    (DIFF_NARROW_INDEX_FILES_ENV, "0"),
+                ],
+            ),
+            (
+                DIFF_NARROW_INDEX_FILES_ENV,
+                vec![(DIFF_NARROW_INDEX_FILES_ENV, "0")],
+            ),
+        ];
+        for (first, invalid) in cases {
+            let values = VALID
+                .iter()
+                .map(|(name, value)| {
+                    let value = invalid
+                        .iter()
+                        .find(|(candidate, _)| candidate == name)
+                        .map_or(*value, |(_, value)| *value);
+                    (*name, value)
+                })
+                .collect::<Vec<_>>();
+            let actual = refusal(capture(&values, DependentScopeMode::CoreOnly), first)?;
+            let expected = refusal(numeric_value(first, Ok("0".into())), first)?;
+            assert_eq!(actual, expected, "wrong first competing refusal");
+        }
+        assert_eq!(
+            refusal(capture(VALID, DependentScopeMode::CoreOnly), "core-only")?,
+            "complete Rust policy refuses test-only core-only dependent scope"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_capture_binds_effective_policy() -> Result<(), String> {
+        let baseline = capture(VALID, DependentScopeMode::Auto)?;
+        assert_eq!(capture(VALID, DependentScopeMode::Auto)?, baseline);
+        for (changed, value) in [
+            (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "5401"),
+            (DIFF_INDEX_FILE_LIMIT_ENV, "9999"),
+            (DIFF_NARROW_INDEX_FILES_ENV, "1199"),
+            (PARTIAL_DIFF_FILE_BUDGET_ENV, "199"),
+            (PARTIAL_DIFF_LINE_BUDGET_ENV, "999"),
+        ] {
+            let values = VALID
+                .iter()
+                .map(|(name, original)| {
+                    (*name, if *name == changed { value } else { *original })
+                })
+                .collect::<Vec<_>>();
+            assert_ne!(
+                capture(&values, DependentScopeMode::Auto)?,
+                baseline,
+                "fresh capture ignored {changed}"
+            );
+        }
+        assert_ne!(capture(VALID, DependentScopeMode::NameAdmitted)?, baseline);
+        let values = VALID
+            .iter()
+            .map(|(name, value)| {
+                (
+                    *name,
+                    if *name == DIFF_CHANGED_RUST_LINE_LIMIT_ENV {
+                        " 05400 "
+                    } else {
+                        *value
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(capture(&values, DependentScopeMode::Auto)?, baseline);
+        let raised = |files: &str, narrow: &str| {
+            capture(
+                &[
+                    (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "5400"),
+                    (DIFF_INDEX_FILE_LIMIT_ENV, "10000"),
+                    (DIFF_NARROW_INDEX_FILES_ENV, narrow),
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, files),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "1000"),
+                ],
+                DependentScopeMode::Auto,
+            )
+        };
+        let first = raised("20000", "12000")?;
+        let different_disclosure = raised("20001", "12000")?;
+        assert_eq!(
+            first.partial_diff_file_budget(),
+            different_disclosure.partial_diff_file_budget()
+        );
+        assert_ne!(first, different_disclosure, "clamp disclosure was omitted");
+        assert_eq!(
+            first,
+            raised("20000", "13000")?,
+            "silent narrowing clamps must bind effective values"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dependent_parser_and_threshold_stay_owned() -> Result<(), String> {
+        for (raw, expected, key) in [
+            ("", DependentScopeMode::Auto, "auto"),
+            (" auto ", DependentScopeMode::Auto, "auto"),
+            (" named ", DependentScopeMode::NameAdmitted, "named"),
+            ("full", DependentScopeMode::Full, "full"),
+        ] {
+            let actual = DependentScopeMode::from_env_value(Ok(raw.into()))?;
+            assert_eq!(actual, expected);
+            let snapshot = capture(VALID, actual)?;
+            assert_eq!(snapshot.dependent_scope_mode().as_str(), key);
+        }
+        assert_eq!(
+            DependentScopeMode::from_env_value(Err(VarError::NotPresent))?,
+            DependentScopeMode::Auto
+        );
+        let overflow = format!("{}0", usize::MAX);
+        for invalid in ["0", "lots", "AUTO", overflow.as_str()] {
+            let message = refusal(
+                DependentScopeMode::from_env_value(Ok(invalid.into())),
+                invalid,
+            )?;
+            assert_eq!(
+                message,
+                format!(
+                    "{} must be `auto`, `named` or `full`, got `{invalid}`",
+                    dependent_scope::DEPENDENT_SCOPE_ENV
+                )
+            );
+        }
+        assert_eq!(
+            refusal(
+                DependentScopeMode::from_env_value(Err(VarError::NotUnicode("x".into()))),
+                "dependent non-unicode",
+            )?,
+            "RIPR_DIFF_DEPENDENT_SCOPE must be valid UTF-8"
+        );
+        let auto = DependentScopeMode::from_env_value(Ok("auto".into()))?;
+        assert!(!auto.narrows(99, 100));
+        assert!(!auto.narrows(100, 100));
+        assert!(auto.narrows(101, 100));
+        assert!(DependentScopeMode::from_env_value(Ok("named".into()))?.narrows(100, 100));
+        assert!(!DependentScopeMode::from_env_value(Ok("full".into()))?.narrows(101, 100));
+        Ok(())
+    }
+}
+
 /// One changed-line file eligible for partition selection. Context-only
 /// files (no changed lines) are never candidates: they play their existing
 /// read-only context role and never consume the partial budget
