@@ -21,6 +21,8 @@
 //! workers) do not see it, so every overlay-aware read site runs on the
 //! pipeline thread.
 
+pub(crate) mod frozen;
+
 use crate::core_error::CoreError;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -240,6 +242,18 @@ pub(crate) fn lookup(root: &Path, relative: &Path) -> CommittedSourceRead {
 /// path, `Ok(None)` for a dirty path with no content at `HEAD`, and the
 /// working-tree bytes otherwise.
 pub(crate) fn read_source_bytes(root: &Path, relative: &Path) -> std::io::Result<Option<Vec<u8>>> {
+    if let Some(authority) = frozen::current() {
+        return match frozen::fs::read(root.join(relative)) {
+            Ok(bytes) => Ok(Some(bytes)),
+            Err(error)
+                if error.kind() == std::io::ErrorKind::NotFound
+                    && authority.ensure_clean().is_ok() =>
+            {
+                Ok(None)
+            }
+            Err(error) => Err(error),
+        };
+    }
     match lookup(root, relative) {
         CommittedSourceRead::Worktree => std::fs::read(root.join(relative)).map(Some),
         CommittedSourceRead::Committed(bytes) => Ok(Some(bytes)),

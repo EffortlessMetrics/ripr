@@ -22,8 +22,10 @@
 use crate::domain::{
     GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError, GitObjectId,
 };
+use sha2::Digest;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Bounded invocation deadline for each plumbing call.
@@ -60,6 +62,11 @@ pub(crate) struct ResolvedGitCandidate {
 pub(crate) struct TempRootGuard(PathBuf);
 
 impl TempRootGuard {
+    #[cfg(test)]
+    pub(crate) fn for_test(path: PathBuf) -> Self {
+        Self(path)
+    }
+
     /// Remove the root and, if that fails, report it to `sink`.
     ///
     /// `Drop` delegates here in full so the warning is assertable. Asserting
@@ -245,7 +252,30 @@ pub(crate) struct PreparedNamedTree {
     pub(crate) tree: GitObjectId,
     pub(crate) configuration: CapturedConfiguration,
     _root: PathBuf,
-    _cleanup: TempRootGuard,
+    _cleanup: Arc<TempRootGuard>,
+    inventory: Arc<super::committed_source::frozen::FrozenInventory>,
+}
+
+impl PreparedNamedTree {
+    pub(crate) fn physical_root(&self) -> &Path {
+        &self._root
+    }
+
+    /// Carry authenticated source inventory and cleanup into scoped workers.
+    /// This alone does not install a source context or complete admission.
+    pub(crate) fn frozen_source_authority(
+        self,
+        logical_root: &Path,
+    ) -> std::io::Result<Arc<super::committed_source::frozen::FrozenSourceAuthority>> {
+        super::committed_source::frozen::FrozenSourceAuthority::new(
+            logical_root,
+            &self._root,
+            self.tree,
+            self.configuration,
+            self.inventory,
+            self._cleanup,
+        )
+    }
 }
 
 /// Prepare one named tree and its configuration through the same object stream.
@@ -268,7 +298,7 @@ pub(crate) fn prepare_named_tree(
     let tree = std::str::from_utf8(&output.stdout)
         .map_err(|error| failed(format!("named-tree identity is not UTF-8: {error}")))?;
     let tree = GitObjectId::parse(tree.trim()).map_err(|error| failed(error.to_string()))?;
-    let (materialized, cleanup, configuration) = materialize_with_configuration(
+    let (materialized, cleanup, configuration, inventory) = materialize_with_configuration(
         root,
         tree.as_str(),
         deadline,
@@ -280,7 +310,10 @@ pub(crate) fn prepare_named_tree(
         tree,
         configuration,
         _root: materialized,
-        _cleanup: cleanup,
+        _cleanup: Arc::new(cleanup),
+        inventory: Arc::new(
+            inventory.ok_or_else(|| failed("named-tree source inventory is missing".into()))?,
+        ),
     })
 }
 
@@ -357,7 +390,7 @@ fn materialize(
     candidate_tree: &str,
     deadline: Option<Duration>,
 ) -> Result<(PathBuf, TempRootGuard), SubjectError> {
-    let (root, cleanup, _) = materialize_with_configuration(
+    let (root, cleanup, _, _) = materialize_with_configuration(
         root,
         candidate_tree,
         deadline,
@@ -371,7 +404,15 @@ fn materialize_with_configuration(
     candidate_tree: &str,
     deadline: Option<Duration>,
     capture: ConfigurationCapture,
-) -> Result<(PathBuf, TempRootGuard, CapturedConfiguration), SubjectError> {
+) -> Result<
+    (
+        PathBuf,
+        TempRootGuard,
+        CapturedConfiguration,
+        Option<super::committed_source::frozen::FrozenInventory>,
+    ),
+    SubjectError,
+> {
     // Unique per invocation: concurrent runs (or racing tests) never
     // share a materialization directory, and a stale directory from a
     // crashed run can never be silently reused.
@@ -451,6 +492,9 @@ fn materialize_with_configuration(
         ConfigurationCapture::NotRequested => CapturedConfiguration::NotRequested,
         ConfigurationCapture::Requested { .. } => CapturedConfiguration::Absent,
     };
+    let mut inventory = matches!(capture, ConfigurationCapture::Requested { .. })
+        .then(super::committed_source::frozen::FrozenInventory::new);
+    let mut directories = Vec::new();
     let mut pending_configuration: Option<(GitObjectId, Vec<u8>)> = None;
     let mut entries: Vec<(String, String)> = Vec::new();
     for entry in listing.stdout.split(|byte| *byte == 0) {
@@ -479,6 +523,11 @@ fn materialize_with_configuration(
             && kind == "tree"
             && mode == "040000"
         {
+            let destination = safe_join(&target, path)?;
+            if let Some(inventory) = &mut inventory {
+                inventory.insert_directory(Path::new(path));
+            }
+            directories.push(destination);
             continue;
         }
         if kind != "blob" || !(mode == "100644" || mode == "100755") {
@@ -491,8 +540,14 @@ fn materialize_with_configuration(
         let _destination = safe_join(&target, path)?;
         entries.push((path.to_string(), object.to_string()));
     }
+    // Requested inventory includes empty directories; the ordinary -r listing
+    // and materialization path remain unchanged.
+    for directory in directories {
+        std::fs::create_dir_all(directory)
+            .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
+    }
     if entries.is_empty() {
-        return Ok((target.clone(), cleanup, configuration));
+        return Ok((target.clone(), cleanup, configuration, inventory));
     }
     // The batch session gets only the budget left after listing and
     // validation.
@@ -538,12 +593,16 @@ fn materialize_with_configuration(
         };
         let mut file = std::fs::File::create(&destination)
             .map_err(|error| failed(format!("materialization write failed: {error}")))?;
+        let mut source_hash = inventory.as_ref().map(|_| sha2::Sha256::new());
         let mut remaining = size;
         while remaining > 0 {
             let take = (remaining as usize).min(chunk.len()) as u64;
             session
                 .read_blob_bytes(&mut chunk[..take as usize])
                 .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+            if let Some(hash) = &mut source_hash {
+                hash.update(&chunk[..take as usize]);
+            }
             if let Some(limit) = capture_limit {
                 let (_, bytes) = pending_configuration
                     .as_mut()
@@ -563,6 +622,17 @@ fn materialize_with_configuration(
         session
             .end_blob()
             .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+        if let (Some(inventory), Some(hash)) = (&mut inventory, source_hash) {
+            inventory.insert_file(
+                PathBuf::from(path),
+                super::committed_source::frozen::FrozenFile {
+                    blob_oid: GitObjectId::parse(object)
+                        .map_err(|error| failed(error.to_string()))?,
+                    size,
+                    sha256: hash.finalize().into(),
+                },
+            );
+        }
     }
     session
         .finish()
@@ -572,7 +642,7 @@ fn materialize_with_configuration(
             .map_err(|error| failed(format!("captured configuration is not UTF-8: {error}")))?;
         configuration = CapturedConfiguration::Present { blob_oid, text };
     }
-    Ok((target.clone(), cleanup, configuration))
+    Ok((target.clone(), cleanup, configuration, inventory))
 }
 
 /// Join a tree entry path under the target, rejecting traversal.
@@ -742,6 +812,53 @@ mod tests {
     }
 
     #[test]
+    fn named_tree_authority_reads_bound_blobs_and_owns_snapshot_after_preparation_drop()
+    -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        let (guard, _, candidate) = fixture_repo("frozen-source-authority")?;
+        let expected = candidate_blob(&guard.0, &candidate, "src/lib.rs")?;
+        let prepared = prepare_named_tree(&guard.0, &candidate, None)
+            .map_err(|error| error.to_string())?;
+        let physical = prepared.physical_root().to_path_buf();
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(guard.0.join("src/lib.rs"))
+            .map_err(|error| error.to_string())?;
+        std::fs::write(guard.0.join("live-only.rs"), b"untracked")
+            .map_err(|error| error.to_string())?;
+        assert!(physical.is_dir(), "the worker Arc must retain materialization cleanup");
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            assert_eq!(
+                frozen::fs::read(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?,
+                expected
+            );
+            assert!(!frozen::fs::exists(guard.0.join("live-only.rs")));
+            authority.ensure_clean().map_err(|error| error.to_string())?;
+            let entries = frozen::fs::read_dir(guard.0.join("src"))
+                .map_err(|error| error.to_string())?;
+            for entry in entries {
+                let entry = entry.map_err(|error| error.to_string())?;
+                assert!(entry.path().starts_with(&guard.0));
+                assert!(!entry.path().starts_with(&physical));
+            }
+            // A same-length physical replacement must fail even though its
+            // metadata still matches the materialized blob.
+            let mut changed = expected.clone();
+            let first = changed.first_mut().ok_or("fixture source is empty")?;
+            *first ^= 1;
+            std::fs::write(physical.join("src/lib.rs"), &changed)
+                .map_err(|error| error.to_string())?;
+            assert!(frozen::fs::read(guard.0.join("src/lib.rs")).is_err());
+            assert!(authority.ensure_clean().is_err());
+            Ok(())
+        })?;
+        drop(authority);
+        assert!(!physical.exists(), "the last authority Arc must remove the owned tree");
+        Ok(())
+    }
+
+    #[test]
     fn named_configuration_is_captured_from_the_materialized_blob() -> Result<(), String> {
         let (guard, _, candidate) = fixture_repo("capture-config")?;
         let expected = candidate_blob(&guard.0, &candidate, "ripr.toml")?;
@@ -854,6 +971,48 @@ mod tests {
         let (ordinary, _cleanup) = materialize(&directory_guard.0, &tree, None)
             .map_err(|error| error.to_string())?;
         assert!(ordinary.join("ripr.toml/nested").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_inventory_keeps_an_actual_empty_nonconfiguration_subtree() -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        let (guard, _, _) = fixture_repo("frozen-empty-directory")?;
+        let empty_tree = git(&guard.0, &["mktree"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let empty_tree = GitObjectId::parse(&empty_tree).map_err(|error| error.to_string())?;
+        let mut record = b"40000 empty\0".to_vec();
+        for pair in empty_tree.as_str().as_bytes().chunks_exact(2) {
+            let hex = std::str::from_utf8(pair).map_err(|error| error.to_string())?;
+            record.push(u8::from_str_radix(hex, 16).map_err(|error| error.to_string())?);
+        }
+        let input = guard.0.join("empty-source-tree-input");
+        std::fs::write(&input, record).map_err(|error| error.to_string())?;
+        let input_name = input.to_str().ok_or("fixture tree-input path is not UTF-8")?;
+        let tree = git(
+            &guard.0,
+            &["hash-object", "-w", "-t", "tree", input_name],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let prepared = prepare_named_tree(&guard.0, &tree, None)
+            .map_err(|error| error.to_string())?;
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            assert!(frozen::fs::is_dir(guard.0.join("empty")));
+            assert_eq!(
+                frozen::fs::read_dir(guard.0.join("empty"))
+                    .map_err(|error| error.to_string())?
+                    .count(),
+                0
+            );
+            authority.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        let (ordinary, _cleanup) = materialize(&guard.0, &tree, None)
+            .map_err(|error| error.to_string())?;
+        assert!(!ordinary.join("empty").exists(), "ordinary -r behavior remains unchanged");
         Ok(())
     }
 
