@@ -1,6 +1,8 @@
 //! Owned, hard-disabled complete-execution experiment. No guard override.
 use super::*;
-use crate::run::{ByteCaptureBudget, capture_bytes_in_dir_with_budget};
+#[cfg(test)]
+use crate::run::capture_bytes_in_dir_with_budget;
+use crate::run::{ByteCaptureBudget, capture_complete_bytes_in_dir_with_budget};
 use serde::Deserialize;
 use std::time::Instant;
 
@@ -299,7 +301,7 @@ fn build_worker_in(repo: &Path, cwd: &Path, target_dir: Option<&Path>) -> Result
     if let Some(target_dir) = target_dir {
         args.extend(["--target-dir".to_string(), target_dir.display().to_string()]);
     }
-    let output = capture_bytes_in_dir_with_budget(
+    let output = capture_complete_bytes_in_dir_with_budget(
         Path::new("cargo"),
         &args,
         (cwd, None),
@@ -438,7 +440,7 @@ fn run_candidate(
         head.clone(),
     ];
     let result = (|| {
-        let output = capture_bytes_in_dir_with_budget(
+        let output = capture_complete_bytes_in_dir_with_budget(
             limiter,
             &args,
             (repo, None),
@@ -458,6 +460,7 @@ fn run_candidate(
                 describe_native_status(output.status)
             ));
         }
+        validate_requested_revisions(repo, options, &base, &head, &head_tree)?;
         read_receipt(
             repo,
             &nonce,
@@ -474,6 +477,36 @@ fn run_candidate(
             Err(cleanup) => Err(format!("{primary}; cleanup failed: {cleanup}")),
         },
     }
+}
+
+/// Reobserve the original caller literals at the post-worker checkpoint.
+/// This experiment still establishes neither complete coverage nor admission.
+fn validate_requested_revisions(
+    repo: &Path,
+    options: &PrEvidenceOptions,
+    expected_base: &str,
+    expected_head: &str,
+    expected_head_tree: &str,
+) -> Result<(), String> {
+    let base = resolve_revision(repo, &options.base, "commit").map_err(|error| {
+        format!("experimental launcher requested base reobservation failed: {error}")
+    })?;
+    if base != expected_base {
+        return Err("experimental launcher requested base commit changed after pinning".to_string());
+    }
+    let head = resolve_revision(repo, &options.head, "commit").map_err(|error| {
+        format!("experimental launcher requested head reobservation failed: {error}")
+    })?;
+    if head != expected_head {
+        return Err("experimental launcher requested head commit changed after pinning".to_string());
+    }
+    let head_tree = resolve_revision(repo, &head, "tree").map_err(|error| {
+        format!("experimental launcher requested head tree reobservation failed: {error}")
+    })?;
+    if head_tree != expected_head_tree {
+        return Err("experimental launcher requested head tree changed after pinning".to_string());
+    }
+    Ok(())
 }
 
 fn read_receipt(
@@ -906,6 +939,103 @@ mod tests {
                 "experimental strict review",
             )?;
             assert!(error.contains("experimental complete-execution"), "{error}");
+            // Run the real finite worker successfully, then move only the
+            // original request before the launcher's observation checkpoint.
+            let named_base = "refs/heads/experiment-base";
+            super::super::tests::run_git(&repo, &["update-ref", named_base, &options.base])?;
+            let symbolic = PrEvidenceOptions {
+                base: named_base.to_string(),
+                head: "HEAD".to_string(),
+                ..options.clone()
+            };
+            let base_tree = resolve_revision(&repo, &options.base, "tree")?;
+            let head_tree = resolve_revision(&repo, &options.head, "tree")?;
+            let base_moved = run_git_output(
+                &repo,
+                &["commit-tree", &base_tree, "-p", &options.base, "-m", "same base tree"],
+            )?
+            .trim()
+            .to_string();
+            let head_moved = run_git_output(
+                &repo,
+                &["commit-tree", &head_tree, "-p", &options.head, "-m", "same head tree"],
+            )?
+            .trim()
+            .to_string();
+            assert_ne!(base_moved, options.base);
+            assert_ne!(head_moved, options.head);
+            assert_eq!(resolve_revision(&repo, &base_moved, "tree")?, base_tree);
+            assert_eq!(resolve_revision(&repo, &head_moved, "tree")?, head_tree);
+            for (revision, replacement, expected) in [
+                ("HEAD", Some(head_moved.as_str()), "requested head commit changed"),
+                (named_base, Some(base_moved.as_str()), "requested base commit changed"),
+                (named_base, None, "requested base reobservation failed"),
+            ] {
+                let witness = repo.join("target/currentness-worker-succeeded");
+                match fs::remove_file(&witness) {
+                    Ok(()) => {}
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+                let mutation = match replacement {
+                    Some(value) => format!(
+                        "git update-ref {} {}",
+                        super::bash_retry_arg(revision),
+                        super::bash_retry_arg(value),
+                    ),
+                    None => format!("git update-ref -d {}", super::bash_retry_arg(revision)),
+                };
+                let script = format!(
+                    "#!/bin/sh\n/usr/bin/prlimit \"$@\"\nstatus=$?\n\
+                     if [ \"$status\" -ne 0 ]; then exit \"$status\"; fi\n\
+                     printf '%s\\n' RIPR_CALLER_DRIFT_WORKER_OK \
+                     > 'target/currentness-worker-succeeded' || exit $?\n\
+                     {} || exit $?\n",
+                    mutation,
+                );
+                let relative = "target/currentness-limiter";
+                super::super::tests::write_repo_file(&repo, relative, &script)?;
+                let limiter = repo.join(relative);
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(&limiter, fs::Permissions::from_mode(0o700))
+                        .map_err(|error| error.to_string())?;
+                }
+                let error = refusal(
+                    run_candidate(&repo, &binary, &symbolic, &limiter, profile()?),
+                    "original request drift after actual worker success",
+                )?;
+                assert_eq!(
+                    fs::read(&witness).map_err(|error| error.to_string())?,
+                    b"RIPR_CALLER_DRIFT_WORKER_OK\n",
+                );
+                assert!(error.contains(expected), "{expected}: {error}");
+                for relative in [
+                    PR_CHECK_SUBJECT_JSON,
+                    PR_CHECK_JSON,
+                    PR_REVIEW_INPUT_JSON,
+                    PR_EVIDENCE_JSON,
+                    PR_EVIDENCE_MD,
+                    RECEIPT,
+                ] {
+                    assert!(!repo.join(relative).exists(), "{relative} retained authority");
+                }
+                super::super::tests::run_git(&repo, &["update-ref", "HEAD", &options.head])?;
+                super::super::tests::run_git(&repo, &["update-ref", named_base, &options.base])?;
+                let recovered = run_candidate(
+                    &repo,
+                    &binary,
+                    &symbolic,
+                    Path::new("/usr/bin/prlimit"),
+                    profile()?,
+                )?;
+                assert_eq!(recovered.coverage, "not_established");
+                assert!(!recovered.production_admission);
+                assert!(ordinary(false)?);
+                assert!(ordinary(true)?);
+                check_pr_evidence(&repo, &options)?;
+                review().map_err(|error| error.message().to_string())?;
+            }
             let error = refusal(
                 run_candidate(
                     &repo,

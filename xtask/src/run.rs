@@ -1,5 +1,7 @@
+mod complete_byte_capture;
 mod hard_enforcement_readiness;
 mod trusted_storage;
+pub(crate) use complete_byte_capture::capture_complete_bytes_in_dir_with_budget;
 pub(crate) use trusted_storage::TrustedStorageMonitor;
 
 #[cfg(target_os = "linux")]
