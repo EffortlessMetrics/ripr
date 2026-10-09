@@ -1,3 +1,5 @@
+mod complete_execution;
+
 use super::pr_causal_delta::write_canonical_delta;
 use super::write_parented_file;
 use crate::run::{
@@ -64,6 +66,9 @@ pub(crate) fn ripr_pr(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
+    if args.iter().any(|arg| arg == complete_execution::EXPERIMENT_FLAG) {
+        return complete_execution::run_experiment(args);
+    }
     let options = parse_options(args)?;
     let repo = repo_root()?;
     if options.check {
@@ -109,7 +114,7 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]");
+    println!("usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check] [--experimental-complete-execution]");
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
@@ -3932,7 +3937,7 @@ mod tests {
         ))
     }
 
-    fn temp_repo(name: &str) -> Result<PathBuf, String> {
+    pub(super) fn temp_repo(name: &str) -> Result<PathBuf, String> {
         let unique = format!(
             "{}-{}-{}",
             name,
@@ -3947,7 +3952,7 @@ mod tests {
         Ok(path)
     }
 
-    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+    pub(super) fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
         let path = repo.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -3956,7 +3961,7 @@ mod tests {
         fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
-    fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+    pub(super) fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
     }
 
