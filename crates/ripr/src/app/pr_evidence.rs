@@ -1458,6 +1458,9 @@ fn validate_artifacts(packet: &Value, violations: &mut Vec<String>) {
 }
 
 fn render_pr_evidence_markdown(packet: &Value) -> String {
+    if packet.get(complete_execution::GENERATION_FIELD).is_some() {
+        return "# Experimental PR Evidence\n\n**Not qualified for production admission.** Complete coverage is not established; production admission is disabled. This artifact must not route mutation or satisfy the Fast Gate.\n".to_string();
+    }
     let summary = packet.get("summary").and_then(Value::as_object);
     let changed_files = count_field(summary, "changed_files");
     let comments = count_field(summary, "comments");
@@ -3166,4 +3169,27 @@ mod tests {
             );
         }
     }
+    #[test]
+    fn experimental_markdown_cannot_present_an_ordinary_fast_gate() -> Result<(), String> {
+        let ordinary = json!({"status":"ok","summary":{"comments":17,"requires_targeted_mutation":true}});
+        assert!(render_pr_evidence_markdown(&ordinary).contains("## Fast Gate"));
+        for generation in [
+            Value::Null,
+            json!({"coverage":"complete","production_admission":true}),
+        ] {
+            let mut marked = ordinary.clone();
+            marked["experimental_complete_execution"] = generation;
+            let markdown = render_pr_evidence_markdown(&marked);
+            if !markdown.starts_with("# Experimental PR Evidence")
+                || !markdown.contains("Not qualified for production admission")
+                || markdown.contains("## Fast Gate")
+                || markdown.contains("requires_targeted_mutation: true")
+            {
+                return Err("experimental Markdown presented ordinary gate or routing guidance".to_string());
+            }
+        }
+        assert!(render_pr_evidence_markdown(&ordinary).contains("## Fast Gate"));
+        Ok(())
+    }
+
 }
