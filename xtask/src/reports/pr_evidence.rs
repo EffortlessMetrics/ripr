@@ -5,9 +5,9 @@ use crate::run::{
     run_output_owned_with_timeout, tool_build_timeout,
 };
 use ripr::review_input::{
-    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
-    REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
-    canonical_finding_index, canonical_projection,
+    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION, REVIEW_INPUT_SELECTION_POLICY,
+    REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1, canonical_finding_index,
+    canonical_projection,
 };
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -1661,8 +1661,8 @@ fn repo_root() -> Result<PathBuf, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ripr::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
     use ripr::review_input::projection_summary;
+    use ripr::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
 
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {
@@ -3286,7 +3286,7 @@ mod tests {
                 serde_json::to_vec(&selected)
                     .map_err(|error| error.to_string())?
                     .len()
-                    < 128 * 1024
+                    < REVIEW_INPUT_MAX_BYTES
             );
             let excess_bytes =
                 serde_json::to_string(&excess_bytes).map_err(|error| error.to_string())?;
@@ -3300,7 +3300,10 @@ mod tests {
                 ("malformed conversion", Some("{")),
                 ("oversized conversion", Some(oversized.as_str())),
                 ("index byte limit", Some(excess_bytes.as_str())),
-                ("entry guard before projection", Some(malformed_oversized.as_str())),
+                (
+                    "entry guard before projection",
+                    Some(malformed_oversized.as_str()),
+                ),
             ] {
                 baseline()?;
                 let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {

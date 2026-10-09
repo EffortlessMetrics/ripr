@@ -489,16 +489,21 @@ mod tests {
             assert_eq!(bytes, legacy.len());
             assert_eq!(index.total_finding_count, values.len() as u64);
             assert_eq!(index.schema_version, REVIEW_INDEX_SCHEMA_VERSION);
-            assert_eq!(index.index_sha256, format!("sha256:{:x}", Sha256::digest(&legacy)));
+            assert_eq!(
+                index.index_sha256,
+                format!("sha256:{:x}", Sha256::digest(&legacy))
+            );
             let encoded = serde_json::to_vec(&index.entries).map_err(|error| error.to_string())?;
             assert_eq!(encoded, legacy);
         }
         let (duplicate, _) = canonical_finding_index(&[finding(), finding()], &root)?;
         assert_eq!(duplicate.entries.len(), 2);
-        assert!(canonical_projection_from_index(&duplicate)
-            .err()
-            .ok_or_else(|| "duplicate consumer accepted index".to_string())?
-            .contains("duplicate stable IDs"));
+        assert!(
+            canonical_projection_from_index(&duplicate)
+                .err()
+                .ok_or_else(|| "duplicate consumer accepted index".to_string())?
+                .contains("duplicate stable IDs")
+        );
         Ok(())
     }
 
@@ -537,7 +542,9 @@ mod tests {
             .pop()
             .ok_or_else(|| "missing boundary fixture".to_string())?;
         entry.summary.clear();
-        let overhead = serde_json::to_vec(&[entry]).map_err(|error| error.to_string())?.len();
+        let overhead = serde_json::to_vec(&[entry])
+            .map_err(|error| error.to_string())?
+            .len();
         let mut value = finding();
         value["suggested_next_action"] =
             serde_json::json!("x".repeat(REVIEW_INDEX_MAX_BYTES - overhead));
@@ -545,7 +552,10 @@ mod tests {
         let legacy = serde_json::to_vec(&index.entries).map_err(|error| error.to_string())?;
         assert_eq!(size, REVIEW_INDEX_MAX_BYTES);
         assert_eq!(legacy.len(), size);
-        assert_eq!(index.index_sha256, format!("sha256:{:x}", Sha256::digest(&legacy)));
+        assert_eq!(
+            index.index_sha256,
+            format!("sha256:{:x}", Sha256::digest(&legacy))
+        );
         value["suggested_next_action"] =
             serde_json::json!("x".repeat(REVIEW_INDEX_MAX_BYTES - overhead + 1));
         assert_eq!(
@@ -556,9 +566,12 @@ mod tests {
             serde_json::json!("\u{0001}".repeat(REVIEW_INDEX_MAX_BYTES / 6));
         assert!(projection_summary(&value).len() < REVIEW_INDEX_MAX_BYTES);
         let escaped = canonical_projection_all(&[value.clone()], &root)?;
-        assert!(serde_json::to_vec(&escaped)
-            .map_err(|error| error.to_string())?
-            .len() > REVIEW_INDEX_MAX_BYTES);
+        assert!(
+            serde_json::to_vec(&escaped)
+                .map_err(|error| error.to_string())?
+                .len()
+                > REVIEW_INDEX_MAX_BYTES
+        );
         assert_eq!(
             canonical_finding_index(&[value], &root).err(),
             Some("canonical finding index exceeds byte limit".to_string())
@@ -569,7 +582,9 @@ mod tests {
     #[test]
     fn canonical_index_writer_refuses_before_growth_and_retains_failure() -> Result<(), String> {
         let mut writer = CanonicalIndexWriter::new(2048);
-        writer.write_all(b"1234").map_err(|error| error.to_string())?;
+        writer
+            .write_all(b"1234")
+            .map_err(|error| error.to_string())?;
         assert_eq!(writer.requested_capacity, 1024);
         let bytes = writer.bytes.clone();
         let request = writer.requested_capacity;
@@ -581,19 +596,34 @@ mod tests {
         assert!(failure.contains("exceeds byte limit"));
         assert_eq!(writer.bytes, bytes);
         assert_eq!(writer.requested_capacity, request);
-        assert_eq!(writer.write(b"").err().map(|error| error.to_string()), Some(failure.clone()));
-        assert_eq!(writer.write_all(b"").err().map(|error| error.to_string()), Some(failure.clone()));
-        assert_eq!(writer.flush().err().map(|error| error.to_string()), Some(failure.clone()));
+        assert_eq!(
+            writer.write(b"").err().map(|error| error.to_string()),
+            Some(failure.clone())
+        );
+        assert_eq!(
+            writer.write_all(b"").err().map(|error| error.to_string()),
+            Some(failure.clone())
+        );
+        assert_eq!(
+            writer.flush().err().map(|error| error.to_string()),
+            Some(failure.clone())
+        );
         assert_eq!(writer.finish().err(), Some(failure));
-        assert_eq!(encoded_length(usize::MAX, 1, usize::MAX), Err(
-            "canonical finding index exceeds byte limit"
-        ));
-        assert_eq!(encoded_length(8, 1, 8), Err("canonical finding index exceeds byte limit"));
+        assert_eq!(
+            encoded_length(usize::MAX, 1, usize::MAX),
+            Err("canonical finding index exceeds byte limit")
+        );
+        assert_eq!(
+            encoded_length(8, 1, 8),
+            Err("canonical finding index exceeds byte limit")
+        );
         assert_eq!(encoded_length(8, 0, 8), Ok(8));
 
         let mut writer = CanonicalIndexWriter::new(3000);
         for (size, request) in [(1, 1024), (1024, 2048), (1024, 3000), (951, 3000)] {
-            writer.write_all(&vec![b'x'; size]).map_err(|error| error.to_string())?;
+            writer
+                .write_all(&vec![b'x'; size])
+                .map_err(|error| error.to_string())?;
             assert_eq!(writer.requested_capacity, request);
             assert!(writer.requested_capacity <= 3000);
             assert!(writer.bytes.len() <= writer.requested_capacity);

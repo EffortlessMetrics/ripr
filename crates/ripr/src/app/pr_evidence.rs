@@ -17,8 +17,7 @@ use crate::config::{
 };
 use crate::output::markdown::{code_span, inline_prose, table_cell_text, table_code_span};
 use crate::review_input::{
-    CanonicalFindingIndexV1,
-    REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
+    CanonicalFindingIndexV1, REVIEW_INPUT_PROJECTION_LIMIT, REVIEW_INPUT_SCHEMA_VERSION,
     REVIEW_INPUT_SELECTION_POLICY, REVIEW_INPUT_SELECTION_POLICY_VERSION, ReviewInputV1,
     canonical_finding_index, canonical_projection, canonical_projection_from_index,
     canonical_root_identity,
@@ -2220,7 +2219,7 @@ mod tests {
                 serde_json::to_vec(&selected)
                     .map_err(|error| error.to_string())?
                     .len()
-                    < 128 * 1024
+                    < REVIEW_INPUT_MAX_BYTES
             );
             let excess_bytes =
                 serde_json::to_string(&excess_bytes).map_err(|error| error.to_string())?;
@@ -2234,7 +2233,10 @@ mod tests {
                 ("malformed conversion", Some("{")),
                 ("oversized conversion", Some(oversized.as_str())),
                 ("index byte limit", Some(excess_bytes.as_str())),
-                ("entry guard before projection", Some(malformed_oversized.as_str())),
+                (
+                    "entry guard before projection",
+                    Some(malformed_oversized.as_str()),
+                ),
             ] {
                 baseline()?;
                 let failure = write_pr_evidence_with_runner(&repo, &options, |_, _| {
