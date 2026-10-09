@@ -1525,7 +1525,6 @@ mod tests {
     use super::*;
     use crate::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
 
-
     #[cfg(feature = "lang-rust")]
     const CONFIGURATION_A: &str = "[analysis]\ninclude_unchanged_tests = true\n";
     #[cfg(feature = "lang-rust")]
@@ -1542,7 +1541,6 @@ mod tests {
             &dyn Fn(&Path, &PrEvidenceOptions) -> Result<String, String>,
         ) -> Result<(), String>,
     ) -> Result<(), String> {
-
         let repo = temp_repo(name)?;
         let result = (|| {
             run_git(
@@ -1637,7 +1635,23 @@ mod tests {
             "--out".into(),
             repo.join("target/config-review.json").display().to_string(),
         ])
-        .map_err(|error| error.message().to_string())
+        .map_err(|error| error.message().to_string())?;
+        let rendered: Value = serde_json::from_slice(
+            &fs::read(repo.join("target/config-review.json")).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if rendered
+            .pointer("/analysis_scope/basis")
+            .and_then(Value::as_str)
+            != Some("producer_check_projection")
+            || rendered
+                .pointer("/analysis_scope/classified_seams_considered")
+                .and_then(Value::as_u64)
+                .is_none_or(|count| count == 0)
+        {
+            return Err("review did not reuse nonempty producer analysis".into());
+        }
+        Ok(())
     }
 
     #[cfg(feature = "lang-rust")]
@@ -1758,14 +1772,18 @@ mod tests {
                             "loaded-empty config and no config lost their distinction".into(),
                         );
                     }
-                    for wrong in [
+                    let mut wrong_identities = vec![
                         None,
                         Some(json!(7)),
                         Some(json!(false)),
                         Some(json!([])),
                         Some(json!({})),
                         Some(json!("fnv1a64:foreign")),
-                    ] {
+                    ];
+                    if initial.is_some() {
+                        wrong_identities.push(Some(Value::Null));
+                    }
+                    for wrong in wrong_identities {
                         let mut mutated = subject.clone();
                         let identity = mutated
                             .pointer_mut("/analysis_outcome/outcome/identity")
