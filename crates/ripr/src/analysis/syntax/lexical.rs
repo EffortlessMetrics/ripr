@@ -6,7 +6,9 @@ use crate::domain::SymbolId;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use super::{LexicalRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
+use super::{LexicalRustSyntaxAdapter, RustSyntaxAdapter};
+#[cfg(test)]
+use super::{SyntaxNodeFact, TextRange};
 
 impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
     fn summarize_file(&self, path: &Path, text: &str) -> Result<FileFacts, String> {
@@ -16,6 +18,7 @@ impl RustSyntaxAdapter for LexicalRustSyntaxAdapter {
         ))
     }
 
+    #[cfg(test)]
     fn changed_nodes(
         &self,
         functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
@@ -234,6 +237,7 @@ fn property_safe_lexical_assertions(
     assertions
 }
 
+#[cfg(test)]
 fn owner_changed_nodes(
     functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
     ranges: &[TextRange],
@@ -290,10 +294,12 @@ fn owner_changed_nodes(
     nodes
 }
 
+#[cfg(test)]
 fn function_span(function: &FunctionFact) -> usize {
     function.end_line.saturating_sub(function.start_line)
 }
 
+#[cfg(test)]
 fn ranges_overlap(
     left_start: usize,
     left_end: usize,

@@ -21,8 +21,10 @@ use super::super::facts::ModuleDeclarationFact;
 use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
+#[cfg(test)]
+use super::SyntaxNodeFact;
 use super::{
-    RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange, parse_clean_source_file,
+    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, TextRange, parse_clean_source_file,
     rust_nesting_refusal,
 };
 use crate::analysis::rust_index::{
@@ -357,6 +359,7 @@ impl RustSyntaxAdapter for RaRustSyntaxAdapter {
         summarize_file_with_parser(path, text)
     }
 
+    #[cfg(test)]
     fn changed_nodes(
         &self,
         functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
@@ -1837,11 +1840,60 @@ pub(super) fn slice_macro_call_text(text: &str, start: TextSize, end: TextSize) 
     text.get(start..end).unwrap_or("").trim().to_string()
 }
 
+#[cfg(test)]
 fn owner_changed_nodes(
     functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
     ranges: &[TextRange],
 ) -> Vec<SyntaxNodeFact> {
-    let mut nodes = Vec::new();
+    owner_changed_nodes_with(functions, ranges, node_for_changed_owner)
+}
+
+pub(crate) fn changed_owner_spans(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+) -> Vec<ChangedOwnerSpan> {
+    owner_changed_nodes_with(functions, ranges, |function, _| ChangedOwnerSpan {
+        start_line: function.start_line,
+        end_line: function.end_line,
+        owner: Some(function.id.clone()),
+    })
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static CHANGED_OWNER_BODY_MATERIALIZATIONS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn changed_owner_body_materialization_count() -> usize {
+    CHANGED_OWNER_BODY_MATERIALIZATIONS.with(std::cell::Cell::get)
+}
+
+#[cfg(test)]
+fn node_for_changed_owner(function: &FunctionFact, kind: &str) -> SyntaxNodeFact {
+    #[cfg(test)]
+    CHANGED_OWNER_BODY_MATERIALIZATIONS.with(|count| {
+        count.set(count.get().saturating_add(1));
+    });
+    SyntaxNodeFact {
+        file: function.file.clone(),
+        kind: kind.to_string(),
+        start_line: function.start_line,
+        end_line: function.end_line,
+        text: function.body.to_string(),
+        owner: Some(function.id.clone()),
+    }
+}
+
+/// Retain the first owner for each output key before materializing any body.
+/// Repeated changed lines in one large owner must not clone its body per line.
+fn owner_changed_nodes_with<T>(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+    mut build: impl FnMut(&FunctionFact, &str) -> T,
+) -> Vec<T> {
+    let mut selected = std::collections::BTreeMap::new();
     for range in ranges {
         let mut owners = functions
             .iter()
@@ -1860,37 +1912,27 @@ fn owner_changed_nodes(
                 .then(right.start_line.cmp(&left.start_line))
                 .then(left.id.0.cmp(&right.id.0))
         });
-        if let Some(function) = owners.first() {
-            nodes.push(SyntaxNodeFact {
-                file: function.file.clone(),
-                kind: if function.source_role.is_evidence_role() {
-                    "test_function".to_string()
-                } else {
-                    "function".to_string()
-                },
-                start_line: function.start_line,
-                end_line: function.end_line,
-                text: function.body.to_string(),
-                owner: Some(function.id.clone()),
-            });
+        if let Some(&function) = owners.first() {
+            let kind = if function.source_role.is_evidence_role() {
+                "test_function"
+            } else {
+                "function"
+            };
+            selected
+                .entry((
+                    &function.file,
+                    function.start_line,
+                    function.end_line,
+                    kind,
+                    &function.id,
+                ))
+                .or_insert(function);
         }
     }
-    nodes.sort_by(|left, right| {
-        left.file
-            .cmp(&right.file)
-            .then(left.start_line.cmp(&right.start_line))
-            .then(left.end_line.cmp(&right.end_line))
-            .then(left.kind.cmp(&right.kind))
-            .then(left.owner.cmp(&right.owner))
-    });
-    nodes.dedup_by(|left, right| {
-        left.file == right.file
-            && left.start_line == right.start_line
-            && left.end_line == right.end_line
-            && left.kind == right.kind
-            && left.owner == right.owner
-    });
-    nodes
+    selected
+        .into_iter()
+        .map(|((_, _, _, kind, _), function)| build(function, kind))
+        .collect()
 }
 
 fn ranges_overlap(start1: usize, end1: usize, start2: usize, end2: usize) -> bool {
@@ -1908,6 +1950,130 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Independent reference for the pre-refactor selection and stable dedup.
+    fn legacy_owner_changed_nodes(
+        functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+        ranges: &[TextRange],
+    ) -> Vec<SyntaxNodeFact> {
+        let mut nodes = Vec::new();
+        for range in ranges {
+            let mut owners = functions
+                .iter()
+                .filter(|function| {
+                    ranges_overlap(
+                        range.start_line,
+                        range.end_line,
+                        function.start_line,
+                        function.end_line,
+                    )
+                })
+                .collect::<Vec<_>>();
+            owners.sort_by(|left, right| {
+                function_span(left)
+                    .cmp(&function_span(right))
+                    .then(right.start_line.cmp(&left.start_line))
+                    .then(left.id.0.cmp(&right.id.0))
+            });
+            if let Some(function) = owners.first() {
+                nodes.push(SyntaxNodeFact {
+                    file: function.file.clone(),
+                    kind: if function.source_role.is_evidence_role() {
+                        "test_function".to_string()
+                    } else {
+                        "function".to_string()
+                    },
+                    start_line: function.start_line,
+                    end_line: function.end_line,
+                    text: function.body.to_string(),
+                    owner: Some(function.id.clone()),
+                });
+            }
+        }
+        nodes.sort_by(|left, right| {
+            left.file
+                .cmp(&right.file)
+                .then(left.start_line.cmp(&right.start_line))
+                .then(left.end_line.cmp(&right.end_line))
+                .then(left.kind.cmp(&right.kind))
+                .then(left.owner.cmp(&right.owner))
+        });
+        nodes.dedup_by(|left, right| {
+            left.file == right.file
+                && left.start_line == right.start_line
+                && left.end_line == right.end_line
+                && left.kind == right.kind
+                && left.owner == right.owner
+        });
+        nodes
+    }
+
+    fn changed_range(line: usize) -> TextRange {
+        TextRange {
+            start_line: line,
+            start_column: 1,
+            end_line: line,
+            end_column: 1,
+        }
+    }
+
+    #[test]
+    fn changed_owners_materialize_one_body_for_many_lines() -> Result<(), String> {
+        let source = format!("fn large() {{\n{}\n}}\n", "    touch();\n".repeat(6_000));
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), &source)?;
+        let ranges = (2..=6_001).map(changed_range).collect::<Vec<_>>();
+        let mut materialized = 0usize;
+        let nodes = owner_changed_nodes_with(
+            crate::analysis::facts::FactSlice::from_slice(&facts.functions),
+            &ranges,
+            |function, kind| {
+                materialized += 1;
+                node_for_changed_owner(function, kind)
+            },
+        );
+        assert_eq!(materialized, 1, "one full body per distinct output owner");
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].text, source.trim_end());
+        Ok(())
+    }
+
+    #[test]
+    fn changed_owners_match_legacy_nested_selection_and_first_equal_key() -> Result<(), String> {
+        let source = "fn outer() {\n    fn inner() {\n        touch();\n    }\n    finish();\n}\n";
+        let facts = summarize_file_with_parser(Path::new("src/lib.rs"), source)?;
+        let mut functions = facts.functions;
+        let first = functions
+            .iter()
+            .find(|function| function.name == "inner")
+            .ok_or("nested function missing")?
+            .clone();
+        let mut later = first.clone();
+        later.body = "different payload for the same owner key".into();
+        functions.push(later);
+        let mut tied = first.clone();
+        tied.id.0 = format!("{}.later", tied.id.0);
+        functions.push(tied);
+        let ranges = vec![
+            changed_range(5),
+            changed_range(3),
+            changed_range(3),
+            changed_range(1),
+            changed_range(99),
+        ];
+        let selected = owner_changed_nodes(
+            crate::analysis::facts::FactSlice::from_slice(&functions),
+            &ranges,
+        );
+        let legacy = legacy_owner_changed_nodes(
+            crate::analysis::facts::FactSlice::from_slice(&functions),
+            &ranges,
+        );
+        assert_eq!(selected, legacy);
+        assert_eq!(selected.len(), 2);
+        assert_eq!(selected[1].owner.as_ref(), Some(&first.id));
+        assert_eq!(selected[1].text, first.body.as_str());
+        Ok(())
+    }
 
     /// #4558: where each `fn` sits, as a type-path call `T::name(` sees it.
     #[test]

@@ -1791,121 +1791,123 @@ impl RustAdapter {
             // and once per probe so a superseded or deadline-expired refresh
             // exits the classify loop promptly.
             cancellation::checkpoint()?;
-            let probes =
-                analysis_probes::probes_for_file_with_relations(&options.root, changed, &index);
-            if !probes.is_empty() {
-                files_with_findings.insert(changed.path.clone());
-            }
-            for seeded in probes {
-                seeded.record_span(&mut parser_spans);
-                let probe = seeded.probe;
-                let binding_relation = seeded.binding_relation;
-                candidate_lines.insert((probe.location.file.clone(), probe.location.line));
-                cancellation::checkpoint()?;
-                let related_test_candidate_index =
-                    related_test_candidate_index.get_or_insert_with(|| {
-                        classify::RelatedTestCandidateIndex::new(&index)
-                            .with_withheld_macro_bindings(std::mem::take(
-                                &mut withheld_macro_bindings,
-                            ))
-                    });
-                let mut finding = classifier::classify_probe_with_candidate_index(
-                    &probe,
-                    &index,
-                    workspace_index_complete,
-                    dependency_edges.as_ref(),
-                    related_test_candidate_index,
-                );
-                finding.language = Some(LanguageId::Rust);
-                // Producer-owned source currentness (#3280): resolved from the diff
-                // evidence that seeded the probe, before any limitation shaping.
-                finding.source_currentness =
-                    analysis_probes::resolve_probe_source_currentness(changed, &probe);
-                // `language_status` is omitted for Rust per RIPR-SPEC-0026.
-                // RIPR-SPEC-0114: when the direct-call classifier finds no related
-                // test (no_static_path + empty related_tests), run the bounded
-                // transitive-reach walk. If a candidate path is found, name the
-                // limitation. Classification NEVER changes (fail-closed).
-                // RIPR-SPEC-0115: the walk returns the witnessing test so the
-                // limitation can name something concrete to open (file:line +
-                // entry symbol). The witness is NOT added to related_tests.
-                // RIPR-SPEC-0117: when no lexical transitive path is available,
-                // name a macro-reach limitation only when a same-repo macro
-                // definition lexically mentions the changed owner.
-                // #5320: with dependent files withheld, the witnesses search
-                // the owner's caller closure, widened on demand.
-                let reach = match dependent_scope.as_mut() {
-                    Some(scope) if needs_no_static_path_limit(&finding) => {
-                        match owner_name_from_id(&probe.owner, &probe.location.file) {
-                            Some(owner) => scope.reach_index(&owner, &index, narrow_limit)?,
-                            None => dependent_scope::ReachIndex::Main,
-                        }
-                    }
-                    _ => dependent_scope::ReachIndex::Main,
-                };
-                match reach {
-                    dependent_scope::ReachIndex::Main => apply_rust_no_static_path_limit(
-                        &mut finding,
+            analysis_probes::try_for_each_probe_with_relations(
+                &options.root,
+                changed,
+                &index,
+                |seeded| {
+                    files_with_findings.insert(changed.path.clone());
+                    seeded.record_span(&mut parser_spans);
+                    let probe = seeded.probe;
+                    let binding_relation = seeded.binding_relation;
+                    candidate_lines.insert((probe.location.file.clone(), probe.location.line));
+                    cancellation::checkpoint()?;
+                    let related_test_candidate_index = related_test_candidate_index
+                        .get_or_insert_with(|| {
+                            classify::RelatedTestCandidateIndex::new(&index)
+                                .with_withheld_macro_bindings(std::mem::take(
+                                    &mut withheld_macro_bindings,
+                                ))
+                        });
+                    let mut finding = classifier::classify_probe_with_candidate_index(
                         &probe,
                         &index,
-                        &property_macro_mentions,
-                        &transitive_reach,
-                    ),
-                    dependent_scope::ReachIndex::Widened(reach_index) => {
-                        // A withheld file that spells the owner can hold the
-                        // unresolved property macro that mentions it.
-                        let reach_property_macro_mentions =
-                            oracles::PropertyMacroMentionIndex::new(reach_index, &options.root);
-                        apply_rust_no_static_path_limit(
-                            &mut finding,
-                            &probe,
-                            reach_index,
-                            &reach_property_macro_mentions,
-                            &classify::TransitiveReachIndex::new(reach_index),
-                        );
-                    }
-                    dependent_scope::ReachIndex::OverLimit { files, limit } => {
-                        // A witness the main index proves is a searched
-                        // result; only an owner it leaves unresolved reads
-                        // as unsearched.
-                        apply_rust_no_static_path_limit(
+                        workspace_index_complete,
+                        dependency_edges.as_ref(),
+                        related_test_candidate_index,
+                    );
+                    finding.language = Some(LanguageId::Rust);
+                    // Producer-owned source currentness (#3280): resolved from the diff
+                    // evidence that seeded the probe, before any limitation shaping.
+                    finding.source_currentness =
+                        analysis_probes::resolve_probe_source_currentness(changed, &probe);
+                    // `language_status` is omitted for Rust per RIPR-SPEC-0026.
+                    // RIPR-SPEC-0114: when the direct-call classifier finds no related
+                    // test (no_static_path + empty related_tests), run the bounded
+                    // transitive-reach walk. If a candidate path is found, name the
+                    // limitation. Classification NEVER changes (fail-closed).
+                    // RIPR-SPEC-0115: the walk returns the witnessing test so the
+                    // limitation can name something concrete to open (file:line +
+                    // entry symbol). The witness is NOT added to related_tests.
+                    // RIPR-SPEC-0117: when no lexical transitive path is available,
+                    // name a macro-reach limitation only when a same-repo macro
+                    // definition lexically mentions the changed owner.
+                    // #5320: with dependent files withheld, the witnesses search
+                    // the owner's caller closure, widened on demand.
+                    let reach = match dependent_scope.as_mut() {
+                        Some(scope) if needs_no_static_path_limit(&finding) => {
+                            match owner_name_from_id(&probe.owner, &probe.location.file) {
+                                Some(owner) => scope.reach_index(&owner, &index, narrow_limit)?,
+                                None => dependent_scope::ReachIndex::Main,
+                            }
+                        }
+                        _ => dependent_scope::ReachIndex::Main,
+                    };
+                    match reach {
+                        dependent_scope::ReachIndex::Main => apply_rust_no_static_path_limit(
                             &mut finding,
                             &probe,
                             &index,
                             &property_macro_mentions,
                             &transitive_reach,
-                        );
-                        if needs_no_static_path_limit(&finding) {
-                            dependent_scope::apply_reach_search_over_limit(
+                        ),
+                        dependent_scope::ReachIndex::Widened(reach_index) => {
+                            // A withheld file that spells the owner can hold the
+                            // unresolved property macro that mentions it.
+                            let reach_property_macro_mentions =
+                                oracles::PropertyMacroMentionIndex::new(reach_index, &options.root);
+                            apply_rust_no_static_path_limit(
                                 &mut finding,
                                 &probe,
-                                files,
-                                limit,
+                                reach_index,
+                                &reach_property_macro_mentions,
+                                &classify::TransitiveReachIndex::new(reach_index),
                             );
                         }
+                        dependent_scope::ReachIndex::OverLimit { files, limit } => {
+                            // A witness the main index proves is a searched
+                            // result; only an owner it leaves unresolved reads
+                            // as unsearched.
+                            apply_rust_no_static_path_limit(
+                                &mut finding,
+                                &probe,
+                                &index,
+                                &property_macro_mentions,
+                                &transitive_reach,
+                            );
+                            if needs_no_static_path_limit(&finding) {
+                                dependent_scope::apply_reach_search_over_limit(
+                                    &mut finding,
+                                    &probe,
+                                    files,
+                                    limit,
+                                );
+                            }
+                        }
                     }
-                }
-                // Name unresolved custom assertion macros only after reach has
-                // already been established and no recognized oracle observes
-                // the seam. This is an oracle limitation, not macro expansion
-                // or promotion.
-                // #3294: a retargeted changed-binding probe keeps its
-                // predicate-shaped classification, but the finding still
-                // discloses the operand-value limitation it inherited from the
-                // changed initializer.
-                // Fail closed on cross-language seams: when the probe owner
-                // carries an FFI/binding attribute, replace any Rust-gap
-                // static_limit_kind with the cross-language limitation so
-                // downstream consumers know to verify the external oracle
-                // rather than acting on a Rust repair packet. (#910)
-                apply_probe_and_oracle_limits(
-                    &mut finding,
-                    &probe,
-                    &index,
-                    binding_relation.as_ref(),
-                );
-                push_retained_finding(&mut findings, finding);
-            }
+                    // Name unresolved custom assertion macros only after reach has
+                    // already been established and no recognized oracle observes
+                    // the seam. This is an oracle limitation, not macro expansion
+                    // or promotion.
+                    // #3294: a retargeted changed-binding probe keeps its
+                    // predicate-shaped classification, but the finding still
+                    // discloses the operand-value limitation it inherited from the
+                    // changed initializer.
+                    // Fail closed on cross-language seams: when the probe owner
+                    // carries an FFI/binding attribute, replace any Rust-gap
+                    // static_limit_kind with the cross-language limitation so
+                    // downstream consumers know to verify the external oracle
+                    // rather than acting on a Rust repair packet. (#910)
+                    apply_probe_and_oracle_limits(
+                        &mut finding,
+                        &probe,
+                        &index,
+                        binding_relation.as_ref(),
+                    );
+                    push_retained_finding(&mut findings, finding);
+                    Ok::<(), String>(())
+                },
+            )?;
         }
 
         // #4775: unchanged lexical-fallback test files are a separate

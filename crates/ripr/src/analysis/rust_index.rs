@@ -28,9 +28,12 @@ pub(crate) use super::facts::{
     build_analysis_index_from_loaded_files,
     build_index_from_loaded_files_with_cache_and_test_harnesses,
 };
+pub(crate) use super::syntax::ChangedOwnerSpan;
+pub use super::syntax::TextRange;
 #[cfg(test)]
-use super::syntax::LexicalRustSyntaxAdapter;
-pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
+pub use super::syntax::{
+    LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact,
+};
 
 pub(crate) fn lexical_fallback_files(index: &RustIndex) -> Vec<PathBuf> {
     let mut files = index
@@ -340,6 +343,9 @@ fn normalize_display(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
+// The copied-node route is retained for the independent legacy oracle and
+// syntax tests. Production probe emission uses lightweight owner spans.
+#[cfg(test)]
 pub fn changed_nodes_for_lines(
     index: &RustIndex,
     file: &Path,
@@ -358,6 +364,26 @@ pub fn changed_nodes_for_lines(
         })
         .collect::<Vec<_>>();
     RaRustSyntaxAdapter.changed_nodes(facts.functions, &ranges)
+}
+
+pub(crate) fn changed_owner_spans_for_lines(
+    index: &RustIndex,
+    file: &Path,
+    lines: &[usize],
+) -> Vec<ChangedOwnerSpan> {
+    let Some(facts) = index.files().get(file) else {
+        return Vec::new();
+    };
+    let ranges = lines
+        .iter()
+        .map(|line| TextRange {
+            start_line: *line,
+            start_column: 1,
+            end_line: *line,
+            end_column: usize::MAX,
+        })
+        .collect::<Vec<_>>();
+    super::syntax::ra::changed_owner_spans(facts.functions, &ranges)
 }
 
 pub(crate) fn is_test_file(path: &Path) -> bool {
