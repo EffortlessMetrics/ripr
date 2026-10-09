@@ -205,6 +205,8 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
     let config = ripr::config::load_for_root(&root)
         .map_err(|err| format!("load review input config: {err}"))?;
+    #[cfg(test)]
+    mutate_configuration_after_load(&root, ConfigurationObservation::Publication)?;
     let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
@@ -294,6 +296,73 @@ fn write_pr_evidence_packet(
     println!("Wrote {PR_EVIDENCE_MD}");
     // Commit admission authority only after every fallible producer operation.
     publish_check_subject(repo, &subject_text)
+}
+
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConfigurationObservation {
+    Publication,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONFIGURATION_MUTATION: std::cell::RefCell<
+        Option<(ConfigurationObservation, PathBuf, Option<String>)>
+    > = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn mutate_configuration_after_load(root: &Path, point: ConfigurationObservation) -> Result<(), String> {
+    let selected = CONFIGURATION_MUTATION.with(|slot| {
+        slot.borrow().as_ref().is_some_and(|entry| entry.0 == point)
+    });
+    if !selected {
+        return Ok(());
+    }
+    let mutation = CONFIGURATION_MUTATION.with(|slot| slot.borrow_mut().take());
+    let Some((_, expected_root, text)) = mutation else {
+        return Err("controlled configuration mutation was not retained".into());
+    };
+    if root != expected_root {
+        return Err("controlled configuration mutation reached a different root".into());
+    }
+    let path = root.join("ripr.toml");
+    match text {
+        Some(text) => fs::write(path, text),
+        None => fs::remove_file(path),
+    }
+    .map_err(|error| format!("controlled configuration mutation failed: {error}"))
+}
+
+#[cfg(test)]
+fn with_configuration_mutation(
+    root: &Path,
+    point: ConfigurationObservation,
+    text: Option<&str>,
+    work: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    struct MutationLease;
+    impl Drop for MutationLease {
+        fn drop(&mut self) {
+            let _ = CONFIGURATION_MUTATION.with(|slot| slot.borrow_mut().take());
+        }
+    }
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let occupied = CONFIGURATION_MUTATION.with(|slot| slot.borrow().is_some());
+    if occupied {
+        return Err("nested controlled configuration mutation".into());
+    }
+    CONFIGURATION_MUTATION.with(|slot| {
+        *slot.borrow_mut() = Some((point, root, text.map(str::to_string)));
+    });
+    let _lease = MutationLease;
+    let result = work();
+    let pending = CONFIGURATION_MUTATION.with(|slot| slot.borrow().is_some());
+    if pending {
+        return Err("controlled configuration mutation checkpoint was not reached".into());
+    }
+    result
 }
 
 fn producer_review_input(
@@ -1849,6 +1918,52 @@ mod tests {
             return Err(format!("wrong configuration refusal receipt: {receipt}"));
         }
         Ok(())
+    }
+
+    #[test]
+    fn configuration_drift_after_publication_load_is_refused() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-after-load-config-drift",
+            Some(CONFIGURATION_A),
+            |repo, options, check, _run_check| {
+                let config_a = ripr::config::load_for_root(repo)?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                let config_b = ripr::config::load_for_root(repo)?;
+                assert_eq!(
+                    ripr::config::repo_exposure_config_identity_hash(&config_a),
+                    ripr::config::repo_exposure_config_identity_hash(&config_b),
+                );
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                with_configuration_mutation(
+                    repo,
+                    ConfigurationObservation::Publication,
+                    Some(CONFIGURATION_B),
+                    || {
+                        let failure = write_pr_evidence_with_runner(repo, options, |_, _| {
+                            Ok(check.to_string())
+                        })
+                        .err()
+                        .ok_or("after-load configuration drift published cached analysis")?;
+                        assert!(failure.contains("config_identity"), "{failure}");
+                        for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+                            assert!(!repo.join(path).exists(), "retained authority: {path}");
+                        }
+                        let packet: Value = serde_json::from_slice(
+                            &fs::read(repo.join(PR_EVIDENCE_JSON))
+                                .map_err(|error| error.to_string())?,
+                        )
+                        .map_err(|error| error.to_string())?;
+                        assert_eq!(packet["status"], "error");
+                        assert!(check_pr_evidence(repo, options).is_err());
+                        Ok(())
+                    },
+                )?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                write_pr_evidence_with_runner(repo, options, |_, _| Ok(check.to_string()))?;
+                check_pr_evidence(repo, options)?;
+                configuration_fixture_review(repo, options)
+            },
+        )
     }
 
     #[test]
