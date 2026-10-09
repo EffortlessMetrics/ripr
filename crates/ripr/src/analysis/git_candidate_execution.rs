@@ -261,6 +261,7 @@ pub(crate) struct PreparedNamedTree {
 }
 
 impl PreparedNamedTree {
+    #[cfg(test)]
     pub(crate) fn physical_root(&self) -> &Path {
         &self._root
     }
