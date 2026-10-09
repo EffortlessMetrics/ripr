@@ -1,3 +1,5 @@
+mod complete_execution;
+
 use super::pr_causal_delta::write_canonical_delta;
 use super::write_parented_file;
 use crate::run::{
@@ -64,6 +66,12 @@ pub(crate) fn ripr_pr(args: &[String]) -> Result<(), String> {
         print_help();
         return Ok(());
     }
+    if args
+        .iter()
+        .any(|arg| arg == complete_execution::EXPERIMENT_FLAG)
+    {
+        return complete_execution::run_experiment(args);
+    }
     let options = parse_options(args)?;
     let repo = repo_root()?;
     if options.check {
@@ -109,7 +117,9 @@ fn non_empty_arg<'a>(args: &'a [String], index: usize, flag: &str) -> Result<&'a
 }
 
 fn print_help() {
-    println!("usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check]");
+    println!(
+        "usage: cargo xtask ripr-pr [--base <rev>] [--head <rev>] [--root <path>] [--check] [--experimental-complete-execution]"
+    );
 }
 
 fn write_pr_evidence(repo: &Path, options: &PrEvidenceOptions) -> Result<(), String> {
@@ -152,6 +162,9 @@ fn write_pr_evidence_with_runner(
                 Err(err) => {
                     let diagnostic =
                         format!("RIPR check output could not be converted into PR evidence: {err}");
+                    remove_stale_check_artifact(repo).map_err(|cleanup| {
+                        format!("{diagnostic}; artifact revocation failed: {cleanup}")
+                    })?;
                     write_pr_evidence_error_packet(repo, options, &changed_files, &diagnostic)?;
                     Err(diagnostic)
                 }
@@ -177,6 +190,28 @@ fn write_pr_evidence_from_check_json(
     let changed_files = changed_files(repo, options)?;
     write_diff(repo, options)?;
     write_pr_evidence_packet(repo, options, &changed_files, check_json)
+}
+
+fn validate_current_pr_evidence_configuration(
+    root: &Path,
+    analysis_outcome: &Value,
+    expected_config: &ripr::config::RiprConfig,
+) -> Result<(), String> {
+    let current_config = ripr::config::load_for_root(root)
+        .map_err(|error| format!("load producer evidence configuration: {error}"))?;
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+        analysis_outcome,
+        &current_config,
+    )?;
+    if ripr::config::repo_exposure_config_identity_hash(&current_config)
+        != ripr::config::repo_exposure_config_identity_hash(expected_config)
+    {
+        return Err(
+            "producer configuration_fingerprint does not match the current configuration"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 fn write_pr_evidence_packet(
@@ -205,6 +240,8 @@ fn write_pr_evidence_packet(
         .map_err(|err| format!("resolve review input root failed: {err}"))?;
     let config = ripr::config::load_for_root(&root)
         .map_err(|err| format!("load review input config: {err}"))?;
+    #[cfg(test)]
+    mutate_configuration_after_load(&root, ConfigurationObservation::Publication)?;
     let canonical_diff = fs::read(repo.join(PR_CANONICAL_DIFF))
         .map_err(|err| format!("read canonical diff for check subject binding: {err}"))?;
     let mut subject = json!({
@@ -257,6 +294,11 @@ fn write_pr_evidence_packet(
             .map_err(|err| format!("serialize check subject receipt: {err}"))?
     );
 
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
+
     write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
     write_parented_file(
         &repo.join(PR_REVIEW_INPUT_JSON),
@@ -287,8 +329,82 @@ fn write_pr_evidence_packet(
     reject_error_packet(repo)?;
     println!("Wrote {PR_EVIDENCE_JSON}");
     println!("Wrote {PR_EVIDENCE_MD}");
+    // Reobserve configuration immediately before committing admission authority.
+    validate_current_pr_evidence_configuration(
+        &root,
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
     // Commit admission authority only after every fallible producer operation.
     publish_check_subject(repo, &subject_text)
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConfigurationObservation {
+    Publication,
+}
+
+#[cfg(test)]
+thread_local! {
+    static CONFIGURATION_MUTATION: std::cell::RefCell<
+        Option<(ConfigurationObservation, PathBuf, Option<String>)>
+    > = const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn mutate_configuration_after_load(
+    root: &Path,
+    point: ConfigurationObservation,
+) -> Result<(), String> {
+    let selected = CONFIGURATION_MUTATION
+        .with(|slot| slot.borrow().as_ref().is_some_and(|entry| entry.0 == point));
+    if !selected {
+        return Ok(());
+    }
+    let mutation = CONFIGURATION_MUTATION.with(|slot| slot.borrow_mut().take());
+    let Some((_, expected_root, text)) = mutation else {
+        return Err("controlled configuration mutation was not retained".into());
+    };
+    if root != expected_root {
+        return Err("controlled configuration mutation reached a different root".into());
+    }
+    let path = root.join("ripr.toml");
+    match text {
+        Some(text) => fs::write(path, text),
+        None => fs::remove_file(path),
+    }
+    .map_err(|error| format!("controlled configuration mutation failed: {error}"))
+}
+
+#[cfg(test)]
+fn with_configuration_mutation(
+    root: &Path,
+    point: ConfigurationObservation,
+    text: Option<&str>,
+    work: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    struct MutationLease;
+    impl Drop for MutationLease {
+        fn drop(&mut self) {
+            let _ = CONFIGURATION_MUTATION.with(|slot| slot.borrow_mut().take());
+        }
+    }
+    let root = root.canonicalize().map_err(|error| error.to_string())?;
+    let occupied = CONFIGURATION_MUTATION.with(|slot| slot.borrow().is_some());
+    if occupied {
+        return Err("nested controlled configuration mutation".into());
+    }
+    CONFIGURATION_MUTATION.with(|slot| {
+        *slot.borrow_mut() = Some((point, root, text.map(str::to_string)));
+    });
+    let _lease = MutationLease;
+    let result = work();
+    let pending = CONFIGURATION_MUTATION.with(|slot| slot.borrow().is_some());
+    if pending {
+        return Err("controlled configuration mutation checkpoint was not reached".into());
+    }
+    result
 }
 
 fn producer_review_input(
@@ -355,7 +471,12 @@ fn producer_review_input(
 fn remove_stale_check_artifact(repo: &Path) -> Result<(), String> {
     // The subject is admission authority. Remove it before touching subordinate
     // artifacts or attempting setup/analysis; only missing files are harmless.
-    for relative in [PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON] {
+    for relative in [
+        PR_CHECK_SUBJECT_JSON,
+        PR_CHECK_JSON,
+        PR_REVIEW_INPUT_JSON,
+        complete_execution::RECEIPT,
+    ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -499,6 +620,9 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
             )];
         }
     };
+    if let Some(error) = ripr::reject_pr_evidence_error_packet(&subject) {
+        return vec![error];
+    }
     let expected = [
         ("schema_version", "ripr.pr_check_subject.v1".to_string()),
         (
@@ -633,6 +757,26 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
         Err(error) => violations.push(format!(
             "missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"
         )),
+    }
+    match ripr::config::load_for_root(&repo.join(&options.root)) {
+        Ok(config) => {
+            if let Err(error) = ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+                subject.get("analysis_outcome").unwrap_or(&Value::Null),
+                &config,
+            ) {
+                violations.push(error);
+            }
+            if subject
+                .get("configuration_fingerprint")
+                .and_then(Value::as_str)
+                != Some(ripr::config::repo_exposure_config_identity_hash(&config).as_str())
+            {
+                violations.push(format!(
+                    "{PR_CHECK_SUBJECT_JSON} configuration_fingerprint does not match the current configuration"
+                ));
+            }
+        }
+        Err(error) => violations.push(format!("load producer evidence configuration: {error}")),
     }
     violations
 }
@@ -1663,6 +1807,405 @@ mod tests {
     use super::*;
     use ripr::review_input::projection_summary;
     use ripr::review_input::{REVIEW_INDEX_MAX_BYTES, REVIEW_INDEX_MAX_ENTRIES};
+
+    const CONFIGURATION_A: &str = "[analysis]\ninclude_unchanged_tests = true\n";
+    const CONFIGURATION_B: &str = "[analysis]\ninclude_unchanged_tests = false\n";
+
+    fn with_configuration_fixture(
+        name: &str,
+        initial_config: Option<&str>,
+        test: impl FnOnce(
+            &Path,
+            &PrEvidenceOptions,
+            &str,
+            &dyn Fn(&Path, &PrEvidenceOptions) -> Result<String, String>,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        crate::reports::fixtures::ripr_fixture_binary()?;
+        let binary = built_ripr_binary_path(&repo_root()?)?.display().to_string();
+        let repo = temp_repo(name)?;
+        let result = (|| {
+            run_git(
+                &repo,
+                &["-c", "init.templateDir=", "init", "--quiet", "-b", "trunk"],
+            )?;
+            run_git(
+                &repo,
+                &["config", "user.email", "config-fixture@example.invalid"],
+            )?;
+            run_git(&repo, &["config", "user.name", "RIPR Config Fixture"])?;
+            run_git(&repo, &["config", "commit.gpgSign", "false"])?;
+            write_repo_file(&repo, ".gitignore", "target/\n")?;
+            write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[package]\nname = \"config-probe\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+            )?;
+            if let Some(config) = initial_config {
+                write_repo_file(&repo, "ripr.toml", config)?;
+            }
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 0 }\n",
+            )?;
+            // This unchanged evidence is present in the whole head. Preserve
+            // each adapter's existing choice about selecting it.
+            write_repo_file(
+                &repo,
+                "tests/eligible.rs",
+                "#[test]\nfn boundary() { assert!(!config_probe::eligible(1)); }\n",
+            )?;
+            run_git(&repo, &["add", "-A"])?;
+            run_git(&repo, &["commit", "--quiet", "-m", "base"])?;
+            write_repo_file(
+                &repo,
+                "src/lib.rs",
+                "pub fn eligible(value: i32) -> bool { value > 1 }\n",
+            )?;
+            run_git(&repo, &["commit", "--quiet", "-a", "-m", "predicate"])?;
+            let options = PrEvidenceOptions {
+                base: resolve_revision(&repo, "HEAD~1", "commit")?,
+                head: resolve_revision(&repo, "HEAD", "commit")?,
+                ..options()
+            };
+            let run_check = |repo: &Path, options: &PrEvidenceOptions| {
+                run_ripr_check_binary(
+                    &binary,
+                    vec![
+                        "check".into(),
+                        "--root".into(),
+                        command_root_arg(repo, &options.root),
+                        "--base".into(),
+                        options.base.clone(),
+                        "--diff".into(),
+                        repo.join(PR_CANONICAL_DIFF).display().to_string(),
+                        "--no-unchanged-tests".into(),
+                        "--format".into(),
+                        "json".into(),
+                    ],
+                    options,
+                    Duration::from_mins(2),
+                )
+            };
+            write_pr_evidence_with_runner(&repo, &options, |repo, options| {
+                run_check(repo, options)
+            })?;
+            let check =
+                fs::read_to_string(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
+            let value: Value = serde_json::from_str(&check).map_err(|error| error.to_string())?;
+            if value
+                .pointer("/analysis_outcome/analysis_complete")
+                .and_then(Value::as_bool)
+                != Some(true)
+                || value
+                    .get("findings")
+                    .and_then(Value::as_array)
+                    .is_none_or(Vec::is_empty)
+            {
+                return Err("configuration fixture must execute complete nonempty analysis".into());
+            }
+            check_pr_evidence(&repo, &options)?;
+            configuration_fixture_review(&repo, &options)?;
+            test(&repo, &options, &check, &run_check)
+        })();
+        let cleanup = fs::remove_dir_all(&repo)
+            .map_err(|error| format!("cleanup {}: {error}", repo.display()));
+        result.and(cleanup)
+    }
+
+    fn configuration_fixture_review(
+        repo: &Path,
+        options: &PrEvidenceOptions,
+    ) -> Result<(), String> {
+        ripr::cli::run(vec![
+            "ripr".into(),
+            "review-comments".into(),
+            "--root".into(),
+            repo.display().to_string(),
+            "--base".into(),
+            options.base.clone(),
+            "--head".into(),
+            options.head.clone(),
+            "--check-output".into(),
+            repo.join(PR_CHECK_JSON).display().to_string(),
+            "--out".into(),
+            repo.join("target/config-review.json").display().to_string(),
+        ])
+        .map_err(|error| error.message().to_string())?;
+        let rendered: Value = serde_json::from_slice(
+            &fs::read(repo.join("target/config-review.json")).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if rendered
+            .pointer("/analysis_scope/basis")
+            .and_then(Value::as_str)
+            != Some("producer_check_projection")
+            || rendered
+                .pointer("/analysis_scope/classified_seams_considered")
+                .and_then(Value::as_u64)
+                .is_none_or(|count| count == 0)
+        {
+            return Err("review did not reuse nonempty producer analysis".into());
+        }
+        Ok(())
+    }
+
+    fn configuration_fixture_refusal(
+        repo: &Path,
+        error: &str,
+        category: &str,
+    ) -> Result<(), String> {
+        if !error.contains("config_identity") || !error.contains(category) {
+            return Err(format!("wrong configuration refusal: {error}"));
+        }
+        let receipt: Value = serde_json::from_slice(
+            &fs::read(repo.join("target/run-receipt.json")).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?;
+        if receipt["status"] != "failed"
+            || receipt
+                .pointer("/primary_failure/phase")
+                .and_then(Value::as_str)
+                != Some("producer_evidence_admission")
+            || receipt
+                .pointer("/primary_failure/category")
+                .and_then(Value::as_str)
+                != Some(category)
+        {
+            return Err(format!("wrong configuration refusal receipt: {receipt}"));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_drift_after_publication_load_is_refused() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-after-load-config-drift",
+            Some(CONFIGURATION_A),
+            |repo, options, check, _run_check| {
+                let config_a = ripr::config::load_for_root(repo)?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                let config_b = ripr::config::load_for_root(repo)?;
+                assert_eq!(
+                    ripr::config::repo_exposure_config_identity_hash(&config_a),
+                    ripr::config::repo_exposure_config_identity_hash(&config_b),
+                );
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                with_configuration_mutation(
+                    repo,
+                    ConfigurationObservation::Publication,
+                    Some(CONFIGURATION_B),
+                    || {
+                        let failure = write_pr_evidence_with_runner(repo, options, |_, _| {
+                            Ok(check.to_string())
+                        })
+                        .err()
+                        .ok_or("after-load configuration drift published cached analysis")?;
+                        assert!(failure.contains("config_identity"), "{failure}");
+                        for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
+                            assert!(!repo.join(path).exists(), "retained authority: {path}");
+                        }
+                        let packet: Value = serde_json::from_slice(
+                            &fs::read(repo.join(PR_EVIDENCE_JSON))
+                                .map_err(|error| error.to_string())?,
+                        )
+                        .map_err(|error| error.to_string())?;
+                        assert_eq!(packet["status"], "error");
+                        assert!(check_pr_evidence(repo, options).is_err());
+                        Ok(())
+                    },
+                )?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                write_pr_evidence_with_runner(repo, options, |_, _| Ok(check.to_string()))?;
+                check_pr_evidence(repo, options)?;
+                configuration_fixture_review(repo, options)
+            },
+        )
+    }
+
+    #[test]
+    fn producer_configuration_drift_is_rejected_after_actual_check() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-config-drift",
+            Some(CONFIGURATION_A),
+            |repo, options, check, run_check| {
+                let first: Value =
+                    serde_json::from_str(check).map_err(|error| error.to_string())?;
+                let recorded = first
+                    .pointer("/analysis_outcome/outcome/identity/config_identity")
+                    .and_then(Value::as_str)
+                    .ok_or("actual configured check must carry a text identity")?;
+                let config_a = ripr::config::load_for_root(repo)?;
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                let config_b = ripr::config::load_for_root(repo)?;
+                if ripr::config::repo_exposure_config_identity_hash(&config_a)
+                    != ripr::config::repo_exposure_config_identity_hash(&config_b)
+                {
+                    return Err("fixture must preserve the seven-field seam fingerprint".into());
+                }
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                let result = write_pr_evidence_with_runner(repo, options, |repo, options| {
+                    let generated = run_check(repo, options)?;
+                    let value: Value =
+                        serde_json::from_str(&generated).map_err(|error| error.to_string())?;
+                    if value
+                        .pointer("/analysis_outcome/outcome/identity/config_identity")
+                        .and_then(Value::as_str)
+                        != Some(recorded)
+                    {
+                        return Err("fresh runner did not analyze configuration A".into());
+                    }
+                    // Change only live configuration after this actual check,
+                    // before the existing packet writer reloads it.
+                    write_repo_file(repo, "ripr.toml", CONFIGURATION_B)?;
+                    Ok(generated)
+                });
+                let failure = result.err().ok_or_else(|| {
+                    format!("configuration drift published old analysis {recorded}")
+                })?;
+                if !failure.contains("config_identity") || repo.join(PR_CHECK_SUBJECT_JSON).exists()
+                {
+                    return Err(format!(
+                        "wrong drift refusal or retained authority: {failure}"
+                    ));
+                }
+                let packet: Value = serde_json::from_slice(
+                    &fs::read(repo.join(PR_EVIDENCE_JSON)).map_err(|error| error.to_string())?,
+                )
+                .map_err(|error| error.to_string())?;
+                if packet["status"] != "error" {
+                    return Err("configuration drift did not publish an error packet".into());
+                }
+                write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                write_pr_evidence_with_runner(repo, options, |_, _| Ok(check.to_string()))?;
+                check_pr_evidence(repo, options)?;
+                configuration_fixture_review(repo, options)
+            },
+        )
+    }
+
+    #[test]
+    fn stale_configuration_is_rejected_by_saved_check_and_review() -> Result<(), String> {
+        with_configuration_fixture(
+            "ripr-pr-config-stale",
+            Some(CONFIGURATION_A),
+            |repo, options, _, _| {
+                for config in [Some(CONFIGURATION_B), Some(""), None] {
+                    match config {
+                        Some(text) => write_repo_file(repo, "ripr.toml", text)?,
+                        None => fs::remove_file(repo.join("ripr.toml"))
+                            .map_err(|error| error.to_string())?,
+                    }
+                    let saved = check_pr_evidence(repo, options)
+                        .err()
+                        .ok_or("saved check admitted stale loaded configuration")?;
+                    if !saved.contains("config_identity") {
+                        return Err(format!("wrong saved configuration refusal: {saved}"));
+                    }
+                    let review = configuration_fixture_review(repo, options)
+                        .err()
+                        .ok_or("direct review admitted stale loaded configuration")?;
+                    configuration_fixture_refusal(repo, &review, "producer_identity_mismatch")?;
+                    write_repo_file(repo, "ripr.toml", CONFIGURATION_A)?;
+                    check_pr_evidence(repo, options)?;
+                    configuration_fixture_review(repo, options)?;
+                }
+                Ok(())
+            },
+        )
+    }
+
+    #[test]
+    fn copied_configuration_identity_requires_present_string_or_null() -> Result<(), String> {
+        for initial in [Some(CONFIGURATION_A), Some(""), None] {
+            with_configuration_fixture("ripr-pr-config-shape", initial, |repo, options, _, _| {
+                let path = repo.join(PR_CHECK_SUBJECT_JSON);
+                let original = fs::read(&path).map_err(|error| error.to_string())?;
+                let subject: Value =
+                    serde_json::from_slice(&original).map_err(|error| error.to_string())?;
+                let actual = subject
+                    .pointer("/analysis_outcome/outcome/identity/config_identity")
+                    .ok_or("actual producer did not carry config_identity")?;
+                if initial.is_some() != actual.is_string() || initial.is_none() != actual.is_null()
+                {
+                    return Err("loaded-empty config and no config lost their distinction".into());
+                }
+                let mut wrong_identities = vec![
+                    None,
+                    Some(json!(7)),
+                    Some(json!(false)),
+                    Some(json!([])),
+                    Some(json!({})),
+                    Some(json!("fnv1a64:foreign")),
+                ];
+                if initial.is_some() {
+                    wrong_identities.push(Some(Value::Null));
+                }
+                for wrong in wrong_identities {
+                    let category = match wrong.as_ref() {
+                        Some(Value::String(_) | Value::Null) => "producer_identity_mismatch",
+                        _ => "malformed_producer",
+                    };
+                    let mut mutated = subject.clone();
+                    let identity = mutated
+                        .pointer_mut("/analysis_outcome/outcome/identity")
+                        .and_then(Value::as_object_mut)
+                        .ok_or("actual outcome identity is not an object")?;
+                    match wrong {
+                        Some(value) => {
+                            identity.insert("config_identity".into(), value);
+                        }
+                        None => {
+                            identity.remove("config_identity");
+                        }
+                    }
+                    fs::write(
+                        &path,
+                        serde_json::to_vec(&mutated).map_err(|error| error.to_string())?,
+                    )
+                    .map_err(|error| error.to_string())?;
+                    let saved = check_pr_evidence(repo, options)
+                        .err()
+                        .ok_or("saved check admitted missing or malformed config identity")?;
+                    if !saved.contains("config_identity") {
+                        return Err(format!("wrong saved shape refusal: {saved}"));
+                    }
+                    let review = configuration_fixture_review(repo, options)
+                        .err()
+                        .ok_or("review admitted missing or malformed config identity")?;
+                    configuration_fixture_refusal(repo, &review, category)?;
+                    fs::write(&path, &original).map_err(|error| error.to_string())?;
+                    check_pr_evidence(repo, options)?;
+                    configuration_fixture_review(repo, options)?;
+                }
+                if initial.is_none() {
+                    // Adding even an empty config must differ from the
+                    // captured defaults-only null identity.
+                    for text in [CONFIGURATION_A, ""] {
+                        write_repo_file(repo, "ripr.toml", text)?;
+                        let saved = check_pr_evidence(repo, options)
+                            .err()
+                            .ok_or("saved check admitted newly present configuration")?;
+                        if !saved.contains("config_identity") {
+                            return Err(format!("wrong new-config saved refusal: {saved}"));
+                        }
+                        let review = configuration_fixture_review(repo, options)
+                            .err()
+                            .ok_or("review admitted newly present configuration")?;
+                        configuration_fixture_refusal(repo, &review, "producer_identity_mismatch")?;
+                        fs::remove_file(repo.join("ripr.toml"))
+                            .map_err(|error| error.to_string())?;
+                        check_pr_evidence(repo, options)?;
+                        configuration_fixture_review(repo, options)?;
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    }
 
     fn options() -> PrEvidenceOptions {
         PrEvidenceOptions {
@@ -3106,7 +3649,11 @@ mod tests {
         "reachable_unrevealed": 0,
         "no_static_path": 0
       },
-      "findings": []
+      "findings": [],
+      "analysis_outcome": {
+        "analysis_complete": false,
+        "outcome": {"identity": {"config_identity": null}}
+      }
     }"#;
 
     #[test]
@@ -3932,7 +4479,7 @@ mod tests {
         ))
     }
 
-    fn temp_repo(name: &str) -> Result<PathBuf, String> {
+    pub(super) fn temp_repo(name: &str) -> Result<PathBuf, String> {
         let unique = format!(
             "{}-{}-{}",
             name,
@@ -3947,7 +4494,7 @@ mod tests {
         Ok(path)
     }
 
-    fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
+    pub(super) fn write_repo_file(repo: &Path, relative: &str, text: &str) -> Result<(), String> {
         let path = repo.join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -3956,7 +4503,7 @@ mod tests {
         fs::write(&path, text).map_err(|err| format!("write {}: {err}", path.display()))
     }
 
-    fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
+    pub(super) fn run_git(repo: &Path, args: &[&str]) -> Result<(), String> {
         run_git_output(repo, args).map(|_| ())
     }
 
