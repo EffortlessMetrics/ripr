@@ -1,5 +1,6 @@
 //! Related test candidate discovery for the TypeScript preview adapter.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::tsconfig::{TsAliasMap, TsOutDirMap, load_out_dir_map};
 use super::*;
 use std::collections::{HashMap, HashSet};
@@ -532,7 +533,7 @@ fn file_parent_dir(file: &Path, workspace_root: &Path) -> Option<PathBuf> {
 fn package_root_for_dir(start: &Path, workspace_root: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {
-        if current.join("package.json").is_file() {
+        if frozen_fs::is_file(current.join("package.json")) {
             // Convert back to workspace-relative.
             return current.strip_prefix(workspace_root).ok().map(|rel| {
                 if rel == Path::new("") {
@@ -551,7 +552,7 @@ fn package_root_for_dir(start: &Path, workspace_root: &Path) -> Option<PathBuf> 
         }
     }
     // Check workspace root itself.
-    if workspace_root.join("package.json").is_file() {
+    if frozen_fs::is_file(workspace_root.join("package.json")) {
         return Some(PathBuf::from("."));
     }
     None
@@ -2191,7 +2192,7 @@ pub(crate) fn normalized_relative_import_module(
             && !escaped_root
             && let Some(out_dir_map) = out_dir_map_for(root)
             && out_dir_map.contains(&joined)
-            && std::fs::symlink_metadata(root.join(&joined)).is_err()
+            && frozen_fs::symlink_metadata(root.join(&joined)).is_err()
             && !file_module_exists(root, &module)
             && let Some(source_module) = out_dir_map.source_module_for(root, &joined)
         {
@@ -2337,7 +2338,7 @@ fn resolve_directory_module_uncached(root: &Path, module: &str) -> Option<String
         return None;
     }
     let manifest = directory.join("package.json");
-    match std::fs::symlink_metadata(&manifest) {
+    match frozen_fs::symlink_metadata(&manifest) {
         // No package.json at all: plain directory index lookup.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return index_module(root, module);
@@ -2417,11 +2418,11 @@ fn file_module_exists(root: &Path, module: &str) -> bool {
 }
 
 fn is_real_file(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
+    frozen_fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_file())
 }
 
 fn is_real_directory(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
+    frozen_fs::symlink_metadata(path).is_ok_and(|metadata| metadata.file_type().is_dir())
 }
 
 fn normalized_module_path(path: &Path) -> String {

@@ -17,6 +17,7 @@
 //! `ts-d-silent-gaps` owns disclosure for those, and this lane deliberately
 //! leaves that channel alone.
 
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use std::collections::HashMap;
 use std::io::Read as _;
 use std::path::Path;
@@ -252,7 +253,7 @@ fn read_source_capped(
     file_limit: u64,
     budget: Option<&mut u64>,
 ) -> Result<String, CappedReadError> {
-    let metadata = std::fs::symlink_metadata(path)
+    let metadata = frozen_fs::symlink_metadata(path)
         .map_err(|err| CappedReadError::Io(format!("inspect {}: {err}", path.display())))?;
     let file_type = metadata.file_type();
     if file_type.is_symlink() || !file_type.is_file() {
@@ -271,11 +272,17 @@ fn read_source_capped(
         let remaining = budget.as_ref().map(|remaining| **remaining).unwrap_or(0);
         return Err(CappedReadError::OverWorkspaceBudget { remaining });
     }
-    let file = open_source_read_no_follow(path)?;
-    let mut bytes = Vec::new();
-    file.take(file_limit.saturating_add(1))
-        .read_to_end(&mut bytes)
-        .map_err(|err| CappedReadError::Io(format!("read {}: {err}", path.display())))?;
+    let bytes = if frozen::current().is_some() {
+        frozen_fs::read_with_limit(path, file_limit)
+            .map_err(|err| CappedReadError::Io(format!("read {}: {err}", path.display())))?
+    } else {
+        let file = open_source_read_no_follow(path)?;
+        let mut bytes = Vec::new();
+        file.take(file_limit.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .map_err(|err| CappedReadError::Io(format!("read {}: {err}", path.display())))?;
+        bytes
+    };
     if bytes.len() as u64 > file_limit {
         return Err(CappedReadError::OverFileLimit { limit: file_limit });
     }
@@ -754,4 +761,84 @@ mod tests {
         );
         assert!(outcome.io_failures.is_empty(), "{:?}", outcome.io_failures);
     }
+}
+
+#[cfg(test)]
+#[test]
+fn frozen_source_read_uses_snapshot_caps_and_sticky_refusal() -> Result<(), String> {
+    use crate::analysis::git_candidate_execution::prepare_named_tree;
+    use crate::analysis::source_calibration::OwnedFixture;
+    use crate::testing::fixture_git::fixture_git_ok;
+
+    let fixture = OwnedFixture::new()?;
+    let relative = "src/owned.ts";
+    let snapshot = "export const snapshot = 1;\n";
+    let live = "export const live = 2;\n";
+    fixture.seed(relative, snapshot.as_bytes())?;
+    fixture_git_ok(&fixture.root, &["init", "--initial-branch=main"])?;
+    fixture_git_ok(&fixture.root, &["add", "."])?;
+    fixture_git_ok(
+        &fixture.root,
+        &[
+            "-c",
+            "user.name=ripr fixture",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qm",
+            "frozen source",
+        ],
+    )?;
+    let prepared =
+        prepare_named_tree(&fixture.root, "HEAD", None).map_err(|error| error.to_string())?;
+    let authority = prepared
+        .frozen_source_authority(&fixture.root)
+        .map_err(|error| error.to_string())?;
+    fixture.seed(relative, live.as_bytes())?;
+    let path = fixture.root.join(relative);
+    let ordinary = frozen::with_context(None, || read_source_capped(&path, 4096, None))
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(ordinary, live);
+
+    let actual = frozen::with_context(Some(authority.clone()), || {
+        read_source_capped(&path, 4096, None)
+    })
+    .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(actual, snapshot);
+    authority.ensure_clean().map_err(|error| error.to_string())?;
+    let file_refusal = frozen::with_context(Some(authority.clone()), || {
+        read_source_capped(&path, 1, None)
+    })
+    .err()
+    .ok_or("snapshot file cap was bypassed")?;
+    assert_eq!(file_refusal, CappedReadError::OverFileLimit { limit: 1 });
+    let mut remaining = 1;
+    let budget_refusal = frozen::with_context(Some(authority.clone()), || {
+        read_source_capped(&path, 4096, Some(&mut remaining))
+    })
+    .err()
+    .ok_or("snapshot workspace cap was bypassed")?;
+    assert_eq!(
+        budget_refusal,
+        CappedReadError::OverWorkspaceBudget { remaining: 1 }
+    );
+    assert_eq!(remaining, 1);
+    authority.ensure_clean().map_err(|error| error.to_string())?;
+
+    frozen::with_context(Some(authority.clone()), || {
+        let refused = read_source_capped(&fixture.root.join("../outside-source.ts"), 4096, None)
+            .err()
+            .ok_or("outside source read was admitted")?;
+        assert!(matches!(refused, CappedReadError::Io(_)));
+        Ok::<(), String>(())
+    })?;
+    let fault = authority
+        .ensure_clean()
+        .err()
+        .ok_or("outside source refusal did not remain fatal")?;
+    assert!(!fault.to_string().is_empty());
+    let recovered = frozen::with_context(None, || read_source_capped(&path, 4096, None))
+        .map_err(|error| format!("{error:?}"))?;
+    assert_eq!(recovered, live);
+    Ok(())
 }

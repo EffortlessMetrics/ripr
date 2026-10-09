@@ -49,6 +49,7 @@
 //! (#3554 PR B); read and parse failures are typed as
 //! [`PythonRepoLimitation::ParseFailure`] rows today.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use super::super::classify::{PythonNoBehaviorContext, classify_change_with_context};
 use super::super::probe_shape::{canonical_python_gap_for, classify_probe_shape};
 use super::super::reexports::apply_package_reexports_from;
@@ -546,7 +547,7 @@ fn load_facts_with_source(
     relative: &Path,
 ) -> Result<(PythonSourceFacts, String), String> {
     let absolute = root.join(relative);
-    let source = std::fs::read_to_string(&absolute).map_err(|err| format!("read_error: {err}"))?;
+    let source = frozen_fs::read_to_string(&absolute).map_err(|err| format!("read_error: {err}"))?;
     let facts = extract_source_facts(relative, &source);
     debug_assert!(source_fact_snapshot_observation(&facts) > 0);
     match source_facts_parse_error(&facts) {
