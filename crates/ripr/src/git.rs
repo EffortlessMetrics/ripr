@@ -517,11 +517,44 @@ pub(crate) fn run_git_output_with_optional_deadline_and_limit(
     )
 }
 
+/// Complete-input capture requires both configured pipes and their clean EOF.
+/// Compatibility callers retain their existing optional-reader behavior.
+pub(crate) fn run_git_output_with_deadline_and_limit_strict(
+    root: &Path,
+    args: &[&str],
+    timeout: Duration,
+    max_output_bytes: usize,
+) -> Result<Output, CoreError> {
+    if max_output_bytes == 0 {
+        return Err(CoreError::message(
+            "git output limit must be greater than zero",
+        ));
+    }
+    let describe = format!("git -C {} {:?}", root.display(), args);
+    collect_output_with_reader_policy(
+        git_command(root, args),
+        Some(timeout),
+        max_output_bytes,
+        &describe,
+        true,
+    )
+}
+
 fn collect_output_with_optional_deadline_and_limit(
+    command: Command,
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+    describe: &str,
+) -> Result<Output, CoreError> {
+    collect_output_with_reader_policy(command, timeout, max_output_bytes, describe, false)
+}
+
+fn collect_output_with_reader_policy(
     mut command: Command,
     timeout: Option<Duration>,
     max_output_bytes: usize,
     describe: &str,
+    require_piped_readers: bool,
 ) -> Result<Output, CoreError> {
     if timeout.is_some_and(|timeout| timeout.is_zero()) {
         return Err(CoreError::git_invocation_timeout(describe, 0, false));
@@ -548,10 +581,22 @@ fn collect_output_with_optional_deadline_and_limit(
     let wait = poll_child(&mut child, timeout, describe);
     let timed_out = !matches!(&wait, ChildWait::Exited(_));
     let drain_deadline = Some(Instant::now() + POST_KILL_DRAIN_GRACE);
-    let stdout_result =
-        drain_bounded_pipe_reader(stdout_reader, timed_out, drain_deadline, "stdout", describe);
-    let stderr_result =
-        drain_bounded_pipe_reader(stderr_reader, timed_out, drain_deadline, "stderr", describe);
+    let stdout_result = drain_bounded_pipe_reader_with_policy(
+        stdout_reader,
+        timed_out,
+        drain_deadline,
+        "stdout",
+        describe,
+        require_piped_readers,
+    );
+    let stderr_result = drain_bounded_pipe_reader_with_policy(
+        stderr_reader,
+        timed_out,
+        drain_deadline,
+        "stderr",
+        describe,
+        require_piped_readers,
+    );
     // Cleanup failure is primary even when a pipe reader also failed.
     if let ChildWait::CleanupFailed(message) = &wait {
         return Err(CoreError::message(message.clone()));
@@ -625,6 +670,22 @@ fn spawn_bounded_pipe_reader(
         });
     });
     (handle, receiver)
+}
+
+fn drain_bounded_pipe_reader_with_policy(
+    reader: Option<BoundedPipeReader>,
+    timed_out: bool,
+    deadline: Option<Instant>,
+    stream_name: &str,
+    describe: &str,
+    require_reader: bool,
+) -> Result<BoundedPipeOutput, String> {
+    if require_reader && reader.is_none() {
+        return Err(format!(
+            "{stream_name} piped capture reader is unavailable for {describe}; EOF was not observed"
+        ));
+    }
+    drain_bounded_pipe_reader(reader, timed_out, deadline, stream_name, describe)
 }
 
 fn drain_bounded_pipe_reader(
@@ -1336,6 +1397,71 @@ fn drain_pipe_reader(
 mod tests {
 
     use super::*;
+    #[test]
+    fn strict_bounded_capture_requires_both_readers_and_preserves_compatibility() -> Result<(), String> {
+        for stream in ["stdout", "stderr"] {
+            let compatibility = drain_bounded_pipe_reader_with_policy(
+                None,
+                false,
+                None,
+                stream,
+                "required-capture",
+                false,
+            )?;
+            assert!(compatibility.bytes.is_empty());
+            assert!(!compatibility.exceeded);
+            assert!(compatibility.read_error.is_none());
+            let error = drain_bounded_pipe_reader_with_policy(
+                None,
+                false,
+                None,
+                stream,
+                "required-capture",
+                true,
+            )
+            .err()
+            .ok_or("missing configured reader must not supply EOF")?;
+            assert!(error.contains(stream), "{error}");
+            assert!(error.contains("EOF was not observed"), "{error}");
+            let empty = drain_bounded_pipe_reader_with_policy(
+                Some(spawn_bounded_pipe_reader(std::io::empty(), 8)),
+                false,
+                None,
+                stream,
+                "empty-capture",
+                true,
+            )?;
+            assert!(empty.bytes.is_empty());
+            assert!(!empty.exceeded);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn strict_bounded_git_capture_accepts_empty_stderr_and_rejects_overflow() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        let output = run_git_output_with_deadline_and_limit_strict(
+            &root,
+            &["--version"],
+            Duration::from_secs(30),
+            4096,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(output.status.success());
+        assert!(output.stdout.starts_with(b"git version "));
+        assert!(output.stderr.is_empty());
+        let error = run_git_output_with_deadline_and_limit_strict(
+            &root,
+            &["--version"],
+            Duration::from_secs(30),
+            4,
+        )
+        .err()
+        .ok_or("strict capture must retain the existing finite output guard")?;
+        assert!(error.to_string().contains("git_output_limit_exceeded"), "{error}");
+        Ok(())
+    }
+
     use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken, with_token};
     use serial_test::serial;
 

@@ -255,12 +255,19 @@ pub(crate) fn prepare_named_tree(
     head: &str,
     deadline: Option<Duration>,
 ) -> Result<PreparedNamedTree, SubjectError> {
-    let tree = git(
+    let output = crate::git::run_git_output_with_deadline_and_limit_strict(
         root,
         &["rev-parse", "--verify", &format!("{head}^{{tree}}")],
-        deadline.or(GIT_DEADLINE),
-    )?;
-    let tree = GitObjectId::parse(&tree).map_err(|error| failed(error.to_string()))?;
+        deadline.or(GIT_DEADLINE).unwrap_or(Duration::from_mins(1)),
+        16 * 1024,
+    )
+    .map_err(|error| failed(format!("named-tree identity capture failed: {error}")))?;
+    if !output.status.success() {
+        return Err(failed("named-tree identity did not resolve".into()));
+    }
+    let tree = std::str::from_utf8(&output.stdout)
+        .map_err(|error| failed(format!("named-tree identity is not UTF-8: {error}")))?;
+    let tree = GitObjectId::parse(tree.trim()).map_err(|error| failed(error.to_string()))?;
     let (materialized, cleanup, configuration) = materialize_with_configuration(
         root,
         tree.as_str(),
@@ -419,7 +426,7 @@ fn materialize_with_configuration(
             )
         }
         ConfigurationCapture::Requested { .. } => {
-            crate::git::run_git_output_with_deadline_and_limit(
+            crate::git::run_git_output_with_deadline_and_limit_strict(
                 root,
                 &["ls-tree", "-r", "-t", "-z", candidate_tree],
                 budget.saturating_sub(budget_started.elapsed()),
