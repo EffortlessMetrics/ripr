@@ -766,6 +766,7 @@ mod tests {
 #[cfg(test)]
 #[test]
 fn frozen_source_read_uses_snapshot_caps_and_sticky_refusal() -> Result<(), String> {
+    use crate::analysis::committed_source::{CommittedSourceOverlay, with_overlay};
     use crate::analysis::git_candidate_execution::prepare_named_tree;
     use crate::analysis::source_calibration::OwnedFixture;
     use crate::testing::fixture_git::fixture_git_ok;
@@ -806,6 +807,38 @@ fn frozen_source_read_uses_snapshot_caps_and_sticky_refusal() -> Result<(), Stri
     .map_err(|error| format!("{error:?}"))?;
     assert_eq!(actual, snapshot);
     authority.ensure_clean().map_err(|error| error.to_string())?;
+    let files = [std::path::PathBuf::from(relative)];
+    for inherited in [Some(&b"legacy overlay decoy\n"[..]), None] {
+        let overlay = std::sync::Arc::new(CommittedSourceOverlay::from_entries(
+            &fixture.root,
+            [(relative, inherited)],
+        ));
+        let legacy = frozen::with_context(None, || {
+            with_overlay(Some(overlay.clone()), || {
+                read_workspace_sources_capped(&fixture.root, &files, 4096, 65_536)
+            })
+        });
+        match inherited {
+            Some(_) => assert_eq!(
+                legacy.sources.get(&files[0]).map(String::as_str),
+                Some("legacy overlay decoy\n")
+            ),
+            None => assert!(legacy.sources.is_empty()),
+        }
+        let actual = frozen::with_context(Some(authority.clone()), || {
+            with_overlay(Some(overlay), || {
+                read_workspace_sources_capped(&fixture.root, &files, 4096, 65_536)
+            })
+        });
+        assert_eq!(actual.sources.len(), 1);
+        assert_eq!(
+            actual.sources.get(&files[0]).map(String::as_str),
+            Some(snapshot)
+        );
+        assert!(actual.limits.is_empty());
+        assert!(actual.io_failures.is_empty());
+        authority.ensure_clean().map_err(|error| error.to_string())?;
+    }
     let file_refusal = frozen::with_context(Some(authority.clone()), || {
         read_source_capped(&path, 1, None)
     })
