@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use std::path::{Component, Path};
 
-pub(super) const BINDING_SCHEMA: &str = "ripr.complete_binding.v1";
+pub(super) const BINDING_SCHEMA: &str = "ripr.complete_binding.v2";
 pub(super) const MANIFEST_SCHEMA: &str = "ripr.complete_manifest.v1";
 pub(super) const PAYLOAD_SCHEMA: &str = "ripr.complete_payload.v1";
 pub(super) const MANIFEST_FILE: &str = "complete-manifest.json";
@@ -497,6 +497,101 @@ pub(super) struct CompleteVerificationLimits {
     pub(super) max_raw_projection_bytes: u64,
 }
 
+/// Saved policy data. The sealed core observation and this serializable
+/// projection never grant execution permission or prove later consumption.
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum RustDependentScopePolicy {
+    Auto,
+    #[serde(rename = "named")]
+    NameAdmitted,
+    Full,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(super) struct RustExecutionPolicy {
+    pub(super) changed_rust_line_limit: u64,
+    pub(super) diff_index_file_limit: u64,
+    pub(super) diff_narrow_index_limit: u64,
+    pub(super) partial_diff_file_budget: u64,
+    pub(super) partial_diff_line_budget: u64,
+    pub(super) partial_budget_disclosures: Vec<String>,
+    pub(super) partial_selection_version: String,
+    pub(super) partial_language_tier_version: String,
+    pub(super) dependent_scope: RustDependentScopePolicy,
+}
+
+impl RustExecutionPolicy {
+    pub(super) fn capture() -> Result<Self, String> {
+        let observed = crate::analysis::capture_complete_rust_policy()?;
+        let number = |value: usize| {
+            u64::try_from(value).map_err(|e| format!("Rust policy limit conversion: {e}"))
+        };
+        let disclosures = observed.partial_budget_disclosures();
+        if disclosures.len() > 2
+            || disclosures
+                .iter()
+                .any(|text| text.len() > 1024 || text.contains('\0'))
+        {
+            return Err("Rust policy disclosure admission exceeded".into());
+        }
+        let dependent_scope = match observed.dependent_scope_mode() {
+            crate::analysis::CompleteDependentScopePolicy::Auto => RustDependentScopePolicy::Auto,
+            crate::analysis::CompleteDependentScopePolicy::NameAdmitted => {
+                RustDependentScopePolicy::NameAdmitted
+            }
+            crate::analysis::CompleteDependentScopePolicy::Full => RustDependentScopePolicy::Full,
+        };
+        let policy = Self {
+            changed_rust_line_limit: number(observed.changed_rust_line_limit())?,
+            diff_index_file_limit: number(observed.diff_index_file_limit())?,
+            diff_narrow_index_limit: number(observed.diff_narrow_index_limit())?,
+            partial_diff_file_budget: number(observed.partial_diff_file_budget())?,
+            partial_diff_line_budget: number(observed.partial_diff_line_budget())?,
+            partial_budget_disclosures: disclosures.to_vec(),
+            partial_selection_version: observed.partial_selection_version().into(),
+            partial_language_tier_version: observed.partial_language_tier_version().into(),
+            dependent_scope,
+        };
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if [
+            self.changed_rust_line_limit,
+            self.diff_index_file_limit,
+            self.diff_narrow_index_limit,
+            self.partial_diff_file_budget,
+            self.partial_diff_line_budget,
+        ]
+        .contains(&0)
+            || self.diff_narrow_index_limit > self.diff_index_file_limit
+            || self.partial_diff_file_budget > self.diff_index_file_limit
+            || self.partial_diff_line_budget > self.changed_rust_line_limit
+        {
+            return Err("invalid Rust execution policy limits or clamps".into());
+        }
+        // These are closed supported wire versions of the existing selectors.
+        // Capturing a future selector version fails until the contract changes.
+        if self.partial_selection_version != "partial-diff-v1"
+            || self.partial_language_tier_version != "lang-tier-v1"
+        {
+            return Err("unsupported Rust partial-selection policy version".into());
+        }
+        if self.partial_budget_disclosures.len() > 2
+            || self
+                .partial_budget_disclosures
+                .iter()
+                .any(|text| text.is_empty() || text.len() > 1024 || text.contains('\0'))
+        {
+            return Err("invalid Rust policy disclosures".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub(super) struct CompleteBinding {
@@ -509,6 +604,7 @@ pub(super) struct CompleteBinding {
     pub(super) inventory: InventoryBinding,
     pub(super) configuration: ConfigurationBinding,
     pub(super) full_configuration: FullConfiguration,
+    pub(super) rust_execution_policy: RustExecutionPolicy,
     pub(super) effective_options: EffectiveOptions,
     pub(super) analyzer: AnalyzerBinding,
     pub(super) nonce: String,
@@ -605,6 +701,7 @@ impl CompleteVerificationLimits {
 impl CompleteBinding {
     pub(super) fn validate(&self) -> Result<(), String> {
         self.profile.validate()?;
+        self.rust_execution_policy.validate()?;
         if self.schema_version != BINDING_SCHEMA {
             return Err("unsupported complete binding schema".into());
         }
@@ -1046,8 +1143,8 @@ fn serialize_bounded<T: Serialize>(value: &T, limit: u64) -> Result<Vec<u8>, Str
 pub(super) mod tests {
     use super::*;
 
-    pub(in crate::app::pr_evidence) fn fixture_binding() -> CompleteBinding {
-        CompleteBinding {
+    pub(in crate::app::pr_evidence) fn fixture_binding() -> Result<CompleteBinding, String> {
+        Ok(CompleteBinding {
             schema_version: BINDING_SCHEMA.into(),
             subject: SubjectBinding {
                 requested_root: ".".into(),
@@ -1116,6 +1213,7 @@ pub(super) mod tests {
                 source_path: None,
                 source_text: None,
             },
+            rust_execution_policy: RustExecutionPolicy::capture()?,
             effective_options: EffectiveOptions {
                 surface: ProducerSurface::Installed,
                 mode: CompleteMode::Draft,
@@ -1151,7 +1249,7 @@ pub(super) mod tests {
                 max_retained_path_bytes: 32 * 1024,
                 max_raw_projection_bytes: 128 * 1024,
             },
-        }
+        })
     }
 
     pub(in crate::app::pr_evidence) fn fixture_manifest(
@@ -1178,7 +1276,7 @@ pub(super) mod tests {
 
     #[test]
     fn configured_external_perl_route_is_explicitly_refused() -> Result<(), String> {
-        let mut binding = fixture_binding();
+        let mut binding = fixture_binding()?;
         binding.validate()?;
         binding.effective_options.enabled_languages = vec!["perl".into(), "rust".into()];
         assert!(binding.validate().is_err());
@@ -1192,7 +1290,7 @@ pub(super) mod tests {
 
     #[test]
     fn closed_nine_roles_and_no_unknown_or_missing_schema_fields() -> Result<(), String> {
-        let binding = fixture_binding();
+        let binding = fixture_binding()?;
         let manifest = fixture_manifest(binding.clone())?;
         manifest.validate(&binding, &binding.profile)?;
         for index in 0..9 {
@@ -1222,7 +1320,7 @@ pub(super) mod tests {
     #[test]
     fn generation_binds_same_tree_commit_literals_mode_include_languages_and_nonce()
     -> Result<(), String> {
-        let binding = fixture_binding();
+        let binding = fixture_binding()?;
         let id = binding.generation_id()?;
         for change in 0..6 {
             let mut other = binding.clone();
@@ -1256,7 +1354,7 @@ pub(super) mod tests {
 
     #[test]
     fn inventory_config_order_paths_modes_counts_and_caps_refuse() -> Result<(), String> {
-        let mut binding = fixture_binding();
+        let mut binding = fixture_binding()?;
         binding.inventory.files.push(InventoryFile {
             path: "ripr.toml".into(),
             git_mode: "100644".into(),
@@ -1292,7 +1390,7 @@ pub(super) mod tests {
     #[test]
     fn aggregate_overflow_profile_mismatch_and_payload_marker_removal_refuse() -> Result<(), String>
     {
-        let binding = fixture_binding();
+        let binding = fixture_binding()?;
         let mut manifest = fixture_manifest(binding.clone())?;
         manifest.artifacts[8].bytes = u64::MAX;
         assert!(manifest.validate(&binding, &binding.profile).is_err());
@@ -1310,4 +1408,61 @@ pub(super) mod tests {
         assert!(serialized_digest(&vec!["oversized"; 100], 1, b"").is_err());
         Ok(())
     }
+    #[test]
+    fn rust_execution_policy_is_required_closed_bounded_and_generation_bound()
+    -> Result<(), String> {
+        let binding = fixture_binding()?;
+        binding.validate()?;
+        let mut missing = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
+        missing
+            .as_object_mut()
+            .ok_or("binding is not an object")?
+            .remove("rust_execution_policy");
+        assert!(serde_json::from_value::<CompleteBinding>(missing).is_err());
+        let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
+        unknown["rust_execution_policy"]["grant"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<CompleteBinding>(unknown).is_err());
+        let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
+        unknown["rust_execution_policy"]["dependent_scope"] = serde_json::json!("core_only");
+        assert!(serde_json::from_value::<CompleteBinding>(unknown).is_err());
+        for change in 0..7 {
+            let mut wrong = binding.clone();
+            match change {
+                0 => wrong.schema_version = "ripr.complete_binding.v1".into(),
+                1 => wrong.rust_execution_policy.changed_rust_line_limit = 0,
+                2 => {
+                    wrong.rust_execution_policy.diff_index_file_limit = 1;
+                    wrong.rust_execution_policy.partial_diff_file_budget = 1;
+                    wrong.rust_execution_policy.diff_narrow_index_limit = 2;
+                }
+                3 => {
+                    wrong.rust_execution_policy.diff_index_file_limit = 1;
+                    wrong.rust_execution_policy.diff_narrow_index_limit = 1;
+                    wrong.rust_execution_policy.partial_diff_file_budget = 2;
+                }
+                4 => {
+                    wrong.rust_execution_policy.changed_rust_line_limit = 1;
+                    wrong.rust_execution_policy.partial_diff_line_budget = 2;
+                }
+                5 => wrong.rust_execution_policy.partial_selection_version = "stale".into(),
+                _ => wrong.rust_execution_policy.partial_language_tier_version = "stale".into(),
+            }
+            assert!(wrong.validate().is_err());
+        }
+        for disclosures in [vec!["".into()], vec!["x".repeat(1025)], vec!["x".into(); 3]] {
+            let mut wrong = binding.clone();
+            wrong.rust_execution_policy.partial_budget_disclosures = disclosures;
+            assert!(wrong.validate().is_err());
+        }
+        let mut changed = binding.clone();
+        changed.rust_execution_policy.dependent_scope =
+            match &changed.rust_execution_policy.dependent_scope {
+                RustDependentScopePolicy::Auto => RustDependentScopePolicy::Full,
+                _ => RustDependentScopePolicy::Auto,
+            };
+        changed.validate()?;
+        assert_ne!(changed.generation_id()?, binding.generation_id()?);
+        Ok(())
+    }
+
 }

@@ -85,6 +85,9 @@ fn verify_inner(
         return Err("caller limits differ from bound profile".into());
     }
     expected.validate()?;
+    if RustExecutionPolicy::capture()? != expected.rust_execution_policy {
+        return Err("fresh Rust execution policy differs from complete binding".into());
+    }
     let authority = frozen::current()
         .ok_or("complete saved verification requires an active frozen source authority")?;
     authority.ensure_clean().map_err(|e| e.to_string())?;
@@ -1074,7 +1077,7 @@ mod tests {
 
     #[test]
     fn payload_rejects_duplicate_unknown_stale_role_and_removed_markers() -> Result<(), String> {
-        let generation = fixture_binding().generation_id()?;
+        let generation = fixture_binding()?.generation_id()?;
         let good = serde_json::json!({"schema_version": PAYLOAD_SCHEMA, "generation_id": generation, "role": "pr_json", "value": {"status":"advisory"}});
         let bytes = serde_json::to_vec(&good).map_err(|e| e.to_string())?;
         assert_eq!(
@@ -1107,7 +1110,7 @@ mod tests {
 
     #[test]
     fn buffer_admission_counts_original_raw_decoder_copy_and_expansion() -> Result<(), String> {
-        let binding = fixture_binding();
+        let binding = fixture_binding()?;
         let mut manifest = fixture_manifest(binding.clone())?;
         manifest.artifacts[0].bytes = 100;
         let mut limits = binding.profile.clone();
@@ -1147,7 +1150,7 @@ mod tests {
     fn exact_raw_replay_refuses_occurrence_eof_and_coalescing_corruption() -> Result<(), String> {
         use super::super::raw_coverage::build_raw_coverage;
         let raw = b"diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1 +1 @@\n-old\n+new\ndiff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -3 +3 @@\n-before\n+after\n";
-        let binding = fixture_binding();
+        let binding = fixture_binding()?;
         let limits = raw_limits(&binding.profile)?;
         let (_, coverage) = build_raw_coverage(raw, limits)?;
         let ledger = coverage.ledger_bytes();
@@ -1208,7 +1211,7 @@ mod tests {
         use crate::analysis_outcome::{
             AnalysisIdentity, AnalysisOutcomeCounts, AnalysisOutcomeKind,
         };
-        let mut binding = fixture_binding();
+        let mut binding = fixture_binding()?;
         let logical = source
             .logical
             .to_str()
@@ -1626,4 +1629,129 @@ mod tests {
         assert!(directory.verify_closed().is_err());
         Ok(())
     }
+    #[cfg(target_os = "linux")]
+    fn resign_policy_fixture(
+        binding: &CompleteBinding,
+        original: &[Vec<u8>; 9],
+        old_generation: &str,
+    ) -> Result<[Vec<u8>; 9], String> {
+        let generation = binding.generation_id()?;
+        let mut changed = original.clone();
+        for role in [
+            ArtifactRole::FullCheck,
+            ArtifactRole::FindingIndex,
+            ArtifactRole::ReviewInput,
+            ArtifactRole::PrJson,
+        ] {
+            let mut value: Value = payload(&original[role.ordinal()], role, old_generation)?;
+            if role == ArtifactRole::ReviewInput {
+                value["check_sha256"] = Value::String(sha256_bytes(&changed[4]));
+            }
+            changed[role.ordinal()] =
+                encode_payload(role, &generation, &value, &binding.profile)?;
+        }
+        let markdown = std::str::from_utf8(&original[8]).map_err(|e| e.to_string())?;
+        let old_prefix = markdown_prefix(old_generation);
+        let body = markdown
+            .strip_prefix(&old_prefix)
+            .ok_or("fixture Markdown generation prefix missing")?;
+        changed[8] = format!("{}{body}", markdown_prefix(&generation)).into_bytes();
+        Ok(changed)
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn resigned_policy_drift_refuses_before_reads_and_baseline_recovers() -> Result<(), String> {
+        let source =
+            frozen::tests::Fixture::new(&[("a.rs", b"value > 1\n")]).map_err(|e| e.to_string())?;
+        let stage = stage()?;
+        frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
+            let (binding, original) = saved_fixture(&source)?;
+            let old_generation = binding.generation_id()?;
+            save_fixture(&stage.0, &binding, &original)?;
+            verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|e| e.to_string())?;
+            for change in 0..7 {
+                let mut wrong = binding.clone();
+                let policy = &mut wrong.rust_execution_policy;
+                let increase = |number: u64| number.checked_add(1).ok_or("policy test overflow");
+                match change {
+                    0 => policy.changed_rust_line_limit = increase(policy.changed_rust_line_limit)?,
+                    1 => policy.diff_index_file_limit = increase(policy.diff_index_file_limit)?,
+                    2 => {
+                        if policy.diff_narrow_index_limit < policy.diff_index_file_limit {
+                            policy.diff_narrow_index_limit += 1;
+                        } else if policy.diff_narrow_index_limit > 1 {
+                            policy.diff_narrow_index_limit -= 1;
+                        } else {
+                            policy.diff_index_file_limit += 1;
+                            policy.diff_narrow_index_limit += 1;
+                        }
+                    }
+                    3 => {
+                        if policy.partial_diff_file_budget < policy.diff_index_file_limit {
+                            policy.partial_diff_file_budget += 1;
+                        } else if policy.partial_diff_file_budget > 1 {
+                            policy.partial_diff_file_budget -= 1;
+                        } else {
+                            policy.diff_index_file_limit += 1;
+                            policy.partial_diff_file_budget += 1;
+                        }
+                    }
+                    4 => {
+                        if policy.partial_diff_line_budget < policy.changed_rust_line_limit {
+                            policy.partial_diff_line_budget += 1;
+                        } else if policy.partial_diff_line_budget > 1 {
+                            policy.partial_diff_line_budget -= 1;
+                        } else {
+                            policy.changed_rust_line_limit += 1;
+                            policy.partial_diff_line_budget += 1;
+                        }
+                    }
+                    5 => {
+                        policy.dependent_scope = match &policy.dependent_scope {
+                            RustDependentScopePolicy::Auto => RustDependentScopePolicy::Full,
+                            _ => RustDependentScopePolicy::Auto,
+                        };
+                    }
+                    _ => {
+                        if policy.partial_budget_disclosures.is_empty() {
+                            policy.partial_budget_disclosures.push("stale disclosure".into());
+                        } else {
+                            policy.partial_budget_disclosures.clear();
+                        }
+                    }
+                }
+                wrong.validate()?;
+                let resigned = resign_policy_fixture(&wrong, &original, &old_generation)?;
+                save_fixture(&stage.0, &wrong, &resigned)?;
+                let error = verify_staged_generation(&stage.0, &wrong, &wrong.profile)
+                    .expect_err("re-signed policy drift was accepted");
+                assert_eq!(
+                    error.to_string(),
+                    "fresh Rust execution policy differs from complete binding"
+                );
+            }
+            // A missing stage cannot replace the specific early policy error.
+            let mut wrong = binding.clone();
+            wrong.rust_execution_policy.changed_rust_line_limit =
+                wrong.rust_execution_policy.changed_rust_line_limit
+                    .checked_add(1)
+                    .ok_or("policy test overflow")?;
+            let missing = stage.0.join("absent-generation");
+            let error = verify_staged_generation(&missing, &wrong, &wrong.profile)
+                .expect_err("policy drift with absent stage was accepted");
+            assert_eq!(
+                error.to_string(),
+                "fresh Rust execution policy differs from complete binding"
+            );
+            save_fixture(&stage.0, &binding, &original)?;
+            let recovered = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|e| e.to_string())?;
+            assert_eq!(recovered.generation_id(), old_generation);
+            assert_eq!(recovered.total_finding_count(), 1);
+            Ok(())
+        })
+    }
+
 }
