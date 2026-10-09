@@ -215,6 +215,42 @@ fn write_pr_evidence_from_check_json(
     write_pr_evidence_packet(repo, options, &changed_files, check_json)
 }
 
+/// Validate the loaded-configuration identity carried by a PR analysis outcome.
+///
+/// Producers pass the actual returned check envelope; saved/review consumers
+/// pass the bounded receipt's copy. This does not authenticate that copy against
+/// the forensic check body or establish immutable source context.
+///
+/// # Errors
+///
+/// Returns an error for missing, malformed, or mismatched config_identity.
+/// An explicit null is valid only when no configuration text was loaded.
+pub fn validate_pr_evidence_check_configuration(
+    analysis_outcome: &Value,
+    config: &crate::config::RiprConfig,
+) -> Result<(), String> {
+    let value = analysis_outcome
+        .pointer("/outcome/identity/config_identity")
+        .ok_or_else(|| "producer analysis_outcome config_identity is missing".to_string())?;
+    let actual = match value {
+        Value::Null => None,
+        Value::String(value) => Some(value.as_str()),
+        _ => {
+            return Err(
+                "producer analysis_outcome config_identity must be a string or null".to_string(),
+            );
+        }
+    };
+    let expected = crate::config::loaded_config_identity(config);
+    if actual != expected.as_deref() {
+        return Err(
+            "producer analysis_outcome config_identity does not match the loaded configuration"
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
 fn write_pr_evidence_packet(
     repo: &Path,
     options: &PrEvidenceOptions,
@@ -291,6 +327,11 @@ fn write_pr_evidence_packet(
         serde_json::to_string_pretty(&subject)
             .map_err(|err| format!("serialize check subject receipt: {err}"))?
     );
+
+    validate_pr_evidence_check_configuration(
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
 
     write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
     write_parented_file(
@@ -685,6 +726,10 @@ fn validate_producer_artifacts(repo: &Path, options: &PrEvidenceOptions) -> Resu
             "{PR_CHECK_SUBJECT_JSON} review_input_byte_count does not match {PR_REVIEW_INPUT_JSON}"
         ));
     }
+    validate_pr_evidence_check_configuration(
+        subject.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
     Ok(())
 }
 
@@ -2904,7 +2949,10 @@ mod tests {
         let check_json = r#"{
           "schema_version": "ripr.check.v1",
           "mode": "draft",
-          "analysis_outcome": {"analysis_complete": true},
+          "analysis_outcome": {
+            "analysis_complete": true,
+            "outcome": {"identity": {"config_identity": null}}
+          },
           "findings": [
             {
               "id": "probe:src_lib_rs:value:00000000",

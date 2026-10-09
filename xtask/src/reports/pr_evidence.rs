@@ -257,6 +257,11 @@ fn write_pr_evidence_packet(
             .map_err(|err| format!("serialize check subject receipt: {err}"))?
     );
 
+    ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+        check_value.get("analysis_outcome").unwrap_or(&Value::Null),
+        &config,
+    )?;
+
     write_parented_file(&repo.join(PR_CHECK_JSON), PR_CHECK_JSON, check_json_text)?;
     write_parented_file(
         &repo.join(PR_REVIEW_INPUT_JSON),
@@ -633,6 +638,17 @@ fn check_subject_violations(repo: &Path, options: &PrEvidenceOptions) -> Vec<Str
         Err(error) => violations.push(format!(
             "missing or unreadable {PR_REVIEW_INPUT_JSON}: {error}"
         )),
+    }
+    match ripr::config::load_for_root(&repo.join(&options.root)) {
+        Ok(config) => {
+            if let Err(error) = ripr::app::pr_evidence::validate_pr_evidence_check_configuration(
+                subject.get("analysis_outcome").unwrap_or(&Value::Null),
+                &config,
+            ) {
+                violations.push(error);
+            }
+        }
+        Err(error) => violations.push(format!("load producer evidence configuration: {error}")),
     }
     violations
 }
@@ -3418,7 +3434,11 @@ mod tests {
         "reachable_unrevealed": 0,
         "no_static_path": 0
       },
-      "findings": []
+      "findings": [],
+      "analysis_outcome": {
+        "analysis_complete": false,
+        "outcome": {"identity": {"config_identity": null}}
+      }
     }"#;
 
     #[test]

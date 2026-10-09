@@ -218,7 +218,13 @@ pub(crate) fn admit_producer_evidence(
         review_input.total_finding_count,
         Some(&canonical_projection_from_subject(&subject)?),
     )?;
-    let outcome_value = required_value(&subject, "analysis_outcome")?.clone();
+    let outcome_envelope = required_value(&subject, "analysis_outcome")?;
+    super::pr_evidence::validate_pr_evidence_check_configuration(outcome_envelope, config)
+        .map_err(|error| ProducerAdmissionError {
+            category: "producer_identity_mismatch",
+            message: error,
+        })?;
+    let outcome_value = outcome_envelope.clone();
     let outcome_value = outcome_value.get("outcome").cloned().ok_or_else(|| {
         ProducerAdmissionError::malformed(
             "producer review input analysis_outcome is missing outcome",
