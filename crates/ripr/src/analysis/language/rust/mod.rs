@@ -288,7 +288,7 @@ fn enforce_repo_index_file_limit(file_count: usize, scope_limit: usize) -> Resul
 }
 
 fn diff_changed_rust_line_limit() -> Result<usize, String> {
-    diff_changed_rust_line_limit_from_env(std::env::var(DIFF_CHANGED_RUST_LINE_LIMIT_ENV))
+    diff_changed_rust_line_limit_from_env(diff_limit_env(DIFF_CHANGED_RUST_LINE_LIMIT_ENV))
 }
 
 fn diff_changed_rust_line_limit_from_env(
@@ -531,8 +531,8 @@ pub(crate) struct PartialDiffBudgets {
 
 pub(crate) fn partial_diff_budgets() -> Result<PartialDiffBudgets, String> {
     partial_diff_budgets_from_env(
-        std::env::var(PARTIAL_DIFF_FILE_BUDGET_ENV),
-        std::env::var(PARTIAL_DIFF_LINE_BUDGET_ENV),
+        diff_limit_env(PARTIAL_DIFF_FILE_BUDGET_ENV),
+        diff_limit_env(PARTIAL_DIFF_LINE_BUDGET_ENV),
         diff_index_file_limit()?,
         diff_changed_rust_line_limit()?,
     )
@@ -839,6 +839,57 @@ fn select_partial_diff_partition_with_identity(
         next_file_changed_lines,
         partition_identity: sha256_hex(canonical.as_bytes()),
     })
+}
+
+fn materialize_changed_files<'a>(
+    files: impl IntoIterator<Item = &'a ChangedFile>,
+) -> Vec<ChangedFile> {
+    files
+        .into_iter()
+        .map(|file| {
+            let cloned = file.clone();
+            #[cfg(test)]
+            diff_materialization::record(&cloned);
+            cloned
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod diff_materialization {
+    use super::ChangedFile;
+    use std::cell::RefCell;
+
+    thread_local! {
+        static CURRENT: RefCell<Option<Vec<ChangedFile>>> = const { RefCell::new(None) };
+    }
+
+    struct Restore(Option<Vec<ChangedFile>>);
+
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            CURRENT.with(|slot| *slot.borrow_mut() = self.0.take());
+        }
+    }
+
+    pub(super) fn record(file: &ChangedFile) {
+        CURRENT.with(|slot| {
+            if let Some(snapshot) = slot.borrow_mut().as_mut() {
+                // Test-only observation owns the value after materialization.
+                // It measures seam invocations, not allocator/RSS behavior.
+                snapshot.push(file.clone());
+            }
+        });
+    }
+
+    pub(super) fn observe<T>(run: impl FnOnce() -> T) -> (T, Vec<ChangedFile>) {
+        let previous = CURRENT.with(|slot| slot.borrow_mut().replace(Vec::new()));
+        let restore = Restore(previous);
+        let result = run();
+        let snapshot = CURRENT.with(|slot| slot.borrow_mut().take().unwrap_or_default());
+        drop(restore);
+        (result, snapshot)
+    }
 }
 
 fn changed_rust_line_count(changed_files: &[ChangedFile]) -> usize {
@@ -1290,11 +1341,11 @@ impl RustAdapter {
         // that protects actionable source analysis.
         let generated_sources =
             GeneratedRustSources::for_diff(&options.root, rust_config, changed_files);
-        let analyzable_changed_files = changed_files
-            .iter()
-            .filter(|file| !generated_sources.contains(&file.path))
-            .cloned()
-            .collect::<Vec<_>>();
+        let analyzable_changed_files = materialize_changed_files(
+            changed_files
+                .iter()
+                .filter(|file| !generated_sources.contains(&file.path)),
+        );
         let changed_line_limit = diff_changed_rust_line_limit()?;
         #[cfg(test)]
         if crate::analysis::source_calibration::active() {
@@ -4410,6 +4461,268 @@ fn absent_delimiter_boundary_returns_head() {
         if parsed != 1500 {
             return Err(format!("expected parsed limit 1500, got {parsed}"));
         }
+        Ok(())
+    }
+
+    fn admission_options(root: &Path) -> AnalysisOptions {
+        AnalysisOptions {
+            root: root.to_path_buf(),
+            base: None,
+            diff_file: None,
+            mode: AnalysisMode::Draft,
+            resolved_subject_identity: None,
+            open_rust_index_paths: Default::default(),
+            include_unchanged_tests: true,
+            resolve_tsconfig_paths: false,
+            perl_facts_path: None,
+            git_timeout: None,
+            git_candidate: None,
+            production_like_targets: Default::default(),
+            test_harnesses: Vec::new(),
+        }
+    }
+
+    fn assert_changed_files_equal(actual: &[ChangedFile], expected: &[ChangedFile]) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected) {
+            assert_eq!(actual.path, expected.path);
+            assert_eq!(actual.added_lines, expected.added_lines);
+            assert_eq!(actual.removed_lines, expected.removed_lines);
+        }
+    }
+
+    #[test]
+    fn diff_admission_refuses_before_deep_copy_and_partial_budget() -> Result<(), String> {
+        let root = temp_root("admission-refuses-before-copy")?;
+        let files = vec![
+            changed_file("src/lib.rs", 2, 1),
+            changed_file("src/lib.rs", 0, 1),
+            changed_file("src/client.ts", 4, 4),
+        ];
+        let mut copied = Vec::new();
+        let (result, report) = crate::analysis::source_calibration::observe(|| {
+            with_forced_diff_limit_env(
+                &[
+                    (super::DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "3"),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "invalid"),
+                ],
+                || {
+                    let (result, snapshot) = super::diff_materialization::observe(|| {
+                        RustAdapter.analyze_diff_for_languages(
+                            &admission_options(&root),
+                            &OraclePolicy::default(),
+                            &files,
+                            ALL_LANGUAGES,
+                        )
+                    });
+                    copied = snapshot;
+                    result.map(|_| ())
+                },
+            )
+        })?;
+        let message = result.err().ok_or("oversized subject was admitted")?;
+        assert_eq!(
+            message,
+            "diff_scope_oversized: 4 changed Rust lines across 2 Rust files exceed the RIPR_MAX_DIFF_CHANGED_RUST_LINES limit (3); analysis was not run to protect runner memory before probe expansion. Repair route: reduce the diff scope, split the extraction PR, run a narrower diff, or raise the limit via RIPR_MAX_DIFF_CHANGED_RUST_LINES=<number>."
+        );
+        assert!(copied.is_empty(), "denied input was deep-copied: {copied:?}");
+        assert!(report["stages"].get("rust_eligible").is_some());
+        assert!(report["stages"].get("rust_partition").is_none());
+        assert!(report["stages"].get("rust_pre_ast").is_none());
+        fs::remove_dir_all(root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_admission_invalid_line_limit_precedes_copy_and_calibration() -> Result<(), String> {
+        let root = temp_root("admission-invalid-limit")?;
+        let files = vec![changed_file("src/lib.rs", 1, 0)];
+        for invalid in ["0", "invalid"] {
+            let mut copied = Vec::new();
+            let (result, report) = crate::analysis::source_calibration::observe(|| {
+                with_forced_diff_limit_env(
+                    &[(super::DIFF_CHANGED_RUST_LINE_LIMIT_ENV, invalid)],
+                    || {
+                        let (result, paths) = super::diff_materialization::observe(|| {
+                            RustAdapter.analyze_diff_for_languages(
+                                &admission_options(&root),
+                                &OraclePolicy::default(),
+                                &files,
+                                ALL_LANGUAGES,
+                            )
+                        });
+                        copied = paths;
+                        result.map(|_| ())
+                    },
+                )
+            })?;
+            let expected = diff_changed_rust_line_limit_from_env(Ok(invalid.to_string()));
+            assert_eq!(result, expected.map(|_| ()));
+            assert!(copied.is_empty(), "invalid limit copied input: {copied:?}");
+            assert!(report["stages"].get("rust_eligible").is_none());
+        }
+        fs::remove_dir_all(root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_admission_preserves_filtered_snapshot_order_and_total_counts() -> Result<(), String> {
+        let root = temp_root("admission-filtered-snapshot")?;
+        write(
+            &root.join("Cargo.toml"),
+            "[package]\nname='admission-snapshot'\nversion='0.1.0'\nedition='2024'\n",
+        )?;
+        write(&root.join("src/lib.rs"), "pub fn gate() {}\n")?;
+        write(
+            &root.join("src/marker.rs"),
+            "pub const MARKER: &str = \"@generated\";\n",
+        )?;
+        write(&root.join("src/header.rs"), "// @generated\npub fn generated() {}\n")?;
+        write(&root.join("vendor/pkg/.cargo-checksum.json"), "{}")?;
+        write(&root.join("vendor/pkg/src/lib.rs"), "pub fn vendored() {}\n")?;
+        let mut files = vec![
+            changed_file("src/marker.rs", 1, 1),
+            changed_file("src/client.ts", 2, 2),
+            changed_file("src/lib.rs", 1, 0),
+            changed_file("src/script.py", 1, 1),
+            changed_file("src/header.rs", 10, 10),
+            changed_file("vendor/pkg/src/lib.rs", 10, 10),
+            changed_file("vendor/gone/.cargo-checksum.json", 0, 0),
+            changed_file("vendor/gone/src/lib.rs", 0, 10),
+            changed_file("src/lib.rs", 0, 1),
+        ];
+        files[0].added_lines[0].text = "pub const MARKER: &str = \"λ🙂\";".to_string();
+        files[0].added_lines[0].line = 31;
+        files[0].added_lines[0].new_side_line = 31;
+        files[0].removed_lines[0].text = "pub const MARKER: &str = \"旧\";".to_string();
+        files[0].removed_lines[0].line = 79;
+        files[0].removed_lines[0].new_side_line = 29;
+        files[2].added_lines[0].text = "pub fn distinct_added_duplicate() {}".to_string();
+        files[2].added_lines[0].line = 17;
+        files[2].added_lines[0].new_side_line = 17;
+        files[8].removed_lines[0].text = "pub fn distinct_removed_duplicate_λ() {}".to_string();
+        files[8].removed_lines[0].line = 103;
+        files[8].removed_lines[0].new_side_line = 41;
+        let config = crate::config::RustLanguageConfig::default();
+        // Frozen pre-repair filter and deep-clone route: the oracle owns
+        // both sides' text/coordinates and duplicates, not just a path count.
+        let generated = GeneratedRustSources::for_diff(&root, &config, &files);
+        let legacy = files
+            .iter()
+            .filter(|file| !generated.contains(&file.path))
+            .cloned()
+            .collect::<Vec<_>>();
+        let expected_paths = vec![
+            PathBuf::from("src/marker.rs"),
+            PathBuf::from("src/client.ts"),
+            PathBuf::from("src/lib.rs"),
+            PathBuf::from("src/script.py"),
+            PathBuf::from("vendor/gone/.cargo-checksum.json"),
+            PathBuf::from("src/lib.rs"),
+        ];
+        assert_eq!(
+            legacy.iter().map(|file| file.path.clone()).collect::<Vec<_>>(),
+            expected_paths
+        );
+        let total = changed_rust_line_count(&legacy);
+        assert_eq!(total, 4);
+        let mut copied = Vec::new();
+        let (result, report) = crate::analysis::source_calibration::observe(|| {
+            with_forced_diff_limit_env(
+                &[
+                    (super::DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "4"),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "4"),
+                ],
+                || {
+                    let (result, paths) = super::diff_materialization::observe(|| {
+                        RustAdapter.analyze_diff_for_languages_with_rust_config(
+                            &admission_options(&root),
+                            &OraclePolicy::default(),
+                            &files,
+                            ALL_LANGUAGES,
+                            &config,
+                        )
+                    });
+                    copied = paths;
+                    result.map(|_| ())
+                },
+            )
+        })?;
+        result?;
+        assert_changed_files_equal(&copied, &legacy);
+        assert_eq!(
+            copied.iter().map(|file| file.path.clone()).collect::<Vec<_>>(),
+            expected_paths,
+            "each admitted entry is copied once in legacy order"
+        );
+        let eligible = &report["stages"]["rust_eligible"];
+        assert_eq!(eligible["input_files"], files.len());
+        assert_eq!(eligible["after_generated_filter"], legacy.len());
+        assert_eq!(eligible["eligible_rust_changed_lines"], total);
+        assert_eq!(
+            eligible["paths_identity"],
+            crate::analysis::source_calibration::paths_identity(
+                legacy.iter().map(|file| file.path.as_path())
+            )
+        );
+        assert!(report["stages"].get("rust_partition").is_some());
+        assert!(report["stages"].get("rust_pre_ast").is_some());
+        fs::remove_dir_all(root).map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[test]
+    fn diff_materialization_preserves_legacy_fields_and_guard_decision() -> Result<(), String> {
+        let mut files = vec![
+            changed_file("src/lib.rs", 1, 1),
+            changed_file("src/client.ts", 1, 1),
+            changed_file("src/lib.rs", 0, 1),
+        ];
+        files[0].added_lines[0].text = "if λ >= right { // 🙂".to_string();
+        files[0].removed_lines[0].text = "if λ > right { // 旧".to_string();
+        files[2].removed_lines[0].text = "distinct removed duplicate".to_string();
+        files[0].removed_lines[0].new_side_line = 19;
+        files[2].removed_lines[0].line = 42;
+        files[2].removed_lines[0].new_side_line = 21;
+        let borrowed = files.iter().collect::<Vec<_>>();
+        let legacy = files.iter().cloned().collect::<Vec<_>>();
+        let (materialized, snapshot) =
+            super::diff_materialization::observe(|| super::materialize_changed_files(borrowed));
+        assert_changed_files_equal(&materialized, &legacy);
+        assert_changed_files_equal(&snapshot, &legacy);
+        for limit in [2, 3, 4] {
+            assert_eq!(
+                enforce_changed_rust_line_limit(&materialized, limit),
+                enforce_changed_rust_line_limit(&legacy, limit)
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn diff_admission_keeps_partial_budget_failure_after_admitted_copy() -> Result<(), String> {
+        let root = temp_root("admission-partial-failure")?;
+        let files = vec![changed_file("src/lib.rs", 1, 1)];
+        let (result, paths) = with_forced_diff_limit_env(
+            &[
+                (super::DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "2"),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, "invalid"),
+            ],
+            || {
+                super::diff_materialization::observe(|| {
+                    RustAdapter.analyze_diff_for_languages(
+                        &admission_options(&root),
+                        &OraclePolicy::default(),
+                        &files,
+                        ALL_LANGUAGES,
+                    )
+                })
+            },
+        );
+        let message = result.err().ok_or("invalid partial budget was admitted")?;
+        assert!(message.starts_with("partial_budget_invalid:"), "{message}");
+        assert_changed_files_equal(&paths, &files);
+        fs::remove_dir_all(root).map_err(|error| error.to_string())?;
         Ok(())
     }
 
