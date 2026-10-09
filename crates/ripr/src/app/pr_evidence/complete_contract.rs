@@ -524,7 +524,8 @@ pub(super) struct RustExecutionPolicy {
 
 impl RustExecutionPolicy {
     pub(super) fn capture() -> Result<Self, String> {
-        let observed = crate::analysis::capture_complete_rust_policy()?;
+        let observed: crate::analysis::CompleteRustPolicySnapshot =
+            crate::analysis::capture_complete_rust_policy()?;
         let number = |value: usize| {
             u64::try_from(value).map_err(|e| format!("Rust policy limit conversion: {e}"))
         };

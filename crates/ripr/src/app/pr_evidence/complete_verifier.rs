@@ -1674,10 +1674,24 @@ mod tests {
             for change in 0..7 {
                 let mut wrong = binding.clone();
                 let policy = &mut wrong.rust_execution_policy;
-                let increase = |number: u64| number.checked_add(1).ok_or("policy test overflow");
+                let alternate = |number: u64| match number.checked_add(1) {
+                    Some(next) => next,
+                    None => number - 1,
+                };
                 match change {
-                    0 => policy.changed_rust_line_limit = increase(policy.changed_rust_line_limit)?,
-                    1 => policy.diff_index_file_limit = increase(policy.diff_index_file_limit)?,
+                    0 => {
+                        policy.changed_rust_line_limit = alternate(policy.changed_rust_line_limit);
+                        policy.partial_diff_line_budget = policy
+                            .partial_diff_line_budget
+                            .min(policy.changed_rust_line_limit);
+                    }
+                    1 => {
+                        policy.diff_index_file_limit = alternate(policy.diff_index_file_limit);
+                        policy.diff_narrow_index_limit =
+                            policy.diff_narrow_index_limit.min(policy.diff_index_file_limit);
+                        policy.partial_diff_file_budget =
+                            policy.partial_diff_file_budget.min(policy.diff_index_file_limit);
+                    }
                     2 => {
                         if policy.diff_narrow_index_limit < policy.diff_index_file_limit {
                             policy.diff_narrow_index_limit += 1;
@@ -1735,9 +1749,14 @@ mod tests {
             // A missing stage cannot replace the specific early policy error.
             let mut wrong = binding.clone();
             wrong.rust_execution_policy.changed_rust_line_limit =
-                wrong.rust_execution_policy.changed_rust_line_limit
-                    .checked_add(1)
-                    .ok_or("policy test overflow")?;
+                match wrong.rust_execution_policy.changed_rust_line_limit.checked_add(1) {
+                    Some(next) => next,
+                    None => wrong.rust_execution_policy.changed_rust_line_limit - 1,
+                };
+            wrong.rust_execution_policy.partial_diff_line_budget = wrong
+                .rust_execution_policy
+                .partial_diff_line_budget
+                .min(wrong.rust_execution_policy.changed_rust_line_limit);
             let missing = stage.0.join("absent-generation");
             let error = verify_staged_generation(&missing, &wrong, &wrong.profile)
                 .expect_err("policy drift with absent stage was accepted");
