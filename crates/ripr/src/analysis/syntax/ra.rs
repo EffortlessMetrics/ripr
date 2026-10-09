@@ -22,8 +22,8 @@ use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
 use super::{
-    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange, parse_clean_source_file,
-    rust_nesting_refusal,
+    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange,
+    parse_clean_source_file, rust_nesting_refusal,
 };
 use crate::analysis::rust_index::{
     FunctionFact, OracleFact, ProbeShapeFact, ProbeShapeKind, SourceText, TestFact,

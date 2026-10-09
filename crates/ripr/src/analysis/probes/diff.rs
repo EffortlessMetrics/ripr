@@ -1278,7 +1278,8 @@ mod tests {
             legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
         assert_eq!(
             changed_owner_body_materialization_count(),
-            before_legacy + 1
+            before_legacy + 1,
+            "legacy control must construct exactly one copied owner body",
         );
         assert!(!expected.is_empty(), "control must reach the sparse owner");
         assert!(expected.iter().all(|seeded| {
@@ -1300,7 +1301,8 @@ mod tests {
         assert!(!actual.is_empty());
         assert_eq!(
             changed_owner_body_materialization_count(),
-            before_callback
+            before_callback,
+            "no copied owner body after the callback returns",
         );
         Ok(())
     }
