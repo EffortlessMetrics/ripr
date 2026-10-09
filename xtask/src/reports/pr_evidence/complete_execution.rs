@@ -230,15 +230,16 @@ fn executable_from_cargo(repo: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
                 let path = message.manifest_path.ok_or_else(|| {
                     "experimental worker build artifact lacks manifest".to_string()
                 })?;
+                let path = Path::new(&path);
+                if !path.is_absolute() || target.name.is_empty() || target.kind.is_empty() {
+                    return Err("experimental worker build artifact metadata is malformed".to_string());
+                }
                 if target.name != "ripr" || target.kind != ["bin"] {
                     continue;
                 }
-                let path = Path::new(&path);
-                if !path.is_absolute()
-                    || fs::canonicalize(path).map_err(|error| {
-                        format!("experimental worker artifact manifest unavailable: {error}")
-                    })? != manifest
-                {
+                if fs::canonicalize(path).map_err(|error| {
+                    format!("experimental worker artifact manifest unavailable: {error}")
+                })? != manifest {
                     continue;
                 }
                 let selected = message.executable.filter(|path| !path.is_empty())
@@ -995,6 +996,8 @@ mod tests {
             missing_executable["executable"] = Value::Null;
             let mut relative_executable = artifact.clone();
             relative_executable["executable"] = json!("target/debug/ripr");
+            let mut relative_manifest = artifact.clone();
+            relative_manifest["manifest_path"] = json!("crates/ripr/Cargo.toml");
             let mut wrong_target = artifact.clone();
             wrong_target["target"]["name"] = json!("other");
             let mut missing_file = artifact.clone();
@@ -1004,6 +1007,7 @@ mod tests {
                 record(&artifact)?,
                 format!("{{malformed\n{}", record(&finish)?),
                 format!("{}\n{}\n{}", record(&artifact)?, record(&artifact)?, record(&finish)?),
+                format!("{}\n{}\n{}", record(&artifact)?, record(&relative_manifest)?, record(&finish)?),
                 format!("{valid}{}", record(&artifact)?),
                 format!("{valid}{}", record(&finish)?),
                 format!("{}\n{{\"reason\":\"build-finished\",\"success\":false}}", record(&artifact)?),
