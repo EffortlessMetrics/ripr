@@ -34,12 +34,36 @@ pub(crate) fn probes_for_file(root: &Path, changed: &ChangedFile, index: &RustIn
         .collect()
 }
 
+#[cfg(test)]
 pub(crate) fn probes_for_file_with_relations(
     root: &Path,
     changed: &ChangedFile,
     index: &RustIndex,
 ) -> Vec<SeededProbe> {
     let mut probes = Vec::new();
+    let result = try_for_each_probe_with_relations(root, changed, index, |seeded| {
+        probes.push(seeded);
+        Ok::<(), std::convert::Infallible>(())
+    });
+    match result {
+        Ok(()) => probes,
+        Err(never) => match never {},
+    }
+}
+
+/// Emit in the same added-then-removed order as the collecting test surface.
+/// A consumer error aborts extraction; no successfully analyzed prefix is returned.
+pub(crate) fn try_for_each_probe_with_relations<E>(
+    root: &Path,
+    changed: &ChangedFile,
+    index: &RustIndex,
+    mut emit: impl FnMut(SeededProbe) -> Result<(), E>,
+) -> Result<(), E> {
+    let mut seen = std::collections::HashMap::new();
+    let mut emit = |mut seeded: SeededProbe| {
+        dedup_probe_id(&mut seeded, &mut seen);
+        emit(seeded)
+    };
     // Use `new_side_line` for all lines: for added lines this equals `line`; for
     // removed lines `new_side_line` is the new-file coordinate, which is what
     // the RustIndex (built from the new file) expects (RANK-1 fix, #1222).
@@ -84,13 +108,13 @@ pub(crate) fn probes_for_file_with_relations(
         if let Some(family) =
             bounded_subprocess_family(index, &changed.path, added.new_side_line, text)
         {
-            probes.push(SeededProbe::from_probe(build_probe(
+            emit(SeededProbe::from_probe(build_probe(
                 &build_context,
                 added,
                 family,
                 nearby_removed_line(added.new_side_line, text, changed),
                 Some(text.to_string()),
-            )));
+            )))?;
             continue;
         }
         let parser_shapes =
@@ -130,19 +154,19 @@ pub(crate) fn probes_for_file_with_relations(
                     nearby_removed_line(shape.start_line, &canonical_text, changed),
                     Some(canonical_text.clone()),
                 );
-                probes.push(SeededProbe::maybe_with_span(probe, parser_span));
+                emit(SeededProbe::maybe_with_span(probe, parser_span))?;
             }
             continue;
         }
         if !parser_shapes.is_empty() {
             for shape in parser_shapes {
-                probes.push(SeededProbe::from_probe(build_probe(
+                emit(SeededProbe::from_probe(build_probe(
                     &build_context,
                     added,
                     shape.family,
                     nearby_removed_line(added.new_side_line, text, changed),
                     Some(text.to_string()),
-                )));
+                )))?;
             }
             continue;
         }
@@ -157,17 +181,19 @@ pub(crate) fn probes_for_file_with_relations(
             && let Some(retargeted) =
                 retarget_changed_binding_predicates(&build_context, added, text, &changed_lines)
         {
-            probes.extend(retargeted);
+            for seeded in retargeted {
+                emit(seeded)?;
+            }
             continue;
         }
         for family in families {
-            probes.push(SeededProbe::from_probe(build_probe(
+            emit(SeededProbe::from_probe(build_probe(
                 &build_context,
                 added,
                 family,
                 nearby_removed_line(added.new_side_line, text, changed),
                 Some(text.to_string()),
-            )));
+            )))?;
         }
     }
 
@@ -191,21 +217,17 @@ pub(crate) fn probes_for_file_with_relations(
             if has_matching_added_line(removed, &family, changed) {
                 continue;
             }
-            probes.push(SeededProbe::from_probe(build_probe(
+            emit(SeededProbe::from_probe(build_probe(
                 &build_context,
                 removed,
                 family,
                 Some(text.to_string()),
                 None,
-            )));
+            )))?;
         }
     }
 
-    // Post-hoc collision de-dup: if two probes got the same id, append .2, .3, …
-    // to the 2nd+ occurrences (the first keeps its id as-is, i.e. ordinal 1).
-    dedup_probe_ids(&mut probes);
-
-    probes
+    Ok(())
 }
 
 /// Which changed lines of one diff side are structural delimiters
@@ -341,17 +363,13 @@ fn parser_span_for_canonical_shape(
     ParserByteSpan::same_line(shape.text, shape.start_byte)
 }
 
-/// Scan `probes` in order; for any id that appears more than once, rewrite the
-/// 2nd+ occurrences to append `.2`, `.3`, … (ordinal-based collision suffix).
-fn dedup_probe_ids(probes: &mut [SeededProbe]) {
-    use std::collections::HashMap;
-    let mut seen: HashMap<String, u32> = HashMap::new();
-    for seeded in probes.iter_mut() {
-        let count = seen.entry(seeded.probe.id.0.clone()).or_insert(0);
-        *count += 1;
-        if *count > 1 {
-            seeded.probe.id.0 = format!("{}.{}", seeded.probe.id.0, count);
-        }
+/// Assign the ordinal from the original id before handing the probe to a
+/// consumer. Counting the suffixed id instead would change later collisions.
+fn dedup_probe_id(seeded: &mut SeededProbe, seen: &mut std::collections::HashMap<String, u32>) {
+    let count = seen.entry(seeded.probe.id.0.clone()).or_insert(0);
+    *count += 1;
+    if *count > 1 {
+        seeded.probe.id.0 = format!("{}.{}", seeded.probe.id.0, count);
     }
 }
 
@@ -851,6 +869,340 @@ mod tests {
     use crate::domain::SymbolId;
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
+    // Frozen pre-refactor collector: callback/collector equivalence must not
+    // compare two wrappers around the same new implementation.
+    fn legacy_probes_for_file_with_relations(
+        root: &Path,
+        changed: &ChangedFile,
+        index: &RustIndex,
+    ) -> Vec<SeededProbe> {
+        let mut probes = Vec::new();
+        // Use `new_side_line` for all lines: for added lines this equals `line`; for
+        // removed lines `new_side_line` is the new-file coordinate, which is what
+        // the RustIndex (built from the new file) expects (RANK-1 fix, #1222).
+        let changed_lines = changed
+            .added_lines
+            .iter()
+            .chain(changed.removed_lines.iter())
+            .map(|line| line.new_side_line)
+            .collect::<Vec<_>>();
+        let changed_nodes = changed_nodes_for_lines(index, &changed.path, &changed_lines);
+        // Inline test-module scopes are file structure, not per-line evidence:
+        // build once per file so ownerless-line checks stay linear (#3718).
+        let test_module_ranges = test_module_ranges_for(index, &changed.path);
+        let build_context = ProbeBuildContext {
+            root,
+            changed,
+            index,
+            changed_nodes: &changed_nodes,
+        };
+        let mut emitted_parser_shapes = Vec::<(usize, String)>::new();
+        let skip_added = structural_lines_covered_by_run(&changed.added_lines);
+        let skip_removed = structural_lines_covered_by_run(&changed.removed_lines);
+
+        for (added_index, added) in changed.added_lines.iter().enumerate() {
+            let text = added.text.trim();
+            if should_ignore_changed_line(text) || skip_added[added_index] {
+                continue;
+            }
+            if changed_line_is_test_evidence(
+                index,
+                &changed.path,
+                added.new_side_line,
+                &test_module_ranges,
+            ) {
+                continue;
+            }
+            if opens_new_function_with_added_body(index, changed, added.new_side_line, text) {
+                continue;
+            }
+            // RIPR-SPEC-0178: recognize a bounded literal allowlisted subprocess
+            // adapter ahead of generic parser shapes, retaining the seeded API.
+            if let Some(family) =
+                bounded_subprocess_family(index, &changed.path, added.new_side_line, text)
+            {
+                probes.push(SeededProbe::from_probe(build_probe(
+                    &build_context,
+                    added,
+                    family,
+                    nearby_removed_line(added.new_side_line, text, changed),
+                    Some(text.to_string()),
+                )));
+                continue;
+            }
+            let parser_shapes = parser_probe_shapes_for_changed_line(
+                index,
+                &changed.path,
+                added.new_side_line,
+                text,
+            );
+            let parser_shapes = parser_shapes
+                .into_iter()
+                .filter(|shape| shape.family != ProbeFamily::CallDeletion || shape.standalone_call)
+                .collect::<Vec<_>>();
+            let canonical_shapes = parser_shapes
+                .iter()
+                .filter(|shape| {
+                    changed
+                        .added_lines
+                        .iter()
+                        .any(|line| line.new_side_line == shape.start_line)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            if !canonical_shapes.is_empty() {
+                for shape in canonical_shapes {
+                    let key = (shape.start_byte, shape.family.as_str().to_string());
+                    if emitted_parser_shapes.iter().any(|current| current == &key) {
+                        continue;
+                    }
+                    emitted_parser_shapes.push(key);
+                    let canonical_text = canonical_probe_text(text, shape.text);
+                    let parser_span = parser_span_for_canonical_shape(&canonical_text, &shape);
+                    let canonical_line = ChangedLine {
+                        line: shape.start_line,
+                        new_side_line: shape.start_line,
+                        text: canonical_text.clone(),
+                    };
+                    let probe = build_probe(
+                        &build_context,
+                        &canonical_line,
+                        shape.family,
+                        nearby_removed_line(shape.start_line, &canonical_text, changed),
+                        Some(canonical_text.clone()),
+                    );
+                    probes.push(SeededProbe::maybe_with_span(probe, parser_span));
+                }
+                continue;
+            }
+            if !parser_shapes.is_empty() {
+                for shape in parser_shapes {
+                    probes.push(SeededProbe::from_probe(build_probe(
+                        &build_context,
+                        added,
+                        shape.family,
+                        nearby_removed_line(added.new_side_line, text, changed),
+                        Some(text.to_string()),
+                    )));
+                }
+                continue;
+            }
+            let families = classify_changed_line(text);
+            // #3294: a changed simple `let` initializer that only lands in the
+            // static-unknown catch-all retargets to its same-function predicate
+            // uses when the binding reaches them directly. The changed
+            // initializer stays causal evidence (before/after), so the finding
+            // names the actual behavioral predicate instead of a generic
+            // changed-syntax limitation.
+            if families == [ProbeFamily::StaticUnknown]
+                && let Some(retargeted) =
+                    retarget_changed_binding_predicates(&build_context, added, text, &changed_lines)
+            {
+                probes.extend(retargeted);
+                continue;
+            }
+            for family in families {
+                probes.push(SeededProbe::from_probe(build_probe(
+                    &build_context,
+                    added,
+                    family,
+                    nearby_removed_line(added.new_side_line, text, changed),
+                    Some(text.to_string()),
+                )));
+            }
+        }
+
+        for (removed_index, removed) in changed.removed_lines.iter().enumerate() {
+            let text = removed.text.trim();
+            if should_ignore_changed_line(text) || skip_removed[removed_index] {
+                continue;
+            }
+            // Use new_side_line so the owner lookup queries the new-file index at the
+            // correct position (RANK-1 fix: `removed.line` is an old-side coordinate
+            // and diverges from the new file when an earlier hunk shifted lines).
+            if changed_line_is_test_evidence(
+                index,
+                &changed.path,
+                removed.new_side_line,
+                &test_module_ranges,
+            ) {
+                continue;
+            }
+            for family in classify_changed_line(text) {
+                if has_matching_added_line(removed, &family, changed) {
+                    continue;
+                }
+                probes.push(SeededProbe::from_probe(build_probe(
+                    &build_context,
+                    removed,
+                    family,
+                    Some(text.to_string()),
+                    None,
+                )));
+            }
+        }
+
+        // Post-hoc collision de-dup: if two probes got the same id, append .2, .3, …
+        // to the 2nd+ occurrences (the first keeps its id as-is, i.e. ordinal 1).
+        let mut seen = std::collections::HashMap::<String, u32>::new();
+        for seeded in &mut probes {
+            let count = seen.entry(seeded.probe.id.0.clone()).or_insert(0);
+            *count += 1;
+            if *count > 1 {
+                seeded.probe.id.0 = format!("{}.{}", seeded.probe.id.0, count);
+            }
+        }
+
+        probes
+    }
+
+    fn assert_same_seeded_probes(actual: &[SeededProbe], expected: &[SeededProbe]) {
+        let fields = |probes: &[SeededProbe]| {
+            probes
+                .iter()
+                .map(|seeded| {
+                    (
+                        seeded.probe.clone(),
+                        seeded.binding_relation.clone(),
+                        seeded.parser_span,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(fields(actual), fields(expected));
+    }
+
+    #[test]
+    fn probe_callback_matches_legacy_whole_file_semantics() -> Result<(), String> {
+        let sources = [
+            (
+                include_str!("../../../../../fixtures/binding_predicate_two_uses/input/src/lib.rs")
+                    .replace("let ceiling = 50;", "let ceiling = 60;"),
+                include_str!("../../../../../fixtures/binding_predicate_two_uses/diff.patch"),
+            ),
+            (
+                include_str!(
+                    "../../../../../fixtures/binding_predicate_scope_controls/input/src/lib.rs"
+                )
+                .replace("let end = input.len();", "let end = input.trim_end().len();")
+                    .replace("let end = 1;", "let end = 3;")
+                    .replace("let mut end = seed;", "let mut end = seed + 1;")
+                    .replace("let end = delim.len_utf8();", "let end = delim.len_utf8() + 1;")
+                    .replace(
+                        "let (end, other) = pair;",
+                        "let (end, other) = (pair.0 + 1, pair.1);",
+                    ),
+                include_str!("../../../../../fixtures/binding_predicate_scope_controls/diff.patch"),
+            ),
+        ];
+        for (source, patch) in sources {
+            let changed_files = crate::analysis::diff::parse_unified_diff(patch);
+            assert_eq!(changed_files.len(), 1, "fixture must reach a changed Rust file");
+            let changed = &changed_files[0];
+            let mut index = RustIndex::default();
+            index.insert_file_only(
+                changed.path.clone(),
+                crate::analysis::rust_index::summarize_file(changed.path.clone(), source),
+            );
+            let expected =
+                legacy_probes_for_file_with_relations(Path::new("workspace"), changed, &index);
+            assert!(!expected.is_empty(), "fixture must emit probes");
+            let mut actual = Vec::new();
+            try_for_each_probe_with_relations(Path::new("workspace"), changed, &index, |seeded| {
+                actual.push(seeded);
+                Ok::<(), String>(())
+            })?;
+            assert_same_seeded_probes(&actual, &expected);
+        }
+        // A new function's signature, contiguous structural lines, and its
+        // canonical parser shapes retain their full-file context.
+        for changed_signature in [false, true] {
+            let (index, changed) = loyalty_index_and_change(changed_signature);
+            let expected =
+                legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+            let actual = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+            assert!(!actual.is_empty());
+            assert_same_seeded_probes(&actual, &expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn probe_callback_keeps_original_id_ordinals_across_diff_sides() -> Result<(), String> {
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: [2, 3]
+                .into_iter()
+                .map(|line| ChangedLine {
+                    line,
+                    new_side_line: line,
+                    text: "if amount > threshold {".to_string(),
+                })
+                .collect(),
+            removed_lines: [9, 10]
+                .into_iter()
+                .map(|line| ChangedLine {
+                    line,
+                    new_side_line: line,
+                    text: "if amount > threshold {".to_string(),
+                })
+                .collect(),
+        };
+        let index = RustIndex::default();
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        let mut actual = Vec::new();
+        try_for_each_probe_with_relations(Path::new("workspace"), &changed, &index, |seeded| {
+            actual.push(seeded);
+            Ok::<(), String>(())
+        })?;
+        assert_same_seeded_probes(&actual, &expected);
+        assert_eq!(actual.len(), 4);
+        let first = &actual[0].probe.id.0;
+        assert_eq!(actual[1].probe.id.0, format!("{first}.2"));
+        assert_eq!(actual[2].probe.id.0, format!("{first}.3"));
+        assert_eq!(actual[3].probe.id.0, format!("{first}.4"));
+        assert_eq!(
+            actual
+                .iter()
+                .map(|seeded| seeded.probe.location.line)
+                .collect::<Vec<_>>(),
+            vec![2, 3, 9, 10],
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn probe_callback_propagates_failure_without_emitting_the_remainder() {
+        let changed = ChangedFile {
+            path: PathBuf::from("src/lib.rs"),
+            added_lines: (2..=4)
+                .map(|line| ChangedLine {
+                    line,
+                    new_side_line: line,
+                    text: "if amount > threshold {".to_string(),
+                })
+                .collect(),
+            removed_lines: Vec::new(),
+        };
+        let mut calls = 0usize;
+        let result = try_for_each_probe_with_relations(
+            Path::new("workspace"),
+            &changed,
+            &RustIndex::default(),
+            |_| {
+                calls += 1;
+                if calls == 2 {
+                    Err("consumer refused emission")
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result, Err("consumer refused emission"));
+        assert_eq!(calls, 2, "later emissions must not run after refusal");
+    }
+
     #[test]
     fn probes_for_file_uses_syntax_shape_owner_and_removed_context() {
         let path = PathBuf::from("src/lib.rs");
