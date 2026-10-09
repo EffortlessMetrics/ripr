@@ -711,7 +711,13 @@ pub fn load_canonical_pr_evidence_diff_bytes(
 /// Complete-route capture only. The caller authenticates literal commits,
 /// both trees and the actual three-dot origin before using these bytes.
 /// This function owns finite stdout/stderr capture, never completion authority.
-#[cfg_attr(not(test), expect(dead_code, reason = "Inactive producer-owned route consumes this crate-private capture seam"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Inactive producer-owned route consumes this crate-private capture seam"
+    )
+)]
 pub(crate) fn load_canonical_pr_evidence_diff_bytes_bounded(
     root: &Path,
     base: &str,
@@ -720,18 +726,27 @@ pub(crate) fn load_canonical_pr_evidence_diff_bytes_bounded(
 ) -> Result<Vec<u8>, CoreError> {
     // Existing complete-worker file admission, or a lower assigned profile.
     if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
-        return Err(CoreError::message("canonical diff capture requires a positive limit within the existing 256 MiB worker admission"));
+        return Err(CoreError::message(
+            "canonical diff capture requires a positive limit within the existing 256 MiB worker admission",
+        ));
     }
     if ![base, head].into_iter().all(|revision| {
         matches!(revision.len(), 40 | 64) && revision.bytes().all(|byte| byte.is_ascii_hexdigit())
     }) {
-        return Err(CoreError::message("canonical bounded diff requires literal full base and head commit IDs"));
+        return Err(CoreError::message(
+            "canonical bounded diff requires literal full base and head commit IDs",
+        ));
     }
     // Deliberately no permissive legacy verify_head_revision preflight.
     run_git_diff_bytes_with_capture(
         root,
         &format!("{base}...{head}"),
-        &["--relative", "--unified=0", "--no-ext-diff", "--submodule=short"],
+        &[
+            "--relative",
+            "--unified=0",
+            "--no-ext-diff",
+            "--submodule=short",
+        ],
         "0",
         Some(Duration::from_mins(5)),
         Some(max_output_bytes),
@@ -1134,7 +1149,9 @@ fn run_git_diff_bytes_with_capture(
     args.push(range);
     let captured = match capture_limit {
         Some(limit) => {
-            let timeout = git_timeout.ok_or_else(|| CoreError::message("bounded canonical capture requires a deadline"))?;
+            let timeout = git_timeout.ok_or_else(|| {
+                CoreError::message("bounded canonical capture requires a deadline")
+            })?;
             crate::git::run_git_output_with_deadline_and_limit_strict(root, &args, timeout, limit)
         }
         None => crate::git::run_git_output_with_deadline(root, &args, git_timeout),

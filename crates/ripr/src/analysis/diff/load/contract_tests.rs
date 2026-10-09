@@ -806,18 +806,26 @@ fn bounded_canonical_capture_matches_exact_bytes_at_the_limit() -> io::Result<()
         .map_err(io::Error::other)?;
     assert!(!expected.is_empty());
     let captured = super::load_canonical_pr_evidence_diff_bytes_bounded(
-        &repo.root, &repo.base, &head, expected.len(),
-    ).map_err(io::Error::other)?;
+        &repo.root,
+        &repo.base,
+        &head,
+        expected.len(),
+    )
+    .map_err(io::Error::other)?;
     assert_eq!(captured, expected);
     let Err(error) = super::load_canonical_pr_evidence_diff_bytes_bounded(
-        &repo.root, &repo.base, &head, expected.len() - 1,
+        &repo.root,
+        &repo.base,
+        &head,
+        expected.len() - 1,
     ) else {
-        return Err(io::Error::other("over-limit canonical capture returned partial success"));
+        return Err(io::Error::other(
+            "over-limit canonical capture returned partial success",
+        ));
     };
     assert!(error.to_string().contains("limit"));
-    let empty = super::load_canonical_pr_evidence_diff_bytes_bounded(
-        &repo.root, &head, &head, 1,
-    ).map_err(io::Error::other)?;
+    let empty = super::load_canonical_pr_evidence_diff_bytes_bounded(&repo.root, &head, &head, 1)
+        .map_err(io::Error::other)?;
     assert!(empty.is_empty());
     Ok(())
 }
@@ -827,13 +835,22 @@ fn bounded_canonical_capture_refuses_invalid_admission_and_revision_tokens() -> 
     let root = Path::new("unused-preflight-root");
     let literal = "0123456789012345678901234567890123456789";
     for limit in [0, 256 * 1024 * 1024 + 1] {
-        let Err(error) = super::load_canonical_pr_evidence_diff_bytes_bounded(root, literal, literal, limit) else {
+        let Err(error) =
+            super::load_canonical_pr_evidence_diff_bytes_bounded(root, literal, literal, limit)
+        else {
             return Err(io::Error::other("invalid byte admission succeeded"));
         };
         assert!(error.to_string().contains("positive limit"));
     }
-    for revision in ["HEAD", "-bad", "abc", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"] {
-        let Err(error) = super::load_canonical_pr_evidence_diff_bytes_bounded(root, literal, revision, 1) else {
+    for revision in [
+        "HEAD",
+        "-bad",
+        "abc",
+        "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+    ] {
+        let Err(error) =
+            super::load_canonical_pr_evidence_diff_bytes_bounded(root, literal, revision, 1)
+        else {
             return Err(io::Error::other("nonliteral revision succeeded"));
         };
         assert!(error.to_string().contains("literal full"));
@@ -846,13 +863,23 @@ fn bounded_canonical_capture_keeps_nonzero_exit_and_deadline_failures() -> io::R
     let repo = Repo::new("bounded-canonical-error")?;
     let missing = "0000000000000000000000000000000000000000";
     let Err(error) = super::load_canonical_pr_evidence_diff_bytes_bounded(
-        &repo.root, &repo.base, missing, 1024 * 1024,
+        &repo.root,
+        &repo.base,
+        missing,
+        1024 * 1024,
     ) else {
-        return Err(io::Error::other("missing literal head became successful empty bytes"));
+        return Err(io::Error::other(
+            "missing literal head became successful empty bytes",
+        ));
     };
     assert!(error.to_string().contains("git diff failed:"));
     let Err(error) = super::run_git_diff_bytes_with_capture(
-        &repo.root, &format!("{}...HEAD", repo.base), &[], "0", Some(Duration::ZERO), Some(1024),
+        &repo.root,
+        &format!("{}...HEAD", repo.base),
+        &[],
+        "0",
+        Some(Duration::ZERO),
+        Some(1024),
     ) else {
         return Err(io::Error::other("zero-deadline strict capture succeeded"));
     };

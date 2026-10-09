@@ -143,7 +143,13 @@ pub(crate) enum RawChangeSide {
     Removed,
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "Producer-owned inactive reduction fields; activation remains disabled"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Producer-owned inactive reduction fields; activation remains disabled"
+    )
+)]
 #[derive(Debug)]
 pub(crate) struct RawReduction<'a> {
     pub(crate) record: RawRecord<'a>,
@@ -186,7 +192,13 @@ pub(crate) trait RawDiffObserver {
     fn finish(&mut self, end: RawEnd, parsed: &ParsedDiff) -> Result<(), String>;
 }
 
-#[cfg_attr(not(test), expect(dead_code, reason = "Inactive producer-owned complete route consumes this crate-private seam"))]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "Inactive producer-owned complete route consumes this crate-private seam"
+    )
+)]
 pub(crate) fn parse_bytes_bounded(
     input: &[u8],
     limit: usize,
@@ -198,7 +210,12 @@ pub(crate) fn parse_bytes_bounded(
         OriginalByteObserver {
             observer,
             expected_bytes: input.len(),
-            end: RawEnd { bytes: 0, records: 0, sections: 0, hunks: 0 },
+            end: RawEnd {
+                bytes: 0,
+                records: 0,
+                sections: 0,
+                hunks: 0,
+            },
             pending: None,
             section: None,
             hunk: None,
@@ -236,15 +253,21 @@ trait ParserObserver<L, E> {
 struct NoopObserver;
 
 impl<L, E> ParserObserver<L, E> for NoopObserver {
-    fn begin(&mut self, _line: &L) -> Result<(), E> { Ok(()) }
+    fn begin(&mut self, _line: &L) -> Result<(), E> {
+        Ok(())
+    }
     fn reduce(
         &mut self,
         _line: &L,
         _reduction: Reduction,
         _state: &parser_state::ParserState,
-    ) -> Result<(), E> { Ok(()) }
+    ) -> Result<(), E> {
+        Ok(())
+    }
     fn plain_boundary(&mut self) {}
-    fn finish(&mut self, _parsed: &ParsedDiff) -> Result<(), E> { Ok(()) }
+    fn finish(&mut self, _parsed: &ParsedDiff) -> Result<(), E> {
+        Ok(())
+    }
 }
 
 struct OriginalByteObserver<'a, 's, O> {
@@ -263,14 +286,23 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
 {
     fn begin(&mut self, line: &RawDiffRecord<'a>) -> Result<(), String> {
         let start = self.end.bytes;
-        let end = start.checked_add(line.bytes.len())
+        let end = start
+            .checked_add(line.bytes.len())
             .ok_or_else(|| "raw diff byte offset overflow".to_string())?;
-        let next = self.end.records.checked_add(1)
+        let next = self
+            .end
+            .records
+            .checked_add(1)
             .ok_or_else(|| "raw diff record ordinal overflow".to_string())?;
         if end > self.expected_bytes || self.pending.is_some() {
             return Err("raw diff record interval mismatch".to_string());
         }
-        let record = RawRecord { ordinal: self.end.records, start, end, bytes: line.bytes };
+        let record = RawRecord {
+            ordinal: self.end.records,
+            start,
+            end,
+            bytes: line.bytes,
+        };
         // This callback precedes semantic decoding and every parser handler.
         self.observer.record(record)?;
         self.end.bytes = end;
@@ -285,13 +317,18 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
         reduction: Reduction,
         state: &parser_state::ParserState,
     ) -> Result<(), String> {
-        let record = self.pending.take()
+        let record = self
+            .pending
+            .take()
             .ok_or_else(|| "raw diff reduction without consumed record".to_string())?;
         let mut body = None;
         let kind = match reduction {
             Reduction::GitBoundary => {
                 self.section = Some(self.end.sections);
-                self.end.sections = self.end.sections.checked_add(1)
+                self.end.sections = self
+                    .end
+                    .sections
+                    .checked_add(1)
                     .ok_or_else(|| "raw diff section ordinal overflow".to_string())?;
                 self.hunk = None;
                 self.header = None;
@@ -311,17 +348,24 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
                 if outcome == PathMarkerOutcome::Old && self.marker_opened {
                     self.plain_boundary();
                 }
-                if matches!(outcome, PathMarkerOutcome::Old
-                    | PathMarkerOutcome::New { opened: true }
-                    | PathMarkerOutcome::New { opened: false }
-                    | PathMarkerOutcome::RejectedNew | PathMarkerOutcome::SymlinkNew) {
+                if matches!(
+                    outcome,
+                    PathMarkerOutcome::Old
+                        | PathMarkerOutcome::New { opened: true }
+                        | PathMarkerOutcome::New { opened: false }
+                        | PathMarkerOutcome::RejectedNew
+                        | PathMarkerOutcome::SymlinkNew
+                ) {
                     self.marker_opened = true;
                 }
                 RawRecordKind::PathMarker(outcome)
             }
             Reduction::Hunk(outcome) => {
                 self.hunk = Some(self.end.hunks);
-                self.end.hunks = self.end.hunks.checked_add(1)
+                self.end.hunks = self
+                    .end
+                    .hunks
+                    .checked_add(1)
                     .ok_or_else(|| "raw diff hunk ordinal overflow".to_string())?;
                 match outcome {
                     HunkOutcome::Ordinary(header) => {
@@ -344,14 +388,27 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
             }
         };
         let accounting = body.map(|outcome| outcome.accounting).unwrap_or_default();
-        let coordinates = match (self.header, accounting.before, accounting.after, accounting.consumed) {
+        let coordinates = match (
+            self.header,
+            accounting.before,
+            accounting.after,
+            accounting.consumed,
+        ) {
             (Some(header), Some((old, new)), Some(_), Some(_))
                 if header.old_start.checked_add(header.old_count).is_some()
                     && header.new_start.checked_add(header.new_count).is_some()
-                    && !body.is_some_and(|outcome| outcome.disposition == BodyDisposition::CoordinateOverflow) => {
-                header.old_count.checked_sub(old).zip(header.new_count.checked_sub(new))
+                    && !body.is_some_and(|outcome| {
+                        outcome.disposition == BodyDisposition::CoordinateOverflow
+                    }) =>
+            {
+                header
+                    .old_count
+                    .checked_sub(old)
+                    .zip(header.new_count.checked_sub(new))
                     .and_then(|(old_used, new_used)| {
-                        header.old_start.checked_add(old_used)
+                        header
+                            .old_start
+                            .checked_add(old_used)
                             .zip(header.new_start.checked_add(new_used))
                     })
             }
@@ -366,22 +423,32 @@ impl<'a, O: RawDiffObserver> ParserObserver<RawDiffRecord<'a>, String>
         // A Git header remains an opaque original record; no second lexer.
         let raw = record_semantic_bytes(record.bytes);
         let raw_path_token = match kind {
-            RawRecordKind::PathMarker(_) =>
-                raw.strip_prefix(b"--- ").or_else(|| raw.strip_prefix(b"+++ ")),
-            RawRecordKind::Rename =>
-                raw.strip_prefix(b"rename from ").or_else(|| raw.strip_prefix(b"rename to ")),
+            RawRecordKind::PathMarker(_) => raw
+                .strip_prefix(b"--- ")
+                .or_else(|| raw.strip_prefix(b"+++ ")),
+            RawRecordKind::Rename => raw
+                .strip_prefix(b"rename from ")
+                .or_else(|| raw.strip_prefix(b"rename to ")),
             _ => None,
         };
-        let decoded_path_bytes = raw_path_token
-            .and_then(crate::analysis::diff::path::parse_diff_path_token_bytes);
+        let decoded_path_bytes =
+            raw_path_token.and_then(crate::analysis::diff::path::parse_diff_path_token_bytes);
         self.observer.reduction(RawReduction {
-            record, section: self.section, hunk: self.hunk, kind,
-            declared_ranges: self.header.map(|h| ((h.old_start, h.old_count), (h.new_start, h.new_count))),
+            record,
+            section: self.section,
+            hunk: self.hunk,
+            kind,
+            declared_ranges: self
+                .header
+                .map(|h| ((h.old_start, h.old_count), (h.new_start, h.new_count))),
             remaining_before: accounting.before,
             remaining_after: accounting.after,
             consumed: accounting.consumed,
-            coordinates, raw_path_token, decoded_path_bytes,
-            native_path: state.observed_path(), projection,
+            coordinates,
+            raw_path_token,
+            decoded_path_bytes,
+            native_path: state.observed_path(),
+            projection,
         })
     }
 

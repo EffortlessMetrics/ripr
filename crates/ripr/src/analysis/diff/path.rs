@@ -218,7 +218,6 @@ impl DecodedPath {
     }
 }
 
-
 fn parse_diff_path_token(raw: &str) -> Option<DecodedPath> {
     parse_diff_path_token_bytes(raw.as_bytes()).map(decode_path_bytes)
 }
@@ -381,12 +380,27 @@ mod tests {
             .ok_or_else(|| "C-quoted literal-octal token was not decoded".to_string())?;
         assert_eq!(invalid, b"src/pricing_\xff.rs");
         assert_eq!(literal, br"src/pricing_\377.rs");
-        assert_ne!(invalid, literal, "raw token identities coalesced before platform conversion");
+        assert_ne!(
+            invalid, literal,
+            "raw token identities coalesced before platform conversion"
+        );
         for (input, expected) in [
-            (b"src/caf\xc3\xa9.rs\tstamp".as_slice(), b"src/caf\xc3\xa9.rs".as_slice()),
-            (br#""src/caf\303\251.rs" ignored suffix"#.as_slice(), b"src/caf\xc3\xa9.rs".as_slice()),
-            (b"src/file.rs\xe3\x80\x80\r\r".as_slice(), b"src/file.rs".as_slice()),
-            (br#""a\nb\rc\td\\e\"f\q\377""#.as_slice(), b"a\nb\rc\td\\e\"fq\xff".as_slice()),
+            (
+                b"src/caf\xc3\xa9.rs\tstamp".as_slice(),
+                b"src/caf\xc3\xa9.rs".as_slice(),
+            ),
+            (
+                br#""src/caf\303\251.rs" ignored suffix"#.as_slice(),
+                b"src/caf\xc3\xa9.rs".as_slice(),
+            ),
+            (
+                b"src/file.rs\xe3\x80\x80\r\r".as_slice(),
+                b"src/file.rs".as_slice(),
+            ),
+            (
+                br#""a\nb\rc\td\\e\"f\q\377""#.as_slice(),
+                b"a\nb\rc\td\\e\"fq\xff".as_slice(),
+            ),
             (br#""\7\77\777""#.as_slice(), b"\x07\x3f\x00".as_slice()),
         ] {
             let actual = parse_diff_path_token_bytes(input)
@@ -398,7 +412,6 @@ mod tests {
         assert!(parse_diff_path_token_bytes(b"\tstamp").is_none());
         Ok(())
     }
-
 
     #[test]
     fn c_quoted_paths_reconstruct_utf8_names_and_keep_invalid_bytes_distinct() {

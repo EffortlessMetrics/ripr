@@ -618,7 +618,13 @@ mod parser_state {
                 Some(b'-') => (1, 0),
                 Some(b'+') => (0, 1),
                 Some(b' ') | None => (1, 1),
-                _ => return BodyAccounting { before, after: before, consumed: None },
+                _ => {
+                    return BodyAccounting {
+                        before,
+                        after: before,
+                        consumed: None,
+                    };
+                }
             };
             match (old.checked_sub(consumed.0), new.checked_sub(consumed.1)) {
                 (Some(old), Some(new)) => self.remaining_hunk_lines = Some((old, new)),
@@ -629,7 +635,11 @@ mod parser_state {
                     self.remaining_hunk_lines = None;
                 }
             }
-            BodyAccounting { before, after: self.remaining_hunk_lines, consumed: Some(consumed) }
+            BodyAccounting {
+                before,
+                after: self.remaining_hunk_lines,
+                consumed: Some(consumed),
+            }
         }
 
         pub(super) fn observed_path(&self) -> Option<&std::path::Path> {
@@ -878,12 +888,18 @@ mod parser_state {
         ) -> BodyOutcome {
             if !self.in_hunk {
                 self.saw_old_path_marker = false;
-                return BodyOutcome { accounting: BodyAccounting::default(), disposition: BodyDisposition::Outside };
+                return BodyOutcome {
+                    accounting: BodyAccounting::default(),
+                    disposition: BodyDisposition::Outside,
+                };
             }
             let accounting = self.account_hunk_line(raw);
             let mut disposition = BodyDisposition::Unknown;
             if raw.starts_with("\\ No newline at end of file") {
-                return BodyOutcome { accounting, disposition: BodyDisposition::NoNewline };
+                return BodyOutcome {
+                    accounting,
+                    disposition: BodyDisposition::NoNewline,
+                };
             }
 
             // Empty sides may start at zero, but an excess body line cannot
@@ -891,14 +907,23 @@ mod parser_state {
             if (raw.starts_with('+') && self.new_line == 0)
                 || (raw.starts_with('-') && self.old_line == 0)
             {
-                return BodyOutcome { accounting, disposition: BodyDisposition::ZeroCoordinate };
+                return BodyOutcome {
+                    accounting,
+                    disposition: BodyDisposition::ZeroCoordinate,
+                };
             }
 
             let Some(path) = self.current_path.clone() else {
-                return BodyOutcome { accounting, disposition: BodyDisposition::NoPath };
+                return BodyOutcome {
+                    accounting,
+                    disposition: BodyDisposition::NoPath,
+                };
             };
             let Some(file) = files.get_mut(&path) else {
-                return BodyOutcome { accounting, disposition: BodyDisposition::MissingFile };
+                return BodyOutcome {
+                    accounting,
+                    disposition: BodyDisposition::MissingFile,
+                };
             };
 
             // Unresolved conflict markers describe two rival source states, not
@@ -926,7 +951,10 @@ mod parser_state {
                     // typed conflict limitation carries the evidence onward.
                     self.mark_section_body_seen();
                     self.advance_quarantined_line(side);
-                    return BodyOutcome { accounting, disposition: BodyDisposition::Conflict };
+                    return BodyOutcome {
+                        accounting,
+                        disposition: BodyDisposition::Conflict,
+                    };
                 }
                 (None, Some(open_side)) if is_conflict_marker(payload, "<<<<<<<") => {
                     self.mark_section_body_seen();
@@ -934,7 +962,10 @@ mod parser_state {
                     let count = self.conflict_regions.entry(Some(path.clone())).or_insert(0);
                     *count = count.saturating_add(1);
                     self.advance_quarantined_line(side);
-                    return BodyOutcome { accounting, disposition: BodyDisposition::Conflict };
+                    return BodyOutcome {
+                        accounting,
+                        disposition: BodyDisposition::Conflict,
+                    };
                 }
                 _ => {}
             }
@@ -959,7 +990,10 @@ mod parser_state {
                 // counter. Refuse that coordinate before emitting the line.
                 let Some(next) = self.new_line.checked_add(1) else {
                     self.close_hunk();
-                    return BodyOutcome { accounting, disposition: BodyDisposition::CoordinateOverflow };
+                    return BodyOutcome {
+                        accounting,
+                        disposition: BodyDisposition::CoordinateOverflow,
+                    };
                 };
                 let (text, raw_line1_bom) = source_line_text(self.new_line, text);
                 if raw_line1_bom && !self.raw_line1_bom_paths.contains(&path) {
@@ -975,7 +1009,10 @@ mod parser_state {
             } else if let Some(text) = raw.strip_prefix('-') {
                 let Some(next) = self.old_line.checked_add(1) else {
                     self.close_hunk();
-                    return BodyOutcome { accounting, disposition: BodyDisposition::CoordinateOverflow };
+                    return BodyOutcome {
+                        accounting,
+                        disposition: BodyDisposition::CoordinateOverflow,
+                    };
                 };
                 // RANK-1 fix: record both the old-side line (`line`) and the
                 // current new-side position (`new_side_line`).  When an earlier
@@ -1008,7 +1045,10 @@ mod parser_state {
                     disposition = BodyDisposition::CoordinateOverflow;
                 }
             }
-            BodyOutcome { accounting, disposition }
+            BodyOutcome {
+                accounting,
+                disposition,
+            }
         }
     }
 }
