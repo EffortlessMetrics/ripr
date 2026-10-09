@@ -185,7 +185,6 @@ fn profile() -> Result<(u64, u64), String> {
     }
 }
 
-
 const BUILD_STDOUT_MAX: usize = 8 * 1024 * 1024;
 
 #[derive(Deserialize)]
@@ -224,26 +223,33 @@ fn executable_from_cargo(repo: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
             .map_err(|error| format!("experimental worker build JSON malformed: {error}"))?;
         match message.reason.as_str() {
             "compiler-artifact" => {
-                let target = message.target.ok_or_else(|| {
-                    "experimental worker build artifact lacks target".to_string()
-                })?;
+                let target = message
+                    .target
+                    .ok_or_else(|| "experimental worker build artifact lacks target".to_string())?;
                 let path = message.manifest_path.ok_or_else(|| {
                     "experimental worker build artifact lacks manifest".to_string()
                 })?;
                 let path = Path::new(&path);
                 if !path.is_absolute() || target.name.is_empty() || target.kind.is_empty() {
-                    return Err("experimental worker build artifact metadata is malformed".to_string());
+                    return Err(
+                        "experimental worker build artifact metadata is malformed".to_string()
+                    );
                 }
                 if target.name != "ripr" || target.kind != ["bin"] {
                     continue;
                 }
                 if fs::canonicalize(path).map_err(|error| {
                     format!("experimental worker artifact manifest unavailable: {error}")
-                })? != manifest {
+                })? != manifest
+                {
                     continue;
                 }
-                let selected = message.executable.filter(|path| !path.is_empty())
-                    .ok_or_else(|| "experimental worker build artifact lacks executable".to_string())?;
+                let selected = message
+                    .executable
+                    .filter(|path| !path.is_empty())
+                    .ok_or_else(|| {
+                        "experimental worker build artifact lacks executable".to_string()
+                    })?;
                 let selected = PathBuf::from(selected);
                 if !selected.is_absolute() {
                     return Err("experimental worker executable is not absolute".to_string());
@@ -260,7 +266,11 @@ fn executable_from_cargo(repo: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
                 finished = true;
             }
             "compiler-message" | "build-script-executed" => {}
-            other => return Err(format!("experimental worker build JSON unknown reason {other:?}")),
+            other => {
+                return Err(format!(
+                    "experimental worker build JSON unknown reason {other:?}"
+                ));
+            }
         }
     }
     if !finished {
@@ -270,7 +280,8 @@ fn executable_from_cargo(repo: &Path, bytes: &[u8]) -> Result<PathBuf, String> {
 }
 
 fn build_worker(repo: &Path) -> Result<PathBuf, String> {
-    let cwd = env::current_dir().map_err(|error| format!("experimental worker build cwd: {error}"))?;
+    let cwd =
+        env::current_dir().map_err(|error| format!("experimental worker build cwd: {error}"))?;
     build_worker_in(repo, &cwd, None)
 }
 
@@ -303,7 +314,8 @@ fn build_worker_in(repo: &Path, cwd: &Path, target_dir: Option<&Path>) -> Result
     if output.timed_out || !output.status.is_some_and(|status| status.success()) {
         return Err(format!(
             "experimental worker build refused (timeout={}, {}): {}",
-            output.timed_out, describe_native_status(output.status),
+            output.timed_out,
+            describe_native_status(output.status),
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -313,8 +325,11 @@ fn build_worker_in(repo: &Path, cwd: &Path, target_dir: Option<&Path>) -> Result
 fn completion_report(receipt: &Receipt) -> String {
     format!(
         "experimental worker completed under {} address-space bytes; worker-reported configuration fingerprint {} and {} index entries ({} index bytes) are not independently validated; exhaustive coverage {} and production admission disabled",
-        receipt.address_space_bytes, receipt.configuration_fingerprint,
-        receipt.index_entries, receipt.index_bytes, receipt.coverage
+        receipt.address_space_bytes,
+        receipt.configuration_fingerprint,
+        receipt.index_entries,
+        receipt.index_bytes,
+        receipt.coverage
     )
 }
 
@@ -323,13 +338,19 @@ fn revoke(repo: &Path) -> Result<(), String> {
     // path must not leave an ordinary packet available to mutation routing.
     let mut errors = Vec::new();
     for relative in [
-        PR_CHECK_SUBJECT_JSON, PR_CHECK_JSON, PR_REVIEW_INPUT_JSON,
-        PR_EVIDENCE_JSON, PR_EVIDENCE_MD, RECEIPT,
+        PR_CHECK_SUBJECT_JSON,
+        PR_CHECK_JSON,
+        PR_REVIEW_INPUT_JSON,
+        PR_EVIDENCE_JSON,
+        PR_EVIDENCE_MD,
+        RECEIPT,
     ] {
         match fs::remove_file(repo.join(relative)) {
             Ok(()) => {}
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => errors.push(format!("experimental launcher {relative} revocation: {error}")),
+            Err(error) => errors.push(format!(
+                "experimental launcher {relative} revocation: {error}"
+            )),
         }
     }
     if errors.is_empty() {
@@ -600,14 +621,18 @@ mod tests {
             write(&text)?;
             read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))?;
             for (field, reported) in [
-                ("configuration_fingerprint", json!("different-worker-report")),
+                (
+                    "configuration_fingerprint",
+                    json!("different-worker-report"),
+                ),
                 ("index_entries", json!(1)),
                 ("index_bytes", json!(101)),
             ] {
                 let mut changed = valid.clone();
                 changed[field] = reported;
                 write(&serde_json::to_string(&changed).map_err(|error| error.to_string())?)?;
-                let receipt = read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))?;
+                let receipt =
+                    read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))?;
                 assert!(completion_report(&receipt).contains("worker-reported"));
                 assert!(completion_report(&receipt).contains("not independently validated"));
                 assert!(!receipt.production_admission);
@@ -982,14 +1007,20 @@ mod tests {
         let result = (|| {
             super::super::tests::write_repo_file(&repo, "crates/ripr/Cargo.toml", "manifest")?;
             super::super::tests::write_repo_file(&repo, "actual-worker", "regular fixture")?;
-            super::super::tests::write_repo_file(&repo, "target/debug/ripr", "stale guessed worker")?;
-            let binary = fs::canonicalize(repo.join("actual-worker")).map_err(|error| error.to_string())?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "target/debug/ripr",
+                "stale guessed worker",
+            )?;
+            let binary =
+                fs::canonicalize(repo.join("actual-worker")).map_err(|error| error.to_string())?;
             let manifest = fs::canonicalize(repo.join("crates/ripr/Cargo.toml"))
                 .map_err(|error| error.to_string())?;
             let artifact = json!({"reason":"compiler-artifact","manifest_path":manifest,
                 "target":{"name":"ripr","kind":["bin"]},"executable":binary,"fresh":true});
             let finish = json!({"reason":"build-finished","success":true});
-            let record = |value: &Value| serde_json::to_string(value).map_err(|error| error.to_string());
+            let record =
+                |value: &Value| serde_json::to_string(value).map_err(|error| error.to_string());
             let valid = format!("{}\n{}\n", record(&artifact)?, record(&finish)?);
             assert_eq!(executable_from_cargo(&repo, valid.as_bytes())?, binary);
             let mut missing_executable = artifact.clone();
@@ -1006,20 +1037,39 @@ mod tests {
                 record(&finish)?,
                 record(&artifact)?,
                 format!("{{malformed\n{}", record(&finish)?),
-                format!("{}\n{}\n{}", record(&artifact)?, record(&artifact)?, record(&finish)?),
-                format!("{}\n{}\n{}", record(&artifact)?, record(&relative_manifest)?, record(&finish)?),
+                format!(
+                    "{}\n{}\n{}",
+                    record(&artifact)?,
+                    record(&artifact)?,
+                    record(&finish)?
+                ),
+                format!(
+                    "{}\n{}\n{}",
+                    record(&artifact)?,
+                    record(&relative_manifest)?,
+                    record(&finish)?
+                ),
                 format!("{valid}{}", record(&artifact)?),
                 format!("{valid}{}", record(&finish)?),
-                format!("{}\n{{\"reason\":\"build-finished\",\"success\":false}}", record(&artifact)?),
+                format!(
+                    "{}\n{{\"reason\":\"build-finished\",\"success\":false}}",
+                    record(&artifact)?
+                ),
                 format!("{}\n{}", record(&missing_executable)?, record(&finish)?),
                 format!("{}\n{}", record(&relative_executable)?, record(&finish)?),
                 format!("{}\n{}", record(&wrong_target)?, record(&finish)?),
                 format!("{}\n{}", record(&missing_file)?, record(&finish)?),
             ] {
-                let error = refusal(executable_from_cargo(&repo, invalid.as_bytes()), "invalid Cargo artifact")?;
+                let error = refusal(
+                    executable_from_cargo(&repo, invalid.as_bytes()),
+                    "invalid Cargo artifact",
+                )?;
                 assert!(error.starts_with("experimental"), "{error}");
             }
-            let error = refusal(executable_from_cargo(&repo, &vec![b' '; BUILD_STDOUT_MAX + 1]), "build cap")?;
+            let error = refusal(
+                executable_from_cargo(&repo, &vec![b' '; BUILD_STDOUT_MAX + 1]),
+                "build cap",
+            )?;
             assert!(error.contains("construction bound"), "{error}");
             assert_eq!(executable_from_cargo(&repo, valid.as_bytes())?, binary);
             Ok(())
@@ -1035,25 +1085,47 @@ mod tests {
         let _cwd_guard = crate::acquire_test_cwd_read_guard();
         let repo = super::super::tests::temp_repo("ripr-cargo-native-artifact")?;
         let result = (|| {
-            super::super::tests::write_repo_file(&repo, "Cargo.toml",
-                "[workspace]\nmembers = [\"crates/ripr\"]\nresolver = \"3\"\n")?;
-            super::super::tests::write_repo_file(&repo, "crates/ripr/Cargo.toml",
-                "[package]\nname = \"ripr\"\nversion = \"0.0.0\"\nedition = \"2024\"\n")?;
-            super::super::tests::write_repo_file(&repo, "Cargo.lock",
-                "version = 4\n\n[[package]]\nname = \"ripr\"\nversion = \"0.0.0\"\n")?;
-            super::super::tests::write_repo_file(&repo, "crates/ripr/src/main.rs",
-                "fn main() { println!(\"{}\", env!(\"RIPR_ARTIFACT_CONTEXT\")); }\n")?;
-            super::super::tests::write_repo_file(&repo, "target/debug/ripr", "STALE_GUESSED_PATH_DECOY")?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "Cargo.toml",
+                "[workspace]\nmembers = [\"crates/ripr\"]\nresolver = \"3\"\n",
+            )?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "crates/ripr/Cargo.toml",
+                "[package]\nname = \"ripr\"\nversion = \"0.0.0\"\nedition = \"2024\"\n",
+            )?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "Cargo.lock",
+                "version = 4\n\n[[package]]\nname = \"ripr\"\nversion = \"0.0.0\"\n",
+            )?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "crates/ripr/src/main.rs",
+                "fn main() { println!(\"{}\", env!(\"RIPR_ARTIFACT_CONTEXT\")); }\n",
+            )?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "target/debug/ripr",
+                "STALE_GUESSED_PATH_DECOY",
+            )?;
             // The fixture owns its construction directory; production keeps
             // inherited Cargo target/config selection with no override.
             let target = repo.join("actual-built-artifacts");
             let cwd = repo.join("nested-invocation");
-            super::super::tests::write_repo_file(&repo, "nested-invocation/.cargo/config.toml",
-                "[env]\nRIPR_ARTIFACT_CONTEXT = { value = \"RIPR_ACTUAL_COMPILED_ARTIFACT\", force = true }\n")?;
+            super::super::tests::write_repo_file(
+                &repo,
+                "nested-invocation/.cargo/config.toml",
+                "[env]\nRIPR_ARTIFACT_CONTEXT = { value = \"RIPR_ACTUAL_COMPILED_ARTIFACT\", force = true }\n",
+            )?;
             let binary = build_worker_in(&repo, &cwd, Some(&target))?;
             assert_ne!(binary, repo.join("target/debug/ripr"));
             let output = capture_bytes_in_dir_with_budget(
-                &binary, &[], (&repo, None), &[],
+                &binary,
+                &[],
+                (&repo, None),
+                &[],
                 ByteCaptureBudget {
                     timeout: Duration::from_secs(30),
                     stdout_bytes: STREAM_MAX,
@@ -1064,8 +1136,10 @@ mod tests {
             assert!(!output.timed_out);
             assert!(output.status.is_some_and(|status| status.success()));
             assert_eq!(output.stdout, b"RIPR_ACTUAL_COMPILED_ARTIFACT\n");
-            assert_eq!(fs::read(repo.join("target/debug/ripr")).map_err(|error| error.to_string())?,
-                b"STALE_GUESSED_PATH_DECOY");
+            assert_eq!(
+                fs::read(repo.join("target/debug/ripr")).map_err(|error| error.to_string())?,
+                b"STALE_GUESSED_PATH_DECOY"
+            );
             Ok(())
         })();
         fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
@@ -1076,24 +1150,55 @@ mod tests {
     fn launcher_revokes_packets_before_preworker_profile_failure() -> Result<(), String> {
         let repo = super::super::tests::temp_repo("ripr-experiment-preworker-revocation")?;
         let result = (|| {
-            for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD, PR_CHECK_JSON,
-                PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON, RECEIPT] {
+            for relative in [
+                PR_EVIDENCE_JSON,
+                PR_EVIDENCE_MD,
+                PR_CHECK_JSON,
+                PR_CHECK_SUBJECT_JSON,
+                PR_REVIEW_INPUT_JSON,
+                RECEIPT,
+            ] {
                 super::super::tests::write_repo_file(&repo, relative, "old ordinary authority")?;
             }
-            let error = refusal(run_candidate(&repo, "unused", &PrEvidenceOptions::default(),
-                Path::new("/missing-limiter"), (0, FILE_MAX)), "preworker profile")?;
+            let error = refusal(
+                run_candidate(
+                    &repo,
+                    "unused",
+                    &PrEvidenceOptions::default(),
+                    Path::new("/missing-limiter"),
+                    (0, FILE_MAX),
+                ),
+                "preworker profile",
+            )?;
             assert!(error.contains("invalid finite resource profile"), "{error}");
-            for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD, PR_CHECK_JSON,
-                PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON, RECEIPT] {
+            for relative in [
+                PR_EVIDENCE_JSON,
+                PR_EVIDENCE_MD,
+                PR_CHECK_JSON,
+                PR_CHECK_SUBJECT_JSON,
+                PR_REVIEW_INPUT_JSON,
+                RECEIPT,
+            ] {
                 assert!(!repo.join(relative).exists(), "{relative} retained");
             }
             fs::create_dir(repo.join(PR_CHECK_JSON)).map_err(|error| error.to_string())?;
             for relative in [PR_EVIDENCE_JSON, PR_EVIDENCE_MD] {
                 super::super::tests::write_repo_file(&repo, relative, "old ordinary routing")?;
             }
-            let error = refusal(run_candidate(&repo, "unused", &PrEvidenceOptions::default(),
-                Path::new("/missing-limiter"), (0, FILE_MAX)), "earlier cleanup failure")?;
-            assert!(error.contains(PR_CHECK_JSON) && error.contains("revocation"), "{error}");
+            let error = refusal(
+                run_candidate(
+                    &repo,
+                    "unused",
+                    &PrEvidenceOptions::default(),
+                    Path::new("/missing-limiter"),
+                    (0, FILE_MAX),
+                ),
+                "earlier cleanup failure",
+            )?;
+            assert!(
+                error.contains(PR_CHECK_JSON) && error.contains("revocation"),
+                "{error}"
+            );
             assert!(repo.join(PR_CHECK_JSON).is_dir());
             assert!(!repo.join(PR_EVIDENCE_JSON).exists());
             assert!(!repo.join(PR_EVIDENCE_MD).exists());
@@ -1107,5 +1212,4 @@ mod tests {
         fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
         result
     }
-
 }
