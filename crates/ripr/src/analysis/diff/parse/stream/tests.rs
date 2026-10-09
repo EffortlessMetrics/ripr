@@ -769,3 +769,271 @@ fn borrowed_records_stop_at_existing_admission_sites_before_large_body() -> Resu
     }
     Ok(())
 }
+
+#[derive(Default)]
+struct ByteLedger {
+    records: Vec<(usize, usize, usize, Vec<u8>)>,
+    reductions: Vec<OwnedReduction>,
+    ends: Vec<super::RawEnd>,
+    refuse_record: Option<usize>,
+    refuse_reduction: Option<usize>,
+}
+
+struct OwnedReduction {
+    ordinal: usize,
+    section: Option<usize>,
+    hunk: Option<usize>,
+    kind: super::RawRecordKind,
+    ranges: Option<((usize, usize), (usize, usize))>,
+    before: Option<(usize, usize)>,
+    after: Option<(usize, usize)>,
+    consumed: Option<(usize, usize)>,
+    coordinates: Option<(usize, usize)>,
+    token: Option<Vec<u8>>,
+    decoded: Option<Vec<u8>>,
+    path: Option<PathBuf>,
+    projection: Option<(super::RawChangeSide, usize)>,
+}
+
+impl super::RawDiffObserver for ByteLedger {
+    fn record(&mut self, record: super::RawRecord<'_>) -> Result<(), String> {
+        if self.refuse_record == Some(record.ordinal) {
+            return Err("record sink refused".to_string());
+        }
+        assert_eq!(record.ordinal, self.records.len());
+        assert_eq!(record.start, self.records.last().map_or(0, |last| last.2));
+        assert_eq!(record.end - record.start, record.bytes.len());
+        self.records.push((record.ordinal, record.start, record.end, record.bytes.to_vec()));
+        Ok(())
+    }
+
+    fn reduction(&mut self, reduction: super::RawReduction<'_>) -> Result<(), String> {
+        if self.refuse_reduction == Some(reduction.record.ordinal) {
+            return Err("reduction sink refused".to_string());
+        }
+        assert_eq!(self.records.len(), self.reductions.len() + 1);
+        assert_eq!(reduction.record.ordinal, self.reductions.len());
+        self.reductions.push(OwnedReduction {
+            ordinal: reduction.record.ordinal, section: reduction.section,
+            hunk: reduction.hunk, kind: reduction.kind, ranges: reduction.declared_ranges,
+            before: reduction.remaining_before, after: reduction.remaining_after,
+            consumed: reduction.consumed, coordinates: reduction.coordinates,
+            token: reduction.raw_path_token.map(<[u8]>::to_vec),
+            decoded: reduction.decoded_path_bytes,
+            path: reduction.native_path.map(Path::to_path_buf), projection: reduction.projection,
+        });
+        Ok(())
+    }
+
+    fn finish(&mut self, end: super::RawEnd, _parsed: &ParsedDiff) -> Result<(), String> {
+        assert_eq!(end.records, self.records.len());
+        assert_eq!(end.records, self.reductions.len());
+        assert_eq!(end.bytes, self.records.last().map_or(0, |last| last.2));
+        self.ends.push(end);
+        Ok(())
+    }
+}
+
+fn observed(input: &[u8], limit: usize) -> Result<(ParsedDiff, ByteLedger), String> {
+    let mut ledger = ByteLedger::default();
+    let parsed = super::parse_bytes_bounded(input, limit, &mut ledger)?;
+    let semantic = String::from_utf8_lossy(input);
+    let expected = parse_bounded_lines(semantic.lines(), limit)?;
+    assert_full_projection_eq(&parsed, &expected);
+    assert_eq!(ledger.ends.len(), 1);
+    assert_eq!(ledger.records.iter().flat_map(|r| r.3.iter().copied()).collect::<Vec<_>>(), input);
+    Ok((parsed, ledger))
+}
+
+#[test]
+fn original_bytes_precede_decoding_and_include_final_record() -> Result<(), String> {
+    let input = b"diff --git a/src/a.rs b/src/a.rs\r\n--- a/src/a.rs\r\n+++ b/src/a.rs\r\n@@ -1 +1 @@\r\n-\xfe\r\n+\xff";
+    let (parsed, ledger) = observed(input, 1)?;
+    assert_eq!(ledger.records.len(), 6);
+    assert_eq!(ledger.records[4].3, b"-\xfe\r\n");
+    assert_eq!(ledger.records[5].3, b"+\xff");
+    assert_eq!(ledger.reductions[5].ordinal, 5);
+    assert_eq!(ledger.reductions[5].projection, Some((super::RawChangeSide::Added, 0)));
+    assert_eq!(parsed.changed_files[0].added_lines[0].text, "\u{fffd}");
+    // A retained sensitivity control: the semantic round trip cannot satisfy
+    // the original-byte ledger, even when its whole semantic projection matches.
+    let lossy = String::from_utf8_lossy(input);
+    let (_, wrong) = observed(lossy.as_bytes(), 1)?;
+    assert_ne!(wrong.records[4].3, ledger.records[4].3);
+    assert_ne!(wrong.records[5].3, ledger.records[5].3);
+    Ok(())
+}
+
+#[test]
+fn coalesced_paths_keep_original_tokens_sections_and_insertion_slots() -> Result<(), String> {
+    let input = concat!(
+        "diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1 +1 @@\n-old\n+new\n",
+        "diff --git a/./src/a.rs b/./src/a.rs\n--- a/./src/a.rs\n+++ b/./src/a.rs\n@@ -2 +2 @@\n-before\n+after\n",
+        "diff --git a/src/old.rs b/src/a.rs\nsimilarity index 80%\nrename from src/old.rs\nrename to src/a.rs\n--- a/src/old.rs\n+++ b/src/a.rs\n@@ -3 +3 @@\n-previous\n+current\n"
+    );
+    let (parsed, ledger) = observed(input.as_bytes(), 1)?;
+    assert_eq!(parsed.changed_files.len(), 1);
+    let additions: Vec<_> = ledger.reductions.iter()
+        .filter(|r| matches!(r.projection, Some((super::RawChangeSide::Added, _)))).collect();
+    assert_eq!(additions.len(), 3);
+    for (index, reduction) in additions.iter().enumerate() {
+        assert_eq!(reduction.section, Some(index));
+        assert_eq!(reduction.hunk, Some(index));
+        assert_eq!(reduction.path.as_deref(), Some(Path::new("src/a.rs")));
+        assert_eq!(reduction.projection, Some((super::RawChangeSide::Added, index)));
+    }
+    let tokens: Vec<_> = ledger.reductions.iter().filter_map(|r| r.decoded.as_deref()).collect();
+    assert!(tokens.contains(&b"b/src/a.rs".as_slice()));
+    assert!(tokens.contains(&b"b/./src/a.rs".as_slice()));
+    assert_eq!(ledger.ends[0].sections, 3);
+    assert_eq!(ledger.ends[0].hunks, 3);
+    Ok(())
+}
+
+#[test]
+fn octal_raw_path_identity_survives_native_platform_conversion() -> Result<(), String> {
+    let input = concat!(
+        "diff --git \"a/src/pricing_\\377.rs\" \"b/src/pricing_\\377.rs\"\n--- \"a/src/pricing_\\377.rs\"\n+++ \"b/src/pricing_\\377.rs\"\n@@ -1 +1 @@\n-a\n+b\n",
+        "diff --git \"a/src/pricing_\\\\377.rs\" \"b/src/pricing_\\\\377.rs\"\n--- \"a/src/pricing_\\\\377.rs\"\n+++ \"b/src/pricing_\\\\377.rs\"\n@@ -1 +1 @@\n-c\n+d\n"
+    );
+    let (_, ledger) = observed(input.as_bytes(), 2)?;
+    let markers: Vec<_> = ledger.reductions.iter().filter(|r|
+        r.token.as_deref().is_some_and(|token| token.starts_with(b"\"b/"))).collect();
+    assert_eq!(markers.len(), 2);
+    assert_eq!(markers[0].decoded.as_deref(), Some(b"b/src/pricing_\xff.rs".as_slice()));
+    assert_eq!(markers[1].decoded.as_deref(), Some(br"b/src/pricing_\377.rs".as_slice()));
+    assert_ne!(markers[0].token, markers[1].token);
+    assert_ne!(markers[0].decoded, markers[1].decoded);
+    assert_ne!(markers[0].section, markers[1].section);
+    Ok(())
+}
+
+#[test]
+fn deletion_counts_use_declared_ranges_when_no_changed_path_survives() -> Result<(), String> {
+    let input = b"diff --git a/src/gone.rs b/src/gone.rs\ndeleted file mode 100644\n--- a/src/gone.rs\n+++ /dev/null\n@@ -5,2 +4,0 @@\n-A\n-B\n";
+    let (parsed, ledger) = observed(input, 1)?;
+    assert!(parsed.changed_files.is_empty());
+    assert_eq!(parsed.deleted_file_count, 1);
+    let removed: Vec<_> = ledger.reductions.iter().filter(|r| r.consumed == Some((1, 0))).collect();
+    assert_eq!(removed.len(), 2);
+    assert_eq!(removed[0].coordinates, Some((5, 4)));
+    assert_eq!(removed[1].coordinates, Some((6, 4)));
+    assert_eq!(removed[0].before, Some((2, 0)));
+    assert_eq!(removed[1].after, Some((0, 0)));
+    for reduction in removed {
+        assert_eq!(reduction.ranges, Some(((5, 2), (4, 0))));
+        assert_eq!(reduction.kind, super::RawRecordKind::Body(super::BodyDisposition::NoPath));
+        assert!(reduction.projection.is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn malformed_excess_never_recovers_coordinates_until_a_valid_header() -> Result<(), String> {
+    let input = b"diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -0,0 +1 @@\n+one\n+excess\n+more\n@@ -0,0 +9 @@\n+valid\n";
+    let (parsed, ledger) = observed(input, 1)?;
+    assert!(!parsed.limitations.is_empty());
+    let added: Vec<_> = ledger.reductions.iter().filter(|r|
+        matches!(r.projection, Some((super::RawChangeSide::Added, _)))).collect();
+    assert_eq!(added.len(), 4); // Existing advisory projection is preserved.
+    assert_eq!(added[0].coordinates, Some((0, 1)));
+    assert_eq!(added[1].coordinates, None);
+    assert_eq!(added[1].after, None);
+    assert_eq!(added[2].coordinates, None);
+    assert_eq!(added[3].coordinates, Some((0, 9)));
+    Ok(())
+}
+
+#[test]
+fn lookahead_is_not_consumption_and_plain_sections_are_unanchored() -> Result<(), String> {
+    let input = b"diff --git a/src/a.rs b/src/a.rs\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -1 +1 @@\n--- token\n+++ token\n--- a/src/a.rs\n+++ b/src/a.rs\n@@ -2 +2 @@\n-old\n+new\n";
+    let (_, ledger) = observed(input, 1)?;
+    assert_eq!(ledger.records.len(), 11);
+    assert_eq!(ledger.reductions[4].projection, Some((super::RawChangeSide::Removed, 0)));
+    assert_eq!(ledger.reductions[5].projection, Some((super::RawChangeSide::Added, 0)));
+    assert_eq!(ledger.reductions[4].section, Some(0));
+    assert_eq!(ledger.reductions[6].section, None);
+    assert_eq!(ledger.reductions[10].section, None);
+    Ok(())
+}
+
+#[test]
+fn refusals_after_a_prefix_never_emit_an_end_callback() -> Result<(), String> {
+    for refuse_record in [true, false] {
+        let mut ledger = ByteLedger::default();
+        if refuse_record { ledger.refuse_record = Some(4); }
+        else { ledger.refuse_reduction = Some(4); }
+        let Err(error) = super::parse_bytes_bounded(FIRST_FILE.as_bytes(), 1, &mut ledger) else {
+            return Err("sink refusal became partial success".to_string());
+        };
+        assert!(error.contains("sink refused"));
+        assert!(ledger.ends.is_empty());
+    }
+    let input = format!("{FIRST_FILE}diff --git a/src/b.rs b/src/b.rs\n--- a/src/b.rs\n+++ b/src/b.rs\n@@ -1 +1 @@\n-unread\n+unread\n");
+    let mut ledger = ByteLedger::default();
+    let Err(error) = super::parse_bytes_bounded(input.as_bytes(), 1, &mut ledger) else {
+        return Err("file admission refusal became partial success".to_string());
+    };
+    assert!(error.starts_with("diff_scope_oversized:"));
+    assert_eq!(ledger.records.len(), 9);
+    assert_eq!(ledger.reductions.len(), 8);
+    assert!(ledger.ends.is_empty());
+    Ok(())
+}
+
+#[test]
+fn empty_metadata_only_quarantined_and_truncated_streams_are_all_accounted() -> Result<(), String> {
+    for input in [
+        "",
+        "trailing opaque metadata\r",
+        "diff --git a/old.rs b/new.rs\nsimilarity index 100%\nrename from old.rs\nrename to new.rs\n",
+        "diff --git a/old.rs b/new.rs\nsimilarity index 100%\ncopy from old.rs\ncopy to new.rs\n",
+        "diff --git a/a.rs b/a.rs\nold mode 100644\nnew mode 100755\n",
+        "diff --git a/a.bin b/a.bin\nBinary files a/a.bin and b/a.bin differ\n",
+        "diff --git a/link.rs b/link.rs\nnew file mode 120000\n--- /dev/null\n+++ b/link.rs\n@@ -0,0 +1 @@\n+target.rs\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/../../escape.rs\n@@ -0,0 +1 @@\n+excluded\n",
+        "diff --cc a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@@ -1,1 -1,1 +1,1 @@@\n++excluded\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -0,0 +1,3 @@\n+<<<<<<< ours\n+conflict\n+>>>>>>> theirs\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ malformed @@\n+ignored\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1,2 +1,2 @@\n-only\n",
+        "diff --git a/lib b/lib\nindex 1111111..2222222 160000\n--- a/lib\n+++ b/lib\n@@ -1 +1 @@\n-Subproject commit 1111111\n+Subproject commit 2222222\n",
+        "diff --git a/a.rs b/a.rs\n--- a/a.rs\n+++ b/a.rs\n@@ -1 +1 @@\n-\u{feff}old\n+\u{feff}new\n\\ No newline at end of file\n",
+    ] {
+        let (_, ledger) = observed(input.as_bytes(), 10)?;
+        assert_eq!(ledger.ends[0].bytes, input.len());
+    }
+    let (_, empty) = observed(b"", 1)?;
+    assert_eq!(empty.ends[0], super::RawEnd { bytes: 0, records: 0, sections: 0, hunks: 0 });
+    Ok(())
+}
+
+#[test]
+fn overflow_and_premature_end_are_errors_without_finish() -> Result<(), String> {
+    use super::ParserObserver;
+    for overflow_records in [false, true] {
+        let mut ledger = ByteLedger::default();
+        let mut observer = super::OriginalByteObserver {
+            observer: &mut ledger, expected_bytes: usize::MAX,
+            end: super::RawEnd { bytes: if overflow_records { 0 } else { usize::MAX }, records: if overflow_records { usize::MAX } else { 0 }, sections: 0, hunks: 0 },
+            pending: None, section: None, hunk: None, header: None, marker_opened: false,
+        };
+        let line = super::RawDiffRecord { bytes: b"x" };
+        let Err(error) = observer.begin(&line) else {
+            return Err("checked raw ordinal/offset overflow succeeded".to_string());
+        };
+        assert!(error.contains("overflow"));
+        assert!(ledger.ends.is_empty());
+    }
+    let mut ledger = ByteLedger::default();
+    let mut observer = super::OriginalByteObserver {
+        observer: &mut ledger, expected_bytes: FIRST_FILE.len() + 1,
+        end: super::RawEnd { bytes: 0, records: 0, sections: 0, hunks: 0 },
+        pending: None, section: None, hunk: None, header: None, marker_opened: false,
+    };
+    let Err(error) = observer.finish(&ParsedDiff::default()) else {
+        return Err("prefix-only completion succeeded".to_string());
+    };
+    assert!(error.contains("before exhaustive"));
+    assert!(ledger.ends.is_empty());
+    Ok(())
+}

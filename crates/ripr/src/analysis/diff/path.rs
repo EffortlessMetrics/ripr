@@ -219,25 +219,25 @@ impl DecodedPath {
 }
 
 
-/// Test-only wrong adapter: native/lossy path reconstruction is not raw identity.
-#[cfg(test)]
-pub(super) fn parse_diff_path_token_bytes(raw: &[u8]) -> Option<Vec<u8>> {
-    let text = std::str::from_utf8(raw).ok()?;
-    parse_diff_path_token(text).map(|path| path.as_path().to_string_lossy().as_bytes().to_vec())
+fn parse_diff_path_token(raw: &str) -> Option<DecodedPath> {
+    parse_diff_path_token_bytes(raw.as_bytes()).map(decode_path_bytes)
 }
 
-fn parse_diff_path_token(raw: &str) -> Option<DecodedPath> {
-    let raw = raw.trim_end_matches('\r');
+/// Decode the existing Git token grammar before native path conversion.
+/// Non-UTF-8 token syntax is refused rather than repaired through lossy text.
+/// C-quoted octal escapes still carry arbitrary original path bytes.
+pub(super) fn parse_diff_path_token_bytes(raw: &[u8]) -> Option<Vec<u8>> {
+    let raw = std::str::from_utf8(raw).ok()?.trim_end_matches('\r');
     if let Some(quoted) = raw.strip_prefix('"') {
         return parse_c_quoted_path(quoted);
     }
 
     let token = raw.split_once('\t').map_or(raw, |(path, _metadata)| path);
     let token = token.trim_end();
-    (!token.is_empty()).then(|| DecodedPath::Text(token.to_string()))
+    (!token.is_empty()).then(|| token.as_bytes().to_vec())
 }
 
-fn parse_c_quoted_path(raw: &str) -> Option<DecodedPath> {
+fn parse_c_quoted_path(raw: &str) -> Option<Vec<u8>> {
     // Decode at the byte level: git's octal escapes carry raw bytes, so
     // mapping each escaped byte to one Unicode scalar would turn a valid
     // UTF-8 name like `caf\303\251.rs` into `cafÃ©.rs` and lose workspace
@@ -250,7 +250,7 @@ fn parse_c_quoted_path(raw: &str) -> Option<DecodedPath> {
 
     while let Some(ch) = chars.next() {
         match ch {
-            '"' => return Some(decode_path_bytes(bytes)),
+            '"' => return Some(bytes),
             '\\' => parse_c_escape(&mut chars, &mut bytes),
             _ => {
                 let mut buf = [0u8; 4];

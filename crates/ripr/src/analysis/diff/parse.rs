@@ -12,7 +12,7 @@ use super::path::{
     parse_rename_to_path,
 };
 
-mod stream;
+pub(crate) mod stream;
 
 /// Default file-count limit for parsed diffs. Same default as the Rust adapter
 /// (`analysis/language/rust/mod.rs:DIFF_INDEX_FILE_LIMIT`); kept in sync so the
@@ -112,11 +112,56 @@ pub(crate) struct ParsedDiff {
     pub(crate) limitations: Vec<AnalysisLimitation>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct HunkHeader {
     old_start: usize,
     old_count: usize,
     new_start: usize,
     new_count: usize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HunkOutcome {
+    Ordinary(HunkHeader),
+    Combined,
+    Malformed,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct BodyAccounting {
+    before: Option<(usize, usize)>,
+    after: Option<(usize, usize)>,
+    consumed: Option<(usize, usize)>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BodyDisposition {
+    Outside,
+    NoNewline,
+    ZeroCoordinate,
+    NoPath,
+    MissingFile,
+    Conflict,
+    Added(usize),
+    Removed(usize),
+    Context,
+    Unknown,
+    CoordinateOverflow,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum PathMarkerOutcome {
+    Metadata,
+    Old,
+    New { opened: bool },
+    RejectedNew,
+    SymlinkNew,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct BodyOutcome {
+    accounting: BodyAccounting,
+    disposition: BodyDisposition,
 }
 
 /// Text of one changed line. A UTF-8 byte-order mark opening line 1 is file
@@ -176,7 +221,8 @@ fn parse_hunk_number(raw: &str) -> Option<usize> {
 mod parser_state {
     use super::{
         AnalysisLimitation, AnalysisLimitationKind, AnalysisRecovery, AnalysisRecoveryKind,
-        AnalysisStage, ChangedFile, ChangedLine, is_dev_null_new_path_marker, is_new_path_marker,
+        AnalysisStage, BodyAccounting, BodyDisposition, BodyOutcome, ChangedFile, ChangedLine,
+        HunkOutcome, PathMarkerOutcome, is_dev_null_new_path_marker, is_new_path_marker,
         parse_git_old_path, parse_hunk_header, parse_new_path_marker,
         parse_old_path_for_confinement, parse_old_path_marker, parse_rename_from_path,
         parse_rename_to_path, source_line_text,
@@ -563,15 +609,16 @@ mod parser_state {
             *count = count.saturating_add(1);
         }
 
-        fn account_hunk_line(&mut self, raw: &str) {
-            let Some((old, new)) = self.remaining_hunk_lines else {
-                return;
+        fn account_hunk_line(&mut self, raw: &str) -> BodyAccounting {
+            let before = self.remaining_hunk_lines;
+            let Some((old, new)) = before else {
+                return BodyAccounting::default();
             };
             let consumed = match raw.as_bytes().first() {
                 Some(b'-') => (1, 0),
                 Some(b'+') => (0, 1),
                 Some(b' ') | None => (1, 1),
-                _ => return,
+                _ => return BodyAccounting { before, after: before, consumed: None },
             };
             match (old.checked_sub(consumed.0), new.checked_sub(consumed.1)) {
                 (Some(old), Some(new)) => self.remaining_hunk_lines = Some((old, new)),
@@ -582,6 +629,11 @@ mod parser_state {
                     self.remaining_hunk_lines = None;
                 }
             }
+            BodyAccounting { before, after: self.remaining_hunk_lines, consumed: Some(consumed) }
+        }
+
+        pub(super) fn observed_path(&self) -> Option<&std::path::Path> {
+            self.current_path.as_deref()
         }
 
         pub(super) fn close_combined_quarantine(&mut self) {
@@ -596,19 +648,19 @@ mod parser_state {
             &mut self,
             raw: &str,
             files: &mut BTreeMap<PathBuf, ChangedFile>,
-        ) -> bool {
+        ) -> Option<PathMarkerOutcome> {
             // While a combined hunk body is quarantined its prefix columns can
             // mimic a `--- `/`+++ ` file marker (`--` parent columns plus text).
             // Ignoring them here keeps the quarantined body from re-pointing
             // `current_path` at a file it does not describe (#2828).
             if self.in_hunk || self.combined_quarantine {
-                return false;
+                return None;
             }
 
             if raw.starts_with("deleted file mode ") {
                 self.deletion_section = true;
                 self.record_deleted_file_if_ready();
-                return true;
+                return Some(PathMarkerOutcome::Metadata);
             }
 
             if parse_old_path_marker(raw) {
@@ -624,7 +676,7 @@ mod parser_state {
                     self.submodule_file_count = self.submodule_file_count.saturating_add(1);
                     self.submodule_counted = true;
                 }
-                return true;
+                return Some(PathMarkerOutcome::Old);
             }
 
             let Some(path) = parse_new_path_marker(raw) else {
@@ -640,9 +692,9 @@ mod parser_state {
                 if is_new_path_marker(raw) {
                     self.current_path = None;
                     self.saw_old_path_marker = false;
-                    return true;
+                    return Some(PathMarkerOutcome::RejectedNew);
                 }
-                return false;
+                return None;
             };
             if self.symlink_section {
                 // A symlink is not source: registering its path would count
@@ -650,7 +702,7 @@ mod parser_state {
                 // (#4577, #4594 review). Its hunk lines are skipped too.
                 self.current_path = None;
                 self.saw_old_path_marker = false;
-                return true;
+                return Some(PathMarkerOutcome::SymlinkNew);
             }
             if self.submodule_section
                 && !self.submodule_counted
@@ -659,7 +711,8 @@ mod parser_state {
                 self.submodule_file_count = self.submodule_file_count.saturating_add(1);
                 self.submodule_counted = true;
             }
-            if self.current_path.is_none() || self.saw_old_path_marker {
+            let opened = self.current_path.is_none() || self.saw_old_path_marker;
+            if opened {
                 self.current_path = Some(path.clone());
                 // #4375: this is the one registration site that proves a
                 // textual file section opened and a hunk body was expected
@@ -679,7 +732,7 @@ mod parser_state {
                 });
             }
             self.saw_old_path_marker = false;
-            true
+            Some(PathMarkerOutcome::New { opened })
         }
 
         pub(super) fn handle_diff_boundary(&mut self, raw: &str) -> bool {
@@ -727,9 +780,9 @@ mod parser_state {
             true
         }
 
-        pub(super) fn handle_hunk_header(&mut self, raw: &str) -> bool {
+        pub(super) fn handle_hunk_header(&mut self, raw: &str) -> Option<HunkOutcome> {
             if !raw.starts_with("@@") {
-                return false;
+                return None;
             }
             self.close_hunk();
             self.saw_old_path_marker = false;
@@ -760,7 +813,7 @@ mod parser_state {
                     .or_else(|| self.section_old_path.clone());
                 let count = self.combined_hunks.entry(path).or_insert(0);
                 *count = count.saturating_add(1);
-                return true;
+                return Some(HunkOutcome::Combined);
             }
             self.combined_quarantine = false;
             if let Some(header) = parse_hunk_header(raw) {
@@ -779,17 +832,18 @@ mod parser_state {
                 if header.old_start == usize::MAX || header.new_start == usize::MAX {
                     self.record_malformed_hunk();
                     self.in_hunk = false;
-                    return true;
+                    return Some(HunkOutcome::Malformed);
                 }
                 self.old_line = header.old_start;
                 self.new_line = header.new_start;
                 self.remaining_hunk_lines = Some((header.old_count, header.new_count));
                 self.in_hunk = true;
+                Some(HunkOutcome::Ordinary(header))
             } else {
                 self.record_malformed_hunk();
                 self.in_hunk = false;
+                Some(HunkOutcome::Malformed)
             }
-            true
         }
 
         /// Detect the `Binary files a/x and b/x differ` sentinel git emits in
@@ -821,14 +875,15 @@ mod parser_state {
             &mut self,
             raw: &str,
             files: &mut BTreeMap<PathBuf, ChangedFile>,
-        ) {
+        ) -> BodyOutcome {
             if !self.in_hunk {
                 self.saw_old_path_marker = false;
-                return;
+                return BodyOutcome { accounting: BodyAccounting::default(), disposition: BodyDisposition::Outside };
             }
-            self.account_hunk_line(raw);
+            let accounting = self.account_hunk_line(raw);
+            let mut disposition = BodyDisposition::Unknown;
             if raw.starts_with("\\ No newline at end of file") {
-                return;
+                return BodyOutcome { accounting, disposition: BodyDisposition::NoNewline };
             }
 
             // Empty sides may start at zero, but an excess body line cannot
@@ -836,14 +891,14 @@ mod parser_state {
             if (raw.starts_with('+') && self.new_line == 0)
                 || (raw.starts_with('-') && self.old_line == 0)
             {
-                return;
+                return BodyOutcome { accounting, disposition: BodyDisposition::ZeroCoordinate };
             }
 
             let Some(path) = self.current_path.clone() else {
-                return;
+                return BodyOutcome { accounting, disposition: BodyDisposition::NoPath };
             };
             let Some(file) = files.get_mut(&path) else {
-                return;
+                return BodyOutcome { accounting, disposition: BodyDisposition::MissingFile };
             };
 
             // Unresolved conflict markers describe two rival source states, not
@@ -871,7 +926,7 @@ mod parser_state {
                     // typed conflict limitation carries the evidence onward.
                     self.mark_section_body_seen();
                     self.advance_quarantined_line(side);
-                    return;
+                    return BodyOutcome { accounting, disposition: BodyDisposition::Conflict };
                 }
                 (None, Some(open_side)) if is_conflict_marker(payload, "<<<<<<<") => {
                     self.mark_section_body_seen();
@@ -879,7 +934,7 @@ mod parser_state {
                     let count = self.conflict_regions.entry(Some(path.clone())).or_insert(0);
                     *count = count.saturating_add(1);
                     self.advance_quarantined_line(side);
-                    return;
+                    return BodyOutcome { accounting, disposition: BodyDisposition::Conflict };
                 }
                 _ => {}
             }
@@ -904,12 +959,13 @@ mod parser_state {
                 // counter. Refuse that coordinate before emitting the line.
                 let Some(next) = self.new_line.checked_add(1) else {
                     self.close_hunk();
-                    return;
+                    return BodyOutcome { accounting, disposition: BodyDisposition::CoordinateOverflow };
                 };
                 let (text, raw_line1_bom) = source_line_text(self.new_line, text);
                 if raw_line1_bom && !self.raw_line1_bom_paths.contains(&path) {
                     self.raw_line1_bom_paths.push(path.clone());
                 }
+                disposition = BodyDisposition::Added(file.added_lines.len());
                 file.added_lines.push(ChangedLine {
                     line: self.new_line,
                     new_side_line: self.new_line,
@@ -919,7 +975,7 @@ mod parser_state {
             } else if let Some(text) = raw.strip_prefix('-') {
                 let Some(next) = self.old_line.checked_add(1) else {
                     self.close_hunk();
-                    return;
+                    return BodyOutcome { accounting, disposition: BodyDisposition::CoordinateOverflow };
                 };
                 // RANK-1 fix: record both the old-side line (`line`) and the
                 // current new-side position (`new_side_line`).  When an earlier
@@ -931,6 +987,7 @@ mod parser_state {
                 if raw_line1_bom && !self.raw_line1_bom_paths.contains(&path) {
                     self.raw_line1_bom_paths.push(path.clone());
                 }
+                disposition = BodyDisposition::Removed(file.removed_lines.len());
                 file.removed_lines.push(ChangedLine {
                     line: self.old_line,
                     new_side_line: self.new_line,
@@ -943,12 +1000,15 @@ mod parser_state {
                 {
                     self.old_line = o;
                     self.new_line = n;
+                    disposition = BodyDisposition::Context;
                 } else {
                     // Either counter saturated: stop emitting misleading
                     // line numbers for the rest of this hunk.
                     self.close_hunk();
+                    disposition = BodyDisposition::CoordinateOverflow;
                 }
             }
+            BodyOutcome { accounting, disposition }
         }
     }
 }
