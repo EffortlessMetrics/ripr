@@ -27,6 +27,15 @@ pub struct TextRange {
     pub end_column: usize,
 }
 
+/// Probe construction needs owner identity and span, without retaining a
+/// copied owner body while classification allocates its candidate index.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ChangedOwnerSpan {
+    pub(crate) start_line: usize,
+    pub(crate) end_line: usize,
+    pub(crate) owner: Option<SymbolId>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SyntaxNodeFact {
     pub file: std::path::PathBuf,

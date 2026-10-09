@@ -1,8 +1,8 @@
 use super::super::classify::is_wildcard_discard_binding;
 use super::super::diff::{ChangedFile, ChangedLine};
 use super::super::rust_index::{
-    RustIndex, SyntaxNodeFact, changed_nodes_for_lines, extract_identifier_tokens, find_file_facts,
-    find_owner_function,
+    ChangedOwnerSpan, RustIndex, changed_owner_spans_for_lines, extract_identifier_tokens,
+    find_file_facts, find_owner_function,
 };
 use super::SeededProbe;
 use super::binding_predicate::{
@@ -73,7 +73,7 @@ pub(crate) fn try_for_each_probe_with_relations<E>(
         .chain(changed.removed_lines.iter())
         .map(|line| line.new_side_line)
         .collect::<Vec<_>>();
-    let changed_nodes = changed_nodes_for_lines(index, &changed.path, &changed_lines);
+    let changed_nodes = changed_owner_spans_for_lines(index, &changed.path, &changed_lines);
     // Inline test-module scopes are file structure, not per-line evidence:
     // build once per file so ownerless-line checks stay linear (#3718).
     let test_module_ranges = test_module_ranges_for(index, &changed.path);
@@ -673,7 +673,7 @@ struct ProbeBuildContext<'a> {
     root: &'a Path,
     changed: &'a ChangedFile,
     index: &'a RustIndex,
-    changed_nodes: &'a [SyntaxNodeFact],
+    changed_nodes: &'a [ChangedOwnerSpan],
 }
 
 fn build_probe(
@@ -886,7 +886,18 @@ mod tests {
             .chain(changed.removed_lines.iter())
             .map(|line| line.new_side_line)
             .collect::<Vec<_>>();
-        let changed_nodes = changed_nodes_for_lines(index, &changed.path, &changed_lines);
+        let changed_nodes = crate::analysis::rust_index::changed_nodes_for_lines(
+            index,
+            &changed.path,
+            &changed_lines,
+        )
+        .into_iter()
+        .map(|node| ChangedOwnerSpan {
+            start_line: node.start_line,
+            end_line: node.end_line,
+            owner: node.owner,
+        })
+        .collect::<Vec<_>>();
         // Inline test-module scopes are file structure, not per-line evidence:
         // build once per file so ownerless-line checks stay linear (#3718).
         let test_module_ranges = test_module_ranges_for(index, &changed.path);
@@ -1084,17 +1095,30 @@ mod tests {
                 include_str!(
                     "../../../../../fixtures/binding_predicate_scope_controls/input/src/lib.rs"
                 )
-                .replace("let end = input.len();", "let end = input.trim_end().len();")
+                .replace(
+                    "let end = input.len();",
+                    "let end = input.trim_end().len();",
+                )
                 .replace("let end = 1;", "let end = 3;")
                 .replace("let mut end = seed;", "let mut end = seed + 1;")
-                .replace("let end = delim.len_utf8();", "let end = delim.len_utf8() + 1;")
-                .replace("let (end, other) = pair;", "let (end, other) = (pair.0 + 1, pair.1);"),
+                .replace(
+                    "let end = delim.len_utf8();",
+                    "let end = delim.len_utf8() + 1;",
+                )
+                .replace(
+                    "let (end, other) = pair;",
+                    "let (end, other) = (pair.0 + 1, pair.1);",
+                ),
                 include_str!("../../../../../fixtures/binding_predicate_scope_controls/diff.patch"),
             ),
         ];
         for (case, (source, patch)) in sources.into_iter().enumerate() {
             let changed_files = crate::analysis::diff::parse_unified_diff(patch);
-            assert_eq!(changed_files.len(), 1, "fixture must reach a changed Rust file");
+            assert_eq!(
+                changed_files.len(),
+                1,
+                "fixture must reach a changed Rust file"
+            );
             let changed = &changed_files[0];
             let mut index = RustIndex::default();
             index.insert_file_only(
@@ -1215,10 +1239,69 @@ mod tests {
         let actual = probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
         assert_same_seeded_probes(&actual, &expected);
         assert_eq!(actual.len(), 2);
-        assert!(actual.iter().all(|seeded| seeded.binding_relation.is_some()));
+        assert!(
+            actual
+                .iter()
+                .all(|seeded| seeded.binding_relation.is_some())
+        );
         assert_eq!(actual[0].probe.location.line, 3);
         assert_eq!(actual[1].probe.location.line, 6);
         assert_eq!(actual[1].probe.id.0, format!("{}.2", actual[0].probe.id.0));
+        Ok(())
+    }
+
+    #[test]
+    fn sparse_large_owner_callback_never_materializes_a_copied_body() -> Result<(), String> {
+        use crate::analysis::syntax::ra::changed_owner_body_materialization_count;
+
+        let source = format!(
+            "pub fn large(amount: usize) -> usize {{\n{}    return amount + 1;\n}}\n",
+            "    // whole-owner context\n".repeat(6_000),
+        );
+        let path = PathBuf::from("src/lib.rs");
+        let changed = ChangedFile {
+            path: path.clone(),
+            added_lines: vec![ChangedLine {
+                line: 6_002,
+                new_side_line: 6_002,
+                text: "return amount + 1;".to_string(),
+            }],
+            removed_lines: Vec::new(),
+        };
+        let mut index = RustIndex::default();
+        index.insert_file_only(
+            path.clone(),
+            crate::analysis::rust_index::summarize_file(path, source),
+        );
+        let before_legacy = changed_owner_body_materialization_count();
+        let expected =
+            legacy_probes_for_file_with_relations(Path::new("workspace"), &changed, &index);
+        assert_eq!(
+            changed_owner_body_materialization_count(),
+            before_legacy + 1
+        );
+        assert!(!expected.is_empty(), "control must reach the sparse owner");
+        assert!(expected.iter().all(|seeded| {
+            seeded.probe.owner.as_ref().map(|owner| owner.0.as_str()) == Some("src/lib.rs::large")
+        }));
+
+        let before_callback = changed_owner_body_materialization_count();
+        let mut actual = Vec::new();
+        try_for_each_probe_with_relations(Path::new("workspace"), &changed, &index, |seeded| {
+            assert_eq!(
+                changed_owner_body_materialization_count(),
+                before_callback,
+                "no copied owner body before or during classification",
+            );
+            actual.push(seeded);
+            Ok::<(), String>(())
+        })?;
+        assert_same_seeded_probes(&actual, &expected);
+        assert!(!actual.is_empty());
+        assert_eq!(
+            changed_owner_body_materialization_count(),
+            before_callback
+        );
         Ok(())
     }
 

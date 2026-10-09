@@ -1802,8 +1802,8 @@ impl RustAdapter {
                     let binding_relation = seeded.binding_relation;
                     candidate_lines.insert((probe.location.file.clone(), probe.location.line));
                     cancellation::checkpoint()?;
-                    let related_test_candidate_index =
-                        related_test_candidate_index.get_or_insert_with(|| {
+                    let related_test_candidate_index = related_test_candidate_index
+                        .get_or_insert_with(|| {
                             classify::RelatedTestCandidateIndex::new(&index)
                                 .with_withheld_macro_bindings(std::mem::take(
                                     &mut withheld_macro_bindings,

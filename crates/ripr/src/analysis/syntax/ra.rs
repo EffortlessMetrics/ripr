@@ -22,7 +22,7 @@ use super::super::facts::ModulePathTarget;
 use super::super::facts::SourceRoleProvenance;
 use super::super::facts::cfg_predicates;
 use super::{
-    RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange, parse_clean_source_file,
+    ChangedOwnerSpan, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange, parse_clean_source_file,
     rust_nesting_refusal,
 };
 use crate::analysis::rust_index::{
@@ -1844,7 +1844,33 @@ fn owner_changed_nodes(
     owner_changed_nodes_with(functions, ranges, node_for_changed_owner)
 }
 
+pub(crate) fn changed_owner_spans(
+    functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
+    ranges: &[TextRange],
+) -> Vec<ChangedOwnerSpan> {
+    owner_changed_nodes_with(functions, ranges, |function, _| ChangedOwnerSpan {
+        start_line: function.start_line,
+        end_line: function.end_line,
+        owner: Some(function.id.clone()),
+    })
+}
+
+#[cfg(test)]
+std::thread_local! {
+    static CHANGED_OWNER_BODY_MATERIALIZATIONS: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(crate) fn changed_owner_body_materialization_count() -> usize {
+    CHANGED_OWNER_BODY_MATERIALIZATIONS.with(std::cell::Cell::get)
+}
+
 fn node_for_changed_owner(function: &FunctionFact, kind: &str) -> SyntaxNodeFact {
+    #[cfg(test)]
+    CHANGED_OWNER_BODY_MATERIALIZATIONS.with(|count| {
+        count.set(count.get().saturating_add(1));
+    });
     SyntaxNodeFact {
         file: function.file.clone(),
         kind: kind.to_string(),
@@ -1857,11 +1883,11 @@ fn node_for_changed_owner(function: &FunctionFact, kind: &str) -> SyntaxNodeFact
 
 /// Retain the first owner for each output key before materializing any body.
 /// Repeated changed lines in one large owner must not clone its body per line.
-fn owner_changed_nodes_with(
+fn owner_changed_nodes_with<T>(
     functions: crate::analysis::facts::FactSlice<'_, crate::analysis::facts::FunctionFact>,
     ranges: &[TextRange],
-    mut build: impl FnMut(&FunctionFact, &str) -> SyntaxNodeFact,
-) -> Vec<SyntaxNodeFact> {
+    mut build: impl FnMut(&FunctionFact, &str) -> T,
+) -> Vec<T> {
     let mut selected = std::collections::BTreeMap::new();
     for range in ranges {
         let mut owners = functions

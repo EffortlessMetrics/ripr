@@ -12,6 +12,7 @@ pub(crate) use owner_pin::{
 };
 pub(crate) mod ra;
 
+pub(crate) use adapter::ChangedOwnerSpan;
 pub use adapter::{
     LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange,
 };

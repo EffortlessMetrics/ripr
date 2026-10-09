@@ -30,6 +30,7 @@ pub(crate) use super::facts::{
 };
 #[cfg(test)]
 use super::syntax::LexicalRustSyntaxAdapter;
+pub(crate) use super::syntax::ChangedOwnerSpan;
 pub use super::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter, SyntaxNodeFact, TextRange};
 
 pub(crate) fn lexical_fallback_files(index: &RustIndex) -> Vec<PathBuf> {
@@ -358,6 +359,26 @@ pub fn changed_nodes_for_lines(
         })
         .collect::<Vec<_>>();
     RaRustSyntaxAdapter.changed_nodes(facts.functions, &ranges)
+}
+
+pub(crate) fn changed_owner_spans_for_lines(
+    index: &RustIndex,
+    file: &Path,
+    lines: &[usize],
+) -> Vec<ChangedOwnerSpan> {
+    let Some(facts) = index.files().get(file) else {
+        return Vec::new();
+    };
+    let ranges = lines
+        .iter()
+        .map(|line| TextRange {
+            start_line: *line,
+            start_column: 1,
+            end_line: *line,
+            end_column: usize::MAX,
+        })
+        .collect::<Vec<_>>();
+    super::syntax::ra::changed_owner_spans(facts.functions, &ranges)
 }
 
 pub(crate) fn is_test_file(path: &Path) -> bool {
