@@ -1946,10 +1946,7 @@ mod tests {
     fn actual_frozen_diff_entry_refuses_missing_owned_input_and_root_alias()
     -> Result<(), Box<dyn std::error::Error>> {
         let fixture = frozen::tests::Fixture::new(&[("src/lib.rs", b"pub fn owner() {}\n")])?;
-        let options = AnalysisOptions {
-            root: fixture.logical.clone(),
-            ..AnalysisOptions::default()
-        };
+        let options = draft_diff_options(fixture.logical.clone());
         let missing = frozen::with_context(Some(fixture.authority.clone()), || {
             run_diff_pipeline_with_oracle_policy_and_rust_config(
                 &options,
@@ -1964,10 +1961,7 @@ mod tests {
         assert_eq!(retained.kind(), std::io::ErrorKind::PermissionDenied);
 
         let alias = frozen::tests::Fixture::new(&[("src/lib.rs", b"pub fn owner() {}\n")])?;
-        let options = AnalysisOptions {
-            root: alias.logical.join("."),
-            ..AnalysisOptions::default()
-        };
+        let options = draft_diff_options(alias.logical.join("."));
         let mismatch = frozen::with_context(Some(alias.authority.clone()), || {
             frozen::with_canonical_diff(std::sync::Arc::from(""), || {
                 run_diff_pipeline_with_oracle_policy_and_rust_config(

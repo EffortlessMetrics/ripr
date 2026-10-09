@@ -756,7 +756,8 @@ pub(crate) mod tests {
                 inventory.insert_file(
                     relative,
                     FrozenFile {
-                        blob_oid: GitObjectId::parse("1111111111111111111111111111111111111111")?,
+                        blob_oid: GitObjectId::parse("1111111111111111111111111111111111111111")
+                            .map_err(|error| io::Error::other(error.to_string()))?,
                         size: bytes.len() as u64,
                         sha256: Sha256::digest(bytes).into(),
                     },
@@ -765,7 +766,8 @@ pub(crate) mod tests {
             let authority = FrozenSourceAuthority::new(
                 &logical,
                 &physical,
-                GitObjectId::parse("1111111111111111111111111111111111111111")?,
+                GitObjectId::parse("1111111111111111111111111111111111111111")
+                    .map_err(|error| io::Error::other(error.to_string()))?,
                 super::super::super::git_candidate_execution::CapturedConfiguration::Absent,
                 Arc::new(inventory),
                 owner,

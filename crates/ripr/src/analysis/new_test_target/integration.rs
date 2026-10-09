@@ -385,7 +385,8 @@ mod frozen_tests {
         )?;
         let prepared = crate::analysis::git_candidate_execution::prepare_named_tree(
             &fixture.logical, "HEAD", None,
-        )?;
+        )
+        .map_err(|error| std::io::Error::other(error.to_string()))?;
         let physical = prepared.physical_root().to_path_buf();
         let authority = prepared.frozen_source_authority(&fixture.logical)?;
         std::fs::write(
