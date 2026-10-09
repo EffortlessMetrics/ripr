@@ -196,9 +196,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resource_verification_refuses_missing_nonfinite_duplicate_and_mismatched_limits() {
+    fn resource_verification_refuses_missing_nonfinite_duplicate_and_mismatched_limits()
+    -> Result<(), String> {
         let valid = "Max address space         1073741824 1073741824 bytes\nMax file size             16777216 16777216 bytes\nMax core file size        0 0 bytes\n";
-        assert!(require_limits(valid, 1073741824, 16777216).is_ok());
+        require_limits(valid, 1073741824, 16777216)?;
         for invalid in [
             valid.replace("1073741824 1073741824", "unlimited unlimited"),
             valid.replace("1073741824 1073741824", "1073741824 2147483648"),
@@ -206,10 +207,21 @@ mod tests {
             format!("{valid}Max address space 1073741824 1073741824 bytes\n"),
             valid.replace("0 0 bytes", "0 1 bytes"),
         ] {
-            assert!(require_limits(&invalid, 1073741824, 16777216).is_err());
+            let Err(error) = require_limits(&invalid, 1073741824, 16777216) else {
+                return Err("invalid native resource limits were accepted".to_string());
+            };
+            assert!(error.starts_with("experimental worker"), "{error}");
         }
-        assert!(require_limits(valid, 0, 16777216).is_err());
-        assert!(require_limits(valid, ADDRESS_SPACE_MAX + 1, 16777216).is_err());
+        for address_space in [0, ADDRESS_SPACE_MAX + 1] {
+            let Err(error) = require_limits(valid, address_space, 16777216) else {
+                return Err("invalid address-space profile was accepted".to_string());
+            };
+            assert!(
+                error.contains("not the requested finite soft/hard limit"),
+                "{error}"
+            );
+        }
+        Ok(())
     }
 
     #[test]

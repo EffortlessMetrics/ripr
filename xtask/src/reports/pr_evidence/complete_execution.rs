@@ -397,33 +397,43 @@ fn read_receipt(
 mod tests {
     use super::*;
 
+    fn refusal<T>(result: Result<T, String>, context: &str) -> Result<String, String> {
+        let Err(error) = result else {
+            return Err(format!("{context} was unexpectedly accepted"));
+        };
+        Ok(error)
+    }
+
     #[test]
-    fn inherited_lower_limits_are_never_raised() {
+    fn inherited_lower_limits_are_never_raised() -> Result<(), String> {
         assert_eq!(
             inherited_limit(
                 "Max address space unlimited unlimited bytes",
                 "Max address space",
                 2048
-            )
-            .ok(),
-            Some(2048)
+            )?,
+            2048
         );
         assert_eq!(
             inherited_limit(
                 "Max address space 1024 1536 bytes",
                 "Max address space",
                 2048
-            )
-            .ok(),
-            Some(1024)
+            )?,
+            1024
         );
         for text in [
             "Max address space 0 1024 bytes",
             "Max address space bad 1024 bytes",
             "Max address space 1 2 bytes\nMax address space 1 2 bytes",
         ] {
-            assert!(inherited_limit(text, "Max address space", 2048).is_err());
+            let error = refusal(
+                inherited_limit(text, "Max address space", 2048),
+                "invalid inherited ceiling",
+            )?;
+            assert!(error.starts_with("experimental launcher"), "{error}");
         }
+        Ok(())
     }
 
     #[test]
@@ -460,24 +470,25 @@ mod tests {
             let write = |body: &str| super::super::tests::write_repo_file(&repo, RECEIPT, body);
             let text = serde_json::to_string(&valid).map_err(|error| error.to_string())?;
             write(&text)?;
-            assert!(read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_ok());
-            for (field, wrong) in [
-                ("nonce", json!("stale")),
-                ("coverage", json!("complete")),
-                ("production_admission", json!(true)),
-                ("base_sha", json!(head)),
-                ("address_space_bytes", json!(1024)),
-                ("check_byte_count", json!(999)),
-                ("head_tree", json!("d".repeat(40))),
-                ("unexpected", json!(true)),
+            read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))?;
+            for (field, wrong, expected) in [
+                ("nonce", json!("stale"), "inconsistent"),
+                ("coverage", json!("complete"), "inconsistent"),
+                ("production_admission", json!(true), "inconsistent"),
+                ("base_sha", json!(head), "inconsistent"),
+                ("address_space_bytes", json!(1024), "inconsistent"),
+                ("check_byte_count", json!(999), "does not match"),
+                ("head_tree", json!("d".repeat(40)), "inconsistent"),
+                ("unexpected", json!(true), "malformed"),
             ] {
                 let mut malformed = valid.clone();
                 malformed[field] = wrong;
                 write(&serde_json::to_string(&malformed).map_err(|error| error.to_string())?)?;
-                assert!(
-                    read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err(),
-                    "{field}"
-                );
+                let error = refusal(
+                    read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)),
+                    field,
+                )?;
+                assert!(error.contains(expected), "{field}: {error}");
             }
             for malformed in [
                 format!("{text} {text}"),
@@ -490,9 +501,11 @@ mod tests {
             ] {
                 assert_ne!(malformed, text);
                 write(&malformed)?;
-                assert!(
-                    read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err()
-                );
+                let error = refusal(
+                    read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)),
+                    "duplicate or trailing receipt",
+                )?;
+                assert!(error.contains("malformed"), "{error}");
             }
             write(&text)?;
 
@@ -519,10 +532,11 @@ mod tests {
                     assert!(
                         !output.timed_out && output.status.is_some_and(|status| status.success())
                     );
-                    assert!(
-                        read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40))
-                            .is_err()
-                    );
+                    let error = refusal(
+                        read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)),
+                        "FIFO artifact",
+                    )?;
+                    assert!(error.contains("not a regular owned file"), "{error}");
                     fs::remove_file(repo.join(relative)).map_err(|error| error.to_string())?;
                     if relative == RECEIPT {
                         write(&text)?;
@@ -532,9 +546,17 @@ mod tests {
                 }
             }
             super::super::tests::write_repo_file(&repo, PR_CHECK_JSON, "mutated")?;
-            assert!(read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err());
+            let error = refusal(
+                read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)),
+                "mutated artifact",
+            )?;
+            assert!(error.contains("does not match"), "{error}");
             fs::remove_file(repo.join(RECEIPT)).map_err(|error| error.to_string())?;
-            assert!(read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)).is_err());
+            let error = refusal(
+                read_receipt(&repo, "ab", (2048, 512), &base, &head, &"c".repeat(40)),
+                "missing receipt",
+            )?;
+            assert!(error.contains("unavailable"), "{error}");
             Ok(())
         })();
         fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
@@ -645,13 +667,18 @@ mod tests {
                     &serde_json::to_string(&subject).map_err(|error| error.to_string())?,
                 )?;
                 assert!(!ordinary(true)?);
-                assert!(check_pr_evidence(&repo, &options).is_err());
-                assert!(review().is_err());
+                let error = refusal(check_pr_evidence(&repo, &options), "experimental saved check")?;
+                assert!(error.contains("experimental complete-execution"), "{error}");
+                let error = refusal(
+                    review().map_err(|error| error.message().to_string()),
+                    "experimental strict review",
+                )?;
+                assert!(error.contains("experimental complete-execution"), "{error}");
             }
             super::super::tests::write_repo_file(&repo, PR_CHECK_SUBJECT_JSON, &original_subject)?;
             assert!(ordinary(true)?);
             check_pr_evidence(&repo, &options)?;
-            assert!(review().is_ok());
+            review().map_err(|error| error.message().to_string())?;
             let baseline: Value = serde_json::from_slice(
                 &fs::read(repo.join(PR_CHECK_JSON)).map_err(|e| e.to_string())?,
             )
@@ -699,35 +726,45 @@ mod tests {
                 );
             }
             assert!(!ordinary(true)?);
-            assert!(check_pr_evidence(&repo, &options).is_err());
-            assert!(review().is_err());
-            assert!(
+            let error = refusal(check_pr_evidence(&repo, &options), "experimental saved check")?;
+            assert!(error.contains("experimental complete-execution"), "{error}");
+            let error = refusal(
+                review().map_err(|error| error.message().to_string()),
+                "experimental strict review",
+            )?;
+            assert!(error.contains("experimental complete-execution"), "{error}");
+            let error = refusal(
                 run_candidate(
                     &repo,
                     &binary,
                     &options,
                     Path::new("/missing-ripr-experiment-limiter"),
-                    profile()?
-                )
-                .is_err()
+                    profile()?,
+                ),
+                "missing limiter",
+            )?;
+            assert!(
+                error.starts_with("failed to run experimental complete-execution worker:"),
+                "{error}"
             );
             assert!(!repo.join(PR_CHECK_SUBJECT_JSON).exists());
             assert!(!repo.join(RECEIPT).exists());
-            assert!(
+            let error = refusal(
                 run_candidate(
                     &repo,
                     &binary,
                     &options,
                     Path::new("/usr/bin/prlimit"),
-                    (0, FILE_MAX)
-                )
-                .is_err()
-            );
+                    (0, FILE_MAX),
+                ),
+                "invalid resource profile",
+            )?;
+            assert!(error.contains("invalid finite resource profile"), "{error}");
             assert!(!repo.join(PR_CHECK_SUBJECT_JSON).exists());
             assert!(ordinary(false)?);
             assert!(ordinary(true)?);
             check_pr_evidence(&repo, &options)?;
-            assert!(review().is_ok());
+            review().map_err(|error| error.message().to_string())?;
             Ok(())
         })();
         fs::remove_dir_all(&repo).map_err(|error| error.to_string())?;
