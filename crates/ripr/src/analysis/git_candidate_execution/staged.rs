@@ -159,7 +159,7 @@ pub(crate) fn prepare_staged_named_tree(
         .ok_or_else(|| failed("staged tree held deadline lacks its existing Git drain reserve".into()))?;
     let listing = crate::git::run_git_complete_output_with_deadline_and_limit(
         repository,
-        &["ls-tree", "-r", "-t", "-z", tree.as_str()],
+        &["ls-tree", "-r", "-t", "-z", "--full-tree", tree.as_str()],
         timeout,
         budget.max_listing_bytes,
         crate::git::CompleteGitEnvironment::WholeInput,
@@ -408,6 +408,20 @@ mod tests {
                 .map_err(|error| error.to_string())?;
             assert_eq!(actual, expected, "named-tree parity for {}", path.display());
         }
+        // An existing nested cwd must retain all siblings and original paths.
+        let nested_owner = fixture.anchor("nested-cwd-source")?;
+        let nested = prepare_staged_named_tree(&fixture.repository.join("src"),
+            tree.clone(), nested_owner.clone(), fixture.deadline, budget())
+            .map_err(|error| error.to_string())?
+            .frozen_source_authority(&fixture.repository).map_err(|error| error.to_string())?;
+        assert_eq!(inventory(&nested), inventory(&ordinary),
+            "nested cwd narrowed the named whole tree");
+        assert_eq!(frozen::with_context(Some(nested.clone()), ||
+            frozen_fs::read(fixture.repository.join("tests/context.rs")))
+            .map_err(|error| error.to_string())?,
+            b"use sample::entry; #[test] fn calls_entry() { assert_eq!(entry(),7); }\n");
+        nested.finalize().map_err(|error| error.to_string())?;
+        nested_owner.verify_materialized()?;
         fs::remove_dir_all(fixture.repository.join("src")).map_err(|error| error.to_string())?;
         assert_eq!(frozen::with_context(Some(staged.clone()), ||
             frozen_fs::read(fixture.repository.join("src/sibling.rs")))
@@ -569,23 +583,39 @@ mod tests {
         -> Result<(), String> {
         let oid = "1111111111111111111111111111111111111111";
         let row = format!("100644 blob {oid}\ta.rs\0");
+        // Literal old-grammar outcomes are independent of the new wrapper.
         let cases = [
-            Vec::new(), row.as_bytes().to_vec(),
-            row.trim_end_matches('\0').as_bytes().to_vec(),
-            format!("{row}{row}").into_bytes(), b"\0".to_vec(),
-            format!("100644 blob invalid\ta.rs\0").into_bytes(),
-            format!("100644 blob {oid} extra\ta.rs\0").into_bytes(),
-            format!("100644 blob {oid}\t./a.rs\0").into_bytes(),
-            format!("040000 tree {oid}\tripr.toml\0").into_bytes(),
-            format!("100644 blob {oid}\tripr.toml/a.rs\0").into_bytes(),
+            (Vec::new(), None),
+            (row.as_bytes().to_vec(), None),
+            (row.trim_end_matches('\0').as_bytes().to_vec(),
+                Some("configuration inventory is not NUL-terminated")),
+            (format!("{row}{row}").into_bytes(),
+                Some("configuration inventory duplicates path a.rs")),
+            (b"\0".to_vec(), Some("configuration inventory contains an empty record")),
+            (format!("100644 blob {oid} extra\ta.rs\0").into_bytes(),
+                Some("configuration inventory metadata is malformed")),
+            (format!("100644 blob {oid}\t./a.rs\0").into_bytes(),
+                Some("configuration inventory path is malformed")),
+            (format!("040000 tree {oid}\tripr.toml\0").into_bytes(),
+                Some("configuration inventory ripr.toml is a directory")),
+            (format!("100644 blob {oid}\tripr.toml/a.rs\0").into_bytes(),
+                Some("configuration inventory ripr.toml is a directory")),
         ];
-        for listing in cases {
-            let original = super::super::validate_configuration_inventory(&listing)
-                .map_err(|error| error.to_string());
-            let observed = super::super::validate_configuration_inventory_with(
-                &listing, |_, _, _, _| Ok(()),
-            ).map_err(|error| error.to_string());
-            assert_eq!(observed, original, "ordinary inventory grammar drifted");
+        for (listing, expected) in cases {
+            for result in [
+                super::super::validate_configuration_inventory(&listing),
+                super::super::validate_configuration_inventory_with(
+                    &listing, |_, _, _, _| Ok(()),
+                ),
+            ] {
+                match (result, expected) {
+                    (Ok(()), None) => {}
+                    (Err(SubjectError::ExecutionFailed { detail }), Some(expected)) =>
+                        assert_eq!(detail, expected, "literal old grammar refusal changed"),
+                    (other, expected) => return Err(format!(
+                        "wrong literal inventory outcome {other:?}; expected {expected:?}")),
+                }
+            }
         }
         let mut observed = Vec::new();
         super::super::validate_configuration_inventory_with(row.as_bytes(),
