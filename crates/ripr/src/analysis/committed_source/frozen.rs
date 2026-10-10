@@ -5,6 +5,7 @@
 //! the authority on an unexpected physical file or a request outside that tree.
 //! This is a source boundary, not complete coverage or aggregate resource proof.
 
+#[cfg(test)]
 use super::staged::SourceAnchor;
 use crate::domain::GitObjectId;
 use sha2::{Digest, Sha256};
@@ -21,6 +22,7 @@ pub(crate) enum FrozenFileMode {
     Executable,
 }
 
+#[cfg(test)]
 impl FrozenFileMode {
     pub(crate) const fn git_mode(self) -> &'static str {
         match self {
@@ -32,6 +34,7 @@ impl FrozenFileMode {
 
 #[derive(Clone)]
 pub(crate) struct FrozenFile {
+    #[cfg(test)]
     pub(crate) mode: FrozenFileMode,
     pub(crate) blob_oid: GitObjectId,
     pub(crate) size: u64,
@@ -65,6 +68,7 @@ impl FrozenInventory {
     }
 
     /// Directory presence includes the root and authenticated empty trees.
+    #[cfg(test)]
     pub(crate) fn directories(&self) -> impl ExactSizeIterator<Item = &Path> + DoubleEndedIterator {
         self.directories.iter().map(PathBuf::as_path)
     }
@@ -87,6 +91,7 @@ impl FrozenInventory {
 
 enum FrozenOwner {
     Temporary(Arc<super::super::git_candidate_execution::TempRootGuard>),
+    #[cfg(test)]
     ParentStaged(Arc<SourceAnchor>),
 }
 
@@ -169,6 +174,7 @@ impl FrozenSourceAuthority {
 
     /// Wraps actual already sealed source I/O. The caller still supplies the
     /// authenticated Git inventory/configuration/tree and their admitted bounds.
+    #[cfg(test)]
     pub(crate) fn new_staged(
         logical_root: &Path,
         tree: GitObjectId,
@@ -217,6 +223,7 @@ impl FrozenSourceAuthority {
     }
 
     fn verify_staged_current(&self) -> io::Result<()> {
+        #[cfg(test)]
         if let FrozenOwner::ParentStaged(owner) = &self._owner {
             self.ensure_clean()?;
             owner
@@ -292,6 +299,7 @@ impl FrozenSourceAuthority {
         let primary = authority.ensure_clean().err();
         let owner = match authority._owner {
             FrozenOwner::Temporary(owner) => owner,
+            #[cfg(test)]
             FrozenOwner::ParentStaged(owner) => {
                 // NativeStartup intentionally retains its own source Arc.
                 // Release this lease without unwrapping or deleting the stage.
@@ -378,6 +386,7 @@ impl FrozenSourceAuthority {
         if !self.known(relative) {
             return Err(Self::absent(relative));
         }
+        #[cfg(test)]
         if let FrozenOwner::ParentStaged(owner) = &self._owner {
             owner
                 .verify_materialized()
@@ -479,6 +488,7 @@ impl FrozenSourceAuthority {
                 open_source_no_follow(&physical)
                     .map_err(|error| self.physical_error(&relative, error))?
             }
+            #[cfg(test)]
             FrozenOwner::ParentStaged(owner) => {
                 owner
                     .verify_materialized()
@@ -715,6 +725,7 @@ pub(crate) mod fs {
 
     pub(crate) enum FrozenReadDir {
         Ordinary(std::fs::ReadDir),
+        #[cfg(test)]
         ParentStaged {
             inner: std::vec::IntoIter<OsString>,
             authority: Arc<FrozenSourceAuthority>,
@@ -733,6 +744,7 @@ pub(crate) mod fs {
 
     pub(crate) enum FrozenDirEntry {
         Ordinary(std::fs::DirEntry),
+        #[cfg(test)]
         ParentStaged {
             authority: Arc<FrozenSourceAuthority>,
             relative: PathBuf,
@@ -755,6 +767,7 @@ pub(crate) mod fs {
                         "frozen source is a file",
                     ));
                 }
+                #[cfg(test)]
                 if let FrozenOwner::ParentStaged(owner) = &authority._owner {
                     owner
                         .verify_materialized()
@@ -792,6 +805,7 @@ pub(crate) mod fs {
                 Self::Ordinary(inner) => inner
                     .next()
                     .map(|entry| entry.map(FrozenDirEntry::Ordinary)),
+                #[cfg(test)]
                 Self::ParentStaged {
                     inner,
                     authority,
@@ -927,8 +941,9 @@ pub(crate) mod fs {
                     authority,
                     relative,
                     ..
-                }
-                | Self::ParentStaged {
+                } => authority.logical_root.join(relative),
+                #[cfg(test)]
+                Self::ParentStaged {
                     authority,
                     relative,
                     ..
@@ -939,6 +954,7 @@ pub(crate) mod fs {
         pub(crate) fn file_name(&self) -> OsString {
             match self {
                 Self::Ordinary(inner) | Self::NamedTree { inner, .. } => inner.file_name(),
+                #[cfg(test)]
                 Self::ParentStaged { name, .. } => name.clone(),
             }
         }
@@ -950,8 +966,11 @@ pub(crate) mod fs {
                     authority,
                     relative,
                     ..
-                }
-                | Self::ParentStaged {
+                } => authority
+                    .inspect(relative)
+                    .map(|metadata| metadata.file_type()),
+                #[cfg(test)]
+                Self::ParentStaged {
                     authority,
                     relative,
                     ..
@@ -969,8 +988,9 @@ pub(crate) mod fs {
                     authority,
                     relative,
                     ..
-                }
-                | Self::ParentStaged {
+                } => authority.inspect(relative),
+                #[cfg(test)]
+                Self::ParentStaged {
                     authority,
                     relative,
                     ..

@@ -684,14 +684,18 @@ fn materialize_with_configuration(
             .end_blob()
             .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
         if let (Some(inventory), Some(hash)) = (&mut inventory, source_hash) {
+            // Preserve the original mode validation even when its stored
+            // inventory DATA is deferred from the product build.
+            let _validated_original_mode = original_modes
+                .as_ref()
+                .and_then(|modes| modes.get(entry_index))
+                .copied()
+                .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?;
             inventory.insert_file(
                 PathBuf::from(path),
                 super::committed_source::frozen::FrozenFile {
-                    mode: original_modes
-                        .as_ref()
-                        .and_then(|modes| modes.get(entry_index))
-                        .copied()
-                        .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?,
+                    #[cfg(test)]
+                    mode: _validated_original_mode,
                     blob_oid: GitObjectId::parse(object)
                         .map_err(|error| failed(error.to_string()))?,
                     size,
@@ -1161,14 +1165,18 @@ fn materialize_requested_configuration(
             .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
         requested_checkpoint(budget_started, budget)?;
         if let (Some(inventory), Some(hash)) = (&mut inventory, source_hash) {
+            // Preserve the original mode validation even when its stored
+            // inventory DATA is deferred from the product build.
+            let _validated_original_mode = original_modes
+                .as_ref()
+                .and_then(|modes| modes.get(entry_index))
+                .copied()
+                .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?;
             inventory.insert_file(
                 PathBuf::from(path),
                 super::committed_source::frozen::FrozenFile {
-                    mode: original_modes
-                        .as_ref()
-                        .and_then(|modes| modes.get(entry_index))
-                        .copied()
-                        .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?,
+                    #[cfg(test)]
+                    mode: _validated_original_mode,
                     blob_oid: GitObjectId::parse(object)
                         .map_err(|error| failed(error.to_string()))?,
                     size,
