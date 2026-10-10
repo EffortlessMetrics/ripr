@@ -390,13 +390,17 @@ impl FullConfiguration {
             .map(|l| budget.text(l.as_str()))
             .collect::<Result<Vec<_>, _>>()?
             .try_into()
-            .map_err(|_| "finding severity cardinality")?;
+            .map_err(|values: Vec<String>| {
+                format!("finding severity cardinality: observed {}", values.len())
+            })?;
         let seam_severity = seam_levels
             .into_iter()
             .map(|l| budget.text(l.as_str()))
             .collect::<Result<Vec<_>, _>>()?
             .try_into()
-            .map_err(|_| "seam severity cardinality")?;
+            .map_err(|values: Vec<String>| {
+                format!("seam severity cardinality: observed {}", values.len())
+            })?;
         let bun_ub = bun_ub
             .as_ref()
             .map(|p| -> Result<FullBunProfile, String> {
@@ -708,7 +712,8 @@ impl CompleteVerificationLimits {
             self.file_limit,
             self.max_raw_records,
         ] {
-            usize::try_from(count).map_err(|_| "count bound exceeds native usize")?;
+            usize::try_from(count)
+                .map_err(|error| format!("count bound exceeds native usize: {error}"))?;
         }
         Ok(())
     }
@@ -996,7 +1001,7 @@ fn validate_inventory(
     let dirs = inventory
         .directories
         .iter()
-        .map(|p| Path::new(p))
+        .map(Path::new)
         .collect::<std::collections::BTreeSet<_>>();
     let mut bytes = 0u64;
     for directory in &inventory.directories {

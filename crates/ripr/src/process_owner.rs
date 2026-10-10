@@ -136,6 +136,49 @@ pub struct OwnedProcess {
     bounded_drop_until: Option<Instant>,
 }
 
+/// A strict spawn refusal retains any actual child created before the clock crossed.
+/// This private custody is not a process-group or termination observation.
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+pub(crate) struct OwnedSpawnFailure {
+    error: std::io::Error,
+    child: Option<OwnedProcess>,
+}
+#[cfg(target_os = "linux")]
+impl OwnedSpawnFailure {
+    fn before_spawn(error: std::io::Error) -> Self {
+        Self { error, child: None }
+    }
+
+    pub(crate) fn into_parts(self) -> (std::io::Error, Option<OwnedProcess>) {
+        (self.error, self.child)
+    }
+}
+#[cfg(target_os = "linux")]
+impl std::fmt::Display for OwnedSpawnFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, formatter)
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+thread_local! {
+    static POST_SPAWN_DEADLINE_BARRIER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn with_post_spawn_deadline_barrier<T>(work: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            POST_SPAWN_DEADLINE_BARRIER.with(|barrier| barrier.set(self.0));
+        }
+    }
+    let previous = POST_SPAWN_DEADLINE_BARRIER.with(|barrier| barrier.replace(true));
+    let _restore = Restore(previous);
+    work()
+}
+
 impl OwnedProcess {
     /// Spawn the fully prepared `command` under owned containment.
     ///
@@ -198,20 +241,28 @@ impl OwnedProcess {
     pub(crate) fn spawn_with_bounded_drop_until(
         command: Command,
         deadline: Instant,
-    ) -> std::io::Result<Self> {
+    ) -> Result<Self, OwnedSpawnFailure> {
         if Instant::now() >= deadline {
-            return Err(std::io::Error::other(
+            return Err(OwnedSpawnFailure::before_spawn(std::io::Error::other(
                 "owned process held deadline expired before spawn",
-            ));
+            )));
         }
-        let mut owned = Self::spawn(command)?;
+        let mut owned = Self::spawn(command).map_err(OwnedSpawnFailure::before_spawn)?;
         // Store the original ceiling before any fallible post-spawn observation.
         owned.bounded_drop = true;
         owned.bounded_drop_until = Some(deadline);
+        #[cfg(test)]
+        if POST_SPAWN_DEADLINE_BARRIER.with(|barrier| barrier.replace(false)) {
+            // A real finite clock barrier after real spawn, not a synthetic clock.
+            while Instant::now() < deadline {
+                std::thread::yield_now();
+            }
+        }
         if Instant::now() >= deadline {
-            return Err(std::io::Error::other(
-                "owned process spawn crossed its held deadline",
-            ));
+            return Err(OwnedSpawnFailure {
+                error: std::io::Error::other("owned process spawn crossed its held deadline"),
+                child: Some(owned),
+            });
         }
         Ok(owned)
     }

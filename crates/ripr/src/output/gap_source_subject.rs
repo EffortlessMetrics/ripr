@@ -683,7 +683,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt as _;
         let fixture = NamedStampFixture::new("snapshot-unreadable")?;
         let physical = fixture.physical.join("src/lib.rs");
-        std::fs::set_permissions(&physical, std::fs::Permissions::from_mode(0))
+        std::fs::set_permissions(&physical, std::fs::Permissions::from_mode(0o0))
             .map_err(|error| error.to_string())?;
         // The actual OS must establish this premise; an elevated process does
         // not supply an unreadable-file counterexample.

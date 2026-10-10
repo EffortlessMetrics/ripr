@@ -651,7 +651,7 @@ mod tests {
                 ino: metadata.ino(),
             };
             let deadline = Instant::now()
-                .checked_add(Duration::from_secs(60))
+                .checked_add(Duration::from_mins(1))
                 .ok_or("artifact fixture deadline overflow")?;
             let directory = RetainedDirectory::open_absolute(&identity, 4096, deadline)?;
             Ok(Self {

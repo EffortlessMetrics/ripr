@@ -288,8 +288,10 @@ fn verify_inner(
 }
 
 fn raw_limits(limits: &CompleteVerificationLimits) -> Result<RawCoverageLimits, String> {
-    let native =
-        |value| usize::try_from(value).map_err(|_| "raw bound exceeds native usize".to_string());
+    let native = |value| {
+        usize::try_from(value)
+            .map_err(|error| format!("raw bound exceeds native usize: {error}"))
+    };
     Ok(RawCoverageLimits {
         file_limit: native(limits.file_limit)?,
         max_raw_bytes: native(limits.max_artifact_bytes[0])?,
@@ -1031,7 +1033,7 @@ impl StagedDirectory {
             let name = entry
                 .file_name()
                 .into_string()
-                .map_err(|_| "nonUTF8 extra staged name")?;
+                .map_err(|name| format!("nonUTF8 extra staged name: {name:?}"))?;
             if name != MANIFEST_FILE && !ArtifactRole::ALL.iter().any(|r| r.path() == name) {
                 return Err("unknown extra staged artifact".into());
             }

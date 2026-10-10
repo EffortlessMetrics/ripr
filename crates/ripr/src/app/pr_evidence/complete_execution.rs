@@ -1113,7 +1113,7 @@ mod whole_worker {
         let repo = std::env::current_dir().map_err(|error| format!("whole worker cwd: {error}"))?;
         let mut request =
             match select_request_with_deadline(&repo, &options.head, entry.scalars.deadline)? {
-                RequestedRoute::Complete(request) => request,
+                RequestedRoute::Complete(request) => *request,
                 RequestedRoute::Ordinary => {
                     return Err("whole worker committed request is absent".into());
                 }
@@ -1719,7 +1719,7 @@ mod whole_worker {
             let profile = capture_profile()?;
             let budget = CaptureBudget::new(&profile, 0)?;
             let deadline = Instant::now()
-                .checked_add(Duration::from_secs(60))
+                .checked_add(Duration::from_mins(1))
                 .ok_or("capture fixture deadline overflow")?;
             let called = std::cell::Cell::new(0);
             let captured = capture_original_data(
@@ -1780,7 +1780,7 @@ mod whole_worker {
             let (fixture, base, head) = CaptureFixture::new()?;
             let profile = capture_profile()?;
             let deadline = Instant::now()
-                .checked_add(Duration::from_secs(60))
+                .checked_add(Duration::from_mins(1))
                 .ok_or("capture refusal fixture deadline overflow")?;
             let budget = CaptureBudget::new(&profile, 0)?;
             let called = std::cell::Cell::new(0);

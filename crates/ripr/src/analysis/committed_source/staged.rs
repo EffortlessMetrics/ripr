@@ -983,7 +983,7 @@ mod tests {
             fs::create_dir(&path).map_err(|error| format!("fixture directory: {error}"))?;
             Ok(Self {
                 path,
-                deadline: Instant::now() + Duration::from_secs(60),
+                deadline: Instant::now() + Duration::from_mins(1),
             })
         }
 

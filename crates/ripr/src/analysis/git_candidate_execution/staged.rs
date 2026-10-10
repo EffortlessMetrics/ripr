@@ -548,7 +548,7 @@ mod tests {
             let fixture = Self {
                 root,
                 repository,
-                deadline: Instant::now() + Duration::from_secs(60),
+                deadline: Instant::now() + Duration::from_mins(1),
             };
             fixture.git(&["init", "--initial-branch=main", "--object-format=sha1"])?;
             Ok(fixture)
@@ -640,12 +640,12 @@ mod tests {
         }
     }
 
-    fn inventory(
-        authority: &FrozenSourceAuthority,
-    ) -> (
+    type ObservedInventory = (
         Vec<(PathBuf, FrozenFileMode, String, u64, [u8; 32])>,
         Vec<PathBuf>,
-    ) {
+    );
+
+    fn inventory(authority: &FrozenSourceAuthority) -> ObservedInventory {
         (
             authority
                 .inventory()

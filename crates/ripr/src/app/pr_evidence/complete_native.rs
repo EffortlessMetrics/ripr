@@ -322,7 +322,7 @@ mod tests {
             "held deadline expired",
         )?;
         error(
-            verify_held_deadline(1, Instant::now() + Duration::from_secs(60)),
+            verify_held_deadline(1, Instant::now() + Duration::from_mins(1)),
             "exceeds the admitted duration",
         )?;
         Ok(())

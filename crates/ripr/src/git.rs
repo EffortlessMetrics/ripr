@@ -4300,7 +4300,9 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
         }
     }
 
-    fn complete_batch_fixture() -> Result<(CompleteBatchFixture, Vec<(String, Vec<u8>)>), String> {
+    type CompleteBatchInput = (CompleteBatchFixture, Vec<(String, Vec<u8>)>);
+
+    fn complete_batch_fixture() -> Result<CompleteBatchInput, String> {
         let root = std::env::temp_dir().join(format!(
             "ripr-complete-batch-{}-{}",
             std::process::id(),
@@ -4322,7 +4324,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             ("ripr.toml", b"[analysis]\nmode = \"draft\"\n".to_vec()),
             (
                 "large.dat",
-                (0..1_000_000).map(|n| (n % 251) as u8).collect(),
+                (0_u8..=250).cycle().take(1_000_000).collect(),
             ),
         ] {
             std::fs::write(fixture.0.join(name), &bytes).map_err(|error| error.to_string())?;

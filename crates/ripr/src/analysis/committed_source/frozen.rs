@@ -1403,7 +1403,7 @@ pub(crate) mod tests {
                 dev: metadata.dev(),
                 ino: metadata.ino(),
             };
-            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            let deadline = std::time::Instant::now() + std::time::Duration::from_mins(1);
             let anchor = Arc::new(SourceAnchor::new(
                 RetainedDirectory::open_absolute(&identity, 4096, deadline)?,
                 SourceBudget::new(1024 * 1024, 100, 32 * 1024, 1024 * 1024)?,
@@ -1657,7 +1657,7 @@ pub(crate) mod tests {
             dev: metadata.dev(),
             ino: metadata.ino(),
         };
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_mins(1);
         let unsealed = Arc::new(SourceAnchor::new(
             RetainedDirectory::open_absolute(&identity, 4096, deadline)?,
             SourceBudget::new(1024, 10, 1024, 1024)?,

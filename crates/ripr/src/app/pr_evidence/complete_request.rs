@@ -19,7 +19,7 @@ const METADATA_BYTES: usize = 64 * 1024;
 #[derive(Debug)]
 pub(super) enum RequestedRoute {
     Ordinary,
-    Complete(CompleteRequest),
+    Complete(Box<CompleteRequest>),
 }
 
 /// Serializable DATA only. Deserializing this does not select a route or mint
@@ -125,7 +125,7 @@ impl CompleteRequest {
             &self.requested_head,
             worker_deadline,
         )? {
-            RequestedRoute::Complete(request) => request,
+            RequestedRoute::Complete(request) => *request,
             RequestedRoute::Ordinary => {
                 return Err("committed complete request disappeared after selection".into());
             }
@@ -225,7 +225,7 @@ impl CompleteRequest {
             &self.requested_head,
             worker_deadline,
         )? {
-            RequestedRoute::Complete(request) => request,
+            RequestedRoute::Complete(request) => *request,
             RequestedRoute::Ordinary => {
                 return Err("committed complete request disappeared after selection".into());
             }
@@ -512,7 +512,7 @@ pub(super) fn select_request_with_deadline(
         return Err("complete request repository directory identity is invalid".into());
     }
     let binding = CommittedRequestBinding::from_original_blob(blob_oid.as_str(), original_bytes)?;
-    Ok(RequestedRoute::Complete(CompleteRequest {
+    Ok(RequestedRoute::Complete(Box::new(CompleteRequest {
         requested_head: requested_head.into(),
         invocation_repository,
         work_tree,
@@ -522,7 +522,7 @@ pub(super) fn select_request_with_deadline(
         head_tree,
         binding,
         preflight,
-    }))
+    })))
 }
 
 fn parse_policy(bytes: &[u8]) -> Result<Policy, String> {
@@ -697,7 +697,7 @@ mod tests {
     }
     fn complete(route: RequestedRoute) -> Result<CompleteRequest, String> {
         match route {
-            RequestedRoute::Complete(request) => Ok(request),
+            RequestedRoute::Complete(request) => Ok(*request),
             RequestedRoute::Ordinary => Err("supported committed policy selected ordinary".into()),
         }
     }

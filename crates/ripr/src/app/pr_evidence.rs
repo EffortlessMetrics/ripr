@@ -1263,9 +1263,11 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
             let path = &finding.probe.location.file;
             let absolute = path.is_absolute();
             let relative = if absolute {
-                path.strip_prefix(&analysis_root).map_err(|_| {
+                path.strip_prefix(&analysis_root).map_err(|error| {
                     authority
-                        .refuse_external_effect("PR evidence probe escaped its bound logical root")
+                        .refuse_external_effect(&format!(
+                            "PR evidence probe escaped its bound logical root: {error}"
+                        ))
                         .to_string()
                 })?
             } else {

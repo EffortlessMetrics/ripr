@@ -1785,7 +1785,7 @@ mod tests {
         changed.base = Some("original-base".into());
         assert!(!check_equal(&input, &changed));
         let mut changed_options = options.clone();
-        changed_options.git_timeout = Some(std::time::Duration::from_secs(300));
+        changed_options.git_timeout = Some(std::time::Duration::from_mins(5));
         assert!(!analysis_equal(&options, &changed_options));
         changed_options = options.clone();
         changed_options.base = Some("original-base".into());
@@ -1867,7 +1867,7 @@ mod tests {
         let mut xtask = installed.clone();
         xtask.base = Some(options.base.clone());
         xtask.include_unchanged_tests = false;
-        xtask.git_timeout = Some(std::time::Duration::from_secs(300));
+        xtask.git_timeout = Some(std::time::Duration::from_mins(5));
         validate_surface_seed(&xtask, ProducerSurface::Xtask, &options)?;
         error(
             validate_surface_seed(&xtask, ProducerSurface::Installed, &options),
@@ -2004,7 +2004,7 @@ mod tests {
                 ino: metadata.ino(),
             };
             let deadline = Instant::now()
-                .checked_add(Duration::from_secs(60))
+                .checked_add(Duration::from_mins(1))
                 .ok_or("whole artifact fixture deadline overflow")?;
             let directory = RetainedDirectory::open_absolute(&identity, 4096, deadline)?;
             Ok(Self {
@@ -2566,7 +2566,7 @@ mod tests {
             check: false,
         };
         let deadline = Instant::now()
-            .checked_add(Duration::from_secs(60))
+            .checked_add(Duration::from_mins(1))
             .ok_or("binding fixture clock overflow")?;
         let mut request = match select_request_with_deadline(&root, "HEAD", deadline)? {
             RequestedRoute::Complete(request) => request,
