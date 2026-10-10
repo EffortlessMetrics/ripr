@@ -489,6 +489,222 @@ mod tests {
         }
     }
 
+    #[cfg(all(
+        target_os = "linux",
+        feature = "lang-rust",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    mod snapshot_link_fixture {
+        use std::fs::{File, Metadata, OpenOptions};
+        use std::os::fd::AsRawFd;
+        use std::os::unix::ffi::OsStrExt;
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        use std::path::{Path, PathBuf};
+
+        #[cfg(target_arch = "x86_64")]
+        const DIRECTORY: i32 = 0x10000;
+        #[cfg(target_arch = "aarch64")]
+        const DIRECTORY: i32 = 0x4000;
+        #[cfg(target_arch = "x86_64")]
+        const NOFOLLOW: i32 = 0x20000;
+        #[cfg(target_arch = "aarch64")]
+        const NOFOLLOW: i32 = 0x8000;
+        const NONBLOCK: i32 = 0x800;
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        struct DirectoryIdentity {
+            dev: u64,
+            ino: u64,
+            uid: u32,
+            gid: u32,
+            mode: u32,
+            nlink: u64,
+        }
+
+        impl DirectoryIdentity {
+            fn capture(metadata: &Metadata) -> Result<Self, String> {
+                if !metadata.is_dir() {
+                    return Err("fixture parent is not a directory".into());
+                }
+                Ok(Self {
+                    dev: metadata.dev(),
+                    ino: metadata.ino(),
+                    uid: metadata.uid(),
+                    gid: metadata.gid(),
+                    mode: metadata.mode(),
+                    nlink: metadata.nlink(),
+                })
+            }
+        }
+
+        struct Directory {
+            file: File,
+            identity: DirectoryIdentity,
+        }
+
+        impl Directory {
+            fn open(path: &Path) -> Result<Self, String> {
+                let file = OpenOptions::new()
+                    .read(true)
+                    .custom_flags(DIRECTORY | NOFOLLOW | NONBLOCK)
+                    .open(path)
+                    .map_err(|error| error.to_string())?;
+                let identity = DirectoryIdentity::capture(
+                    &file.metadata().map_err(|error| error.to_string())?,
+                )?;
+                let directory = Self { file, identity };
+                directory.check(path)?;
+                Ok(directory)
+            }
+
+            fn child(&self, leaf: &str) -> PathBuf {
+                Path::new("/proc/self/fd")
+                    .join(self.file.as_raw_fd().to_string())
+                    .join(leaf)
+            }
+
+            fn check(&self, path: &Path) -> Result<(), String> {
+                for metadata in [self.file.metadata(), std::fs::symlink_metadata(path)] {
+                    let metadata = metadata.map_err(|error| error.to_string())?;
+                    if DirectoryIdentity::capture(&metadata)? != self.identity {
+                        return Err("fixture parent identity changed".into());
+                    }
+                }
+                Ok(())
+            }
+        }
+
+        #[derive(Clone, Copy, PartialEq, Eq)]
+        struct LinkIdentity {
+            dev: u64,
+            ino: u64,
+            uid: u32,
+            gid: u32,
+            mode: u32,
+            nlink: u64,
+            len: u64,
+            mtime: i64,
+            mtime_nsec: i64,
+            ctime: i64,
+            ctime_nsec: i64,
+        }
+
+        impl LinkIdentity {
+            fn capture(metadata: &Metadata, target_len: usize, uid: u32) -> Result<Self, String> {
+                if !metadata.file_type().is_symlink()
+                    || metadata.nlink() != 1
+                    || metadata.uid() != uid
+                    || metadata.len() != target_len as u64
+                {
+                    return Err("fixture link type, owner, count or length changed".into());
+                }
+                Ok(Self {
+                    dev: metadata.dev(),
+                    ino: metadata.ino(),
+                    uid: metadata.uid(),
+                    gid: metadata.gid(),
+                    mode: metadata.mode(),
+                    nlink: metadata.nlink(),
+                    len: metadata.len(),
+                    mtime: metadata.mtime(),
+                    mtime_nsec: metadata.mtime_nsec(),
+                    ctime: metadata.ctime(),
+                    ctime_nsec: metadata.ctime_nsec(),
+                })
+            }
+        }
+
+        // This owns one link created by a cooperating test. It grants no
+        // production cleanup authority or concurrent-writer atomicity.
+        pub(super) struct OwnedLink {
+            physical: PathBuf,
+            target: PathBuf,
+            root: Directory,
+            source: Directory,
+            created: Option<LinkIdentity>,
+            attempted: bool,
+        }
+
+        impl OwnedLink {
+            pub(super) fn pin(physical: &Path, target: &Path) -> Result<Self, String> {
+                let target_len = target.as_os_str().as_bytes().len();
+                if target_len == 0 || target_len > 4096 {
+                    return Err("fixture link target exceeds its admitted length".into());
+                }
+                let root = Directory::open(physical)?;
+                let source = Directory::open(&root.child("src"))?;
+                Ok(Self {
+                    physical: physical.to_path_buf(),
+                    target: target.to_path_buf(),
+                    root,
+                    source,
+                    created: None,
+                    attempted: false,
+                })
+            }
+
+            fn parents(&self) -> Result<(), String> {
+                self.root.check(&self.physical)?;
+                self.source.check(&self.root.child("src"))
+            }
+
+            pub(super) fn path(&self) -> PathBuf {
+                self.source.child("lib.rs")
+            }
+
+            fn observe(&self) -> Result<LinkIdentity, String> {
+                self.parents()?;
+                let path = self.path();
+                let before = LinkIdentity::capture(
+                    &std::fs::symlink_metadata(&path).map_err(|error| error.to_string())?,
+                    self.target.as_os_str().as_bytes().len(),
+                    self.source.identity.uid,
+                )?;
+                if std::fs::read_link(&path).map_err(|error| error.to_string())? != self.target {
+                    return Err("fixture link target changed".into());
+                }
+                let after = LinkIdentity::capture(
+                    &std::fs::symlink_metadata(&path).map_err(|error| error.to_string())?,
+                    self.target.as_os_str().as_bytes().len(),
+                    self.source.identity.uid,
+                )?;
+                self.parents()?;
+                if after != before {
+                    return Err("fixture link changed during observation".into());
+                }
+                Ok(after)
+            }
+
+            pub(super) fn record_created(&mut self) -> Result<(), String> {
+                if self.created.is_some() || self.attempted {
+                    return Err("fixture link capture was already claimed".into());
+                }
+                self.created = Some(self.observe()?);
+                Ok(())
+            }
+
+            pub(super) fn remove_once(&mut self) -> Result<(), String> {
+                if self.attempted {
+                    return Err("fixture link teardown was already claimed".into());
+                }
+                self.attempted = true;
+                let created = self.created.ok_or("fixture link was not recorded")?;
+                if self.observe()? != created {
+                    return Err("fixture link identity changed before teardown".into());
+                }
+                self.parents()?;
+                let path = self.path();
+                std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+                self.parents()?;
+                match std::fs::symlink_metadata(path) {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(error) => Err(error.to_string()),
+                    Ok(_) => Err("fixture link remains after exact unlink".into()),
+                }
+            }
+        }
+    }
+
     #[cfg(all(target_os = "linux", feature = "lang-rust"))]
     fn stamp_error<T>(result: Result<T, String>, family: &str) -> Result<String, String> {
         match result {
@@ -651,6 +867,9 @@ mod tests {
     fn frozen_stamp_refuses_link_and_directory_reads_without_successful_fallback()
     -> Result<(), String> {
         let link = NamedStampFixture::new("snapshot-link")?;
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let mut owned_link =
+            snapshot_link_fixture::OwnedLink::pin(&link.physical, &link.root.join("src/lib.rs"))?;
         std::fs::remove_file(link.physical.join("src/lib.rs"))
             .map_err(|error| error.to_string())?;
         std::os::unix::fs::symlink(
@@ -658,10 +877,26 @@ mod tests {
             link.physical.join("src/lib.rs"),
         )
         .map_err(|error| error.to_string())?;
-        frozen::with_context(Some(link.authority.clone()), || {
-            stamp_error(source_file_digest(&link.root, "src/lib.rs"), "symlink")?;
-            Ok::<_, String>(())
-        })?;
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        owned_link.record_created()?;
+        let refusal = frozen::with_context(Some(link.authority.clone()), || {
+            stamp_error(source_file_digest(&link.root, "src/lib.rs"), "symlink")
+        });
+        #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+        let refusal = match (refusal, owned_link.remove_once()) {
+            (Ok(refusal), Ok(())) => Ok(refusal),
+            (Err(primary), Ok(())) => Err(primary),
+            (Ok(_), Err(teardown)) => Err(teardown),
+            (Err(primary), Err(teardown)) => {
+                Err(format!("{primary}; owned fixture teardown: {teardown}"))
+            }
+        };
+        let refusal = refusal?;
+        let sticky = link
+            .authority
+            .ensure_clean()
+            .map_err(|error| error.to_string());
+        assert_eq!(stamp_error(sticky, "symlink")?, refusal);
         let directory = NamedStampFixture::new("snapshot-directory")?;
         frozen::with_context(Some(directory.authority.clone()), || {
             let paths = BTreeSet::from(["folder.rs".to_string()]);
@@ -677,6 +912,46 @@ mod tests {
                 .map_err(|error| error.to_string())?;
             Ok::<_, String>(())
         })
+    }
+
+    #[cfg(all(
+        target_os = "linux",
+        feature = "lang-rust",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    #[test]
+    fn frozen_stamp_link_teardown_preserves_an_unknown_replacement() -> Result<(), String> {
+        let fixture = NamedStampFixture::new("snapshot-link-replacement")?;
+        let mut owned = snapshot_link_fixture::OwnedLink::pin(
+            &fixture.physical,
+            &fixture.root.join("src/lib.rs"),
+        )?;
+        let path = owned.path();
+        std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+        std::os::unix::fs::symlink(fixture.root.join("src/lib.rs"), &path)
+            .map_err(|error| error.to_string())?;
+        owned.record_created()?;
+        // The test deliberately replaces its recorded link. An unconditional
+        // cleanup would delete this different object and fail the control.
+        std::fs::remove_file(&path).map_err(|error| error.to_string())?;
+        std::fs::write(&path, b"unowned replacement").map_err(|error| error.to_string())?;
+        let error = owned
+            .remove_once()
+            .err()
+            .ok_or("unknown replacement was removed")?;
+        assert!(error.contains("fixture link type"));
+        assert_eq!(
+            std::fs::read(&path).map_err(|error| error.to_string())?,
+            b"unowned replacement",
+        );
+        assert!(
+            std::fs::symlink_metadata(&path)
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_file()
+        );
+        assert!(owned.remove_once().is_err(), "refused teardown was retried");
+        Ok(())
     }
 
     #[cfg(all(target_os = "linux", feature = "lang-rust"))]
