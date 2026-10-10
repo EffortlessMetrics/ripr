@@ -134,12 +134,8 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CiRecordCommand(args) => super::ci_record_command(&args),
         XtaskCommand::CiChildReceipt(args) => super::ci_child_receipt(&args),
         XtaskCommand::CiRoutedRustResult(args) => super::ci_routed_rust_result(&args),
-        XtaskCommand::ReleaseServerArchive(args) => {
-            release_server_invocation::archive(&args)
-        }
-        XtaskCommand::ReleaseServerManifest(args) => {
-            release_server_invocation::manifest(&args)
-        }
+        XtaskCommand::ReleaseServerArchive(args) => release_server_invocation::archive(&args),
+        XtaskCommand::ReleaseServerManifest(args) => release_server_invocation::manifest(&args),
         XtaskCommand::ReleaseFinalServerSubjects(args) => {
             super::reports::release_final_subjects::release_final_server_subjects(&args)
         }
@@ -149,9 +145,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::ReleaseUploadVsix(args) => {
             super::reports::release_vsix::release_upload_vsix(&args)
         }
-        XtaskCommand::ReleaseUploadAssets(args) => {
-            release_server_invocation::upload(&args)
-        }
+        XtaskCommand::ReleaseUploadAssets(args) => release_server_invocation::upload(&args),
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),
         XtaskCommand::BunUbCalibration(args) => super::reports::bun_ub_calibration(&args),
