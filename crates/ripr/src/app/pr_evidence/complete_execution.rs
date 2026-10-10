@@ -1940,6 +1940,5 @@ mod whole_worker {
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 pub(super) use whole_worker::{
-    CaptureBudget, QualifiedWholeInvocation, WHOLE_WORKER_FLAG, with_libtest_worker,
-    with_whole_worker,
+    CaptureBudget, QualifiedWholeInvocation, with_libtest_worker,
 };

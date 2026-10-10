@@ -41,24 +41,35 @@ fn supported() -> Result<(), String> {
 }
 
 fn decimal(value: &str) -> Result<u64, String> {
-    if value.is_empty() || value.len() > 20 || value.starts_with('0')
+    if value.is_empty()
+        || value.len() > 20
+        || value.starts_with('0')
         || !value.bytes().all(|byte| byte.is_ascii_digit())
     {
         return Err("native analysis test scalar is not canonical positive decimal".into());
     }
-    value.parse::<u64>().map_err(|error| format!("native analysis test scalar: {error}"))
+    value
+        .parse::<u64>()
+        .map_err(|error| format!("native analysis test scalar: {error}"))
 }
 
-fn argv_prefix(actual: &mut impl Iterator<Item = std::ffi::OsString>, name: &str)
-    -> Result<(), String>
-{
+fn argv_prefix(
+    actual: &mut impl Iterator<Item = std::ffi::OsString>,
+    name: &str,
+) -> Result<(), String> {
     if name != WORKER_TEST_NAME {
         return Err("native analysis test entry name is not fixed".into());
     }
     if actual.next().is_none() {
         return Err("native analysis test lacks actual argv0".into());
     }
-    for expected in ["--ignored", "--exact", name, "--nocapture", "--test-threads=1"] {
+    for expected in [
+        "--ignored",
+        "--exact",
+        name,
+        "--nocapture",
+        "--test-threads=1",
+    ] {
         if actual.next().as_deref() != Some(std::ffi::OsStr::new(expected)) {
             return Err("native analysis test requires its exact actual libtest entry".into());
         }
@@ -66,9 +77,7 @@ fn argv_prefix(actual: &mut impl Iterator<Item = std::ffi::OsString>, name: &str
     Ok(())
 }
 
-pub(super) fn authenticate_actual_libtest_argv(name: &str, args: &[String])
-    -> Result<(), String>
-{
+pub(super) fn authenticate_actual_libtest_argv(name: &str, args: &[String]) -> Result<(), String> {
     if args.len() != 4 {
         return Err("native analysis test requires four scalar filters".into());
     }
@@ -91,8 +100,11 @@ fn actual_scalars(name: &str) -> Result<Vec<String>, String> {
     argv_prefix(&mut actual, name)?;
     let mut scalars = Vec::with_capacity(4);
     for _ in 0..4 {
-        let scalar = actual.next().ok_or("native analysis test lacks a scalar filter")?
-            .into_string().map_err(|error| format!("native analysis test non-UTF8 scalar: {error:?}"))?;
+        let scalar = actual
+            .next()
+            .ok_or("native analysis test lacks a scalar filter")?
+            .into_string()
+            .map_err(|error| format!("native analysis test non-UTF8 scalar: {error:?}"))?;
         decimal(&scalar)?;
         scalars.push(scalar);
     }
@@ -111,6 +123,7 @@ struct ProcessData {
     group: u32,
     start: u64,
 }
+
 impl ProcessData {
     fn observed(actual: &ObservedProcessIdentity) -> Self {
         Self {
@@ -121,7 +134,6 @@ impl ProcessData {
         }
     }
 }
-
 
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -145,18 +157,25 @@ pub(super) struct Witness {
     postflight: bool,
 }
 
-
 struct BoundedBytes(Vec<u8>);
 impl Write for BoundedBytes {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        let next = self.0.len().checked_add(bytes.len())
+        let next = self
+            .0
+            .len()
+            .checked_add(bytes.len())
             .filter(|next| *next <= HEADER_CAP)
             .ok_or_else(|| io::Error::other("native analysis test serialization cap exceeded"))?;
-        self.0.try_reserve_exact(next - self.0.len()).map_err(io::Error::other)?;
+        self.0
+            .try_reserve_exact(next - self.0.len())
+            .map_err(io::Error::other)?;
         self.0.extend_from_slice(bytes);
         Ok(bytes.len())
     }
-    fn flush(&mut self) -> io::Result<()> { Ok(()) }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 fn bounded_json(value: &impl Serialize) -> Result<Vec<u8>, String> {
@@ -169,13 +188,21 @@ fn bounded_json(value: &impl Serialize) -> Result<Vec<u8>, String> {
 fn emit_witness(witness: &Witness, deadline: Instant) -> Result<(), String> {
     checkpoint(deadline)?;
     let bytes = bounded_json(witness)?;
-    if bytes.len().checked_add(WITNESS_PREFIX.len() + 2)
-        .filter(|size| *size <= HEADER_CAP).is_none()
+    if bytes
+        .len()
+        .checked_add(WITNESS_PREFIX.len() + 2)
+        .filter(|size| *size <= HEADER_CAP)
+        .is_none()
     {
         return Err("native analysis test witness cap exceeded".into());
     }
     let mut output = std::io::stdout().lock();
-    for part in [b"\n".as_slice(), WITNESS_PREFIX.as_bytes(), bytes.as_slice(), b"\n"] {
+    for part in [
+        b"\n".as_slice(),
+        WITNESS_PREFIX.as_bytes(),
+        bytes.as_slice(),
+        b"\n",
+    ] {
         let mut offset = 0;
         while offset < part.len() {
             checkpoint(deadline)?;
@@ -190,7 +217,9 @@ fn emit_witness(witness: &Witness, deadline: Instant) -> Result<(), String> {
             }
         }
     }
-    output.flush().map_err(|error| format!("native analysis test witness flush: {error}"))?;
+    output
+        .flush()
+        .map_err(|error| format!("native analysis test witness flush: {error}"))?;
     checkpoint(deadline)
 }
 
@@ -206,11 +235,16 @@ pub(super) fn witness(bytes: &[u8], role: &str) -> Result<Witness, String> {
             }
             let value: Witness = serde_json::from_slice(record)
                 .map_err(|error| format!("native analysis test closed witness: {error}"))?;
-            if value.schema_version != WITNESS_SCHEMA || value.role != role
-                || !value.postflight || value.changed_lines != OWNER_LINES
-                || value.removed_lines != 0 || value.predicate_line != PREDICATE_LINE
-                || value.findings == 0 || value.ordinary_limit >= OWNER_LINES
-                || value.image_bytes == 0 || value.image_bytes > FS_BYTES
+            if value.schema_version != WITNESS_SCHEMA
+                || value.role != role
+                || !value.postflight
+                || value.changed_lines != OWNER_LINES
+                || value.removed_lines != 0
+                || value.predicate_line != PREDICATE_LINE
+                || value.findings == 0
+                || value.ordinary_limit >= OWNER_LINES
+                || value.image_bytes == 0
+                || value.image_bytes > FS_BYTES
                 || value.build_identity != crate::build_identity::cache_identity()
                 || value.build_identity.contains("+process:")
                 || !value.image_sha256.starts_with("sha256:")
@@ -229,93 +263,131 @@ pub(super) fn witness(bytes: &[u8], role: &str) -> Result<Witness, String> {
 fn native_analysis_worker() -> Result<(), String> {
     supported()?;
     let scalars = actual_scalars(WORKER_TEST_NAME)?;
-    with_libtest_worker(&scalars, |invocation, startup, request, options, surface, check, profile| {
-        let deadline = startup.deadline();
-        let mut image = ObservedSelfImage::observe(AS_BYTES, FS_BYTES, deadline)?;
-        let process = ProcessData::observed(invocation.observed_worker());
-        let parent = ProcessData::observed(invocation.observed_parent());
-        let limit = capture_complete_rust_policy()?.changed_rust_line_limit();
-        if limit >= OWNER_LINES { return Err("native analysis worker ordinary guard is not discriminated".into()); }
-        let fresh = prepare(invocation, startup, request, &options, surface, check, &profile)?;
-        let guard = fresh.observe_ordinary_guard()?;
-        if !guard.contains("diff_scope_oversized: 7038 changed Rust lines across 1 Rust files")
-            || !guard.contains(&format!("limit ({limit})"))
-        {
-            return Err(format!("native analysis ordinary guard observation differs: {guard}"));
-        }
-        let analyzed = fresh.execute()?;
-        let mut reached = None;
-        let refusal = analyzed.inspect_then_refuse_publication(|output, data| {
-            let range = format!(
-                "{}...{}",
-                data.subject().base_commit.as_str(),
-                data.subject().head_commit.as_str(),
-            );
-            let numstat = crate::git::with_complete_capture_restriction(
-                deadline,
-                HEADER_CAP,
-                || crate::git::run_git_output_with_deadline(
-                    &data.subject().root,
-                    &["diff", "--no-renames", "--numstat", &range],
-                    None,
-                ),
-            ).map_err(|error| format!("native analysis numstat oracle: {error}"))?;
-            if !numstat.status.success() || numstat.stdout != b"7038\t0\tsrc/lib.rs\n" {
-                return Err("native analysis actual whole-subject numstat differs".into());
+    with_libtest_worker(
+        &scalars,
+        |invocation, startup, request, options, surface, check, profile| {
+            let deadline = startup.deadline();
+            let mut image = ObservedSelfImage::observe(AS_BYTES, FS_BYTES, deadline)?;
+            let process = ProcessData::observed(invocation.observed_worker());
+            let parent = ProcessData::observed(invocation.observed_parent());
+            let limit = capture_complete_rust_policy()?.changed_rust_line_limit();
+            if limit >= OWNER_LINES {
+                return Err(
+                    "native analysis worker ordinary guard is not discriminated".into(),
+                );
             }
-            drop(numstat);
-            let summary = data.coverage().summary();
-            if summary.added_lines != OWNER_LINES || summary.removed_lines != 0
-                || summary.changed_files != 1 || data.changed_paths() != ["src/lib.rs"]
-                || output.partial_scope.is_some() || !output.language_runs.is_empty()
-                || output.findings.is_empty() || output.base.is_some()
+            let fresh = prepare(invocation, startup, request, &options, surface, check, &profile)?;
+            let guard = fresh.observe_ordinary_guard()?;
+            if !guard.contains("diff_scope_oversized: 7038 changed Rust lines across 1 Rust files")
+                || !guard.contains(&format!("limit ({limit})"))
             {
-                return Err("native analysis sealed output/raw denominator differs".into());
+                return Err(format!(
+                    "native analysis ordinary guard observation differs: {guard}"
+                ));
             }
-            let parsed = crate::analysis::diff::parse_unified_diff_bounded_with_metadata(data.canonical_diff())?;
-            if parsed.changed_files.len() != 1 || parsed.changed_files[0].added_lines.len() != OWNER_LINES
-                || !parsed.changed_files[0].removed_lines.is_empty()
-            {
-                return Err("native analysis actual canonical parser denominator differs".into());
-            }
-            let outcome = output.analysis_outcome.as_ref().ok_or("native analysis outcome missing")?;
-            if !outcome.kind.is_complete() || outcome.counts.changed_line_count != OWNER_LINES as u64
-                || outcome.counts.finding_count == 0 || outcome.identity.base_revision.is_some()
-            {
-                return Err("native analysis actual outcome is incomplete".into());
-            }
-            if !output.findings.iter().any(|finding| finding.probe.location.line == PREDICATE_LINE
-                && finding.probe.location.file == data.authority_root().join("src/lib.rs")
-                && finding.probe.owner.as_ref().is_some_and(|owner| owner.0.ends_with("::beyond_boundary"))
-                && finding.probe.expression.contains("value > 5400"))
-            {
-                return Err("native analysis actual predicate finding at line 7034 missing".into());
-            }
-            reached = Some(Witness {
-                schema_version: WITNESS_SCHEMA.into(), role: "worker".into(),
-                process: process.clone(), parent: parent.clone(), worker: process.clone(),
-                image_sha256: image.sha256().into(), image_bytes: image.byte_len(),
-                build_identity: data.build_identity().into(),
-                base: data.subject().base_commit.as_str().into(),
-                head: data.subject().head_commit.as_str().into(),
-                head_tree: data.subject().head_tree.as_str().into(),
-                changed_lines: summary.added_lines, removed_lines: summary.removed_lines,
-                predicate_line: PREDICATE_LINE, findings: output.findings.len(),
-                ordinary_limit: limit, postflight: true,
+            let analyzed = fresh.execute()?;
+            let mut reached = None;
+            let refusal = analyzed.inspect_then_refuse_publication(|output, data| {
+                let range = format!(
+                    "{}...{}",
+                    data.subject().base_commit.as_str(),
+                    data.subject().head_commit.as_str(),
+                );
+                let numstat = crate::git::with_complete_capture_restriction(
+                    deadline,
+                    HEADER_CAP,
+                    || crate::git::run_git_output_with_deadline(
+                        &data.subject().root,
+                        &["diff", "--no-renames", "--numstat", &range],
+                        None,
+                    ),
+                )
+                .map_err(|error| format!("native analysis numstat oracle: {error}"))?;
+                if !numstat.status.success() || numstat.stdout != b"7038\t0\tsrc/lib.rs\n" {
+                    return Err("native analysis actual whole-subject numstat differs".into());
+                }
+                drop(numstat);
+                let summary = data.coverage().summary();
+                if summary.added_lines != OWNER_LINES
+                    || summary.removed_lines != 0
+                    || summary.changed_files != 1
+                    || data.changed_paths() != ["src/lib.rs"]
+                    || output.partial_scope.is_some()
+                    || !output.language_runs.is_empty()
+                    || output.findings.is_empty()
+                    || output.base.is_some()
+                {
+                    return Err("native analysis sealed output/raw denominator differs".into());
+                }
+                let parsed = crate::analysis::diff::parse_unified_diff_bounded_with_metadata(
+                    data.canonical_diff(),
+                )?;
+                if parsed.changed_files.len() != 1
+                    || parsed.changed_files[0].added_lines.len() != OWNER_LINES
+                    || !parsed.changed_files[0].removed_lines.is_empty()
+                {
+                    return Err(
+                        "native analysis actual canonical parser denominator differs".into(),
+                    );
+                }
+                let outcome = output
+                    .analysis_outcome
+                    .as_ref()
+                    .ok_or("native analysis outcome missing")?;
+                if !outcome.kind.is_complete()
+                    || outcome.counts.changed_line_count != OWNER_LINES as u64
+                    || outcome.counts.finding_count == 0
+                    || outcome.identity.base_revision.is_some()
+                {
+                    return Err("native analysis actual outcome is incomplete".into());
+                }
+                if !output.findings.iter().any(|finding|
+                    finding.probe.location.line == PREDICATE_LINE
+                    && finding.probe.location.file == data.authority_root().join("src/lib.rs")
+                    && finding.probe.owner.as_ref()
+                        .is_some_and(|owner| owner.0.ends_with("::beyond_boundary"))
+                    && finding.probe.expression.contains("value > 5400")
+                )
+                {
+                    return Err(
+                        "native analysis actual predicate finding at line 7034 missing".into(),
+                    );
+                }
+                reached = Some(Witness {
+                    schema_version: WITNESS_SCHEMA.into(),
+                    role: "worker".into(),
+                    process: process.clone(),
+                    parent: parent.clone(),
+                    worker: process.clone(),
+                    image_sha256: image.sha256().into(),
+                    image_bytes: image.byte_len(),
+                    build_identity: data.build_identity().into(),
+                    base: data.subject().base_commit.as_str().into(),
+                    head: data.subject().head_commit.as_str().into(),
+                    head_tree: data.subject().head_tree.as_str().into(),
+                    changed_lines: summary.added_lines,
+                    removed_lines: summary.removed_lines,
+                    predicate_line: PREDICATE_LINE,
+                    findings: output.findings.len(),
+                    ordinary_limit: limit,
+                    postflight: true,
+                });
+                Ok(())
             });
-            Ok(())
-        });
-        match refusal {
-            Err(error) if error == NATIVE_ANALYSIS_PUBLICATION_REFUSAL => {}
-            Err(error) => return Err(format!("native analysis postflight failed: {error}")),
-            Ok(()) => return Err("native analysis control unexpectedly granted publication".into()),
-        }
-        // A DATA witness is emitted only after the inspector AND genuine
-        // consuming postflight/source finalization reached the exact refusal.
-        image.recheck()?;
-        let report = reached.ok_or("native analysis inspector was not reached")?;
-        emit_witness(&report, deadline)
-    })
+            match refusal {
+                Err(error) if error == NATIVE_ANALYSIS_PUBLICATION_REFUSAL => {}
+                Err(error) => return Err(format!("native analysis postflight failed: {error}")),
+                Ok(()) => return Err(
+                    "native analysis control unexpectedly granted publication".into(),
+                ),
+            }
+            // A DATA witness is emitted only after the inspector AND genuine
+            // consuming postflight/source finalization reached the exact refusal.
+            image.recheck()?;
+            let report = reached.ok_or("native analysis inspector was not reached")?;
+            emit_witness(&report, deadline)
+        },
+    )
 }
 
 #[test]
