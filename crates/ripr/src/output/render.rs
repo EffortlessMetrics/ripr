@@ -935,7 +935,7 @@ mod tests {
         let root = temp_root("ripr-render-frozen-stamp")?;
         std::fs::create_dir_all(root.join("src")).map_err(|error| error.to_string())?;
         std::fs::create_dir_all(root.join("tests")).map_err(|error| error.to_string())?;
-        std::fs::write(root.join("src/lib.rs"), "pub fn named_head() {}\n")
+        std::fs::write(root.join("src/lib.rs"), "pub const HELP_TEXT: &str = \"named help\";\n")
             .map_err(|error| error.to_string())?;
         std::fs::write(root.join("tests/check.rs"), "fn named_test() {}\n")
             .map_err(|error| error.to_string())?;
@@ -955,6 +955,10 @@ mod tests {
         let authority = prepared.frozen_source_authority(&root)
             .map_err(|error| error.to_string())?;
         let mut finding = sample_finding("src/lib.rs", 1);
+        // The actual CHECK ledger accepts Rust presentation-text alignment;
+        // an arbitrary ErrorPath expression does not produce a stamp record.
+        finding.probe.family = ProbeFamily::FieldConstruction;
+        finding.probe.expression = "pub const HELP_TEXT: &str = \"named help\";".into();
         finding.related_tests[0].file = "tests/check.rs".into();
         let mut output = check_output_with(vec![finding]);
         output.root = root.clone();
@@ -963,6 +967,14 @@ mod tests {
         assert_eq!(super::render_check_json_for_pr_evidence(&output, &config)?, ordinary);
         let ordinary_value: serde_json::Value = serde_json::from_str(&ordinary)
             .map_err(|error| error.to_string())?;
+        assert_eq!(
+            ordinary_value["finding_alignment"]["items"][0]["evidence_class"],
+            "presentation_text",
+        );
+        let projected = super::super::gap_decision_ledger::check_output_subject_paths(
+            &ordinary, &root,
+        )?;
+        assert!(projected.contains("src/lib.rs"));
         let stamped = ordinary_value["source_subject"]["files"].as_array()
             .ok_or("ordinary render lacks source subject files")?;
         assert!(stamped.iter().any(|file| file["path"] == "src/lib.rs"));
