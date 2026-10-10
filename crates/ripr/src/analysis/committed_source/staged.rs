@@ -167,10 +167,6 @@ impl RetainedDirectory {
         })
     }
 
-    pub(crate) fn identity(&self) -> &DirectoryIdentity {
-        &self.identity
-    }
-
     /// The path is an identifier, never a substitute for the held descriptor.
     pub(crate) fn path_identifier(&self) -> &str {
         &self.identity.path
