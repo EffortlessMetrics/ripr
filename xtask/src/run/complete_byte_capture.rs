@@ -1,9 +1,39 @@
-//! Complete-mode byte capture; ordinary captures retain their existing owner.
-//! Output is admissible only after qualified group settlement and complete drains.
+//! Complete-only forwarding to the shared qualified byte owner.
+//! Real success/error receipts are preserved by the explicit-clock entrypoint.
 
 use super::{ByteCaptureBudget, TimedBytesOutput};
+use ripr::process_owner::{
+    CompleteByteCapture, CompleteCaptureBudget, CompleteCaptureError, CompleteCapturedBytes,
+};
+use std::any::Any;
 use std::path::Path;
+use std::process::ExitStatus;
+use std::sync::Arc;
+use std::time::Instant;
 
+/// Forward the exact actual observation and consume-once receipt without rebuilding
+/// them from status, paths or saved data. The caller owns invocation authentication.
+pub(crate) fn capture_complete_bytes_in_dir_with_deadline<L: Any + Send + Sync>(
+    command: (&Path, &[String]),
+    source: (&Path, Option<&[u8]>),
+    env_remove: &[&str],
+    execution: (CompleteCaptureBudget, &str),
+    held_deadline: Instant,
+    lease: Arc<L>,
+    settled: impl FnMut(ExitStatus),
+) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
+    CompleteByteCapture::capture_with_deadline(
+        command,
+        source,
+        env_remove,
+        execution,
+        held_deadline,
+        lease,
+        settled,
+    )
+}
+
+/// Compatibility DTO only. Its discarded receipt cannot authorize stage cleanup.
 pub(crate) fn capture_complete_bytes_in_dir_with_budget(
     program: &Path,
     args: &[String],
@@ -12,211 +42,98 @@ pub(crate) fn capture_complete_bytes_in_dir_with_budget(
     budget: ByteCaptureBudget,
     error_context: &str,
 ) -> Result<TimedBytesOutput, String> {
-    #[cfg(target_os = "linux")]
-    {
-        linux::capture(
-            program,
-            args,
-            source,
-            env_remove,
-            budget,
-            error_context,
-            |_| {},
-        )
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = (program, args, source, env_remove, budget);
-        Err(format!(
-            "complete byte capture for {error_context} requires qualified Linux group ownership; spawn refused"
-        ))
+    capture_legacy(
+        program,
+        args,
+        source,
+        env_remove,
+        budget,
+        error_context,
+        |_| {},
+    )
+}
+
+fn capture_legacy(
+    program: &Path,
+    args: &[String],
+    source: (&Path, Option<&[u8]>),
+    env_remove: &[&str],
+    budget: ByteCaptureBudget,
+    error_context: &str,
+    settled: impl FnMut(ExitStatus),
+) -> Result<TimedBytesOutput, String> {
+    let limits = CompleteCaptureBudget::new(
+        budget.timeout,
+        source.1.map_or(0, |bytes| bytes.len()),
+        budget.stdout_bytes,
+        budget.stderr_bytes,
+    );
+    // Preserve the old execution/settlement/drain semantics. The new explicit
+    // clock route is separate and requires the invocation owner's held bound.
+    match CompleteByteCapture::capture(
+        (program, args),
+        source,
+        env_remove,
+        (limits, error_context),
+        Arc::new(()),
+        settled,
+    ) {
+        Ok(output) => {
+            let (status, stdout, stderr, duration, timed_out, _receipt) = output.into_parts();
+            Ok(TimedBytesOutput {
+                status: Some(status),
+                stdout,
+                stderr,
+                duration,
+                timed_out,
+            })
+        }
+        Err(mut error) if error.is_timeout_only() => {
+            // Only the shared owner's real timeout-only classification permits
+            // legacy timeout DATA. Other failures never become successful output.
+            let (status, stdout, stderr, duration, timed_out) = error
+                .take_failed_observation()
+                .ok_or_else(|| format!("{}; timeout observation unavailable", error.message()))?;
+            Ok(TimedBytesOutput {
+                status: Some(status),
+                stdout,
+                stderr,
+                duration,
+                timed_out,
+            })
+        }
+        Err(error) => Err(error.message().to_string()),
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(test, target_os = "linux"))]
 mod linux {
-    use super::super::{
-        POST_KILL_DRAIN_GRACE, configure_timed_child_command, drain_byte_reader_bounded,
-        owned_capture_group::OwnedCaptureGuard, spawn_byte_reader_channel,
-    };
+    use super::super::configure_timed_child_command;
     use super::*;
     use ripr::process_owner::OwnedProcess;
-    use std::io::Write;
-    use std::process::{Command, ExitStatus, Stdio};
-    use std::sync::mpsc;
+    use std::process::{Command, Stdio};
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
-    // The private observer receives only a status already reaped by the qualified
-    // guard. Native controls use it to establish actual leader exit0 on refusal.
-    pub(super) fn capture(
+    fn capture(
         program: &Path,
         args: &[String],
         source: (&Path, Option<&[u8]>),
         env_remove: &[&str],
         budget: ByteCaptureBudget,
         error_context: &str,
-        mut settled: impl FnMut(ExitStatus),
+        settled: impl FnMut(ExitStatus),
     ) -> Result<TimedBytesOutput, String> {
-        let (cwd, input) = source;
-        // The caller owns input admission. Make the asynchronous copy fallible
-        // before spawning; the existing interface supplies no separate input cap.
-        let input = input
-            .map(|bytes| {
-                let mut copy = Vec::new();
-                copy.try_reserve_exact(bytes.len())
-                    .map_err(|error| format!("reserve stdin for {error_context}: {error}"))?;
-                copy.extend_from_slice(bytes);
-                Ok::<_, String>(copy)
-            })
-            .transpose()?;
-        if budget.timeout.is_zero() {
-            return Err(format!(
-                "complete byte capture for {error_context} has no deadline"
-            ));
-        }
-        let started = Instant::now();
-        let mut command = Command::new(program);
-        command.args(args).current_dir(cwd);
-        configure_timed_child_command(&mut command);
-        for name in env_remove {
-            command.env_remove(name);
-        }
-        command.stdout(Stdio::piped()).stderr(Stdio::piped());
-        command.stdin(if input.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        });
-        let child = OwnedProcess::spawn_with_bounded_drop(command)
-            .map_err(|error| format!("failed to run {error_context}: {error}"))?;
-        // No try_wait, callback or pipe acquisition may precede this leader lease.
-        let mut guard = OwnedCaptureGuard::new(child)?;
-        let result = (|| {
-            let stdout = guard
-                .child()
-                .stdout_pipe()
-                .take()
-                .ok_or_else(|| format!("failed to capture stdout for {error_context}"))?;
-            let stderr = guard
-                .child()
-                .stderr_pipe()
-                .take()
-                .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
-            let (stdout_handle, stdout_rx) =
-                spawn_byte_reader_channel(stdout, Some(("stdout", budget.stdout_bytes)));
-            let (stderr_handle, stderr_rx) =
-                spawn_byte_reader_channel(stderr, Some(("stderr", budget.stderr_bytes)));
-            let input_completion = if let Some(bytes) = input {
-                let mut stdin = guard
-                    .child()
-                    .stdin_pipe()
-                    .take()
-                    .ok_or_else(|| format!("failed to capture stdin for {error_context}"))?;
-                let (sender, receiver) = mpsc::channel();
-                let _writer = thread::Builder::new()
-                    .name("complete-process-stdin".to_string())
-                    .spawn(move || {
-                        let result = stdin.write_all(&bytes);
-                        drop(stdin);
-                        let _ = sender.send(result);
-                    })
-                    .map_err(|error| format!("start stdin writer for {error_context}: {error}"))?;
-                Some(receiver)
-            } else {
-                None
-            };
-            let outcome = match guard.wait(started, budget.timeout) {
-                Ok(outcome) => {
-                    settled(outcome.status);
-                    Ok(outcome)
-                }
-                Err(reason) => match guard.abort() {
-                    Ok(()) => {
-                        // abort() confirms settlement before this cached-status
-                        // observation; a refused group must never be reaped here.
-                        if let Some(status) = guard.child().try_wait().map_err(|error| {
-                            format!("settled leader status for {error_context}: {error}")
-                        })? {
-                            settled(status);
-                        }
-                        Err(reason)
-                    }
-                    Err(cleanup) => Err(format!(
-                        "{reason}; qualified group cleanup unconfirmed: {cleanup}"
-                    )),
-                },
-            };
-            // One shared grace covers both output streams and the stdin writer.
-            // Even an original wait failure is retained while drains are attempted.
-            let drain_deadline = Instant::now() + POST_KILL_DRAIN_GRACE;
-            let remaining = || drain_deadline.saturating_duration_since(Instant::now());
-            let stdout = drain_byte_reader_bounded(
-                stdout_rx,
-                stdout_handle,
-                remaining(),
-                "stdout",
-                error_context,
-                true,
-            );
-            let stderr = drain_byte_reader_bounded(
-                stderr_rx,
-                stderr_handle,
-                remaining(),
-                "stderr",
-                error_context,
-                true,
-            );
-            let input_result = if let Some(receiver) = input_completion {
-                match receiver.recv_timeout(remaining()) {
-                    Ok(Ok(())) => Ok(()),
-                    Ok(Err(error))
-                        if outcome.as_ref().is_ok_and(|wait| wait.timed_out)
-                            && error.kind() == std::io::ErrorKind::BrokenPipe =>
-                    {
-                        Ok(())
-                    }
-                    Ok(Err(error)) => Err(format!("write stdin for {error_context}: {error}")),
-                    Err(error) => Err(format!("stdin completion for {error_context}: {error}")),
-                }
-            } else {
-                Ok(())
-            };
-            let mut errors = Vec::new();
-            for error in [
-                outcome.as_ref().err(),
-                stdout.as_ref().err(),
-                stderr.as_ref().err(),
-                input_result.as_ref().err(),
-            ]
-            .into_iter()
-            .flatten()
-            {
-                errors.push(error.as_str());
-            }
-            if !errors.is_empty() {
-                return Err(format!("{error_context}: {}", errors.join("; ")));
-            }
-            let outcome = outcome?;
-            Ok(TimedBytesOutput {
-                status: Some(outcome.status),
-                stdout: stdout?,
-                stderr: stderr?,
-                duration: started.elapsed(),
-                timed_out: outcome.timed_out,
-            })
-        })();
-        match result {
-            Ok(output) => Ok(output),
-            Err(error) => match guard.abort() {
-                Ok(()) => Err(error),
-                Err(cleanup) => Err(format!(
-                    "{error}; qualified group cleanup unconfirmed: {cleanup}"
-                )),
-            },
-        }
+        capture_legacy(
+            program,
+            args,
+            source,
+            env_remove,
+            budget,
+            error_context,
+            settled,
+        )
     }
-
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -239,11 +156,7 @@ mod linux {
                 Ok(Self(path))
             }
         }
-        impl Drop for Fixture {
-            fn drop(&mut self) {
-                let _ = fs::remove_dir_all(&self.0);
-            }
-        }
+        // Preserve failed controls for owner verification; no unsettled Drop cleanup.
         fn budget(timeout: Duration) -> ByteCaptureBudget {
             ByteCaptureBudget {
                 timeout,
@@ -446,6 +359,131 @@ mod linux {
             no_live_member(record(&fixture.0.join("descendant"))?)?;
             if started.elapsed() > Duration::from_secs(9) {
                 return Err("complete timeout exceeded settlement/drain bound".to_string());
+            }
+            Ok(())
+        }
+        #[test]
+        fn forwarder_preserves_real_worker_lease_and_consume_once_error_receipt()
+        -> Result<(), String> {
+            let fixture = Fixture::new()?;
+            let lease = Arc::new(());
+            let foreign = Arc::new(());
+            let deadline = Instant::now()
+                .checked_add(Duration::from_secs(3))
+                .ok_or("deadline overflow")?;
+            let output = capture_complete_bytes_in_dir_with_deadline(
+                (
+                    Path::new("/bin/sh"),
+                    &shell("cat /proc/$$/stat > primary; printf actual-bytes"),
+                ),
+                (&fixture.0, None),
+                &[],
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(3), 0, 64, 64),
+                    "real receipt forwarder",
+                ),
+                deadline,
+                lease.clone(),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
+            let (status, stdout, stderr, _, timed_out, receipt) = output.into_parts();
+            assert_eq!(status.code(), Some(0));
+            assert_eq!(stdout, b"actual-bytes");
+            assert_eq!(stderr, b"");
+            assert!(!timed_out);
+            if !receipt.matches_lease(&lease) || receipt.matches_lease(&foreign) {
+                return Err("forwarder lost actual unique lease identity".to_string());
+            }
+            let actual = record(&fixture.0.join("primary"))?;
+            let worker = receipt.observed_worker();
+            assert_eq!(
+                (worker.pid(), worker.group(), worker.start()),
+                (actual.0, actual.1, actual.2)
+            );
+            assert_eq!(receipt.observed_parent().pid(), std::process::id());
+            assert_eq!(receipt.settled_status(), Some(status));
+            no_live_member(actual)?;
+            drop(receipt);
+            assert_eq!(Arc::strong_count(&lease), 1);
+            let deadline = Instant::now()
+                .checked_add(Duration::from_secs(3))
+                .ok_or("deadline overflow")?;
+            let mut error = match capture_complete_bytes_in_dir_with_deadline(
+                (Path::new("/bin/sh"), &shell("printf four")),
+                (&fixture.0, None),
+                &[],
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(3), 0, 3, 64),
+                    "real overflow forwarder",
+                ),
+                deadline,
+                lease.clone(),
+                |_| {},
+            ) {
+                Err(error) => error,
+                Ok(_) => {
+                    return Err(
+                        "forwarder converted actual overflow to successful bytes".to_string()
+                    );
+                }
+            };
+            if error.is_timeout_only()
+                || !error
+                    .message()
+                    .contains("stdout exceeds its 3-byte output budget")
+            {
+                return Err(format!("wrong real overflow failure: {error}"));
+            }
+            let cleanup = error
+                .take_cleanup_receipt()
+                .ok_or("actual combined cleanup receipt was lost")?;
+            if !cleanup.matches_lease(&lease)
+                || cleanup.matches_lease(&foreign)
+                || error.take_cleanup_receipt().is_some()
+            {
+                return Err("failed receipt mismatched lease or was transferable twice".to_string());
+            }
+            assert_eq!(
+                cleanup.settled_status().and_then(|status| status.code()),
+                Some(0)
+            );
+            drop(cleanup);
+            drop(error);
+            assert_eq!(Arc::strong_count(&lease), 1);
+            Ok(())
+        }
+
+        #[test]
+        fn expired_forwarder_refuses_before_executable_lookup_without_receipt() -> Result<(), String>
+        {
+            let fixture = Fixture::new()?;
+            let lease = Arc::new(());
+            let mut observed = false;
+            let mut error = match capture_complete_bytes_in_dir_with_deadline(
+                (Path::new("missing-expired-capture-executable"), &[]),
+                (&fixture.0, None),
+                &[],
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(3), 0, 64, 64),
+                    "expired forwarder",
+                ),
+                Instant::now(),
+                lease.clone(),
+                |_| observed = true,
+            ) {
+                Err(error) => error,
+                Ok(_) => return Err("expired capture admitted output".to_string()),
+            };
+            if observed
+                || !error.message().contains("deadline")
+                || !error.matches_lease(&lease)
+                || error.observed_outcome().is_some()
+                || error.take_cleanup_receipt().is_some()
+            {
+                return Err(format!(
+                    "expired capture reached observation/cleanup or wrong refusal: {error}"
+                ));
             }
             Ok(())
         }

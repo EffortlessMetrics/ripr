@@ -3,7 +3,7 @@
 //! Qualified settlement and the semantic owner's exact manifest are still required.
 
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct StageRoleBudget {
@@ -218,6 +218,34 @@ impl ParentStage {
             Err("parent staging requires reviewed Linux x86_64/aarch64 descriptor semantics; creation refused".to_string())
         }
     }
+    /// Use the caller's held clock for every setup phase; never restart it here.
+    /// Cooperative checks cannot preempt filesystem syscalls or scheduling.
+    pub(crate) fn create_with_deadline(
+        parent: &Path,
+        nonce: &str,
+        budget: StageBudget,
+        held_deadline: Instant,
+    ) -> Result<Self, String> {
+        stage_time(held_deadline)?;
+        validate_nonce(nonce)?;
+        budget.validate()?;
+        stage_time(held_deadline)?;
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        {
+            native::create_with_deadline(parent, nonce, budget, Some(held_deadline))
+        }
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
+        {
+            let _ = parent;
+            Err("parent staging requires reviewed Linux x86_64/aarch64 descriptor semantics; creation refused".to_string())
+        }
+    }
     pub(crate) fn stage_root(&self) -> &Path {
         &self.root
     }
@@ -264,6 +292,31 @@ impl ParentStage {
             Err("parent staging is unavailable on this target".to_string())
         }
     }
+    /// The supplied absolute clock bounds observed inventory, not closure authority.
+    pub(crate) fn audit_closed_inventory_with_deadline(
+        &self,
+        held_deadline: Instant,
+    ) -> Result<StageInventory, String> {
+        stage_time(held_deadline).map_err(|error| {
+            format!("{error}; parent stage retained at {}", self.root.display())
+        })?;
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        {
+            self.owned
+                .inventory_with_deadline(held_deadline)
+                .map_err(|error| self.retained(error))
+        }
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
+        {
+            Err("parent staging is unavailable on this target".to_string())
+        }
+    }
     #[cfg(all(
         target_os = "linux",
         any(target_arch = "x86_64", target_arch = "aarch64")
@@ -271,6 +324,41 @@ impl ParentStage {
     fn retained(&self, error: String) -> String {
         format!("{error}; parent stage retained at {}", self.root.display())
     }
+}
+
+fn stage_time(deadline: Instant) -> Result<(), String> {
+    if Instant::now() >= deadline {
+        Err("stage operation deadline exceeded".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn inventory_deadline(
+    held_deadline: Instant,
+    inventory_timeout: Duration,
+) -> Result<Instant, String> {
+    stage_time(held_deadline)?;
+    let phase_deadline = Instant::now()
+        .checked_add(inventory_timeout)
+        .ok_or("stage inventory deadline overflow")?;
+    let deadline = held_deadline.min(phase_deadline);
+    stage_time(deadline)?;
+    Ok(deadline)
+}
+
+fn with_time<T>(
+    deadline: Option<Instant>,
+    operation: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    if let Some(deadline) = deadline {
+        stage_time(deadline)?;
+    }
+    let result = operation()?;
+    if let Some(deadline) = deadline {
+        stage_time(deadline)?;
+    }
+    Ok(result)
 }
 
 fn validate_nonce(nonce: &str) -> Result<(), String> {
@@ -316,9 +404,13 @@ mod native {
         private: bool,
     }
     impl PinnedDir {
-        fn open(path: PathBuf, private: bool) -> Result<Self, String> {
-            let expected = metadata(&path)?;
-            let file = open_entry(&path, true, &expected)?;
+        fn open_until(
+            path: PathBuf,
+            private: bool,
+            deadline: Option<Instant>,
+        ) -> Result<Self, String> {
+            let expected = metadata_until(&path, deadline)?;
+            let file = open_entry_until(&path, true, &expected, deadline)?;
             let owned = Self {
                 path,
                 file,
@@ -326,7 +418,7 @@ mod native {
                 ino: expected.ino(),
                 private,
             };
-            owned.check()?;
+            owned.check_until(deadline)?;
             Ok(owned)
         }
         fn fd_path(&self) -> PathBuf {
@@ -336,15 +428,16 @@ mod native {
             basename(name)?;
             Ok(self.fd_path().join(name))
         }
-        fn open_at(
+        fn open_at_until(
             parent: &Self,
             name: &OsStr,
             path: PathBuf,
             private: bool,
+            deadline: Option<Instant>,
         ) -> Result<Self, String> {
             let anchored = parent.child(name)?;
-            let expected = metadata(&anchored)?;
-            let file = open_entry(&anchored, true, &expected)?;
+            let expected = metadata_until(&anchored, deadline)?;
+            let file = open_entry_until(&anchored, true, &expected, deadline)?;
             let owned = Self {
                 path,
                 file,
@@ -352,15 +445,19 @@ mod native {
                 ino: expected.ino(),
                 private,
             };
-            owned.check()?;
+            owned.check_until(deadline)?;
             Ok(owned)
         }
         fn check(&self) -> Result<Metadata, String> {
-            let opened = self
-                .file
-                .metadata()
-                .map_err(|error| format!("retained stage descriptor: {error}"))?;
-            let named = metadata(&self.path)?;
+            self.check_until(None)
+        }
+        fn check_until(&self, deadline: Option<Instant>) -> Result<Metadata, String> {
+            let opened = with_time(deadline, || {
+                self.file
+                    .metadata()
+                    .map_err(|error| format!("retained stage descriptor: {error}"))
+            })?;
+            let named = metadata_until(&self.path, deadline)?;
             if !opened.is_dir()
                 || !named.is_dir()
                 || opened.dev() != self.dev
@@ -396,10 +493,13 @@ mod native {
     }
     impl PinnedStage {
         fn check(&self) -> Result<(), String> {
-            self.parent.check()?;
-            self.root.check()?;
+            self.check_until(None)
+        }
+        fn check_until(&self, deadline: Option<Instant>) -> Result<(), String> {
+            self.parent.check_until(deadline)?;
+            self.root.check_until(deadline)?;
             for role in &self.roles {
-                role.check()?;
+                role.check_until(deadline)?;
             }
             Ok(())
         }
@@ -419,7 +519,15 @@ mod native {
             let deadline = Instant::now()
                 .checked_add(self.budget.inventory_timeout)
                 .ok_or("stage inventory deadline overflow")?;
-            self.check()?;
+            self.inventory_with_deadline(deadline)
+        }
+        pub(super) fn inventory_with_deadline(
+            &self,
+            deadline: Instant,
+        ) -> Result<StageInventory, String> {
+            let deadline = inventory_deadline(deadline, self.budget.inventory_timeout)?;
+            self.check_until(Some(deadline))?;
+            stage_time(deadline)?;
             let mut scan = Scan {
                 budget: self.budget,
                 aggregate: StageUsage::default(),
@@ -428,16 +536,22 @@ mod native {
                 seen: HashSet::new(),
                 deadline,
             };
-            let root_meta = self.root.check()?;
+            let root_meta = self.root.check_until(Some(deadline))?;
             let root_name = self.root.path.file_name().ok_or("stage basename missing")?;
             let admitted =
                 scan.admit(None, &root_meta, basename(root_name)?.len() as u64, (0, 0))?;
             scan.record(admitted, String::new())?;
             let mut present = [false; 3];
-            for entry in fs::read_dir(self.root.fd_path())
-                .map_err(|error| format!("stage roles: {error}"))?
-            {
+            let mut root_entries = with_time(Some(deadline), || {
+                fs::read_dir(self.root.fd_path()).map_err(|error| format!("stage roles: {error}"))
+            })?;
+            loop {
                 scan.time()?;
+                let entry = root_entries.next();
+                scan.time()?;
+                let Some(entry) = entry else {
+                    break;
+                };
                 let entry = entry.map_err(|error| format!("stage role entry: {error}"))?;
                 let name = entry.file_name();
                 let text = basename(&name)?;
@@ -450,8 +564,8 @@ mod native {
                 }
                 present[role.index()] = true;
                 let pinned = &self.roles[role.index()];
-                let observed = metadata(&self.root.child(&name)?)?;
-                let opened = pinned.check()?;
+                let observed = metadata_until(&self.root.child(&name)?, Some(deadline))?;
+                let opened = pinned.check_until(Some(deadline))?;
                 same_entry(&observed, &opened)?;
             }
             if present != [true; 3] {
@@ -461,7 +575,7 @@ mod native {
             for role in ROLES {
                 scan.time()?;
                 let pinned = &self.roles[role.index()];
-                let observed = pinned.check()?;
+                let observed = pinned.check_until(Some(deadline))?;
                 let admitted =
                     scan.admit(Some(role), &observed, role.name().len() as u64, (1, 0))?;
                 scan.record(admitted, copy_text(role.name())?)?;
@@ -471,11 +585,12 @@ mod native {
                     .try_reserve(1)
                     .map_err(|error| format!("reserve stage directory walk: {error}"))?;
                 pending.push(Pending {
-                    directory: PinnedDir::open_at(
+                    directory: PinnedDir::open_at_until(
                         &self.root,
                         OsStr::new(role.name()),
                         pinned.path.clone(),
                         true,
+                        Some(deadline),
                     )?,
                     relative: copy_text(role.name())?,
                     role,
@@ -485,11 +600,18 @@ mod native {
             }
             while let Some(item) = pending.pop() {
                 scan.time()?;
-                item.directory.check()?;
-                for entry in fs::read_dir(item.directory.fd_path())
-                    .map_err(|error| format!("stage directory entries: {error}"))?
-                {
+                item.directory.check_until(Some(deadline))?;
+                let mut directory_entries = with_time(Some(deadline), || {
+                    fs::read_dir(item.directory.fd_path())
+                        .map_err(|error| format!("stage directory entries: {error}"))
+                })?;
+                loop {
                     scan.time()?;
+                    let entry = directory_entries.next();
+                    scan.time()?;
+                    let Some(entry) = entry else {
+                        break;
+                    };
                     let entry = entry.map_err(|error| format!("stage entry: {error}"))?;
                     let name = entry.file_name();
                     let text = basename(&name)?;
@@ -500,7 +622,7 @@ mod native {
                         .ok_or("stage role depth overflow")?;
                     scan.depth(item.role, depth, role_depth)?;
                     let path = item.directory.child(&name)?;
-                    let before = metadata(&path)?;
+                    let before = metadata_until(&path, Some(deadline))?;
                     // Admit counts/bytes before path copies or retained walk growth.
                     let admitted = scan.admit(
                         Some(item.role),
@@ -509,10 +631,12 @@ mod native {
                         (depth, role_depth),
                     )?;
                     let is_dir = before.is_dir();
-                    let opened = open_entry(&path, is_dir, &before)?;
-                    let observed = opened
-                        .metadata()
-                        .map_err(|error| format!("stage opened entry: {error}"))?;
+                    let opened = open_entry_until(&path, is_dir, &before, Some(deadline))?;
+                    let observed = with_time(Some(deadline), || {
+                        opened
+                            .metadata()
+                            .map_err(|error| format!("stage opened entry: {error}"))
+                    })?;
                     same_entry(&before, &observed)?;
                     let relative = join_name(&item.relative, text)?;
                     scan.record(admitted, copy_text(&relative)?)?;
@@ -535,10 +659,10 @@ mod native {
                         });
                     }
                 }
-                item.directory.check()?;
+                item.directory.check_until(Some(deadline))?;
             }
             scan.time()?;
-            self.check()?;
+            self.check_until(Some(deadline))?;
             Ok(StageInventory {
                 entries: scan.entries,
                 aggregate: scan.aggregate,
@@ -734,9 +858,15 @@ mod native {
         name.to_str()
             .ok_or_else(|| "stage entry basename is not UTF-8".to_string())
     }
+    #[cfg(test)]
     fn metadata(path: &Path) -> Result<Metadata, String> {
-        fs::symlink_metadata(path)
-            .map_err(|error| format!("stage metadata {}: {error}", path.display()))
+        metadata_until(path, None)
+    }
+    fn metadata_until(path: &Path, deadline: Option<Instant>) -> Result<Metadata, String> {
+        with_time(deadline, || {
+            fs::symlink_metadata(path)
+                .map_err(|error| format!("stage metadata {}: {error}", path.display()))
+        })
     }
     fn same_entry(expected: &Metadata, opened: &Metadata) -> Result<(), String> {
         if expected.dev() != opened.dev()
@@ -750,22 +880,30 @@ mod native {
         }
         Ok(())
     }
-    fn open_entry(path: &Path, directory: bool, expected: &Metadata) -> Result<File, String> {
+    fn open_entry_until(
+        path: &Path,
+        directory: bool,
+        expected: &Metadata,
+        deadline: Option<Instant>,
+    ) -> Result<File, String> {
         if expected.file_type().is_symlink() || (!expected.is_dir() && !expected.is_file()) {
             return Err("stage entry is a link or unsupported file type".to_string());
         }
-        let file = OpenOptions::new()
-            .read(true)
-            .custom_flags(NOFOLLOW | NONBLOCK | if directory { DIRECTORY } else { 0 })
-            .open(path)
-            .map_err(|error| format!("stage no-follow open {}: {error}", path.display()))?;
+        let file = with_time(deadline, || {
+            OpenOptions::new()
+                .read(true)
+                .custom_flags(NOFOLLOW | NONBLOCK | if directory { DIRECTORY } else { 0 })
+                .open(path)
+                .map_err(|error| format!("stage no-follow open {}: {error}", path.display()))
+        })?;
         same_entry(
             expected,
-            &file
-                .metadata()
-                .map_err(|error| format!("stage descriptor metadata: {error}"))?,
+            &with_time(deadline, || {
+                file.metadata()
+                    .map_err(|error| format!("stage descriptor metadata: {error}"))
+            })?,
         )?;
-        same_entry(expected, &metadata(path)?)?;
+        same_entry(expected, &metadata_until(path, deadline)?)?;
         Ok(file)
     }
     fn copy_text(text: &str) -> Result<String, String> {
@@ -791,20 +929,29 @@ mod native {
         result.push_str(name);
         Ok(result)
     }
+    #[cfg(test)]
     fn pin_observed_parent(parent: &Path, observed: &Metadata) -> Result<PinnedDir, String> {
+        pin_observed_parent_until(parent, observed, None)
+    }
+    fn pin_observed_parent_until(
+        parent: &Path,
+        observed: &Metadata,
+        deadline: Option<Instant>,
+    ) -> Result<PinnedDir, String> {
         // Keep the original observation through canonicalization and descriptor
         // acquisition, then recheck the supplied spelling before any mkdir.
         if !observed.is_dir() {
             return Err("stage parent is not a regular directory".to_string());
         }
-        let canonical =
-            fs::canonicalize(parent).map_err(|error| format!("canonical stage parent: {error}"))?;
+        let canonical = with_time(deadline, || {
+            fs::canonicalize(parent).map_err(|error| format!("canonical stage parent: {error}"))
+        })?;
         if canonical.to_str().is_none() {
             return Err("stage parent is not UTF-8".to_string());
         }
-        let pinned = PinnedDir::open(canonical, false)?;
-        same_entry(observed, &pinned.check()?)?;
-        same_entry(observed, &metadata(parent)?)?;
+        let pinned = PinnedDir::open_until(canonical, false, deadline)?;
+        same_entry(observed, &pinned.check_until(deadline)?)?;
+        same_entry(observed, &metadata_until(parent, deadline)?)?;
         Ok(pinned)
     }
     pub(super) fn create(
@@ -812,8 +959,20 @@ mod native {
         nonce: &str,
         budget: StageBudget,
     ) -> Result<ParentStage, String> {
-        let observed_parent = metadata(parent)?;
-        let parent = pin_observed_parent(parent, &observed_parent)?;
+        create_with_deadline(parent, nonce, budget, None)
+    }
+    pub(super) fn create_with_deadline(
+        parent: &Path,
+        nonce: &str,
+        budget: StageBudget,
+        deadline: Option<Instant>,
+    ) -> Result<ParentStage, String> {
+        let time = || deadline.map(stage_time).transpose().map(|_| ());
+        time()?;
+        let observed_parent = metadata_until(parent, deadline)?;
+        time()?;
+        let parent = pin_observed_parent_until(parent, &observed_parent, deadline)?;
+        time()?;
         let name = format!("ripr-complete-{nonce}");
         let root_path = parent.path.join(&name);
         if root_path.to_str().is_none() {
@@ -822,23 +981,53 @@ mod native {
         let result = (|| {
             let mut builder = fs::DirBuilder::new();
             builder.mode(0o700);
+            time()?;
             builder
                 .create(parent.child(OsStr::new(&name))?)
                 .map_err(|error| format!("fresh private stage creation: {error}"))?;
-            let root = PinnedDir::open_at(&parent, OsStr::new(&name), root_path.clone(), true)?;
+            time()?;
+            let root = PinnedDir::open_at_until(
+                &parent,
+                OsStr::new(&name),
+                root_path.clone(),
+                true,
+                deadline,
+            )?;
+            time()?;
             for role in ROLES {
+                time()?;
                 builder
                     .create(root.child(OsStr::new(role.name()))?)
                     .map_err(|error| format!("fresh stage role {}: {error}", role.name()))?;
+                time()?;
             }
             let source = root_path.join("source");
             let spool = root_path.join("spool");
             let artifacts = root_path.join("artifacts");
             let roles = [
-                PinnedDir::open_at(&root, OsStr::new("source"), source.clone(), true)?,
-                PinnedDir::open_at(&root, OsStr::new("spool"), spool.clone(), true)?,
-                PinnedDir::open_at(&root, OsStr::new("artifacts"), artifacts.clone(), true)?,
+                PinnedDir::open_at_until(
+                    &root,
+                    OsStr::new("source"),
+                    source.clone(),
+                    true,
+                    deadline,
+                )?,
+                PinnedDir::open_at_until(
+                    &root,
+                    OsStr::new("spool"),
+                    spool.clone(),
+                    true,
+                    deadline,
+                )?,
+                PinnedDir::open_at_until(
+                    &root,
+                    OsStr::new("artifacts"),
+                    artifacts.clone(),
+                    true,
+                    deadline,
+                )?,
             ];
+            time()?;
             let owned = PinnedStage {
                 parent,
                 root,
@@ -853,7 +1042,12 @@ mod native {
                 artifacts,
                 owned,
             };
-            stage.audit_closed_inventory()?;
+            if let Some(deadline) = deadline {
+                stage.audit_closed_inventory_with_deadline(deadline)?;
+            } else {
+                stage.audit_closed_inventory()?;
+            }
+            time()?;
             Ok(stage)
         })();
         result.map_err(|error| {
@@ -1217,6 +1411,44 @@ mod native {
         }
 
         #[test]
+        fn explicit_stage_clock_retains_on_expiry_and_recovers() -> Result<(), String> {
+            let fixture = Fixture::new()?;
+            let nonce = format!("{:0128x}", NEXT.fetch_add(1, Ordering::Relaxed));
+            let deadline = Instant::now()
+                .checked_add(Duration::from_secs(3))
+                .ok_or("test deadline overflow")?;
+            let stage =
+                ParentStage::create_with_deadline(&fixture.parent, &nonce, budget(), deadline)?;
+            let partial = stage.source_root().join("authenticated-observation-only");
+            io(fs::write(&partial, b"retained"))?;
+            let binding = stage.worker_binding()?;
+            refusal(
+                stage.audit_closed_inventory_with_deadline(Instant::now()),
+                "stage operation deadline exceeded",
+            )?;
+            assert_eq!(io(fs::read(&partial))?, b"retained");
+            assert_eq!(stage.worker_binding()?, binding);
+            let recovered = stage.audit_closed_inventory_with_deadline(deadline)?;
+            assert_eq!(recovered.aggregate.files, 1);
+            assert_eq!(recovered.aggregate.logical_bytes, 8);
+            assert_eq!(
+                recovered.closure,
+                StageInventoryClosure::RequiresQualifiedSettlementAndExpectedManifest
+            );
+            // No fresh clock is manufactured on the explicit entrypoint; passing
+            // the same expired Instant remains a refusal even after recovery.
+            let expired = Instant::now();
+            for _ in 0..2 {
+                refusal(
+                    stage.audit_closed_inventory_with_deadline(expired),
+                    "stage operation deadline exceeded",
+                )?;
+            }
+            assert_eq!(stage.audit_closed_inventory()?.aggregate.files, 1);
+            Ok(())
+        }
+
+        #[test]
         fn worker_success_failure_kill_overflow_timeout_retain_and_recover() -> Result<(), String> {
             let fixture = Fixture::new()?;
             // Existing qualified capture is the sole process owner. No status,
@@ -1365,6 +1597,113 @@ mod tests {
         refusal(
             ParentStage::create(Path::new("missing-stage-parent"), &nonce, limits),
             "finite inventory deadline",
+        )
+    }
+    #[test]
+    fn expired_stage_setup_refuses_before_parent_lookup() -> Result<(), String> {
+        refusal(
+            ParentStage::create_with_deadline(
+                Path::new("missing-stage-parent"),
+                &"a".repeat(128),
+                budget(),
+                Instant::now(),
+            ),
+            "stage operation deadline exceeded",
+        )
+    }
+    #[test]
+    fn held_clock_refuses_after_an_admitted_filesystem_operation() -> Result<(), String> {
+        let witness =
+            std::env::current_exe().map_err(|error| format!("test executable: {error}"))?;
+        let deadline = Instant::now()
+            .checked_add(Duration::from_millis(100))
+            .ok_or("test deadline overflow")?;
+        let mut entered = false;
+        refusal(
+            with_time(Some(deadline), || {
+                entered = true;
+                let observed = std::fs::metadata(&witness)
+                    .map_err(|error| format!("actual filesystem witness: {error}"))?;
+                if !observed.is_file() || observed.len() == 0 {
+                    return Err("filesystem witness is not a nonempty regular file".to_string());
+                }
+                // Cross the original Instant inside the same helper that wraps
+                // native stage syscalls. A reset/removal of postflight must fail.
+                std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+                Ok(observed)
+            }),
+            "stage operation deadline exceeded",
+        )?;
+        if !entered {
+            return Err("held-clock control never admitted its filesystem operation".to_string());
+        }
+        // Refusal precedes operations on subsequent entries; it grants no fresh
+        // clock merely because a previous observed result was otherwise valid.
+        refusal(
+            with_time(Some(deadline), || {
+                Err::<(), _>("expired clock reached another operation".to_string())
+            }),
+            "stage operation deadline exceeded",
+        )
+    }
+    #[test]
+    fn inventory_phase_and_held_ceilings_both_refuse_and_preserve() -> Result<(), String> {
+        let before = Instant::now();
+        let held = before
+            .checked_add(Duration::from_secs(5))
+            .ok_or("test held deadline overflow")?;
+        let phase_timeout = Duration::from_millis(100);
+        let phase = inventory_deadline(held, phase_timeout)?;
+        let after = Instant::now();
+        if phase < before + phase_timeout || phase > after + phase_timeout || phase >= held {
+            return Err("inventory phase ceiling was not retained".to_string());
+        }
+        let shorter_held = Instant::now()
+            .checked_add(Duration::from_millis(100))
+            .ok_or("test short held deadline overflow")?;
+        if inventory_deadline(shorter_held, Duration::from_secs(5))? != shorter_held {
+            return Err("inventory replaced the earlier held deadline".to_string());
+        }
+        refusal(
+            inventory_deadline(Instant::now(), Duration::from_secs(5)),
+            "stage operation deadline exceeded",
+        )?;
+        refusal(
+            inventory_deadline(held, Duration::MAX),
+            "stage inventory deadline overflow",
+        )
+    }
+    #[test]
+    fn inventory_phase_refuses_work_while_long_held_clock_remains_live() -> Result<(), String> {
+        let witness =
+            std::env::current_exe().map_err(|error| format!("test executable: {error}"))?;
+        let held = Instant::now()
+            .checked_add(Duration::from_secs(5))
+            .ok_or("test held deadline overflow")?;
+        let deadline = inventory_deadline(held, Duration::from_millis(100))?;
+        let mut entered = false;
+        refusal(
+            with_time(Some(deadline), || {
+                entered = true;
+                let observed = std::fs::metadata(&witness)
+                    .map_err(|error| format!("actual inventory witness: {error}"))?;
+                if !observed.is_file() || observed.len() == 0 {
+                    return Err("inventory witness is not a nonempty regular file".to_string());
+                }
+                std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+                Ok(observed)
+            }),
+            "stage operation deadline exceeded",
+        )?;
+        if !entered {
+            return Err("inventory control never admitted actual work".to_string());
+        }
+        stage_time(held)?;
+        refusal(
+            with_time(Some(deadline), || {
+                Err::<(), _>("expired inventory phase admitted another entry".to_string())
+            }),
+            "stage operation deadline exceeded",
         )
     }
     #[cfg(not(all(

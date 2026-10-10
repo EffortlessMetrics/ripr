@@ -32,6 +32,19 @@
 //! passthrough whose termination kills and reaps the direct child, with the
 //! Unix process-group authority unchanged in its callers.
 
+mod qualified_capture;
+
+#[doc(hidden)]
+pub use qualified_capture::{
+    CompleteByteCapture, CompleteCaptureBudget, CompleteCaptureError, CompleteCaptureReceipt,
+    CompleteCapturedBytes,
+};
+#[cfg(target_os = "linux")]
+#[doc(hidden)]
+pub use qualified_capture::{
+    ObservedProcessIdentity, QualifiedGroupOwner, QualifiedGroupSettlement, QualifiedGroupWait,
+};
+
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
@@ -109,6 +122,8 @@ pub struct OwnedProcess {
     child: std::process::Child,
     #[cfg(not(windows))]
     bounded_drop: bool,
+    #[cfg(target_os = "linux")]
+    bounded_drop_until: Option<Instant>,
 }
 
 impl OwnedProcess {
@@ -140,6 +155,8 @@ impl OwnedProcess {
             Ok(Self {
                 child,
                 bounded_drop: false,
+                #[cfg(target_os = "linux")]
+                bounded_drop_until: None,
             })
         }
     }
@@ -163,6 +180,67 @@ impl OwnedProcess {
         {
             Ok(owned)
         }
+    }
+
+    /// Bind direct-child fallback to an already admitted absolute ceiling.
+    /// This remains cooperative; a blocked syscall cannot be preempted here.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn spawn_with_bounded_drop_until(
+        command: Command,
+        deadline: Instant,
+    ) -> std::io::Result<Self> {
+        if Instant::now() >= deadline {
+            return Err(std::io::Error::other("owned process held deadline expired before spawn"));
+        }
+        let mut owned = Self::spawn(command)?;
+        // Store the original ceiling before any fallible post-spawn observation.
+        owned.bounded_drop = true;
+        owned.bounded_drop_until = Some(deadline);
+        if Instant::now() >= deadline {
+            return Err(std::io::Error::other("owned process spawn crossed its held deadline"));
+        }
+        Ok(owned)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn reap_until(&mut self, deadline: Instant) -> bool {
+        let mut backoff = PollBackoff::new();
+        loop {
+            if Instant::now() >= deadline {
+                return false;
+            }
+            let observed = self.child.try_wait();
+            if Instant::now() >= deadline {
+                return false;
+            }
+            match observed {
+                Ok(Some(_)) => return true,
+                Ok(None) => backoff.sleep(Some(deadline)),
+                Err(_) => return false,
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn drop_until(&mut self, held_deadline: Instant) {
+        let deadline = Instant::now()
+            .checked_add(FALLBACK_REAP_BUDGET)
+            .map_or(held_deadline, |phase| phase.min(held_deadline));
+        if Instant::now() >= deadline {
+            return;
+        }
+        let observed = self.child.try_wait();
+        if Instant::now() >= deadline || observed.is_ok_and(|status| status.is_some()) {
+            return;
+        }
+        let killed = self.request_kill();
+        if Instant::now() >= deadline {
+            return;
+        }
+        if killed.is_ok() {
+            let _reaped = self.reap_until(deadline);
+        }
+        // Failure/expiry leaves cleanup unconfirmed; Drop grants no receipt.
     }
 
     /// The child's process id.
@@ -365,6 +443,11 @@ pub(crate) fn forbid_rustup_auto_install(command: &mut Command) {
 
 impl Drop for OwnedProcess {
     fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        if let Some(deadline) = self.bounded_drop_until {
+            self.drop_until(deadline);
+            return;
+        }
         // Kill-on-close semantics live at this boundary: whichever path
         // releases the owner — normal completion, timeout, cancellation,
         // wait failure, or panic unwinding — terminates the owned tree and

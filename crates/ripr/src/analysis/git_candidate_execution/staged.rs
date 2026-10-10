@@ -75,6 +75,31 @@ struct TreeRecord<'a> {
     mode: Option<FrozenFileMode>,
 }
 
+/// A borrowed view of the entire validated original tree listing.
+/// This is DATA only; no saved view or callback creates execution authority.
+pub(crate) struct ValidatedNamedTreePlan<'a> {
+    tree: &'a GitObjectId,
+    listing: &'a [u8],
+    records: &'a [TreeRecord<'a>],
+}
+
+impl<'a> ValidatedNamedTreePlan<'a> {
+    pub(crate) fn tree(&self) -> &GitObjectId {
+        self.tree
+    }
+
+    pub(crate) fn original_listing(&self) -> &[u8] {
+        self.listing
+    }
+
+    /// Original order, including directories and every supported file.
+    pub(crate) fn observations(
+        &self,
+    ) -> impl ExactSizeIterator<Item = (&'a str, Option<FrozenFileMode>, &'a str)> + '_ {
+        self.records.iter().map(|record| (record.path, record.mode, record.object))
+    }
+}
+
 fn records<'a>(
     listing: &'a [u8],
     owner: &SourceAnchor,
@@ -109,6 +134,95 @@ fn records<'a>(
     Ok(records)
 }
 
+// Validate structure without decoding paths again or retaining copied names.
+// The temporary usize index fits the existing per-record representation budget.
+fn validated_records<'a>(
+    listing: &'a [u8],
+    owner: &SourceAnchor,
+    deadline: Instant,
+    budget: CompleteTreeBudget,
+) -> Result<Vec<TreeRecord<'a>>, SubjectError> {
+    budget.validate()?;
+    if listing.len() > budget.max_listing_bytes {
+        return Err(failed("staged tree plan listing admission exceeded".into()));
+    }
+    let records = records(listing, owner, budget)?;
+    // Match the actual SourceAnchor raw component predicate without creating
+    // another path decoder or normalizing an alias before observation.
+    for record in &records {
+        checkpoint(deadline)?;
+        let bytes = record.path.as_bytes();
+        if bytes.is_empty() || bytes.contains(&0)
+            || bytes.split(|byte| *byte == b'/')
+                .any(|part| part.is_empty() || part == b"." || part == b"..")
+        {
+            return Err(failed(format!(
+                "staged tree plan path is not canonical: {}", record.path
+            )));
+        }
+    }
+    let index_bytes = records.len().checked_mul(std::mem::size_of::<usize>())
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .filter(|bytes| *bytes <= budget.max_buffered_bytes)
+        .ok_or_else(|| failed("staged tree plan index admission exceeded".into()))?;
+    let index_allowance = records.len().checked_mul(64)
+        .and_then(|bytes| u64::try_from(bytes).ok())
+        .ok_or_else(|| failed("staged tree plan index allowance overflowed".into()))?;
+    if records.len().checked_add(1).is_none_or(|count| count > budget.max_entries)
+        || index_bytes > index_allowance
+    {
+        return Err(failed("staged tree plan index admission exceeded".into()));
+    }
+    let mut order = Vec::new();
+    order.try_reserve_exact(records.len())
+        .map_err(|error| failed(format!("staged tree plan index allocation failed: {error}")))?;
+    order.extend(0..records.len());
+    order.sort_unstable_by(|left, right| records[*left].path.cmp(records[*right].path));
+    for record in &records {
+        checkpoint(deadline)?;
+        for (end, _) in record.path.match_indices('/') {
+            let ancestor = &record.path[..end];
+            let position = order.binary_search_by(|index| records[*index].path.cmp(ancestor))
+                .map_err(|position| failed(format!(
+                    "staged tree inventory parent directory is missing: {ancestor} (insertion position {position})"
+                )))?;
+            if records[order[position]].mode.is_some() {
+                return Err(failed(format!(
+                    "staged tree inventory path overlaps a file: {ancestor}"
+                )));
+            }
+        }
+    }
+    drop(order);
+    Ok(records)
+}
+
+fn observe_plan<T>(
+    tree: &GitObjectId,
+    listing: &[u8],
+    records: &[TreeRecord<'_>],
+    owner: &SourceAnchor,
+    deadline: Instant,
+    callback: impl FnOnce(&ValidatedNamedTreePlan<'_>) -> Result<T, SubjectError>,
+) -> Result<T, SubjectError> {
+    checkpoint(deadline)?;
+    owner.verify_fresh()
+        .map_err(|error| failed(format!("staged tree fresh source refused: {error}")))?;
+    let outcome = callback(&ValidatedNamedTreePlan { tree, listing, records });
+    // Even a rejected callback must not hide a source mutation or reset the
+    // actual clock. No callback result can seal or qualify the source.
+    let postflight = checkpoint(deadline).and_then(|()| owner.verify_fresh()
+        .map_err(|error| failed(format!("staged tree fresh source refused: {error}"))));
+    match (outcome, postflight) {
+        (Ok(value), Ok(())) => Ok(value),
+        (Err(primary), Ok(())) => Err(primary),
+        (Ok(_), Err(error)) => Err(error),
+        (Err(primary), Err(error)) => Err(failed(format!(
+            "{primary}; staged tree plan callback postflight failed: {error}"
+        ))),
+    }
+}
+
 /// Authenticated capture DATA and an actual retained source lease. Construction
 /// is private; conversion still installs no analyzer context or guard exception.
 pub(crate) struct PreparedStagedTree {
@@ -141,13 +255,13 @@ fn checkpoint(deadline: Instant) -> Result<(), SubjectError> {
 /// Capture the entire exact tree through the same inventory and batch grammar.
 /// Only an actual fresh NativeStartup source lease is a supported caller.
 /// Errors never seal a partial source or remove any parent-owned directory.
-pub(crate) fn prepare_staged_named_tree(
+fn capture_staged_listing(
     repository: &Path,
-    tree: GitObjectId,
-    owner: Arc<SourceAnchor>,
+    tree: &GitObjectId,
+    owner: &SourceAnchor,
     deadline: Instant,
     budget: CompleteTreeBudget,
-) -> Result<PreparedStagedTree, SubjectError> {
+) -> Result<Vec<u8>, SubjectError> {
     budget.validate()?;
     if deadline != owner.deadline() {
         return Err(failed("staged tree deadline differs from its actual source anchor".into()));
@@ -168,7 +282,49 @@ pub(crate) fn prepare_staged_named_tree(
     if !listing.status.success() {
         return Err(failed("git ls-tree of the candidate tree failed".into()));
     }
-    let records = records(&listing.stdout, &owner, budget)?;
+    Ok(listing.stdout)
+}
+
+/// Observe a full validated original listing without creating or sealing source
+/// entries. The callback may retain only DATA subject to its own admitted budget.
+pub(crate) fn with_staged_named_tree_plan<T>(
+    repository: &Path,
+    tree: GitObjectId,
+    owner: Arc<SourceAnchor>,
+    deadline: Instant,
+    budget: CompleteTreeBudget,
+    callback: impl FnOnce(&ValidatedNamedTreePlan<'_>) -> Result<T, SubjectError>,
+) -> Result<T, SubjectError> {
+    let listing = capture_staged_listing(repository, &tree, &owner, deadline, budget)?;
+    let records = validated_records(&listing, &owner, deadline, budget)?;
+    observe_plan(&tree, &listing, &records, &owner, deadline, callback)
+}
+
+/// Preserve the existing staged capture route with an empty plan observer.
+pub(crate) fn prepare_staged_named_tree(
+    repository: &Path,
+    tree: GitObjectId,
+    owner: Arc<SourceAnchor>,
+    deadline: Instant,
+    budget: CompleteTreeBudget,
+) -> Result<PreparedStagedTree, SubjectError> {
+    prepare_staged_named_tree_with_plan(repository, tree, owner, deadline, budget, |_| Ok(()))
+}
+
+/// Validate the complete original listing and invoke the fallible observer
+/// before ANY materialization write. Parent-plan authentication belongs to the
+/// caller; this callback and its DATA view grant no analyzer admission.
+pub(crate) fn prepare_staged_named_tree_with_plan(
+    repository: &Path,
+    tree: GitObjectId,
+    owner: Arc<SourceAnchor>,
+    deadline: Instant,
+    budget: CompleteTreeBudget,
+    callback: impl FnOnce(&ValidatedNamedTreePlan<'_>) -> Result<(), SubjectError>,
+) -> Result<PreparedStagedTree, SubjectError> {
+    let listing = capture_staged_listing(repository, &tree, &owner, deadline, budget)?;
+    let records = validated_records(&listing, &owner, deadline, budget)?;
+    observe_plan(&tree, &listing, &records, &owner, deadline, callback)?;
     let mut inventory = FrozenInventory::new();
     for record in records.iter().filter(|record| record.mode.is_none()) {
         checkpoint(deadline)?;
@@ -631,6 +787,344 @@ mod tests {
                 Err(failed("real observer admission refused".into()))
             }), "real observer admission refused")?;
         assert_eq!(calls, 1, "fallible observation must stop immediately");
+        Ok(())
+    }
+
+    #[test]
+    fn original_plan_is_whole_and_lossless_from_nested_cwd_without_source_writes()
+        -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        fixture.write("src/tab\tname.rs", b"pub fn tabbed() {}\n")?;
+        fixture.write("tests/test.py", b"def test_entry():\n    pass\n")?;
+        fixture.write("web/index.ts", b"export const entry = 1;\n")?;
+        let tree = fixture.tree()?;
+        let expected = fixture.git(&[
+            "ls-tree", "-r", "-t", "-z", "--full-tree", tree.as_str(),
+        ])?.into_bytes();
+        let mut views = Vec::new();
+        for (name, repository) in [
+            ("whole-plan", fixture.repository.clone()),
+            ("nested-plan", fixture.repository.join("src")),
+        ] {
+            let owner = fixture.anchor(name)?;
+            let view = with_staged_named_tree_plan(
+                &repository, tree.clone(), owner.clone(), fixture.deadline, budget(),
+                |plan| {
+                    assert_eq!(plan.tree(), &tree);
+                    Ok((
+                        plan.original_listing().to_vec(),
+                        plan.observations().map(|(path, mode, object)| (
+                            path.to_string(), mode, object.to_string(),
+                        )).collect::<Vec<_>>(),
+                    ))
+                },
+            ).map_err(|error| error.to_string())?;
+            assert_eq!(view.0, expected, "original NUL listing changed");
+            assert_eq!(view.1.iter().map(|row| row.0.as_str()).collect::<Vec<_>>(),
+                vec!["src", "src/lib.rs", "src/tab\tname.rs", "tests",
+                    "tests/test.py", "web", "web/index.ts"]);
+            owner.verify_fresh()?;
+            assert_eq!(fs::read_dir(owner.path_identifier())
+                .map_err(|error| error.to_string())?.count(), 0);
+            views.push(view);
+        }
+        assert_eq!(views[0], views[1], "nested cwd narrowed or rewrote the plan");
+        let empty = Fixture::new()?;
+        let empty_tree = empty.tree()?;
+        let owner = empty.anchor("empty-plan")?;
+        with_staged_named_tree_plan(
+            &empty.repository, empty_tree.clone(), owner.clone(), empty.deadline, budget(),
+            |plan| {
+                assert_eq!(plan.tree(), &empty_tree);
+                assert_eq!(plan.original_listing(), b"");
+                assert_eq!(plan.observations().len(), 0);
+                Ok(())
+            },
+        ).map_err(|error| error.to_string())?;
+        owner.verify_fresh()?;
+        refused(owner.verify_materialized(), "not sealed")
+    }
+
+    #[test]
+    fn real_prewrite_rejection_is_empty_and_noop_capture_retains_full_parity()
+        -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        fixture.write("src/helper.py", b"def helper():\n    return 1\n")?;
+        fixture.write("web/index.ts", b"export const entry = 1;\n")?;
+        fixture.write("ripr.toml", b"[analysis]\nmode = \"fast\"\n")?;
+        let tree = fixture.tree()?;
+        let rejected = fixture.anchor("rejected-plan")?;
+        let mut calls = 0;
+        refused(prepare_staged_named_tree_with_plan(
+            &fixture.repository, tree.clone(), rejected.clone(), fixture.deadline, budget(),
+            |plan| {
+                calls += 1;
+                assert_eq!(plan.tree(), &tree);
+                assert_eq!(plan.observations().filter(|(_, mode, _)| mode.is_some()).count(), 4);
+                Err(failed("authenticated parent plan differs".into()))
+            },
+        ), "authenticated parent plan differs")?;
+        assert_eq!(calls, 1);
+        rejected.verify_fresh()?;
+        assert_eq!(fs::read_dir(rejected.path_identifier())
+            .map_err(|error| error.to_string())?.count(), 0);
+        let ordinary = super::super::prepare_named_tree(
+            &fixture.repository, tree.as_str(), None,
+        ).map_err(|error| error.to_string())?
+            .frozen_source_authority(&fixture.repository)
+            .map_err(|error| error.to_string())?;
+        let old_owner = fixture.anchor("old-noop")?;
+        let old = fixture.capture(&tree, old_owner.clone(), budget())
+            .map_err(|error| error.to_string())?
+            .frozen_source_authority(&fixture.repository)
+            .map_err(|error| error.to_string())?;
+        let new_owner = fixture.anchor("explicit-noop")?;
+        let new = prepare_staged_named_tree_with_plan(
+            &fixture.repository, tree.clone(), new_owner.clone(), fixture.deadline, budget(),
+            |plan| {
+                assert_eq!(plan.tree(), &tree);
+                assert_eq!(plan.observations().filter(|(_, mode, _)| mode.is_some()).count(), 4);
+                Ok(())
+            },
+        ).map_err(|error| error.to_string())?
+            .frozen_source_authority(&fixture.repository)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(inventory(&old), inventory(&new));
+        assert_eq!(inventory(&ordinary), inventory(&new));
+        assert_eq!(old.captured_configuration(), new.captured_configuration());
+        assert_eq!(ordinary.captured_configuration(), new.captured_configuration());
+        for (path, _, _, _, _) in inventory(&old).0 {
+            let before = frozen::with_context(Some(ordinary.clone()), ||
+                frozen_fs::read(fixture.repository.join(&path)))
+                .map_err(|error| error.to_string())?;
+            let after = frozen::with_context(Some(new.clone()), ||
+                frozen_fs::read(fixture.repository.join(&path)))
+                .map_err(|error| error.to_string())?;
+            assert_eq!(before, after);
+        }
+        ordinary.finalize().map_err(|error| error.to_string())?;
+        old.finalize().map_err(|error| error.to_string())?;
+        new.finalize().map_err(|error| error.to_string())?;
+        old_owner.verify_materialized()?;
+        new_owner.verify_materialized()
+    }
+
+    #[test]
+    fn full_plan_parser_rejects_corrupt_original_records_before_callback()
+        -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        let tree = fixture.tree()?;
+        let captured = fixture.anchor("original-listing")?;
+        let (raw, object) = with_staged_named_tree_plan(
+            &fixture.repository, tree.clone(), captured.clone(), fixture.deadline, budget(),
+            |plan| {
+                let object = plan.observations().find(|(_, mode, _)| mode.is_some())
+                    .ok_or_else(|| failed("fixture has no blob observation".into()))?.2;
+                Ok((plan.original_listing().to_vec(), object.to_string()))
+            },
+        ).map_err(|error| error.to_string())?;
+        captured.verify_fresh()?;
+        let mut truncated = raw.clone();
+        let _ = truncated.pop();
+        let mut duplicate = raw.clone();
+        duplicate.extend_from_slice(&raw);
+        let mut extra_empty = raw.clone();
+        extra_empty.push(0);
+        let cases = [
+            (truncated, "NUL-terminated"),
+            (duplicate, "duplicates path"),
+            (extra_empty, "empty record"),
+            (format!("100644 blob {object}\tparent.rs\0\
+                100644 blob {object}\tparent.rs/child.rs\0").into_bytes(), "overlaps a file"),
+            (format!("100644 blob {object}\tmissing/child.rs\0").into_bytes(),
+                "parent directory is missing"),
+            (format!("120000 blob {object}\tlink.rs\0").into_bytes(), "unsupported tree entry"),
+            (format!("040000 tree {}\ta\0\
+                040000 tree {}\ta/\0", tree.as_str(), tree.as_str()).into_bytes(),
+                "plan path is not canonical"),
+            (format!("040000 tree {}\ta\0\
+                100644 blob {object}\ta/.\0", tree.as_str()).into_bytes(),
+                "plan path is not canonical"),
+            (format!("040000 tree {}\ta\0\
+                100644 blob {object}\ta/./child.rs\0", tree.as_str()).into_bytes(),
+                "plan path is not canonical"),
+            (format!("040000 tree {}\ta\0\
+                100644 blob {object}\ta//child.rs\0", tree.as_str()).into_bytes(),
+                "plan path is not canonical"),
+            (format!("100644 blob {object}\ttrailing.rs/\0").into_bytes(),
+                "plan path is not canonical"),
+        ];
+        for (index, (listing, category)) in cases.into_iter().enumerate() {
+            let owner = fixture.anchor(&format!("corrupt-plan-{index}"))?;
+            let mut calls = 0;
+            let result = validated_records(&listing, &owner, fixture.deadline, budget())
+                .and_then(|records| observe_plan(
+                    &tree, &listing, &records, &owner, fixture.deadline, |_| {
+                        calls += 1;
+                        Ok(())
+                    },
+                ));
+            refused(result, category)?;
+            assert_eq!(calls, 0, "partial or corrupt plan reached callback");
+            owner.verify_fresh()?;
+            assert_eq!(fs::read_dir(owner.path_identifier())
+                .map_err(|error| error.to_string())?.count(), 0);
+        }
+        // An actual Git tree with a symlink-mode entry must also refuse
+        // before the external observer; live worktree file type is irrelevant.
+        let cache = format!("120000,{object},link.rs");
+        fixture.git(&["update-index", "--add", "--cacheinfo", &cache])?;
+        let unsupported = GitObjectId::parse(&fixture.git(&["write-tree"])?)
+            .map_err(|error| error.to_string())?;
+        let owner = fixture.anchor("actual-unsupported-plan")?;
+        let mut calls = 0;
+        refused(with_staged_named_tree_plan(
+            &fixture.repository, unsupported, owner.clone(), fixture.deadline, budget(),
+            |_| { calls += 1; Ok(()) },
+        ), "unsupported tree entry")?;
+        assert_eq!(calls, 0);
+        owner.verify_fresh()?;
+        assert_eq!(fs::read_dir(owner.path_identifier())
+            .map_err(|error| error.to_string())?.count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn real_plan_ingress_caps_refuse_before_callback_or_source_write()
+        -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        let tree = fixture.tree()?;
+        let mut variants = Vec::new();
+        let mut value = budget();
+        value.max_listing_bytes = 1; variants.push((value, "git ls-tree"));
+        value = budget();
+        value.max_entries = 1; variants.push((value, "entry admission"));
+        value = budget();
+        value.max_path_bytes = 1; variants.push((value, "path admission"));
+        value = budget();
+        value.max_buffered_bytes = 1; variants.push((value, "buffered representation"));
+        for (index, (limit, category)) in variants.into_iter().enumerate() {
+            let owner = fixture.anchor(&format!("plan-cap-{index}"))?;
+            let mut calls = 0;
+            refused(with_staged_named_tree_plan(
+                &fixture.repository, tree.clone(), owner.clone(), fixture.deadline, limit,
+                |_| { calls += 1; Ok(()) },
+            ), category)?;
+            assert_eq!(calls, 0);
+            owner.verify_fresh()?;
+            assert_eq!(fs::read_dir(owner.path_identifier())
+                .map_err(|error| error.to_string())?.count(), 0);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn listing_plan_never_substitutes_for_source_file_or_configuration_byte_limits()
+        -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        fixture.write("ripr.toml", b"[analysis]\nmode = \"draft\"\n")?;
+        let tree = fixture.tree()?;
+        let mut variants = Vec::new();
+        let mut value = budget();
+        value.max_source_bytes = 1; variants.push((value, "source total limit"));
+        value = budget();
+        value.max_file_bytes = 1; variants.push((value, "file limit"));
+        value = budget();
+        value.max_configuration_bytes = 1; variants.push((value, "configuration capture"));
+        for (index, (limit, category)) in variants.into_iter().enumerate() {
+            let plan_owner = fixture.anchor(&format!("metadata-only-{index}"))?;
+            with_staged_named_tree_plan(
+                &fixture.repository, tree.clone(), plan_owner.clone(), fixture.deadline, limit,
+                |plan| {
+                    assert_eq!(plan.observations().filter(|(_, mode, _)| mode.is_some()).count(), 2);
+                    Ok(())
+                },
+            ).map_err(|error| error.to_string())?;
+            plan_owner.verify_fresh()?;
+            let write_owner = fixture.anchor(&format!("byte-refusal-{index}"))?;
+            refused(prepare_staged_named_tree_with_plan(
+                &fixture.repository, tree.clone(), write_owner.clone(), fixture.deadline, limit,
+                |_| Ok(()),
+            ), category)?;
+            refused(write_owner.verify_materialized(), "not sealed")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn callback_source_mutation_and_failure_never_reach_materialization_or_sealing()
+        -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        let tree = fixture.tree()?;
+        for (index, callback_fails) in [false, true].into_iter().enumerate() {
+            let owner = fixture.anchor(&format!("callback-mutation-{index}"))?;
+            let result = prepare_staged_named_tree_with_plan(
+                &fixture.repository, tree.clone(), owner.clone(), fixture.deadline, budget(),
+                |_| {
+                    owner.create_dir(Path::new("callback-created")).map_err(failed)?;
+                    if callback_fails {
+                        Err(failed("callback primary refusal".into()))
+                    } else {
+                        Ok(())
+                    }
+                },
+            );
+            match result {
+                Err(error) => {
+                    let detail = error.to_string();
+                    if callback_fails && !detail.contains("callback primary refusal") {
+                        return Err(format!("primary callback error disappeared: {detail}"));
+                    }
+                    if !detail.contains("staged tree fresh source refused") {
+                        return Err(format!("source mutation postflight disappeared: {detail}"));
+                    }
+                }
+                Ok(_) => return Err("callback source mutation reached materialization".into()),
+            }
+            assert_eq!(fs::read_dir(owner.path_identifier())
+                .map_err(|error| error.to_string())?.count(), 1);
+            assert!(fs::metadata(Path::new(owner.path_identifier()).join("callback-created"))
+                .map_err(|error| error.to_string())?.is_dir(),
+                "callback-created fixture directory disappeared");
+            refused(owner.verify_materialized(), "unqualified")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn actual_clock_expiry_during_callback_cannot_reset_the_materialization_deadline()
+        -> Result<(), String> {
+        let mut fixture = Fixture::new()?;
+        fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
+        let tree = fixture.tree()?;
+        let original = fixture.anchor("deadline-listing")?;
+        let raw = with_staged_named_tree_plan(
+            &fixture.repository, tree.clone(), original.clone(), fixture.deadline, budget(),
+            |plan| Ok(plan.original_listing().to_vec()),
+        ).map_err(|error| error.to_string())?;
+        original.verify_fresh()?;
+        fixture.deadline = Instant::now() + Duration::from_secs(1);
+        let owner = fixture.anchor("deadline-callback")?;
+        let records = validated_records(&raw, &owner, fixture.deadline, budget())
+            .map_err(|error| error.to_string())?;
+        let mut calls = 0;
+        refused(observe_plan(
+            &tree, &raw, &records, &owner, fixture.deadline, |_| {
+                calls += 1;
+                std::thread::sleep(fixture.deadline.saturating_duration_since(Instant::now())
+                    + Duration::from_millis(1));
+                Ok(())
+            },
+        ), "held worker deadline exhausted")?;
+        assert_eq!(calls, 1, "actual callback clock control did not run");
+        assert_eq!(fs::read_dir(owner.path_identifier())
+            .map_err(|error| error.to_string())?.count(), 0);
         Ok(())
     }
 

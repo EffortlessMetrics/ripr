@@ -98,6 +98,15 @@ pub fn ripr::output::receipt_lifecycle::receipt_lifecycle_state_is_present
 # cargo test -p ripr --lib output::mutation_calibration,
 # cargo test -p xtask mutation_calibration_imports_cargo_mutants_27_1,
 # cargo xtask check-public-api.
+pub use ripr::process_owner::CompleteByteCapture
+pub use ripr::process_owner::CompleteCaptureBudget
+pub use ripr::process_owner::CompleteCaptureError
+pub use ripr::process_owner::CompleteCaptureReceipt
+pub use ripr::process_owner::CompleteCapturedBytes
+pub use ripr::process_owner::ObservedProcessIdentity
+pub use ripr::process_owner::QualifiedGroupOwner
+pub use ripr::process_owner::QualifiedGroupSettlement
+pub use ripr::process_owner::QualifiedGroupWait
 pub use ripr::output::CargoMutantsOutcomeRecord
 pub use ripr::output::parse_cargo_mutants_outcomes_json
 pub fn ripr::output::start_here_state::normalize_start_here_output_state
