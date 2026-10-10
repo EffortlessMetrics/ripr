@@ -1242,7 +1242,11 @@ mod tests {
             let seeds = PackageWalk::from_loaded_files(vec![(outside, ChildAnchor::Both)]);
             assert!(!seeds.complete);
             assert!(seeds.queue.is_empty());
-            let first = fixture.authority.ensure_clean().err().ok_or("seed escape")?;
+            let first = fixture
+                .authority
+                .ensure_clean()
+                .err()
+                .ok_or("seed escape")?;
             assert!(
                 walk.find(&fixture.logical, std::slice::from_ref(&target))
                     .is_none(),
