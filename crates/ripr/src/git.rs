@@ -619,6 +619,46 @@ pub(crate) fn run_git_complete_output_with_deadline_and_limit(
     )
 }
 
+/// Cooperative complete-worker capture under the caller's original clock.
+/// This helper belongs inside the externally supervised finite whole worker.
+/// Its return value grants no parent settlement, cleanup or publication proof.
+#[cfg(test)]
+pub(crate) fn run_git_complete_output_with_held_deadline_and_limit(
+    root: &Path,
+    args: &[&str],
+    held_deadline: Instant,
+    max_output_bytes: usize,
+    environment: CompleteGitEnvironment,
+) -> Result<Output, CoreError> {
+    if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
+        return Err(CoreError::message(
+            "complete Git capture requires a positive limit within 256 MiB",
+        ));
+    }
+    let describe = format!("complete git -C {} {:?}", root.display(), args);
+    // Preserve the existing canonical bounded loader's five-minute execution
+    // ceiling as a nested phase; it cannot reset or extend the held lifetime.
+    let entry = Instant::now();
+    let canonical_ceiling = entry.checked_add(Duration::from_mins(5))
+        .ok_or_else(|| CoreError::git_invocation_timeout(&describe, 0, false))?;
+    let execution_deadline = held_deadline
+        .checked_sub(POST_KILL_DRAIN_GRACE)
+        .map(|deadline| deadline.min(canonical_ceiling))
+        .filter(|deadline| *deadline > Instant::now())
+        .ok_or_else(|| CoreError::git_invocation_timeout(&describe, 0, false))?;
+    validate_complete_git_environment(environment, |name| std::env::var_os(name).is_some())?;
+    let mut command = git_command(root, args);
+    command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    collect_output_with_reader_policy_and_held_deadline(
+        command,
+        Some(execution_deadline.saturating_duration_since(Instant::now())),
+        max_output_bytes,
+        &describe,
+        true,
+        Some((execution_deadline, held_deadline)),
+    )
+}
+
 fn collect_output_with_optional_deadline_and_limit(
     command: Command,
     timeout: Option<Duration>,
@@ -629,11 +669,24 @@ fn collect_output_with_optional_deadline_and_limit(
 }
 
 fn collect_output_with_reader_policy(
+    command: Command,
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+    describe: &str,
+    require_piped_readers: bool,
+) -> Result<Output, CoreError> {
+    collect_output_with_reader_policy_and_held_deadline(
+        command, timeout, max_output_bytes, describe, require_piped_readers, None,
+    )
+}
+
+fn collect_output_with_reader_policy_and_held_deadline(
     mut command: Command,
     timeout: Option<Duration>,
     max_output_bytes: usize,
     describe: &str,
     require_piped_readers: bool,
+    held_deadlines: Option<(Instant, Instant)>,
 ) -> Result<Output, CoreError> {
     if timeout.is_some_and(|timeout| timeout.is_zero()) {
         return Err(CoreError::git_invocation_timeout(describe, 0, false));
@@ -641,13 +694,27 @@ fn collect_output_with_reader_policy(
     // A recorded abort is authoritative before spawn, even when the child
     // would exit before the first poll. Keep the zero-timeout preflight above.
     crate::analysis::cancellation::checkpoint_typed().map_err(CoreError::from)?;
+    if held_deadlines.is_some_and(|(execution, _)| Instant::now() >= execution) {
+        return Err(CoreError::git_invocation_timeout(describe, 0, false));
+    }
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let spawn_site = SpawnSite::of(&command);
+    if held_deadlines.is_some_and(|(execution, _)| Instant::now() >= execution) {
+        return Err(CoreError::git_invocation_timeout(describe, 0, false));
+    }
     let mut child =
         OwnedProcess::spawn(command).map_err(|err| spawn_site.failure_message(describe, &err))?;
+    #[cfg(test)]
+    if held_deadlines.is_some()
+        && HELD_CAPTURE_OBSERVATIONS.with(|observations| observations.borrow().is_some())
+    {
+        observe_held_capture(HeldCaptureObservation::SpawnedLive(
+            matches!(child.try_wait(), Ok(None)),
+        ));
+    }
     let stdout_reader = child
         .stdout_pipe()
         .take()
@@ -657,9 +724,14 @@ fn collect_output_with_reader_policy(
         .take()
         .map(|pipe| spawn_bounded_pipe_reader(pipe, max_output_bytes));
 
-    let wait = poll_child(&mut child, timeout, describe);
+    let wait = poll_child_with_held_deadline(
+        &mut child, timeout, describe, held_deadlines.map(|(execution, _)| execution),
+    );
     let timed_out = !matches!(&wait, ChildWait::Exited(_));
-    let drain_deadline = Some(Instant::now() + POST_KILL_DRAIN_GRACE);
+    let drain_deadline = Some(held_deadlines.map_or_else(
+        || Instant::now() + POST_KILL_DRAIN_GRACE,
+        |(_, held)| (Instant::now() + POST_KILL_DRAIN_GRACE).min(held),
+    ));
     let stdout_result = drain_bounded_pipe_reader_with_policy(
         stdout_reader,
         timed_out,
@@ -689,17 +761,44 @@ fn collect_output_with_reader_policy(
                 "git_output_limit_exceeded: {describe} exceeded the {max_output_bytes}-byte per-stream capture limit"
             )))
         }
-        ChildWait::Exited(status) => Ok(Output {
-            status,
-            stdout: stdout.bytes,
-            stderr: stderr.bytes,
-        }),
+        ChildWait::Exited(status) => {
+            if held_deadlines.is_some_and(|(_, held)| Instant::now() >= held) {
+                return Err(CoreError::git_invocation_timeout(describe, 0, true));
+            }
+            Ok(Output {
+                status,
+                stdout: stdout.bytes,
+                stderr: stderr.bytes,
+            })
+        }
         ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => Err(error),
         ChildWait::CleanupFailed(message) => Err(CoreError::message(message)),
         ChildWait::WaitFailed(err) => Err(CoreError::message(format!(
             "failed while waiting on {describe}: {err}"
         ))),
     }
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+enum HeldCaptureObservation {
+    SpawnedLive(bool),
+    Drain { stdout: bool, deadline: Option<Instant> },
+}
+
+#[cfg(test)]
+thread_local! {
+    static HELD_CAPTURE_OBSERVATIONS: std::cell::RefCell<Option<Vec<HeldCaptureObservation>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn observe_held_capture(value: HeldCaptureObservation) {
+    HELD_CAPTURE_OBSERVATIONS.with(|observations| {
+        if let Some(values) = observations.borrow_mut().as_mut() {
+            values.push(value);
+        }
+    });
 }
 
 struct BoundedPipeOutput {
@@ -759,6 +858,12 @@ fn drain_bounded_pipe_reader_with_policy(
     describe: &str,
     require_reader: bool,
 ) -> Result<BoundedPipeOutput, String> {
+    #[cfg(test)]
+    if require_reader {
+        observe_held_capture(HeldCaptureObservation::Drain {
+            stdout: stream_name == "stdout", deadline,
+        });
+    }
     if require_reader && reader.is_none() {
         return Err(format!(
             "{stream_name} piped capture reader is unavailable for {describe}; EOF was not observed"
@@ -1652,7 +1757,16 @@ pub(crate) fn poll_child(
     timeout: Option<Duration>,
     describe: &str,
 ) -> ChildWait {
-    let deadline = timeout.map(|limit| Instant::now() + limit);
+    poll_child_with_held_deadline(child, timeout, describe, None)
+}
+
+fn poll_child_with_held_deadline(
+    child: &mut OwnedProcess,
+    timeout: Option<Duration>,
+    describe: &str,
+    held_execution_deadline: Option<Instant>,
+) -> ChildWait {
+    let deadline = held_execution_deadline.or_else(|| timeout.map(|limit| Instant::now() + limit));
     let mut backoff = crate::process_owner::PollBackoff::new();
     loop {
         // Observe an abort before accepting an already-completed primary.
@@ -1666,16 +1780,44 @@ pub(crate) fn poll_child(
                 || child.terminate_tree(),
             );
         }
+        if held_execution_deadline.is_some_and(|held| Instant::now() >= held) {
+            return terminate_then_classify(
+                describe,
+                "timeout",
+                ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                    describe, timeout.map_or(0, |limit| limit.as_millis()), true,
+                )),
+                || child.terminate_tree(),
+            );
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 // The primary may exit while a descendant still holds a pipe.
                 // Complete owned-tree cleanup before any caller waits for EOF.
-                return terminate_then_classify(
+                if held_execution_deadline.is_some_and(|held| Instant::now() >= held) {
+                    return terminate_then_classify(
+                        describe,
+                        "timeout",
+                        ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                            describe, timeout.map_or(0, |limit| limit.as_millis()), true,
+                        )),
+                        || child.terminate_tree(),
+                    );
+                }
+                let completed = terminate_then_classify(
                     describe,
                     "completion",
                     ChildWait::Exited(status),
                     || child.terminate_tree(),
                 );
+                if matches!(&completed, ChildWait::Exited(_))
+                    && held_execution_deadline.is_some_and(|held| Instant::now() >= held)
+                {
+                    return ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                        describe, timeout.map_or(0, |limit| limit.as_millis()), true,
+                    ));
+                }
+                return completed;
             }
             Ok(None) => {
                 if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
@@ -1886,6 +2028,164 @@ mod tests {
             error.to_string().contains("git_output_limit_exceeded"),
             "{error}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn held_complete_git_capture_preserves_actual_output_and_refusals() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        for args in [&["--version"][..], &["--ripr-invalid-option"][..]] {
+            let ordinary = run_git_output_with_deadline_and_limit_strict(
+                &root, args, Duration::from_secs(30), 4096,
+            ).map_err(|error| error.to_string())?;
+            let complete = run_git_complete_output_with_held_deadline_and_limit(
+                &root, args, Instant::now() + Duration::from_secs(30), 4096,
+                CompleteGitEnvironment::WholeInput,
+            ).map_err(|error| error.to_string())?;
+            assert_eq!(complete.status, ordinary.status);
+            assert_eq!(complete.stdout, ordinary.stdout);
+            assert_eq!(complete.stderr, ordinary.stderr);
+        }
+        let overflow = run_git_complete_output_with_held_deadline_and_limit(
+            &root, &["--version"], Instant::now() + Duration::from_secs(30), 4,
+            CompleteGitEnvironment::WholeInput,
+        ).err().ok_or("held complete capture accepted output above its unchanged cap")?;
+        assert!(overflow.to_string().contains("git_output_limit_exceeded"), "{overflow}");
+        let token = AnalysisCancellationToken::new();
+        assert!(token.cancel(AnalysisAbortKind::Superseded));
+        let cancelled = with_token(&token, || run_git_complete_output_with_held_deadline_and_limit(
+            &root, &["--version"], Instant::now() + Duration::from_secs(30), 4096,
+            CompleteGitEnvironment::WholeInput,
+        )).err().ok_or("held complete capture ignored existing cancellation")?;
+        assert!(cancelled.is_analysis_cancelled(), "{cancelled}");
+        Ok(())
+    }
+
+    #[test]
+    fn held_complete_git_clock_refuses_before_missing_root_spawn() -> Result<(), String> {
+        for deadline in [Instant::now(), Instant::now() + POST_KILL_DRAIN_GRACE] {
+            let error = run_git_complete_output_with_held_deadline_and_limit(
+                Path::new("/ripr-absent-complete-clock-fixture"),
+                &["--version"], deadline, 4096, CompleteGitEnvironment::WholeInput,
+            ).err().ok_or("insufficient held clock reached the Git spawn")?;
+            assert!(error.is_git_invocation_timeout(), "{error}");
+            assert!(!error.to_string().contains("process terminated"), "{error}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn held_complete_capture_keeps_original_cutoff_and_large_byte_eof() -> Result<(), String> {
+        let output = collect_output_with_reader_policy_and_held_deadline(
+            self_reexec_command(FLOOD_ENV)?,
+            Some(Duration::from_secs(30)), 1024 * 1024, "held-binary-fixture", true,
+            Some((Instant::now() + Duration::from_secs(25),
+                  Instant::now() + Duration::from_secs(30))),
+        ).map_err(|error| error.to_string())?;
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"0123456789abcdef".repeat(4096 * 8));
+        assert!(output.stderr.is_empty());
+        let started = Instant::now();
+        let execution = started + Duration::from_secs(2);
+        let held = execution + POST_KILL_DRAIN_GRACE;
+        HELD_CAPTURE_OBSERVATIONS.with(|values| *values.borrow_mut() = Some(Vec::new()));
+        let result = collect_output_with_reader_policy_and_held_deadline(
+            hang_command()?, Some(Duration::from_secs(30)), 4096,
+            "held-hung-fixture", true, Some((execution, held)),
+        );
+        let observations = HELD_CAPTURE_OBSERVATIONS.with(|values| values.borrow_mut().take())
+            .ok_or("real collector trace absent")?;
+        let error = result.err().ok_or("held cutoff restarted from the thirty-second timeout")?;
+        assert!(error.is_git_invocation_timeout(), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(matches!(observations.first(), Some(HeldCaptureObservation::SpawnedLive(true))),
+            "the actual hung primary must start and be live before the cutoff: {observations:?}");
+        let drains: Vec<_> = observations.iter().filter_map(|value| match value {
+            HeldCaptureObservation::Drain { stdout, deadline } => Some((*stdout, *deadline)),
+            HeldCaptureObservation::SpawnedLive(_) => None,
+        }).collect();
+        assert_eq!(drains.len(), 2, "both real collector drain calls must be observed");
+        assert!(drains[0].0);
+        assert!(!drains[1].0);
+        let stdout_deadline = drains[0].1.ok_or("real stdout drain was unbounded")?;
+        let stderr_deadline = drains[1].1.ok_or("real stderr drain was unbounded")?;
+        assert_eq!(stdout_deadline, stderr_deadline, "stderr must not renew the drain clock");
+        assert!(stdout_deadline <= held, "actual collector discarded the original held deadline");
+        Ok(())
+    }
+
+    #[test]
+    fn held_poll_rejects_an_actual_exited_primary_observed_after_cutoff() -> Result<(), String> {
+        let mut command = self_reexec_command(FLOOD_ENV)?;
+        command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        let mut child = OwnedProcess::spawn(command).map_err(|error| error.to_string())?;
+        let observation_deadline = Instant::now() + Duration::from_secs(30);
+        let mut backoff = crate::process_owner::PollBackoff::new();
+        loop {
+            match child.try_wait().map_err(|error| error.to_string())? {
+                Some(status) => {
+                    assert!(status.success());
+                    break;
+                }
+                None if Instant::now() >= observation_deadline => {
+                    return Err("late-primary fixture did not finish".into());
+                }
+                None => backoff.sleep(Some(observation_deadline)),
+            }
+        }
+        let wait = poll_child_with_held_deadline(
+            &mut child, Some(Duration::from_secs(30)), "late-primary-fixture",
+            Some(Instant::now()),
+        );
+        assert!(matches!(wait, ChildWait::TimedOut(error) if error.is_git_invocation_timeout()));
+        Ok(())
+    }
+
+    #[test]
+    fn held_reader_deadline_does_not_renew_for_stderr_or_accept_read_errors() -> Result<(), String> {
+        // Both outstanding readers use the SAME original drain deadline.
+        let held = Instant::now() + Duration::from_millis(30);
+        let (stdout_sender, stdout_receiver) = mpsc::channel();
+        let (release_stdout, held_stdout) = mpsc::channel();
+        let stdout_handle = std::thread::spawn(move || {
+            let _ = held_stdout.recv();
+            let _ = stdout_sender.send(BoundedPipeOutput {
+                bytes: vec![0, 255], exceeded: false, read_error: None,
+            });
+        });
+        let (stderr_sender, stderr_receiver) = mpsc::channel();
+        let (release_stderr, held_stderr) = mpsc::channel();
+        let stderr_handle = std::thread::spawn(move || {
+            let _ = held_stderr.recv();
+            let _ = stderr_sender.send(BoundedPipeOutput {
+                bytes: Vec::new(), exceeded: false, read_error: None,
+            });
+        });
+        for (reader, name) in [
+            ((stdout_handle, stdout_receiver), "stdout"),
+            ((stderr_handle, stderr_receiver), "stderr"),
+        ] {
+            let error = drain_bounded_pipe_reader_with_policy(
+                Some(reader), false, Some(held), name, "held-reader-fixture", true,
+            ).err().ok_or("incomplete reader supplied successful EOF")?;
+            assert!(error.contains("did not drain"), "{error}");
+        }
+        // Release fixture-only writers; a failed assertion also drops both gates.
+        let _ = release_stdout.send(());
+        let _ = release_stderr.send(());
+        // Read failures preserve their error even when the reader has closed.
+        struct FailedReader;
+        impl std::io::Read for FailedReader {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("held-reader-original-error"))
+            }
+        }
+        let error = drain_bounded_pipe_reader_with_policy(
+            Some(spawn_bounded_pipe_reader(FailedReader, 4096)), false,
+            Some(Instant::now() + Duration::from_secs(30)), "stdout",
+            "held-reader-error", true,
+        ).err().ok_or("held capture converted a read error into EOF")?;
+        assert!(error.contains("held-reader-original-error"), "{error}");
         Ok(())
     }
 

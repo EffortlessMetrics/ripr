@@ -354,7 +354,7 @@ pub(super) fn select_request(repo: &Path, requested_head: &str) -> Result<Reques
     select_request_with_deadline(repo, requested_head, Instant::now() + PREFLIGHT_DURATION)
 }
 
-fn select_request_with_deadline(
+pub(super) fn select_request_with_deadline(
     repo: &Path,
     requested_head: &str,
     overall_deadline: Instant,
