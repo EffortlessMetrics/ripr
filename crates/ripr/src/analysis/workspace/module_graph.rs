@@ -507,6 +507,9 @@ impl EscapingReach {
                 continue;
             }
             let scan = rust_module_tree_scan(&source);
+            if !admit_frozen_module_edges(file, &scan.edges) {
+                return None;
+            }
             // Any unresolved construct (a dependency's item macro can expand
             // to `#[path = "../../b/src/x.rs"] mod x;` without spelling it)
             // leaves every verdict unknown.
@@ -682,6 +685,9 @@ impl PackageWalk {
         let (manifest_text, manifest) = read_manifest(workspace_root, package_dir)?;
         let production_roots = production_roots(&manifest, package_dir);
         let evidence_roots = evidence_roots(&manifest, &manifest_text, package_dir);
+        if !admit_frozen_paths(production_roots.iter().chain(evidence_roots.iter())) {
+            return None;
+        }
         Some(Self {
             queue: production_roots
                 .iter()
@@ -706,8 +712,9 @@ impl PackageWalk {
     /// A walk from files loaded through `#[path]` or `include!`, outside any
     /// one package's target roots.
     fn from_loaded_files(files: Vec<(PathBuf, ChildAnchor)>) -> Self {
+        let complete = admit_frozen_paths(files.iter().map(|(file, _)| file));
         Self {
-            queue: files,
+            queue: if complete { files } else { Vec::new() },
             evidence_roots: None,
             phase: Origin::Production,
             visited: BTreeSet::new(),
@@ -715,7 +722,7 @@ impl PackageWalk {
             production_roots: BTreeSet::new(),
             production_root_read: false,
             scans: BTreeMap::new(),
-            complete: true,
+            complete,
             unresolved_paths: Vec::new(),
             follow_unresolved_paths: false,
             route_tags: BTreeMap::new(),
@@ -765,6 +772,12 @@ impl PackageWalk {
     fn find(&mut self, workspace_root: &Path, targets: &[PathBuf]) -> Option<Origin> {
         let direction = targets.first()?.clone();
         loop {
+            if !admit_frozen_paths(std::iter::empty()) {
+                self.complete = false;
+                self.queue.clear();
+                self.evidence_roots = None;
+                return None;
+            }
             if let Some(origin) = targets.iter().find_map(|target| self.reached.get(target)) {
                 return Some(*origin);
             }
@@ -835,6 +848,12 @@ impl PackageWalk {
             return true;
         };
         let edges = scan.edges.clone();
+        if !admit_frozen_module_edges(&file, &edges) {
+            self.complete = false;
+            self.queue.clear();
+            self.evidence_roots = None;
+            return false;
+        }
         self.complete &= scan.complete;
         if anchor == ChildAnchor::Included
             && edges
@@ -936,6 +955,48 @@ impl PackageWalk {
     }
 }
 
+/// Checks dependency DATA before a lazy walk can return a reached parent.
+/// Ordinary traversal keeps its existing read and reachability semantics.
+fn admit_frozen_paths<'a>(paths: impl IntoIterator<Item = &'a PathBuf>) -> bool {
+    let Some(authority) = crate::analysis::committed_source::frozen::current() else {
+        return true;
+    };
+    if authority.ensure_clean().is_err() {
+        return false;
+    }
+    paths
+        .into_iter()
+        .all(|path| authority.validate_logical_path(path).is_ok())
+}
+
+fn admit_frozen_module_edges(file: &Path, edges: &[RustModuleTreeEdge]) -> bool {
+    let Some(authority) = crate::analysis::committed_source::frozen::current() else {
+        return true;
+    };
+    if authority.ensure_clean().is_err() {
+        return false;
+    }
+    let directory = file.parent().unwrap_or_else(|| Path::new(""));
+    for edge in edges {
+        let targets: &[PathBuf] = match edge {
+            RustModuleTreeEdge::Path(target) | RustModuleTreeEdge::Include(target) => {
+                std::slice::from_ref(target)
+            }
+            RustModuleTreeEdge::UnresolvedPath { candidates, .. } => candidates,
+            RustModuleTreeEdge::Default { .. } => continue,
+        };
+        for target in targets {
+            if authority
+                .validate_logical_path(&directory.join(target))
+                .is_err()
+            {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 /// Number of leading path components two paths share.
 ///
 /// The directed walk calls this for every queued entry on every step, so
@@ -1035,6 +1096,168 @@ fn read_source(workspace_root: &Path, file: &Path) -> SourceRead {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn frozen_walk_refuses_reported_escape_before_returning_reached_parent()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::analysis::committed_source::frozen::{tests::Fixture, with_context};
+
+        for source in [
+            "#[path = \"../../outside.rs\"]\nmod outside;\n",
+            "include!(\"../../outside.rs\");\n",
+            "#[cfg_attr(unix, path = \"../../outside.rs\")]\nmod outside;\n",
+        ] {
+            let fixture = Fixture::new(&[
+                ("Cargo.toml", MANIFEST.as_bytes()),
+                ("src/lib.rs", source.as_bytes()),
+            ])?;
+            let outside = fixture
+                .logical
+                .parent()
+                .ok_or("fixture has no parent")?
+                .join("outside.rs");
+            std::fs::write(&outside, b"pub fn outside() {}")?;
+            with_context(Some(fixture.authority.clone()), || {
+                let mut walk = PackageWalk::new(&fixture.logical, &fixture.logical)
+                    .expect("confined Cargo roots");
+                assert!(
+                    walk.find(&fixture.logical, &[fixture.logical.join("src/lib.rs")])
+                        .is_none(),
+                    "{source}"
+                );
+                assert!(!walk.complete);
+                assert!(walk.queue.is_empty());
+                assert!(walk.evidence_roots.is_none());
+                assert!(walk.reached.is_empty(), "parent was admitted before its edges");
+                let error = fixture.authority.ensure_clean().expect_err("sticky escape");
+                assert!(error.to_string().contains("outside repository"), "{error}");
+            });
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_walk_admits_internal_siblings_and_missing_targets_with_ordinary_parity()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::analysis::committed_source::frozen::{tests::Fixture, with_context};
+
+        let files: [(&str, &[u8]); 3] = [
+            ("Cargo.toml", MANIFEST.as_bytes()),
+            (
+                "src/lib.rs",
+                b"#[path = \"../shared.rs\"] mod shared;\ninclude!(\"missing.rs\");\n",
+            ),
+            ("shared.rs", b"pub fn shared() {}"),
+        ];
+        let fixture = Fixture::new(&files)?;
+        for (path, bytes) in files {
+            let path = fixture.logical.join(path);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(path, bytes)?;
+        }
+        let targets = [
+            fixture.logical.join("src/lib.rs"),
+            fixture.logical.join("shared.rs"),
+        ];
+        let mut ordinary =
+            PackageWalk::new(&fixture.logical, &fixture.logical).expect("ordinary package");
+        let ordinary_results = targets
+            .iter()
+            .map(|target| ordinary.find(&fixture.logical, std::slice::from_ref(target)))
+            .collect::<Vec<_>>();
+        with_context(Some(fixture.authority.clone()), || {
+            let mut frozen =
+                PackageWalk::new(&fixture.logical, &fixture.logical).expect("frozen package");
+            let frozen_results = targets
+                .iter()
+                .map(|target| frozen.find(&fixture.logical, std::slice::from_ref(target)))
+                .collect::<Vec<_>>();
+            assert_eq!(frozen_results, ordinary_results);
+            assert_eq!(frozen.reached, ordinary.reached);
+            assert_eq!(frozen.complete, ordinary.complete);
+            fixture.authority.ensure_clean().expect("internal dependencies");
+        });
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_walk_refuses_escaped_production_and_evidence_roots_before_queueing()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::analysis::committed_source::frozen::{tests::Fixture, with_context};
+
+        for suffix in [
+            "[lib]\npath='../outside.rs'\n",
+            "[[test]]\nname='outside'\npath='../outside.rs'\n",
+        ] {
+            let manifest = format!("{MANIFEST}{suffix}");
+            let fixture = Fixture::new(&[
+                ("Cargo.toml", manifest.as_bytes()),
+                ("src/lib.rs", b"pub fn confined() {}"),
+            ])?;
+            with_context(Some(fixture.authority.clone()), || {
+                assert!(PackageWalk::new(&fixture.logical, &fixture.logical).is_none());
+                let error = fixture.authority.ensure_clean().expect_err("escaped root");
+                assert!(error.to_string().contains("outside repository"), "{error}");
+            });
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_loaded_seed_refusal_and_cached_reach_keep_the_same_fault()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::analysis::committed_source::frozen::{tests::Fixture, with_context};
+
+        let fixture = Fixture::new(&[
+            ("Cargo.toml", MANIFEST.as_bytes()),
+            ("src/lib.rs", b"pub fn confined() {}"),
+        ])?;
+        with_context(Some(fixture.authority.clone()), || {
+            let target = fixture.logical.join("src/lib.rs");
+            let mut walk =
+                PackageWalk::new(&fixture.logical, &fixture.logical).expect("confined roots");
+            assert_eq!(
+                walk.find(&fixture.logical, std::slice::from_ref(&target)),
+                Some(Origin::Production)
+            );
+            let outside = fixture.logical.join("../outside.rs");
+            let seeds = PackageWalk::from_loaded_files(vec![(outside, ChildAnchor::Both)]);
+            assert!(!seeds.complete);
+            assert!(seeds.queue.is_empty());
+            let first = fixture.authority.ensure_clean().expect_err("seed escape");
+            assert!(
+                walk.find(&fixture.logical, std::slice::from_ref(&target))
+                    .is_none(),
+                "cached reach cannot outlive the same authority's refusal"
+            );
+            let retained = fixture.authority.ensure_clean().expect_err("retained refusal");
+            assert_eq!(retained.to_string(), first.to_string());
+        });
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_escaping_scan_validates_reported_targets_before_incomplete_return()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::analysis::committed_source::frozen::{tests::Fixture, with_context};
+
+        let source = "unknown::declaration!();\n#[path = \"../../outside.rs\"] mod outside;\n";
+        assert!(!rust_module_tree_scan(source).complete);
+        let fixture = Fixture::new(&[("src/lib.rs", source.as_bytes())])?;
+        with_context(Some(fixture.authority.clone()), || {
+            let listing = WorkspaceListing {
+                rust_files: vec![fixture.logical.join("src/lib.rs")],
+                manifest_dirs: Vec::new(),
+                symlink_targets: Vec::new(),
+            };
+            assert!(EscapingReach::scan(&fixture.logical, &listing).is_none());
+            let error = fixture.authority.ensure_clean().expect_err("reported escape");
+            assert!(error.to_string().contains("outside repository"), "{error}");
+        });
+        Ok(())
+    }
 
     #[test]
     fn shared_prefix_len_matches_the_component_comparison() {

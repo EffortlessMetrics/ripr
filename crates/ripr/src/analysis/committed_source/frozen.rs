@@ -370,6 +370,12 @@ impl FrozenSourceAuthority {
             })
     }
 
+    /// Admits a logical dependency before a lazy walk can return its parent.
+    /// This checks confinement and the sticky fault only; it performs no I/O.
+    pub(crate) fn validate_logical_path(&self, requested: &Path) -> io::Result<()> {
+        self.relative(requested).map(|_| ())
+    }
+
     fn known(&self, relative: &Path) -> bool {
         self.inventory.files.contains_key(relative) || self.inventory.directories.contains(relative)
     }
@@ -1158,6 +1164,46 @@ pub(crate) mod tests {
             Ok(())
         })?;
         assert!(current().is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn logical_dependency_admission_refuses_escape_without_opening_sources()
+    -> Result<(), Box<dyn Error>> {
+        let fixture = Fixture::new(&[("one/a.rs", b"one"), ("two/b.rs", b"two")])?;
+        let outside = fixture
+            .logical
+            .parent()
+            .ok_or("fixture has no parent")?
+            .join("outside.rs");
+        std::fs::write(&outside, b"existing external source")?;
+        let before = fixture.authority.opened_reads.load(Ordering::SeqCst);
+        fixture
+            .authority
+            .validate_logical_path(&fixture.logical.join("one/../two/b.rs"))?;
+        fixture
+            .authority
+            .validate_logical_path(&fixture.logical.join("one/../missing.rs"))?;
+        fixture.authority.ensure_clean()?;
+        let error = fixture
+            .authority
+            .validate_logical_path(&outside)
+            .expect_err("existing outside dependency must refuse before any open");
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert!(error.to_string().contains("outside repository"));
+        assert_eq!(fixture.authority.opened_reads.load(Ordering::SeqCst), before);
+        let retained = fixture.authority.ensure_clean().expect_err("sticky refusal");
+        assert_eq!(retained.to_string(), error.to_string());
+        let later = fixture
+            .authority
+            .validate_logical_path(&fixture.logical.join("one/a.rs"))
+            .expect_err("admission cannot reset a poisoned authority");
+        assert_eq!(later.to_string(), error.to_string());
+        let recovered = Fixture::new(&[("one/a.rs", b"one")])?;
+        recovered
+            .authority
+            .validate_logical_path(&recovered.logical.join("one/a.rs"))?;
+        recovered.authority.ensure_clean()?;
         Ok(())
     }
 
