@@ -34,8 +34,10 @@ use super::model::{
     ModuleDeclarationFact, ModulePathTarget, ResolvedIncludeParent, RustIndex, SourceRoleProvenance,
 };
 use super::{SourceRoleProvenanceEdge, SourceRoleProvenanceEdgeKind};
+use crate::analysis::committed_source::frozen::{self, FrozenSourceAuthority, fs as frozen_fs};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 
 /// Chain-walk bound, mirroring the include pass's depth limit. Module and
 /// include chains past this bound are exotic input that fails closed instead
@@ -97,7 +99,52 @@ impl Context {
 /// Composes contextual source roles across the include and module edges of a
 /// fully parsed, normalized index. Deterministic: all intermediate maps are
 /// ordered, so grants and provenance are byte-identical across runs.
-pub(super) fn compose_index_source_roles(index: &mut RustIndex, workspace_root: &Path) {
+pub(super) fn compose_index_source_roles(
+    index: &mut RustIndex,
+    workspace_root: &Path,
+) -> Result<(), String> {
+    let authority = frozen::current();
+    if let Some(authority) = &authority {
+        validate_composition_context(authority, workspace_root)?;
+    }
+    compose_index_source_roles_in_context(index, workspace_root);
+    if let Some(authority) = &authority {
+        // The old resolver's bool/Vec fallbacks can swallow a source error,
+        // including before its no-grants return. Such an index is unusable.
+        validate_composition_context(authority, workspace_root)?;
+    }
+    Ok(())
+}
+
+fn validate_composition_context(
+    authority: &Arc<FrozenSourceAuthority>,
+    workspace_root: &Path,
+) -> Result<(), String> {
+    authority.ensure_clean().map_err(|error| error.to_string())?;
+    let current = frozen::current().ok_or_else(|| {
+        authority
+            .refuse_external_effect("source role composition lost its frozen context")
+            .to_string()
+    })?;
+    if !Arc::ptr_eq(authority, &current) {
+        return Err(authority
+            .refuse_external_effect("source role composition changed its frozen context")
+            .to_string());
+    }
+    let canonical = frozen_fs::canonicalize(workspace_root);
+    // Preserve the authority's first physical-source fault before treating a
+    // failed canonicalization or a manifest lookup as an ordinary fallback.
+    authority.ensure_clean().map_err(|error| error.to_string())?;
+    let canonical = canonical.map_err(|error| error.to_string())?;
+    if canonical != authority.logical_root() {
+        return Err(authority
+            .refuse_external_effect("source role composition requires its exact logical root")
+            .to_string());
+    }
+    authority.ensure_clean().map_err(|error| error.to_string())
+}
+
+fn compose_index_source_roles_in_context(index: &mut RustIndex, workspace_root: &Path) {
     let module_edges = resolved_module_edges(index, workspace_root);
     // Phase 1 (immutable): resolve every file's context and provenance.
     // The resolver borrows `include_parents`, so all mutations wait for it
@@ -541,7 +588,7 @@ impl CrateRoots {
                 if let Some(found) = self.manifest_dirs.get(&cursor) {
                     break 'walk found.clone();
                 }
-                if workspace_root.join(&cursor).join("Cargo.toml").is_file() {
+                if frozen_fs::is_file(workspace_root.join(&cursor).join("Cargo.toml")) {
                     self.manifest_dirs
                         .insert(cursor.clone(), Some(cursor.clone()));
                     break 'walk Some(cursor);
@@ -571,7 +618,7 @@ impl CrateRoots {
         if let Some(declared) = self.declared_roots.get(package_dir) {
             return declared.clone();
         }
-        let declared = std::fs::read_to_string(workspace_root.join(package_dir).join("Cargo.toml"))
+        let declared = frozen_fs::read_to_string(workspace_root.join(package_dir).join("Cargo.toml"))
             .map(|text| {
                 crate::analysis::workspace::declared_crate_root_paths_from_manifest(
                     &text,
@@ -835,7 +882,9 @@ impl ContextResolver<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::analysis::committed_source::frozen::tests::Fixture;
     use crate::analysis::facts::build_index_from_loaded_files_with_cache_and_test_harnesses;
+    use std::error::Error;
     use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
     use std::fs;
     use std::path::Path;
@@ -897,6 +946,371 @@ mod tests {
 
     fn test_names(index: &RustIndex) -> Vec<String> {
         index.tests().iter().map(|test| test.name.clone()).collect()
+    }
+
+    // Core-only owned-byte controls. Fixture authenticates its physical byte
+    // inventory; it does not stand in for Git capture or a native worker.
+    const FROZEN_ROLE_MANIFEST: &str =
+        "[package]\nname='role-composition'\nversion='0.1.0'\nedition='2024'\n\n[lib]\npath = \"source/root.rs\"\n";
+    const FROZEN_ROLE_OTHER_MANIFEST: &str =
+        "[package]\nname='role-composition'\nversion='0.1.0'\nedition='2024'\n\n[lib]\npath = \"source/evil.rs\"\n";
+    const FROZEN_ROLE_ROOT: &str =
+        "pub fn root_helper() -> i32 { 1 }\n\n#[cfg(test)]\nmod tests;\n";
+    const FROZEN_ROLE_CHILD: &str =
+        "pub fn module_helper() -> i32 { 2 }\n\n#[test]\nfn rooted_test() { assert_eq!(module_helper(), 2); }\n";
+
+    fn frozen_role_fixture(
+        manifest: Option<&[u8]>,
+    ) -> Result<Fixture, Box<dyn Error>> {
+        let mut files = vec![
+            ("source/root.rs", FROZEN_ROLE_ROOT.as_bytes()),
+            ("source/tests.rs", FROZEN_ROLE_CHILD.as_bytes()),
+        ];
+        if let Some(manifest) = manifest {
+            files.push(("Cargo.toml", manifest));
+        }
+        Fixture::new(&files)
+    }
+
+    fn frozen_role_loaded() -> Vec<(PathBuf, Vec<u8>)> {
+        vec![
+            (
+                PathBuf::from("source/root.rs"),
+                FROZEN_ROLE_ROOT.as_bytes().to_vec(),
+            ),
+            (
+                PathBuf::from("source/tests.rs"),
+                FROZEN_ROLE_CHILD.as_bytes().to_vec(),
+            ),
+        ]
+    }
+
+    fn frozen_role_live_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+        fs::write(root.join("Cargo.toml"), FROZEN_ROLE_MANIFEST)
+            .map_err(|error| error.to_string())?;
+        Ok(vec![
+            write(root, "source/root.rs", FROZEN_ROLE_ROOT)?,
+            write(root, "source/tests.rs", FROZEN_ROLE_CHILD)?,
+        ])
+    }
+
+    fn require_composition_error<T>(
+        result: Result<T, String>,
+        detail: &str,
+    ) -> Result<String, Box<dyn Error>> {
+        match result {
+            Err(error) => Ok(error),
+            Ok(_) => Err(detail.into()),
+        }
+    }
+
+    fn assert_frozen_role_parity(index: &RustIndex, baseline: &RustIndex) -> Result<(), String> {
+        assert_eq!(
+            role_of(index, "source/root.rs", "root_helper")?,
+            FunctionSourceRole::Production
+        );
+        assert_eq!(
+            role_of(index, "source/tests.rs", "module_helper")?,
+            FunctionSourceRole::CfgTestModule
+        );
+        assert_eq!(
+            file_role_of(index, "source/tests.rs", "module_helper")?,
+            FunctionSourceRole::CfgTestModule
+        );
+        assert_eq!(
+            role_of(index, "source/tests.rs", "rooted_test")?,
+            FunctionSourceRole::TestAttribute
+        );
+        assert_eq!(test_names(index), vec!["rooted_test".to_string()]);
+        let child = index
+            .files()
+            .get(Path::new("source/tests.rs"))
+            .ok_or("missing composed child")?;
+        let provenance = &child.data().role_provenance;
+        assert_eq!(provenance.earliest_unresolved_reason, None);
+        assert_eq!(provenance.edges.len(), 1);
+        let edge = &provenance.edges[0];
+        assert_eq!(edge.kind, SourceRoleProvenanceEdgeKind::Module);
+        assert_eq!(edge.parent, Path::new("source/root.rs"));
+        assert_eq!(edge.child, Path::new("source/tests.rs"));
+        assert_eq!(edge.declaration, "mod tests;");
+        assert_eq!(edge.line, 4);
+        assert!(edge.requires_test);
+        assert_eq!(index.files(), baseline.files());
+        assert_eq!(
+            index.functions().iter().collect::<Vec<_>>(),
+            baseline.functions().iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            index.tests().iter().collect::<Vec<_>>(),
+            baseline.tests().iter().collect::<Vec<_>>()
+        );
+        assert_eq!(index.package_names, baseline.package_names);
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_custom_crate_root_roles_ignore_dirty_and_deleted_live_manifest()
+    -> Result<(), Box<dyn Error>> {
+        let fixture = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+        let files = frozen_role_live_files(&fixture.logical)?;
+        let loaded = frozen_role_loaded();
+        let baseline = frozen::with_context(None, || {
+            crate::analysis::facts::build_index(&fixture.logical, &files)
+        })?;
+        let cached = frozen::with_context(None, || {
+            build_index_from_loaded_files_with_cache_and_test_harnesses(
+                &fixture.logical,
+                &loaded,
+                &[],
+            )
+        })?;
+        assert_frozen_role_parity(&baseline, &baseline)?;
+        assert_frozen_role_parity(&cached.index, &baseline)?;
+        for live_manifest in [Some(FROZEN_ROLE_OTHER_MANIFEST), None] {
+            match live_manifest {
+                Some(text) => fs::write(fixture.logical.join("Cargo.toml"), text)?,
+                None => fs::remove_file(fixture.logical.join("Cargo.toml"))?,
+            }
+            frozen::with_context(
+                Some(fixture.authority.clone()),
+                || -> Result<(), Box<dyn Error>> {
+                    let direct = crate::analysis::facts::build_index(&fixture.logical, &files)?;
+                    let cached = build_index_from_loaded_files_with_cache_and_test_harnesses(
+                        &fixture.logical,
+                        &loaded,
+                        &[],
+                    )?;
+                    assert_frozen_role_parity(&direct, &baseline)?;
+                    assert_frozen_role_parity(&cached.index, &baseline)?;
+                    fixture.authority.ensure_clean()?;
+                    Ok(())
+                },
+            )?;
+            let ordinary = frozen::with_context(None, || {
+                build_index_from_loaded_files_with_cache_and_test_harnesses(
+                    &fixture.logical,
+                    &loaded,
+                    &[],
+                )
+            })?;
+            assert_eq!(
+                role_of(&ordinary.index, "source/tests.rs", "module_helper")?,
+                FunctionSourceRole::Production,
+                "the ordinary pass must still observe the live declared-root change"
+            );
+            assert_eq!(test_names(&ordinary.index), vec!["rooted_test".to_string()]);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_custom_crate_root_manifest_faults_survive_no_grants_and_restoration()
+    -> Result<(), Box<dyn Error>> {
+        for missing in [false, true] {
+            let fixture = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+            frozen_role_live_files(&fixture.logical)?;
+            frozen::with_context(
+                Some(fixture.authority.clone()),
+                || -> Result<(), Box<dyn Error>> {
+                    // Parse first while the actual physical manifest is healthy:
+                    // a later role-pass error cannot be credited to an earlier
+                    // WorkspaceRootAuthority read.
+                    let mut index = crate::analysis::facts::parse_loaded_files_with_cache(
+                        &fixture.logical,
+                        &frozen_role_loaded(),
+                    )?;
+                    assert_eq!(
+                        role_of(&index, "source/tests.rs", "module_helper")?,
+                        FunctionSourceRole::Production
+                    );
+                    let root = index
+                        .files()
+                        .get(Path::new("source/root.rs"))
+                        .ok_or("missing parsed root")?;
+                    assert_eq!(root.data().module_declarations.len(), 1);
+                    if missing {
+                        fs::remove_file(fixture.physical.join("Cargo.toml"))?;
+                    } else {
+                        assert_eq!(
+                            FROZEN_ROLE_MANIFEST.len(),
+                            FROZEN_ROLE_OTHER_MANIFEST.len()
+                        );
+                        fs::write(
+                            fixture.physical.join("Cargo.toml"),
+                            FROZEN_ROLE_OTHER_MANIFEST,
+                        )?;
+                    }
+                    let error = require_composition_error(
+                        compose_index_source_roles(&mut index, &fixture.logical),
+                        "physical manifest failure must refuse composition",
+                    )?;
+                    let first = fixture
+                        .authority
+                        .ensure_clean()
+                        .err()
+                        .ok_or("manifest failure must remain in the real authority")?;
+                    assert_eq!(error, first.to_string());
+                    assert_eq!(
+                        first.kind(),
+                        if missing {
+                            std::io::ErrorKind::NotFound
+                        } else {
+                            std::io::ErrorKind::InvalidData
+                        }
+                    );
+                    assert!(error.contains("Cargo.toml"));
+                    if !missing {
+                        assert!(error.contains("source bytes differ from admitted blob"));
+                    }
+                    assert_eq!(
+                        role_of(&index, "source/tests.rs", "module_helper")?,
+                        FunctionSourceRole::Production,
+                        "the no-grants inner return must not bypass the final authority check"
+                    );
+                    fs::write(fixture.physical.join("Cargo.toml"), FROZEN_ROLE_MANIFEST)?;
+                    let repeated = require_composition_error(
+                        compose_index_source_roles(&mut RustIndex::default(), &fixture.logical),
+                        "restored bytes and an empty index must not clear the first fault",
+                    )?;
+                    assert_eq!(repeated, error);
+                    Ok(())
+                },
+            )?;
+        }
+        let recovered = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+        let files = frozen_role_live_files(&recovered.logical)?;
+        let baseline = frozen::with_context(None, || {
+            crate::analysis::facts::build_index(&recovered.logical, &files)
+        })?;
+        frozen::with_context(
+            Some(recovered.authority.clone()),
+            || -> Result<(), Box<dyn Error>> {
+                let index = crate::analysis::facts::build_index(&recovered.logical, &files)?;
+                assert_frozen_role_parity(&index, &baseline)?;
+                recovered.authority.ensure_clean()?;
+                Ok(())
+            },
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_manifest_absence_and_unparseable_text_keep_ordinary_role_fallbacks()
+    -> Result<(), Box<dyn Error>> {
+        for manifest in [None, Some(&b"[lib\n"[..]), Some(&b"\xff"[..])] {
+            let fixture = frozen_role_fixture(manifest)?;
+            frozen_role_live_files(&fixture.logical)?;
+            let loaded = frozen_role_loaded();
+            // Populate the actual parsed index before installing the byte
+            // fixture, then exercise the role resolver's own manifest fallback.
+            let mut index = frozen::with_context(None, || {
+                crate::analysis::facts::parse_loaded_files_with_cache(&fixture.logical, &loaded)
+            })?;
+            frozen::with_context(
+                Some(fixture.authority.clone()),
+                || -> Result<(), Box<dyn Error>> {
+                    compose_index_source_roles(&mut index, &fixture.logical)?;
+                    assert_eq!(
+                        role_of(&index, "source/tests.rs", "module_helper")?,
+                        FunctionSourceRole::Production,
+                        "a live manifest must not fill named absence or unparseable text"
+                    );
+                    assert_eq!(test_names(&index), vec!["rooted_test".to_string()]);
+                    fixture.authority.ensure_clean()?;
+                    Ok(())
+                },
+            )?;
+            let ordinary = frozen::with_context(None, || {
+                crate::analysis::facts::build_index(
+                    &fixture.logical,
+                    &[
+                        PathBuf::from("source/root.rs"),
+                        PathBuf::from("source/tests.rs"),
+                    ],
+                )
+            })?;
+            assert_eq!(
+                role_of(&ordinary, "source/tests.rs", "module_helper")?,
+                FunctionSourceRole::CfgTestModule
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_empty_composition_requires_the_bound_root_even_without_grants()
+    -> Result<(), Box<dyn Error>> {
+        let valid = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+        frozen::with_context(
+            Some(valid.authority.clone()),
+            || -> Result<(), Box<dyn Error>> {
+                compose_index_source_roles(&mut RustIndex::default(), &valid.logical)?;
+                compose_index_source_roles(&mut RustIndex::default(), &valid.logical.join(""))?;
+                valid.authority.ensure_clean()?;
+                Ok(())
+            },
+        )?;
+        for subroot in [false, true] {
+            let fixture = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+            let wrong = if subroot {
+                fixture.logical.join("source")
+            } else {
+                fixture.physical.clone()
+            };
+            frozen::with_context(
+                Some(fixture.authority.clone()),
+                || -> Result<(), Box<dyn Error>> {
+                    let error = require_composition_error(
+                        compose_index_source_roles(&mut RustIndex::default(), &wrong),
+                        "an empty role pass must reject a foreign root",
+                    )?;
+                    if subroot {
+                        let detail =
+                            "source role composition requires its exact logical root";
+                        assert!(error.contains(detail));
+                    } else {
+                        assert!(error.contains("outside repository"));
+                    }
+                    let first = fixture
+                        .authority
+                        .ensure_clean()
+                        .err()
+                        .ok_or("wrong root must poison the actual captured authority")?;
+                    assert_eq!(first.kind(), std::io::ErrorKind::PermissionDenied);
+                    assert_eq!(error, first.to_string());
+                    Ok(())
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_composition_context_rejects_a_different_actual_arc()
+    -> Result<(), Box<dyn Error>> {
+        let expected = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+        let active = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
+        frozen::with_context(
+            Some(active.authority.clone()),
+            || -> Result<(), Box<dyn Error>> {
+                let error = require_composition_error(
+                    validate_composition_context(&expected.authority, &expected.logical),
+                    "composition must not substitute another real authority",
+                )?;
+                assert!(error.contains("source role composition changed its frozen context"));
+                let first = expected
+                    .authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or("authority substitution must retain the expected authority's fault")?;
+                assert_eq!(first.kind(), std::io::ErrorKind::PermissionDenied);
+                assert_eq!(error, first.to_string());
+                active.authority.ensure_clean()?;
+                Ok(())
+            },
+        )?;
+        Ok(())
     }
 
     /// The live-defect shape: ripr's own `#[cfg(test)] mod tests;` modules.
