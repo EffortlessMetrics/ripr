@@ -2573,22 +2573,29 @@ mod tests {
             );
         }
         #[cfg(windows)]
-        for name in [
-            "C:relative.rs",
-            "C:/absolute.rs",
-            r"\\server\share\file.rs",
-            r"src\file.rs",
-            r"src\..\outside.rs",
-        ] {
-            let failure = safe_join(target, name)
-                .err()
-                .ok_or_else(|| format!("safe_join admitted Windows escape {name:?}"))?;
-            assert!(
-                failure
-                    .to_string()
-                    .contains("escapes the materialization root"),
-                "{failure}"
-            );
+        {
+            let drive_absolute = Path::new("C:").join("/absolute.rs");
+            assert!(drive_absolute.is_absolute());
+            let drive_absolute_name = drive_absolute
+                .to_str()
+                .ok_or("synthetic drive-absolute path is not UTF-8")?;
+            for name in [
+                "C:relative.rs",
+                drive_absolute_name,
+                r"\\server\share\file.rs",
+                r"src\file.rs",
+                r"src\..\outside.rs",
+            ] {
+                let failure = safe_join(target, name)
+                    .err()
+                    .ok_or_else(|| format!("safe_join admitted Windows escape {name:?}"))?;
+                assert!(
+                    failure
+                        .to_string()
+                        .contains("escapes the materialization root"),
+                    "{failure}"
+                );
+            }
         }
         for name in ["foo..rs", "src/foo..rs"] {
             assert_eq!(

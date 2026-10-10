@@ -15,12 +15,15 @@ use super::complete_contract::{
     INVENTORY_REPRESENTATION, InventoryBinding, InventoryFile, PolicyField, PresentationBinding,
     ProducerSurface, RawBinding, RustDependentScopePolicy, RustExecutionPolicy, SubjectBinding,
 };
-use super::complete_execution::{CaptureBudget, QualifiedWholeInvocation};
+use super::complete_execution::{
+    CaptureBudget, POSTFLIGHT_WITNESS_BYTES, QualifiedWholeInvocation,
+};
 use super::complete_native::NativeStartup;
 use super::complete_request::{CompleteRequest, CompleteSubject, POLICY_PATH};
 use super::complete_verifier::artifact_buffer_allowance;
 use super::raw_coverage::{
     RawCoverage, RawCoverageLimits, build_raw_coverage, semantic_projection_digest,
+    verify_raw_coverage,
 };
 use crate::analysis::committed_source::frozen::{self, FrozenFileMode, FrozenSourceAuthority};
 use crate::analysis::committed_source::staged::{
@@ -81,6 +84,7 @@ pub(super) struct FreshWholeInput {
     request: CompleteRequest,
     subject: CompleteSubject,
     coverage: RawCoverage,
+    raw_limits: RawCoverageLimits,
     binding: CompleteBinding,
     build_identity: String,
     profile: CompleteVerificationLimits,
@@ -1267,6 +1271,7 @@ pub(super) fn prepare(
         request,
         subject,
         coverage,
+        raw_limits: limits,
         binding,
         build_identity,
         profile: profile.clone(),
@@ -1562,6 +1567,10 @@ impl AnalyzedWholeInput {
             .ensure_clean()
             .map_err(|error| error.to_string())?;
         checkpoint(self.input.startup.deadline())?;
+        // The fixed inspector has derived its retained witness. Its local
+        // numstat/parser buffers are gone; the witness stays charged in Postflight.
+        // Future output/render callbacks require separate retained-phase admission.
+        drop(self.output);
         closeout_analyzed_input(
             self.input,
             Some(QualifiedWholeInvocation::verify_analysis_current),
@@ -1576,6 +1585,94 @@ pub(super) const NATIVE_ANALYSIS_PUBLICATION_REFUSAL: &str =
 
 type NativeObserver = fn(&QualifiedWholeInvocation) -> Result<(), String>;
 
+/// Borrowed worker-local expectations captured before analysis, never manifest input.
+struct PostflightExpected<'a> {
+    coverage: &'a RawCoverage,
+    binding: &'a CompleteBinding,
+    limits: RawCoverageLimits,
+    profile: &'a CompleteVerificationLimits,
+    retained_input_bytes: u64,
+    deadline: Instant,
+}
+
+fn raw_binding_matches(
+    summary: &super::raw_coverage::RawCoverageSummary,
+    binding: &RawBinding,
+) -> bool {
+    summary.raw_sha256 == binding.raw_sha256
+        && summary.ledger_sha256 == binding.ledger_sha256
+        && summary.projection_sha256 == binding.projection_sha256
+        && summary.raw_bytes as u64 == binding.raw_bytes
+        && summary.ledger_bytes as u64 == binding.ledger_bytes
+        && summary.records as u64 == binding.records
+        && summary.sections as u64 == binding.sections
+        && summary.hunks as u64 == binding.hunks
+        && summary.changed_files as u64 == binding.changed_files
+        && summary.added_lines as u64 == binding.added_lines
+        && summary.removed_lines as u64 == binding.removed_lines
+}
+
+/// Replay against the actual retained ledger with no second ledger allocation.
+fn reconcile_postflight_inputs(
+    raw: &[u8],
+    presentation: &str,
+    changed_paths: &[String],
+    name_bytes: u64,
+    expected: PostflightExpected<'_>,
+) -> Result<(), String> {
+    checkpoint(expected.deadline)?;
+    if raw.len() > expected.limits.max_raw_bytes {
+        return Err("whole-input postflight raw byte admission exceeded".into());
+    }
+    let records = raw
+        .iter()
+        .filter(|byte| **byte == b'\n')
+        .count()
+        .checked_add(usize::from(raw.last().is_some_and(|byte| *byte != b'\n')))
+        .ok_or("whole-input postflight raw record count overflow")?;
+    if records > expected.limits.max_records {
+        return Err("whole-input postflight raw framing record admission exceeded".into());
+    }
+    let lines = records
+        .checked_add(1)
+        .ok_or("whole-input postflight decoder line count overflow")?;
+    let scratch = multiply(lines as u64, std::mem::size_of::<&str>() as u64)?;
+    // Retained input includes the original ledger/canonical/binding. The same
+    // conservative decoder/parser and projection allowances precede replay.
+    admit_sum(
+        expected.profile.max_buffered_bytes,
+        &[
+            expected.retained_input_bytes,
+            POSTFLIGHT_WITNESS_BYTES,
+            presentation.len() as u64,
+            name_bytes,
+            multiply(raw.len() as u64, 8)?,
+            scratch,
+            multiply(expected.limits.max_projection_bytes as u64, 2)?,
+        ],
+    )?;
+    let (parsed, observed) =
+        verify_raw_coverage(raw, expected.coverage.ledger_bytes(), expected.limits)
+            .map_err(|error| format!("whole-input postflight raw replay: {error}"))?;
+    drop(parsed);
+    checkpoint(expected.deadline)?;
+    if &observed != expected.coverage.summary()
+        || !raw_binding_matches(&observed, &expected.binding.raw)
+    {
+        return Err("whole-input postflight original raw coverage differs".into());
+    }
+    if presentation.len() as u64 != expected.binding.presentation.bytes
+        || super::complete_contract::sha256_bytes(presentation.as_bytes())
+            != expected.binding.presentation.sha256
+    {
+        return Err("whole-input postflight original presentation differs".into());
+    }
+    if changed_paths != expected.binding.subject.changed_paths.as_slice() {
+        return Err("whole-input postflight original full-name inventory differs".into());
+    }
+    checkpoint(expected.deadline)
+}
+
 fn closeout_analyzed_input(
     input: FreshWholeInput,
     native_observer: Option<NativeObserver>,
@@ -1583,15 +1680,40 @@ fn closeout_analyzed_input(
     let FreshWholeInput {
         whole,
         startup,
-        invocation,
+        mut invocation,
         request,
         subject,
-        coverage: _,
+        coverage,
+        raw_limits,
         binding,
         build_identity,
         profile,
         retained_input_bytes,
     } = input;
+    // This distinct capture method claims before every fallible Postflight check.
+    // Fresh buffers and replay state leave this scope before the existing copier.
+    {
+        let original = invocation.capture_postflight_inputs(
+            &subject,
+            retained_input_bytes,
+            || whole.authority.ensure_clean().map_err(|error| error.to_string()),
+        )?;
+        let (raw, presentation, changed_paths, name_bytes) = original.into_parts();
+        reconcile_postflight_inputs(
+            &raw,
+            &presentation,
+            &changed_paths,
+            name_bytes,
+            PostflightExpected {
+                coverage: &coverage,
+                binding: &binding,
+                limits: raw_limits,
+                profile: &profile,
+                retained_input_bytes,
+                deadline: startup.deadline(),
+            },
+        )?;
+    }
     if let Some(observe) = native_observer {
         observe(&invocation)?;
     }
@@ -2415,6 +2537,378 @@ mod tests {
         error(altered.validate(), "path")?;
         assert_eq!(binding.generation_id()?, original);
         Ok(())
+    }
+
+    type PostflightCaptureData = (Vec<u8>, String, Vec<String>, u64);
+
+    struct PostflightFixture {
+        root: PathBuf,
+        options: PrEvidenceOptions,
+        subject: CompleteSubject,
+        authority: Arc<FrozenSourceAuthority>,
+        config: RiprConfig,
+        coverage: RawCoverage,
+        binding: CompleteBinding,
+        limits: RawCoverageLimits,
+        profile: CompleteVerificationLimits,
+        retained: u64,
+        deadline: Instant,
+    }
+
+    impl Drop for PostflightFixture {
+        fn drop(&mut self) {
+            let _ = crate::testing::fixture_git::remove_fixture_tree(&self.root);
+        }
+    }
+
+    impl PostflightFixture {
+        fn new() -> Result<Self, String> {
+            use super::super::complete_execution::capture_postflight_data;
+            use super::super::complete_request::{RequestedRoute, select_request_with_deadline};
+            use crate::testing::fixture_git::fixture_git_ok;
+
+            let base = std::env::temp_dir()
+                .canonicalize()
+                .map_err(|error| format!("postflight fixture root: {error}"))?;
+            let root = base.join(format!(
+                "ripr-whole-postflight-{}-{}",
+                std::process::id(),
+                ARTIFACT_NEXT.fetch_add(1, Ordering::Relaxed),
+            ));
+            fs::create_dir_all(root.join(".ripr")).map_err(|error| error.to_string())?;
+            let git = |args: &[&str]| fixture_git_ok(&root, args);
+            git(&["-c", "init.templateDir=", "init", "--quiet", "-b", "postflight"])?;
+            git(&["config", "--local", "user.name", "RIPR postflight fixture"])?;
+            git(&["config", "--local", "user.email", "postflight@example.invalid"])?;
+            git(&["config", "--local", "commit.gpgsign", "false"])?;
+            fs::write(
+                root.join(POLICY_PATH),
+                super::super::complete_contract::tests::fixture_policy_bytes(),
+            )
+            .map_err(|error| error.to_string())?;
+            fs::write(
+                root.join("Cargo.toml"),
+                concat!(
+                    "[package]\nname = \"postflight_fixture\"\n",
+                    "version = \"0.1.0\"\nedition = \"2021\"\n\n",
+                    "[lib]\npath = \"lib.rs\"\n",
+                ),
+            )
+            .map_err(|error| error.to_string())?;
+            fs::write(
+                root.join("ripr.toml"),
+                "[analysis]\nmode = \"draft\"\n[languages]\nenabled = [\"rust\"]\n",
+            )
+            .map_err(|error| error.to_string())?;
+            fs::write(root.join("lib.rs"), b"pub fn unchanged_library() {}\n")
+                .map_err(|error| error.to_string())?;
+            fs::write(root.join("outside.rs"), b"pub const B: u8 = 2;\n")
+                .map_err(|error| error.to_string())?;
+            git(&["add", "--all"])?;
+            git(&["commit", "--quiet", "-m", "postflight baseline"])?;
+            git(&["tag", "postflight-base"])?;
+            git(&["mv", "outside.rs", "renamed.rs"])?;
+            git(&["commit", "--quiet", "-m", "postflight pure rename"])?;
+            git(&["config", "--local", "diff.renames", "true"])?;
+            let options = PrEvidenceOptions {
+                root: ".".into(),
+                base: "refs/tags/postflight-base".into(),
+                base_explicit: true,
+                head: "HEAD".into(),
+                check: false,
+            };
+            let deadline = Instant::now()
+                .checked_add(Duration::from_mins(1))
+                .ok_or("postflight fixture clock overflow")?;
+            let mut request = match select_request_with_deadline(&root, "HEAD", deadline)? {
+                RequestedRoute::Complete(request) => *request,
+                RequestedRoute::Ordinary => return Err("postflight policy was not selected".into()),
+            };
+            let subject = request.resolve_whole_subject(&options)?;
+            let authority = crate::analysis::git_candidate_execution::prepare_named_tree(
+                &root,
+                subject.head_commit.as_str(),
+                Some(Duration::from_secs(30)),
+            )
+            .map_err(|error| error.to_string())?
+            .frozen_source_authority(&root)
+            .map_err(|error| error.to_string())?;
+            let profile = artifact_test_profile()?;
+            let config = frozen::with_context(Some(Arc::clone(&authority)), || {
+                crate::config::config_for_captured_snapshot(
+                    &root,
+                    &root.join("ripr.toml"),
+                    authority.captured_configuration(),
+                )
+            })?;
+            let policy = capture_complete_rust_policy()?;
+            let limits = RawCoverageLimits {
+                file_limit: admitted_file_limit(
+                    profile.file_limit,
+                    policy.diff_index_file_limit(),
+                )?,
+                max_raw_bytes: native_size(profile.max_artifact_bytes[0])?,
+                max_records: native_size(profile.max_raw_records)?,
+                max_ledger_bytes: native_size(profile.max_artifact_bytes[3])?,
+                max_retained_path_bytes: native_size(profile.max_retained_path_bytes)?,
+                max_projection_bytes: native_size(profile.max_raw_projection_bytes)?,
+            };
+            let original = capture_postflight_data(
+                &root,
+                subject.base_commit.as_str(),
+                subject.head_commit.as_str(),
+                &profile,
+                0,
+                deadline,
+                || authority.ensure_clean().map_err(|error| error.to_string()),
+            )?;
+            let (raw, presentation, changed_paths, name_bytes) = original.into_parts();
+            let (parsed, coverage) = build_raw_coverage(&raw, limits)?;
+            drop(parsed);
+            assert!(presentation.contains("rename from outside.rs"));
+            assert_eq!(changed_paths, ["renamed.rs"]);
+            let mut check = CheckInput {
+                root: root.clone(),
+                diff_file: Some(PathBuf::from("check.diff")),
+                mode: Mode::Draft,
+                format: OutputFormat::Json,
+                include_unchanged_tests: true,
+                ..CheckInput::default()
+            };
+            crate::config::apply_to_check_input(
+                &mut check,
+                &config,
+                CheckInputExplicit {
+                    mode: false,
+                    include_unchanged_tests: false,
+                },
+            );
+            let configuration = FullConfiguration::capture(&config, &profile)?;
+            let initial = admit_sum(
+                profile.max_buffered_bytes,
+                &[
+                    inventory_retention(&authority)?,
+                    raw.len() as u64,
+                    presentation.len() as u64,
+                    name_bytes,
+                    coverage.ledger_bytes().len() as u64,
+                    multiply(configuration_bytes(&configuration, profile.max_binding_bytes)?, 2)?,
+                ],
+            )?;
+            let binding = build_expected_binding(BindingInputs {
+                subject: &subject,
+                request: &request,
+                authority: &authority,
+                coverage: &coverage,
+                presentation: &presentation,
+                changed_paths,
+                configuration,
+                config: &config,
+                check: &check,
+                surface: ProducerSurface::Installed,
+                policy: &policy,
+                build_identity: crate::build_identity::cache_identity(),
+                nonce: &"a".repeat(32),
+                profile: &profile,
+                deadline,
+                retained: initial,
+            })?;
+            let retained = admit_sum(
+                profile.max_buffered_bytes,
+                &[
+                    initial,
+                    inventory_retention(&authority)?,
+                    multiply(binding_bytes(&binding, profile.max_binding_bytes)?, 2)?,
+                ],
+            )?;
+            drop((raw, presentation));
+            Ok(Self {
+                root,
+                options,
+                subject,
+                authority,
+                config,
+                coverage,
+                binding,
+                limits,
+                profile,
+                retained,
+                deadline,
+            })
+        }
+
+        fn capture(&self) -> Result<PostflightCaptureData, String> {
+            super::super::complete_execution::capture_postflight_data(
+                &self.root,
+                self.subject.base_commit.as_str(),
+                self.subject.head_commit.as_str(),
+                &self.profile,
+                self.retained,
+                self.deadline,
+                || self.authority.ensure_clean().map_err(|error| error.to_string()),
+            )
+            .map(|original| original.into_parts())
+        }
+
+        fn expected(&self) -> PostflightExpected<'_> {
+            PostflightExpected {
+                coverage: &self.coverage,
+                binding: &self.binding,
+                limits: self.limits,
+                profile: &self.profile,
+                retained_input_bytes: self.retained,
+                deadline: self.deadline,
+            }
+        }
+
+        fn validate_original_identity(&self) -> Result<(), String> {
+            use super::super::complete_request::{RequestedRoute, select_request_with_deadline};
+            let mut request =
+                match select_request_with_deadline(&self.root, &self.options.head, self.deadline)? {
+                    RequestedRoute::Complete(request) => *request,
+                    RequestedRoute::Ordinary => {
+                        return Err("postflight currentness lost the selected policy".into());
+                    }
+                };
+            assert_eq!(request.binding(), &self.binding.committed_request);
+            let subject = request.resolve_whole_subject(&self.options)?;
+            assert_eq!(subject, self.subject);
+            request.validate_whole_current(&self.subject, self.deadline)?;
+            let configuration = FullConfiguration::capture(&self.config, &self.profile)?;
+            assert_eq!(configuration, self.binding.full_configuration);
+            self.authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    #[test]
+    fn actual_git_rename_configuration_drift_requires_fresh_postflight_then_recovers()
+    -> Result<(), String> {
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        let fixture = PostflightFixture::new()?;
+        let original = fixture.capture()?;
+        reconcile_postflight_inputs(
+            &original.0, &original.1, &original.2, original.3, fixture.expected(),
+        )?;
+        let generation = fixture.binding.generation_id()?;
+        fixture_git_ok(&fixture.root, &["config", "--local", "diff.renames", "false"])?;
+        // The original closeout's literal/tree/effective-config observations agree.
+        // Fresh producer-derived inputs must still refuse this output-changing config.
+        fixture.validate_original_identity()?;
+        let changed = fixture.capture()?;
+        assert_ne!(changed.0, original.0);
+        assert_ne!(changed.1, original.1);
+        assert_ne!(changed.2, original.2);
+        error(
+            reconcile_postflight_inputs(
+                &changed.0, &changed.1, &changed.2, changed.3, fixture.expected(),
+            ),
+            "postflight raw replay",
+        )?;
+        drop(changed);
+        fixture_git_ok(&fixture.root, &["config", "--local", "diff.renames", "true"])?;
+        fixture.validate_original_identity()?;
+        // A new DATA capture agrees with the same original ledger and binding.
+        // No genuine invocation latch is reset or native token constructed.
+        let recovered = fixture.capture()?;
+        reconcile_postflight_inputs(
+            &recovered.0, &recovered.1, &recovered.2, recovered.3, fixture.expected(),
+        )?;
+        assert_eq!(fixture.binding.generation_id()?, generation);
+        Ok(())
+    }
+
+    #[test]
+    fn actual_postflight_replay_checks_raw_binding_u3_bytes_and_complete_names_separately()
+    -> Result<(), String> {
+        let fixture = PostflightFixture::new()?;
+        let original = fixture.capture()?;
+        let mut binding = fixture.binding.clone();
+        binding.raw.raw_bytes += 1;
+        let mut expected = fixture.expected();
+        expected.binding = &binding;
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &original.1, &original.2, original.3, expected,
+            ),
+            "original raw coverage differs",
+        )?;
+        let extended = format!("{}\n", original.1);
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &extended, &original.2, original.3, fixture.expected(),
+            ),
+            "original presentation differs",
+        )?;
+        let mut changed = original.1.as_bytes().to_vec();
+        let first = changed.first_mut().ok_or("actual presentation is empty")?;
+        assert_eq!(*first, b'd');
+        *first = b'x';
+        let changed = String::from_utf8(changed).map_err(|error| error.to_string())?;
+        assert_eq!(changed.len(), original.1.len());
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &changed, &original.2, original.3, fixture.expected(),
+            ),
+            "original presentation differs",
+        )?;
+        assert!(!original.2.is_empty());
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &original.1, &[], original.3, fixture.expected(),
+            ),
+            "original full-name inventory differs",
+        )?;
+        reconcile_postflight_inputs(
+            &original.0, &original.1, &original.2, original.3, fixture.expected(),
+        )
+    }
+
+    #[test]
+    fn actual_postflight_replay_admits_combined_phase_records_bytes_and_original_clock()
+    -> Result<(), String> {
+        let fixture = PostflightFixture::new()?;
+        let original = fixture.capture()?;
+        let mut expected = fixture.expected();
+        expected.limits.max_raw_bytes = original.0.len().checked_sub(1)
+            .ok_or("actual postflight raw input is empty")?;
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &original.1, &original.2, original.3, expected,
+            ),
+            "raw byte admission",
+        )?;
+        let mut expected = fixture.expected();
+        expected.limits.max_records = 0;
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &original.1, &original.2, original.3, expected,
+            ),
+            "raw framing record admission",
+        )?;
+        let mut profile = fixture.profile.clone();
+        profile.max_buffered_bytes = fixture.retained + POSTFLIGHT_WITNESS_BYTES;
+        let mut expected = fixture.expected();
+        expected.profile = &profile;
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &original.1, &original.2, original.3, expected,
+            ),
+            "retained byte phase",
+        )?;
+        let mut expected = fixture.expected();
+        expected.deadline = Instant::now();
+        error(
+            reconcile_postflight_inputs(
+                &original.0, &original.1, &original.2, original.3, expected,
+            ),
+            "held worker deadline",
+        )?;
+        reconcile_postflight_inputs(
+            &original.0, &original.1, &original.2, original.3, fixture.expected(),
+        )
     }
 
     #[test]

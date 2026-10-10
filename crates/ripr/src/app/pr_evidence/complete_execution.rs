@@ -954,6 +954,37 @@ mod whole_worker {
         })
     }
 
+    /// Fixed retained witness allowance for the current native inspector only.
+    /// Future retained output/render buffers require their own phase admission.
+    pub(in crate::app::pr_evidence) const POSTFLIGHT_WITNESS_BYTES: u64 = 64 * 1024;
+
+    fn claim_postflight_capture(attempted: &mut bool) -> Result<(), String> {
+        if *attempted {
+            return Err("whole worker postflight inputs capture was already attempted".into());
+        }
+        *attempted = true;
+        Ok(())
+    }
+
+    /// Fresh original-input DATA under the caller's unchanged retained envelope.
+    /// The genuine invocation method owns the separate one-shot phase claim.
+    pub(in crate::app::pr_evidence) fn capture_postflight_data(
+        root: &Path,
+        base: &str,
+        head: &str,
+        profile: &CompleteVerificationLimits,
+        retained_input_bytes: u64,
+        deadline: Instant,
+        check: impl FnMut() -> Result<(), String>,
+    ) -> Result<OriginalInputs, String> {
+        let fixed = phase_bytes(
+            profile.max_buffered_bytes,
+            &[retained_input_bytes, POSTFLIGHT_WITNESS_BYTES],
+        )?;
+        let budget = CaptureBudget::new(profile, fixed)?;
+        capture_original_data(root, base, head, profile, &budget, deadline, check)
+    }
+
     /// Worker-local authenticated invocation; no data constructor or cleanup grant.
     pub(in crate::app::pr_evidence) struct QualifiedWholeInvocation {
         entry: NativeAnalyzeEntry,
@@ -968,6 +999,7 @@ mod whole_worker {
         source: Arc<SourceAnchor>,
         build_identity: String,
         raw_attempted: bool,
+        postflight_attempted: bool,
     }
 
     impl QualifiedWholeInvocation {
@@ -1103,6 +1135,37 @@ mod whole_worker {
                 || self.capture_current(),
             )
         }
+
+        /// Recapture while the same native/source owners and original clock remain held.
+        /// This observes input DATA; it grants no settlement or publication.
+        pub(in crate::app::pr_evidence) fn capture_postflight_inputs(
+            &mut self,
+            subject: &CompleteSubject,
+            retained_input_bytes: u64,
+            mut check: impl FnMut() -> Result<(), String>,
+        ) -> Result<OriginalInputs, String> {
+            // Claim before tuple/native checks, admission, allocation or Git.
+            claim_postflight_capture(&mut self.postflight_attempted)?;
+            if !self.raw_attempted
+                || self.subject.is_some()
+                || !self.commitment.matches(subject, &self.options)
+            {
+                return Err("whole worker postflight inputs subject differs".into());
+            }
+            require_whole_invocation_root(subject)?;
+            capture_postflight_data(
+                &subject.root,
+                subject.base_commit.as_str(),
+                subject.head_commit.as_str(),
+                &self.profile,
+                retained_input_bytes,
+                self.entry.scalars.deadline,
+                || {
+                    self.verify_analysis_current()?;
+                    check()
+                },
+            )
+        }
     }
 
     /// The caller supplies the real factory/emitter continuation. No preparation-only
@@ -1215,6 +1278,7 @@ mod whole_worker {
             source: Arc::clone(startup.source()),
             build_identity: header.build_identity,
             raw_attempted: false,
+            postflight_attempted: false,
         };
         invocation.validate_startup(&startup, &options, header.surface, &check)?;
         continuation(
@@ -2177,6 +2241,107 @@ mod whole_worker {
         }
 
         #[test]
+        fn postflight_once_claim_covers_admission_and_real_late_capture_refusals()
+        -> Result<(), String> {
+            let (fixture, base, head) = CaptureFixture::new()?;
+            let profile = capture_profile()?;
+            let deadline = Instant::now()
+                .checked_add(Duration::from_mins(1))
+                .ok_or("postflight capture fixture clock overflow")?;
+            let mut attempted = false;
+            claim_postflight_capture(&mut attempted)?;
+            let called = std::cell::Cell::new(0);
+            refusal(
+                capture_postflight_data(
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &profile,
+                    profile.max_buffered_bytes,
+                    deadline,
+                    || {
+                        called.set(called.get() + 1);
+                        Ok(())
+                    },
+                ),
+                "admission",
+            )?;
+            assert_eq!(called.get(), 0);
+            refusal(claim_postflight_capture(&mut attempted), "already attempted")?;
+            let mut independent = false;
+            claim_postflight_capture(&mut independent)?;
+            refusal(
+                capture_postflight_data(
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &profile,
+                    0,
+                    deadline,
+                    || {
+                        called.set(called.get() + 1);
+                        if called.get() == 3 {
+                            Err("actual postflight post-presentation observation refused".into())
+                        } else {
+                            Ok(())
+                        }
+                    },
+                ),
+                "post-presentation observation refused",
+            )?;
+            assert_eq!(called.get(), 3);
+            refusal(claim_postflight_capture(&mut independent), "already attempted")?;
+            // Recovery is a separate DATA capture, never a reset invocation.
+            let recovered = capture_postflight_data(
+                &fixture.0, &base, &head, &profile, 0, deadline, || Ok(()),
+            )?;
+            assert!(recovered.changed_paths.iter().any(|path| path == "deleted.rs"));
+            Ok(())
+        }
+
+        #[test]
+        fn real_postflight_captures_keep_all_three_caps_and_the_original_expired_clock()
+        -> Result<(), String> {
+            let (fixture, base, head) = CaptureFixture::new()?;
+            let profile = capture_profile()?;
+            let deadline = Instant::now()
+                .checked_add(Duration::from_mins(1))
+                .ok_or("postflight cap fixture clock overflow")?;
+            for phase in 0..3 {
+                let mut limited = profile.clone();
+                match phase {
+                    0 => limited.max_artifact_bytes[0] = 1,
+                    1 => limited.max_artifact_bytes[2] = 1,
+                    _ => limited.max_inventory_bytes = 1,
+                }
+                let result = capture_postflight_data(
+                    &fixture.0, &base, &head, &limited, 0, deadline, || Ok(()),
+                );
+                match result {
+                    Err(error)
+                        if error.contains("limit")
+                            || error.contains("cap")
+                            || error.contains("exceed") => {}
+                    Err(error) => return Err(format!("wrong postflight stream refusal: {error}")),
+                    Ok(_) => return Err(format!("postflight phase {phase} ignored its real cap")),
+                }
+            }
+            refusal(
+                capture_postflight_data(
+                    &fixture.0, &base, &head, &profile, 0, Instant::now(), || Ok(()),
+                ),
+                "deadline",
+            )?;
+            let recovered = capture_postflight_data(
+                &fixture.0, &base, &head, &profile, 0, deadline, || Ok(()),
+            )?;
+            assert!(!recovered.raw.is_empty());
+            assert!(!recovered.presentation.is_empty());
+            assert!(!recovered.changed_paths.is_empty());
+            Ok(())
+        }
+
+        #[test]
         fn original_capture_expired_clock_refuses_before_git_and_capacity_is_checked()
         -> Result<(), String> {
             let profile = capture_profile()?;
@@ -2203,4 +2368,7 @@ mod whole_worker {
 }
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-pub(super) use whole_worker::{CaptureBudget, QualifiedWholeInvocation, with_libtest_worker};
+pub(super) use whole_worker::{
+    CaptureBudget, POSTFLIGHT_WITNESS_BYTES, QualifiedWholeInvocation,
+    capture_postflight_data, with_libtest_worker,
+};
