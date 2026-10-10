@@ -6,6 +6,8 @@ mod check_fast_strict;
 mod front_door;
 #[path = "precommit_v2.rs"]
 mod precommit_v2;
+#[path = "release_server_invocation.rs"]
+mod release_server_invocation;
 
 fn print_help_route(args: &[String]) -> Result<(), String> {
     match args {
@@ -133,10 +135,10 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         XtaskCommand::CiChildReceipt(args) => super::ci_child_receipt(&args),
         XtaskCommand::CiRoutedRustResult(args) => super::ci_routed_rust_result(&args),
         XtaskCommand::ReleaseServerArchive(args) => {
-            super::reports::release_server::release_server_archive(&args)
+            release_server_invocation::archive(&args)
         }
         XtaskCommand::ReleaseServerManifest(args) => {
-            super::reports::release_server::release_server_manifest(&args)
+            release_server_invocation::manifest(&args)
         }
         XtaskCommand::ReleaseFinalServerSubjects(args) => {
             super::reports::release_final_subjects::release_final_server_subjects(&args)
@@ -148,7 +150,7 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
             super::reports::release_vsix::release_upload_vsix(&args)
         }
         XtaskCommand::ReleaseUploadAssets(args) => {
-            super::reports::release_server::release_upload_assets(&args)
+            release_server_invocation::upload(&args)
         }
         XtaskCommand::TargetedTestOutcome(args) => super::reports::targeted_test_outcome(&args),
         XtaskCommand::MutationCalibration(args) => super::reports::mutation_calibration(&args),

@@ -94,6 +94,44 @@ and `SHA256SUMS` digests. It is excluded from `SHA256SUMS` and is not a
 release asset; downstream provenance and placement-independent subject
 selection consume this evidence.
 
+
+### Product identity and release placement
+
+Archive and manifest `--version` inputs are **product versions**, such as
+`0.11.0`. A channel suffix remains rejected by their canonical admission:
+the same product archives and manifest must keep the same subject names at RC
+and stable placements.
+
+The existing producer commands also accept `--release-version <placement>`
+instead of `--version`. This caller adapter reads the checked-out `ripr`
+crate version through the existing workspace-inheritance reader, admits the
+suffix-free source product, and binds the placement to that exact product.
+It accepts the matching stable version/tag or `v<product>-rc.<positive integer>`
+(with an optional leading `v`); leading-zero, mismatched, ordinary-prerelease,
+ambiguous and missing inputs reject before producer filesystem changes.
+It then calls the unchanged archive/manifest producers with the product.
+This adapter is identity binding only; it grants no event or publication authority.
+
+For example, on a source checkout whose product version is `0.11.0`, the
+nonpublishing invocation shape is:
+
+```text
+cargo xtask release-server-archive --release-version v0.11.0-rc.2 --target <target> --executable <name> --archive <zip|tar.gz>
+cargo xtask release-server-manifest --release-version v0.11.0-rc.2 --repository <owner/repo>
+```
+
+The names remain `ripr-server-v0.11.0-<target>.*` and
+`ripr-server-manifest-v0.11.0.json`. These are synthetic invocation examples,
+not an authorized or frozen RC. Current development `alpha.2` metadata cannot
+stand in for a final suffix-free product checkout.
+
+The legacy `release-upload-assets` CLI stops channel-suffixed inputs **before**
+calling GitHub. Repairing producer placement transport does not make that
+opportunistic create/clobber uploader an RC publisher. Exact RC event authority,
+validated subjects and publication transport remain #1631/#1644/#1646 work.
+Existing explicit product producer invocations and stable upload behavior remain
+unchanged. Do not use the publication workflow as qualification proof.
+
 ## Final server subject preparation (nonpublishing)
 
 After accepted archive/manifest assembly, prepare the exact current upload set:
