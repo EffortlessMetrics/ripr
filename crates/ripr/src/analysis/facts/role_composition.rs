@@ -120,7 +120,9 @@ fn validate_composition_context(
     authority: &Arc<FrozenSourceAuthority>,
     workspace_root: &Path,
 ) -> Result<(), String> {
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     let current = frozen::current().ok_or_else(|| {
         authority
             .refuse_external_effect("source role composition lost its frozen context")
@@ -134,7 +136,9 @@ fn validate_composition_context(
     let canonical = frozen_fs::canonicalize(workspace_root);
     // Preserve the authority's first physical-source fault before treating a
     // failed canonicalization or a manifest lookup as an ordinary fallback.
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     let canonical = canonical.map_err(|error| error.to_string())?;
     if canonical != authority.logical_root() {
         return Err(authority
@@ -618,14 +622,15 @@ impl CrateRoots {
         if let Some(declared) = self.declared_roots.get(package_dir) {
             return declared.clone();
         }
-        let declared = frozen_fs::read_to_string(workspace_root.join(package_dir).join("Cargo.toml"))
-            .map(|text| {
-                crate::analysis::workspace::declared_crate_root_paths_from_manifest(
-                    &text,
-                    package_dir,
-                )
-            })
-            .unwrap_or_default();
+        let declared =
+            frozen_fs::read_to_string(workspace_root.join(package_dir).join("Cargo.toml"))
+                .map(|text| {
+                    crate::analysis::workspace::declared_crate_root_paths_from_manifest(
+                        &text,
+                        package_dir,
+                    )
+                })
+                .unwrap_or_default();
         self.declared_roots
             .insert(package_dir.to_path_buf(), declared.clone());
         declared
@@ -884,8 +889,8 @@ mod tests {
     use super::*;
     use crate::analysis::committed_source::frozen::tests::Fixture;
     use crate::analysis::facts::build_index_from_loaded_files_with_cache_and_test_harnesses;
-    use std::error::Error;
     use crate::analysis::syntax::{RaRustSyntaxAdapter, RustSyntaxAdapter};
+    use std::error::Error;
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -950,18 +955,13 @@ mod tests {
 
     // Core-only owned-byte controls. Fixture authenticates its physical byte
     // inventory; it does not stand in for Git capture or a native worker.
-    const FROZEN_ROLE_MANIFEST: &str =
-        "[package]\nname='role-composition'\nversion='0.1.0'\nedition='2024'\n\n[lib]\npath = \"source/root.rs\"\n";
-    const FROZEN_ROLE_OTHER_MANIFEST: &str =
-        "[package]\nname='role-composition'\nversion='0.1.0'\nedition='2024'\n\n[lib]\npath = \"source/evil.rs\"\n";
+    const FROZEN_ROLE_MANIFEST: &str = "[package]\nname='role-composition'\nversion='0.1.0'\nedition='2024'\n\n[lib]\npath = \"source/root.rs\"\n";
+    const FROZEN_ROLE_OTHER_MANIFEST: &str = "[package]\nname='role-composition'\nversion='0.1.0'\nedition='2024'\n\n[lib]\npath = \"source/evil.rs\"\n";
     const FROZEN_ROLE_ROOT: &str =
         "pub fn root_helper() -> i32 { 1 }\n\n#[cfg(test)]\nmod tests;\n";
-    const FROZEN_ROLE_CHILD: &str =
-        "pub fn module_helper() -> i32 { 2 }\n\n#[test]\nfn rooted_test() { assert_eq!(module_helper(), 2); }\n";
+    const FROZEN_ROLE_CHILD: &str = "pub fn module_helper() -> i32 { 2 }\n\n#[test]\nfn rooted_test() { assert_eq!(module_helper(), 2); }\n";
 
-    fn frozen_role_fixture(
-        manifest: Option<&[u8]>,
-    ) -> Result<Fixture, Box<dyn Error>> {
+    fn frozen_role_fixture(manifest: Option<&[u8]>) -> Result<Fixture, Box<dyn Error>> {
         let mut files = vec![
             ("source/root.rs", FROZEN_ROLE_ROOT.as_bytes()),
             ("source/tests.rs", FROZEN_ROLE_CHILD.as_bytes()),
@@ -1132,10 +1132,7 @@ mod tests {
                     if missing {
                         fs::remove_file(fixture.physical.join("Cargo.toml"))?;
                     } else {
-                        assert_eq!(
-                            FROZEN_ROLE_MANIFEST.len(),
-                            FROZEN_ROLE_OTHER_MANIFEST.len()
-                        );
+                        assert_eq!(FROZEN_ROLE_MANIFEST.len(), FROZEN_ROLE_OTHER_MANIFEST.len());
                         fs::write(
                             fixture.physical.join("Cargo.toml"),
                             FROZEN_ROLE_OTHER_MANIFEST,
@@ -1266,8 +1263,7 @@ mod tests {
                         "an empty role pass must reject a foreign root",
                     )?;
                     if subroot {
-                        let detail =
-                            "source role composition requires its exact logical root";
+                        let detail = "source role composition requires its exact logical root";
                         assert!(error.contains(detail));
                     } else {
                         assert!(error.contains("outside repository"));
@@ -1287,8 +1283,7 @@ mod tests {
     }
 
     #[test]
-    fn frozen_composition_context_rejects_a_different_actual_arc()
-    -> Result<(), Box<dyn Error>> {
+    fn frozen_composition_context_rejects_a_different_actual_arc() -> Result<(), Box<dyn Error>> {
         let expected = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
         let active = frozen_role_fixture(Some(FROZEN_ROLE_MANIFEST.as_bytes()))?;
         frozen::with_context(
@@ -1299,11 +1294,10 @@ mod tests {
                     "composition must not substitute another real authority",
                 )?;
                 assert!(error.contains("source role composition changed its frozen context"));
-                let first = expected
-                    .authority
-                    .ensure_clean()
-                    .err()
-                    .ok_or("authority substitution must retain the expected authority's fault")?;
+                let first =
+                    expected.authority.ensure_clean().err().ok_or(
+                        "authority substitution must retain the expected authority's fault",
+                    )?;
                 assert_eq!(first.kind(), std::io::ErrorKind::PermissionDenied);
                 assert_eq!(error, first.to_string());
                 active.authority.ensure_clean()?;
