@@ -2267,35 +2267,44 @@ mod whole_worker {
                 "admission",
             )?;
             assert_eq!(called.get(), 0);
-            refusal(claim_postflight_capture(&mut attempted), "already attempted")?;
+            refusal(
+                claim_postflight_capture(&mut attempted),
+                "already attempted",
+            )?;
             let mut independent = false;
             claim_postflight_capture(&mut independent)?;
             refusal(
-                capture_postflight_data(
-                    &fixture.0,
-                    &base,
-                    &head,
-                    &profile,
-                    0,
-                    deadline,
-                    || {
-                        called.set(called.get() + 1);
-                        if called.get() == 3 {
-                            Err("actual postflight post-presentation observation refused".into())
-                        } else {
-                            Ok(())
-                        }
-                    },
-                ),
+                capture_postflight_data(&fixture.0, &base, &head, &profile, 0, deadline, || {
+                    called.set(called.get() + 1);
+                    if called.get() == 3 {
+                        Err("actual postflight post-presentation observation refused".into())
+                    } else {
+                        Ok(())
+                    }
+                }),
                 "post-presentation observation refused",
             )?;
             assert_eq!(called.get(), 3);
-            refusal(claim_postflight_capture(&mut independent), "already attempted")?;
+            refusal(
+                claim_postflight_capture(&mut independent),
+                "already attempted",
+            )?;
             // Recovery is a separate DATA capture, never a reset invocation.
             let recovered = capture_postflight_data(
-                &fixture.0, &base, &head, &profile, 0, deadline, || Ok(()),
+                &fixture.0,
+                &base,
+                &head,
+                &profile,
+                0,
+                deadline,
+                || Ok(()),
             )?;
-            assert!(recovered.changed_paths.iter().any(|path| path == "deleted.rs"));
+            assert!(
+                recovered
+                    .changed_paths
+                    .iter()
+                    .any(|path| path == "deleted.rs")
+            );
             Ok(())
         }
 
@@ -2315,7 +2324,13 @@ mod whole_worker {
                     _ => limited.max_inventory_bytes = 1,
                 }
                 let result = capture_postflight_data(
-                    &fixture.0, &base, &head, &limited, 0, deadline, || Ok(()),
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &limited,
+                    0,
+                    deadline,
+                    || Ok(()),
                 );
                 match result {
                     Err(error)
@@ -2328,12 +2343,24 @@ mod whole_worker {
             }
             refusal(
                 capture_postflight_data(
-                    &fixture.0, &base, &head, &profile, 0, Instant::now(), || Ok(()),
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &profile,
+                    0,
+                    Instant::now(),
+                    || Ok(()),
                 ),
                 "deadline",
             )?;
             let recovered = capture_postflight_data(
-                &fixture.0, &base, &head, &profile, 0, deadline, || Ok(()),
+                &fixture.0,
+                &base,
+                &head,
+                &profile,
+                0,
+                deadline,
+                || Ok(()),
             )?;
             assert!(!recovered.raw.is_empty());
             assert!(!recovered.presentation.is_empty());
@@ -2369,6 +2396,6 @@ mod whole_worker {
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 pub(super) use whole_worker::{
-    CaptureBudget, POSTFLIGHT_WITNESS_BYTES, QualifiedWholeInvocation,
-    capture_postflight_data, with_libtest_worker,
+    CaptureBudget, POSTFLIGHT_WITNESS_BYTES, QualifiedWholeInvocation, capture_postflight_data,
+    with_libtest_worker,
 };

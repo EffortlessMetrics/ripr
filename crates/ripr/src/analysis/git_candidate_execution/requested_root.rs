@@ -5,8 +5,8 @@
 //! Cleanup has finite admitted membership; it has no hard syscall deadline.
 
 use super::{
-    MAX_REQUESTED_ENTRIES, MAX_REQUESTED_PATH_BYTES, RequestedEntryKind, RequestedNamespace,
-    REQUESTED_WRAPPER_DIRECTORIES, requested_checkpoint,
+    MAX_REQUESTED_ENTRIES, MAX_REQUESTED_PATH_BYTES, REQUESTED_WRAPPER_DIRECTORIES,
+    RequestedEntryKind, RequestedNamespace, requested_checkpoint,
 };
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File, Metadata, OpenOptions};
@@ -63,7 +63,9 @@ fn credentials(check: Clock, prefix: &mut [u8]) -> io::Result<u32> {
         }
         let read = timed(check, || input.read(&mut prefix[used..]))?;
         if read == 0 {
-            return Err(refusal("Requested credential prefix has no complete Uid line"));
+            return Err(refusal(
+                "Requested credential prefix has no complete Uid line",
+            ));
         }
         used += read;
         while let Some(offset) = prefix[line_start..used]
@@ -116,7 +118,9 @@ struct Identity {
 impl Identity {
     fn capture(metadata: &Metadata) -> io::Result<Self> {
         if !metadata.is_dir() && !metadata.is_file() {
-            return Err(refusal("Requested object is not a regular file or directory"));
+            return Err(refusal(
+                "Requested object is not a regular file or directory",
+            ));
         }
         if metadata.is_file() && metadata.nlink() != 1 {
             return Err(refusal("Requested regular file does not have one link"));
@@ -208,7 +212,9 @@ fn owned(metadata: &Identity, uid: u32, private: bool) -> io::Result<()> {
         || (private && metadata.mode != 0o700)
         || (!private && metadata.mode & 0o022 != 0)
     {
-        return Err(refusal("Requested directory owner or permissions are unsafe"));
+        return Err(refusal(
+            "Requested directory owner or permissions are unsafe",
+        ));
     }
     Ok(())
 }
@@ -218,7 +224,9 @@ fn ancestor(metadata: &Identity, uid: u32) -> io::Result<()> {
         return Err(refusal("Requested temp ancestor has a foreign owner"));
     }
     if metadata.mode & 0o022 != 0 && metadata.mode & 0o1000 == 0 {
-        return Err(refusal("Requested temp ancestor is writable without sticky protection"));
+        return Err(refusal(
+            "Requested temp ancestor is writable without sticky protection",
+        ));
     }
     Ok(())
 }
@@ -290,7 +298,9 @@ impl CleanupOwner {
             return Err(refusal("Requested wrapper topology is not direct"));
         }
         if temporary.as_os_str().as_bytes().len() > MAX_REQUESTED_PATH_BYTES {
-            return Err(refusal("Requested temp ancestry exceeds its input byte bound"));
+            return Err(refusal(
+                "Requested temp ancestry exceeds its input byte bound",
+            ));
         }
         let mut count = 1_usize;
         for component in temporary.components() {
@@ -298,19 +308,29 @@ impl CleanupOwner {
             match component {
                 Component::RootDir => {}
                 Component::Normal(_) => {
-                    count = count.checked_add(1).ok_or_else(|| refusal("Requested ancestry count overflow"))?;
+                    count = count
+                        .checked_add(1)
+                        .ok_or_else(|| refusal("Requested ancestry count overflow"))?;
                     if count > MAX_REQUESTED_ENTRIES {
                         return Err(refusal("Requested temp ancestry exceeds its count bound"));
                     }
                 }
-                _ => return Err(refusal("Requested temp ancestry is not absolute and Normal")),
+                _ => {
+                    return Err(refusal(
+                        "Requested temp ancestry is not absolute and Normal",
+                    ));
+                }
             }
         }
         if !temporary.is_absolute() || count > MAX_REQUESTED_ENTRIES {
             return Err(refusal("Requested temp ancestry exceeds its count bound"));
         }
-        let base_name = base.file_name().ok_or_else(|| refusal("Requested base name is missing"))?;
-        let target_name = target.file_name().ok_or_else(|| refusal("Requested tree name is missing"))?;
+        let base_name = base
+            .file_name()
+            .ok_or_else(|| refusal("Requested base name is missing"))?;
+        let target_name = target
+            .file_name()
+            .ok_or_else(|| refusal("Requested tree name is missing"))?;
         normal(base_name)?;
         normal(target_name)?;
         // Charge each simultaneous fixed physical-path copy separately.
@@ -331,14 +351,15 @@ impl CleanupOwner {
                 .ok_or_else(|| refusal("Requested physical envelope overflow"))?;
         }
         if physical_bytes > MAX_REQUESTED_PATH_BYTES {
-            return Err(refusal("Requested physical envelope exceeds its byte bound"));
+            return Err(refusal(
+                "Requested physical envelope exceeds its byte bound",
+            ));
         }
         let nodes = namespace.entries.len();
-        let admitted_count = nodes.checked_add(REQUESTED_WRAPPER_DIRECTORIES)
+        let admitted_count = nodes
+            .checked_add(REQUESTED_WRAPPER_DIRECTORIES)
             .ok_or_else(|| refusal("Requested key count overflow"))?;
-        if admitted_count != namespace.total_entries
-            || admitted_count > namespace.limits.entries
-        {
+        if admitted_count != namespace.total_entries || admitted_count > namespace.limits.entries {
             return Err(refusal("Requested owned keys do not match admitted count"));
         }
         let representation = nodes
@@ -354,19 +375,29 @@ impl CleanupOwner {
         }
         let mut keys = Vec::new();
         clock(check)?;
-        keys.try_reserve_exact(nodes).map_err(|error| refusal(format!("Requested key allocation: {error}")))?;
+        keys.try_reserve_exact(nodes)
+            .map_err(|error| refusal(format!("Requested key allocation: {error}")))?;
         clock(check)?;
         let mut copied = 0_usize;
         for (relative, kind) in &namespace.entries {
             clock(check)?;
-            copied = copied.checked_add(relative.len()).ok_or_else(|| refusal("Requested key bytes overflow"))?;
+            copied = copied
+                .checked_add(relative.len())
+                .ok_or_else(|| refusal("Requested key bytes overflow"))?;
             if copied > namespace.limits.path_bytes {
-                return Err(refusal("Requested copied keys exceed admitted namespace bytes"));
+                return Err(refusal(
+                    "Requested copied keys exceed admitted namespace bytes",
+                ));
             }
             let mut name = String::new();
-            name.try_reserve_exact(relative.len()).map_err(|error| refusal(format!("Requested key allocation: {error}")))?;
+            name.try_reserve_exact(relative.len())
+                .map_err(|error| refusal(format!("Requested key allocation: {error}")))?;
             name.push_str(relative);
-            keys.push(Key { relative: name, kind: *kind, parent: None });
+            keys.push(Key {
+                relative: name,
+                kind: *kind,
+                parent: None,
+            });
             clock(check)?;
         }
         if copied != namespace.path_bytes {
@@ -377,7 +408,11 @@ impl CleanupOwner {
             if let Some((parent, _)) = keys[index].relative.rsplit_once('/') {
                 let parent_index = keys
                     .binary_search_by(|key| key.relative.as_str().cmp(parent))
-                    .map_err(|position| refusal(format!("Requested admitted parent is missing at {position}")))?;
+                    .map_err(|position| {
+                        refusal(format!(
+                            "Requested admitted parent is missing at {position}"
+                        ))
+                    })?;
                 if keys[parent_index].kind == RequestedEntryKind::File {
                     return Err(refusal("Requested parent is a file"));
                 }
@@ -386,32 +421,42 @@ impl CleanupOwner {
         }
         let mut children = Vec::new();
         clock(check)?;
-        children.try_reserve_exact(nodes).map_err(|error| refusal(format!("Requested child-index allocation: {error}")))?;
+        children
+            .try_reserve_exact(nodes)
+            .map_err(|error| refusal(format!("Requested child-index allocation: {error}")))?;
         clock(check)?;
         children.extend(0..nodes);
         clock(check)?;
         children.sort_unstable_by(|left, right| {
-            keys[*left].parent.cmp(&keys[*right].parent)
+            keys[*left]
+                .parent
+                .cmp(&keys[*right].parent)
                 .then_with(|| keys[*left].relative.cmp(&keys[*right].relative))
         });
         clock(check)?;
         let mut states = Vec::new();
         clock(check)?;
-        states.try_reserve_exact(nodes).map_err(|error| refusal(format!("Requested state allocation: {error}")))?;
+        states
+            .try_reserve_exact(nodes)
+            .map_err(|error| refusal(format!("Requested state allocation: {error}")))?;
         clock(check)?;
         states.resize(nodes, NodeState::Uncreated);
         let mut seen = Vec::new();
         clock(check)?;
-        seen.try_reserve_exact(nodes).map_err(|error| refusal(format!("Requested membership allocation: {error}")))?;
+        seen.try_reserve_exact(nodes)
+            .map_err(|error| refusal(format!("Requested membership allocation: {error}")))?;
         clock(check)?;
         seen.resize(nodes, false);
         let mut ancestry = Vec::new();
         clock(check)?;
-        ancestry.try_reserve_exact(count).map_err(|error| refusal(format!("Requested ancestry allocation: {error}")))?;
+        ancestry
+            .try_reserve_exact(count)
+            .map_err(|error| refusal(format!("Requested ancestry allocation: {error}")))?;
         clock(check)?;
         clock(check)?;
         let mut credential_prefix = Vec::new();
-        credential_prefix.try_reserve_exact(CREDENTIAL_PREFIX_BYTES)
+        credential_prefix
+            .try_reserve_exact(CREDENTIAL_PREFIX_BYTES)
             .map_err(|error| refusal(format!("Requested credential allocation: {error}")))?;
         credential_prefix.resize(CREDENTIAL_PREFIX_BYTES, 0);
         clock(check)?;
@@ -461,13 +506,16 @@ impl CleanupOwner {
     }
 
     fn lock(&self) -> io::Result<MutexGuard<'_, State>> {
-        self.state.lock().map_err(|error| refusal(format!("Requested owner state is poisoned: {error}")))
+        self.state
+            .lock()
+            .map_err(|error| refusal(format!("Requested owner state is poisoned: {error}")))
     }
 
     pub(super) fn blob_chunk(&self) -> io::Result<MutexGuard<'_, Vec<u8>>> {
-        let prefix = self.credential_prefix.lock().map_err(|error| {
-            refusal(format!("Requested credential state is poisoned: {error}"))
-        })?;
+        let prefix = self
+            .credential_prefix
+            .lock()
+            .map_err(|error| refusal(format!("Requested credential state is poisoned: {error}")))?;
         if prefix.len() != CREDENTIAL_PREFIX_BYTES {
             return Err(refusal("Requested shared scratch has the wrong size"));
         }
@@ -497,28 +545,47 @@ impl CleanupOwner {
             }
         }
         checked_pinned(&self.temp, check)?;
-        if !self.temp.identity.matches(&timed(check, || current.file.metadata())?) {
-            return Err(refusal("Requested temp descriptor no longer names the admitted temp"));
+        if !self
+            .temp
+            .identity
+            .matches(&timed(check, || current.file.metadata())?)
+        {
+            return Err(refusal(
+                "Requested temp descriptor no longer names the admitted temp",
+            ));
         }
         if let Some(shared) = &state.shared {
-            let named = opened(&child(&self.temp.file, OsStr::new("ripr-git-candidate"))?, true, check)?;
+            let named = opened(
+                &child(&self.temp.file, OsStr::new("ripr-git-candidate"))?,
+                true,
+                check,
+            )?;
             checked_pinned(shared, check)?;
             owned(&named.identity, self.uid, false)?;
-            if !shared.identity.matches(&timed(check, || named.file.metadata())?) {
+            if !shared
+                .identity
+                .matches(&timed(check, || named.file.metadata())?)
+            {
                 return Err(refusal("Requested shared directory changed"));
             }
             if let Some(base) = &state.base {
                 let named = opened(&child(&shared.file, &self.base_name)?, true, check)?;
                 checked_pinned(base, check)?;
                 owned(&named.identity, self.uid, true)?;
-                if !base.identity.matches(&timed(check, || named.file.metadata())?) {
+                if !base
+                    .identity
+                    .matches(&timed(check, || named.file.metadata())?)
+                {
                     return Err(refusal("Requested base directory changed"));
                 }
                 if let Some(target) = &state.target {
                     let named = opened(&child(&base.file, &self.target_name)?, true, check)?;
                     checked_pinned(target, check)?;
                     owned(&named.identity, self.uid, true)?;
-                    if !target.identity.matches(&timed(check, || named.file.metadata())?) {
+                    if !target
+                        .identity
+                        .matches(&timed(check, || named.file.metadata())?)
+                    {
                         return Err(refusal("Requested tree directory changed"));
                     }
                 }
@@ -554,7 +621,10 @@ impl CleanupOwner {
         let check = Some((started, budget));
         let state = self.lock()?;
         self.current(&state, check)?;
-        let shared = state.shared.as_ref().ok_or_else(|| refusal("Requested shared owner is missing"))?;
+        let shared = state
+            .shared
+            .as_ref()
+            .ok_or_else(|| refusal("Requested shared owner is missing"))?;
         let path = child(&shared.file, &self.base_name)?;
         // Do not put a fallible postcheck between actual mkdir success and
         // the caller's report-only marker.
@@ -566,7 +636,10 @@ impl CleanupOwner {
         let check = Some((started, budget));
         let mut state = self.lock()?;
         self.current(&state, check)?;
-        let shared = state.shared.as_ref().ok_or_else(|| refusal("Requested shared owner is missing"))?;
+        let shared = state
+            .shared
+            .as_ref()
+            .ok_or_else(|| refusal("Requested shared owner is missing"))?;
         let base = opened(&child(&shared.file, &self.base_name)?, true, check)?;
         owned(&base.identity, self.uid, true)?;
         state.base = Some(base);
@@ -577,7 +650,10 @@ impl CleanupOwner {
         let check = Some((started, budget));
         let mut state = self.lock()?;
         self.current(&state, check)?;
-        let base = state.base.as_ref().ok_or_else(|| refusal("Requested base owner is missing"))?;
+        let base = state
+            .base
+            .as_ref()
+            .ok_or_else(|| refusal("Requested base owner is missing"))?;
         let path = child(&base.file, &self.target_name)?;
         state.target_state = NodeState::Creating;
         timed(check, || fs::DirBuilder::new().mode(0o700).create(&path))?;
@@ -589,23 +665,34 @@ impl CleanupOwner {
     }
 
     pub(super) fn key(&self, index: usize) -> io::Result<&str> {
-        self.keys.get(index).map(|key| key.relative.as_str())
+        self.keys
+            .get(index)
+            .map(|key| key.relative.as_str())
             .ok_or_else(|| refusal("Requested key index is absent"))
     }
 
     pub(super) fn is_directory(&self, index: usize) -> io::Result<bool> {
-        self.keys.get(index).map(|key| key.kind != RequestedEntryKind::File)
+        self.keys
+            .get(index)
+            .map(|key| key.kind != RequestedEntryKind::File)
             .ok_or_else(|| refusal("Requested key index is absent"))
     }
 
     pub(super) fn key_index(&self, relative: &str) -> io::Result<usize> {
-        self.keys.binary_search_by(|key| key.relative.as_str().cmp(relative))
+        self.keys
+            .binary_search_by(|key| key.relative.as_str().cmp(relative))
             .map_err(|position| refusal(format!("Requested admitted key is absent at {position}")))
     }
 
     fn parent(&self, index: usize, state: &State, check: Clock) -> io::Result<Pinned> {
-        let key = self.keys.get(index).ok_or_else(|| refusal("Requested key index is absent"))?;
-        let target = state.target.as_ref().ok_or_else(|| refusal("Requested tree owner is missing"))?;
+        let key = self
+            .keys
+            .get(index)
+            .ok_or_else(|| refusal("Requested key index is absent"))?;
+        let target = state
+            .target
+            .as_ref()
+            .ok_or_else(|| refusal("Requested tree owner is missing"))?;
         checked_pinned(target, check)?;
         let mut current = Pinned {
             file: timed(check, || target.file.try_clone())?,
@@ -615,9 +702,11 @@ impl CleanupOwner {
             let mut end = 0_usize;
             for name in relative.split('/') {
                 normal(OsStr::new(name))?;
-                end = end.checked_add(name.len())
+                end = end
+                    .checked_add(name.len())
                     .ok_or_else(|| refusal("Requested parent prefix overflow"))?;
-                let prefix = relative.get(..end)
+                let prefix = relative
+                    .get(..end)
                     .ok_or_else(|| refusal("Requested parent prefix is not a string boundary"))?;
                 let parent_index = self.key_index(prefix)?;
                 let next = opened(&child(&current.file, OsStr::new(name))?, true, check)?;
@@ -628,7 +717,8 @@ impl CleanupOwner {
                     _ => return Err(refusal("Requested admitted parent changed or is uncreated")),
                 }
                 current = next;
-                end = end.checked_add(1)
+                end = end
+                    .checked_add(1)
                     .ok_or_else(|| refusal("Requested parent prefix overflow"))?;
             }
         }
@@ -637,19 +727,29 @@ impl CleanupOwner {
 
     fn leaf(&self, index: usize) -> io::Result<&OsStr> {
         let key = self.key(index)?;
-        let name = key.rsplit('/').next().ok_or_else(|| refusal("Requested leaf is absent"))?;
+        let name = key
+            .rsplit('/')
+            .next()
+            .ok_or_else(|| refusal("Requested leaf is absent"))?;
         normal(OsStr::new(name))?;
         Ok(OsStr::new(name))
     }
 
-    pub(super) fn create_directory(&self, index: usize, started: Instant, budget: Duration) -> io::Result<()> {
+    pub(super) fn create_directory(
+        &self,
+        index: usize,
+        started: Instant,
+        budget: Duration,
+    ) -> io::Result<()> {
         let check = Some((started, budget));
         let mut state = self.lock()?;
         self.current(&state, check)?;
         let parent = self.parent(index, &state, check)?;
         let path = child(&parent.file, self.leaf(index)?)?;
         if !self.is_directory(index)? || !matches!(state.nodes[index], NodeState::Uncreated) {
-            return Err(refusal("Requested directory creation is not a fresh admitted node"));
+            return Err(refusal(
+                "Requested directory creation is not a fresh admitted node",
+            ));
         }
         state.nodes[index] = NodeState::Creating;
         timed(check, || fs::DirBuilder::new().mode(0o700).create(&path))?;
@@ -659,23 +759,36 @@ impl CleanupOwner {
         self.current(&state, check)
     }
 
-    pub(super) fn create_file(&self, index: usize, started: Instant, budget: Duration) -> io::Result<File> {
+    pub(super) fn create_file(
+        &self,
+        index: usize,
+        started: Instant,
+        budget: Duration,
+    ) -> io::Result<File> {
         let check = Some((started, budget));
         let mut state = self.lock()?;
         self.current(&state, check)?;
         let parent = self.parent(index, &state, check)?;
         let path = child(&parent.file, self.leaf(index)?)?;
         if self.is_directory(index)? || !matches!(state.nodes[index], NodeState::Uncreated) {
-            return Err(refusal("Requested file creation is not a fresh admitted node"));
+            return Err(refusal(
+                "Requested file creation is not a fresh admitted node",
+            ));
         }
         state.nodes[index] = NodeState::Creating;
         let file = timed(check, || {
-            OpenOptions::new().write(true).create_new(true).mode(0o600)
-                .custom_flags(NOFOLLOW | NONBLOCK).open(&path)
+            OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .mode(0o600)
+                .custom_flags(NOFOLLOW | NONBLOCK)
+                .open(&path)
         })?;
         let identity = Identity::capture(&timed(check, || file.metadata())?)?;
         if identity.directory || identity.uid != self.uid || identity.mode != 0o600 {
-            return Err(refusal("Requested created file owner or permissions are unsafe"));
+            return Err(refusal(
+                "Requested created file owner or permissions are unsafe",
+            ));
         }
         let named = timed(check, || fs::symlink_metadata(&path))?;
         if !identity.matches(&named) {
@@ -686,42 +799,86 @@ impl CleanupOwner {
         Ok(file)
     }
 
-    pub(super) fn seal_file(&self, index: usize, file: &File, size: u64, started: Instant, budget: Duration) -> io::Result<()> {
+    pub(super) fn seal_file(
+        &self,
+        index: usize,
+        file: &File,
+        size: u64,
+        started: Instant,
+        budget: Duration,
+    ) -> io::Result<()> {
         let check = Some((started, budget));
         let mut state = self.lock()?;
         self.current(&state, check)?;
         let observed = timed(check, || file.metadata())?;
         match state.nodes[index] {
-            NodeState::Created(identity) if identity.same_object(&observed) && observed.len() == size => {}
-            _ => return Err(refusal("Requested written file changed or has the wrong size")),
+            NodeState::Created(identity)
+                if identity.same_object(&observed) && observed.len() == size => {}
+            _ => {
+                return Err(refusal(
+                    "Requested written file changed or has the wrong size",
+                ));
+            }
         }
         state.nodes[index] = NodeState::Created(Identity::capture(&observed)?);
         clock(check)
     }
 
     fn children(&self, parent: Option<usize>) -> &[usize] {
-        let start = self.children.partition_point(|index| self.keys[*index].parent < parent);
-        let end = self.children.partition_point(|index| self.keys[*index].parent <= parent);
+        let start = self
+            .children
+            .partition_point(|index| self.keys[*index].parent < parent);
+        let end = self
+            .children
+            .partition_point(|index| self.keys[*index].parent <= parent);
         &self.children[start..end]
     }
 
-    fn audit_directory(&self, directory: &File, parent: Option<usize>, state: &mut State) -> io::Result<()> {
+    fn audit_directory(
+        &self,
+        directory: &File,
+        parent: Option<usize>,
+        state: &mut State,
+    ) -> io::Result<()> {
         let expected = self.children(parent);
-        let admitted = expected.iter().filter(|index| matches!(state.nodes[**index], NodeState::Created(_))).count();
-        let limit = admitted.checked_add(1).ok_or_else(|| refusal("Requested membership count overflow"))?;
+        let admitted = expected
+            .iter()
+            .filter(|index| matches!(state.nodes[**index], NodeState::Created(_)))
+            .count();
+        let limit = admitted
+            .checked_add(1)
+            .ok_or_else(|| refusal("Requested membership count overflow"))?;
         let mut count = 0_usize;
-        for entry in fs::read_dir(PathBuf::from(format!("/proc/self/fd/{}", directory.as_raw_fd())))? {
+        for entry in fs::read_dir(PathBuf::from(format!(
+            "/proc/self/fd/{}",
+            directory.as_raw_fd()
+        )))? {
             let entry = entry?;
-            count = count.checked_add(1).ok_or_else(|| refusal("Requested membership count overflow"))?;
+            count = count
+                .checked_add(1)
+                .ok_or_else(|| refusal("Requested membership count overflow"))?;
             if count >= limit {
                 return Err(refusal("Requested directory has excess membership"));
             }
             let name = entry.file_name();
             normal(&name)?;
-            let name = name.to_str().ok_or_else(|| refusal("Requested membership is not UTF-8"))?;
-            let matched = expected.binary_search_by(|index| {
-                self.keys[*index].relative.rsplit('/').next().unwrap_or("").cmp(name)
-            }).map_err(|position| refusal(format!("Requested directory has unknown membership at {position}")))?;
+            let name = name
+                .to_str()
+                .ok_or_else(|| refusal("Requested membership is not UTF-8"))?;
+            let matched = expected
+                .binary_search_by(|index| {
+                    self.keys[*index]
+                        .relative
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("")
+                        .cmp(name)
+                })
+                .map_err(|position| {
+                    refusal(format!(
+                        "Requested directory has unknown membership at {position}"
+                    ))
+                })?;
             let index = expected[matched];
             if state.seen[index] {
                 return Err(refusal("Requested directory enumeration repeated a child"));
@@ -729,7 +886,11 @@ impl CleanupOwner {
             let NodeState::Created(identity) = state.nodes[index] else {
                 return Err(refusal("Requested directory contains an unowned child"));
             };
-            let actual = opened(&child(directory, OsStr::new(name))?, identity.directory, None)?;
+            let actual = opened(
+                &child(directory, OsStr::new(name))?,
+                identity.directory,
+                None,
+            )?;
             if !identity.matches(&actual.file.metadata()?) {
                 return Err(refusal("Requested directory member changed"));
             }
@@ -750,13 +911,24 @@ impl CleanupOwner {
     ) -> io::Result<()> {
         self.current(state, None)?;
         if matches!(state.target_state, NodeState::Creating)
-            || state.nodes.iter().any(|node| matches!(node, NodeState::Creating))
+            || state
+                .nodes
+                .iter()
+                .any(|node| matches!(node, NodeState::Creating))
         {
-            return Err(refusal("Requested creation is uncertain; retained without cleanup"));
+            return Err(refusal(
+                "Requested creation is uncertain; retained without cleanup",
+            ));
         }
-        let base = state.base.as_ref().ok_or_else(|| refusal("Requested base ownership is absent"))?;
+        let base = state
+            .base
+            .as_ref()
+            .ok_or_else(|| refusal("Requested base ownership is absent"))?;
         let mut base_count = 0_usize;
-        for entry in fs::read_dir(PathBuf::from(format!("/proc/self/fd/{}", base.file.as_raw_fd())))? {
+        for entry in fs::read_dir(PathBuf::from(format!(
+            "/proc/self/fd/{}",
+            base.file.as_raw_fd()
+        )))? {
             let entry = entry?;
             base_count += 1;
             if base_count > 1
@@ -765,7 +937,10 @@ impl CleanupOwner {
             {
                 return Err(refusal("Requested base contains unknown membership"));
             }
-            let target = state.target.as_ref().ok_or_else(|| refusal("Requested target ownership is absent"))?;
+            let target = state
+                .target
+                .as_ref()
+                .ok_or_else(|| refusal("Requested target ownership is absent"))?;
             let actual = opened(&child(&base.file, &self.target_name)?, true, None)?;
             if !target.identity.matches(&actual.file.metadata()?) {
                 return Err(refusal("Requested target membership changed"));
@@ -814,7 +989,10 @@ impl CleanupOwner {
         self.current(state, None)?;
         if let Some(target) = &state.target {
             checked_pinned(target, None)?;
-            let base = state.base.as_ref().ok_or_else(|| refusal("Requested base ownership is absent"))?;
+            let base = state
+                .base
+                .as_ref()
+                .ok_or_else(|| refusal("Requested base ownership is absent"))?;
             let path = child(&base.file, &self.target_name)?;
             let actual = opened(&path, true, None)?;
             if !target.identity.matches(&actual.file.metadata()?) {
@@ -825,8 +1003,14 @@ impl CleanupOwner {
             state.target = None;
         }
         self.current(state, None)?;
-        let shared = state.shared.as_ref().ok_or_else(|| refusal("Requested shared ownership is absent"))?;
-        let base = state.base.as_ref().ok_or_else(|| refusal("Requested base ownership is absent"))?;
+        let shared = state
+            .shared
+            .as_ref()
+            .ok_or_else(|| refusal("Requested shared ownership is absent"))?;
+        let base = state
+            .base
+            .as_ref()
+            .ok_or_else(|| refusal("Requested base ownership is absent"))?;
         let path = child(&shared.file, &self.base_name)?;
         let actual = opened(&path, true, None)?;
         if !base.identity.matches(&actual.file.metadata()?) {
@@ -851,8 +1035,16 @@ impl CleanupOwner {
         let mut state = self.lock()?;
         match state.phase {
             CleanupPhase::Removed => return Ok(()),
-            CleanupPhase::Attempting => return Err(refusal("Requested cleanup was interrupted; retained without retry")),
-            CleanupPhase::Refused => return Err(refusal("Requested cleanup already refused; retained without retry")),
+            CleanupPhase::Attempting => {
+                return Err(refusal(
+                    "Requested cleanup was interrupted; retained without retry",
+                ));
+            }
+            CleanupPhase::Refused => {
+                return Err(refusal(
+                    "Requested cleanup already refused; retained without retry",
+                ));
+            }
             CleanupPhase::Fresh => state.phase = CleanupPhase::Attempting,
         }
         let result = self.cleanup_once(
@@ -860,16 +1052,21 @@ impl CleanupOwner {
             #[cfg(test)]
             observe,
         );
-        state.phase = if result.is_ok() { CleanupPhase::Removed } else { CleanupPhase::Refused };
+        state.phase = if result.is_ok() {
+            CleanupPhase::Removed
+        } else {
+            CleanupPhase::Refused
+        };
         result
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::analysis::git_candidate_execution::{GuardStorage, RequestedTreeLimits, TempRootGuard};
+    use crate::analysis::git_candidate_execution::{
+        GuardStorage, RequestedTreeLimits, TempRootGuard,
+    };
     use std::io::Write;
     use std::os::unix::ffi::OsStringExt;
     use std::os::unix::fs::{FileTypeExt, PermissionsExt, symlink};
@@ -915,16 +1112,23 @@ mod tests {
             let mut namespace = RequestedNamespace::new(RequestedTreeLimits::STANDARD)
                 .map_err(|error| refusal(error.to_string()))?;
             for path in directories {
-                namespace.admit_path(&self.target, path, RequestedEntryKind::Directory)
+                namespace
+                    .admit_path(&self.target, path, RequestedEntryKind::Directory)
                     .map_err(|error| refusal(error.to_string()))?;
             }
             for path in files {
-                namespace.admit_path(&self.target, path, RequestedEntryKind::File)
+                namespace
+                    .admit_path(&self.target, path, RequestedEntryKind::File)
                     .map_err(|error| refusal(error.to_string()))?;
             }
             Ok(CleanupOwner::prepare(
-                &self.root, &self.shared, &self.base, &self.target, &namespace,
-                self.started, self.budget,
+                &self.root,
+                &self.shared,
+                &self.base,
+                &self.target,
+                &namespace,
+                self.started,
+                self.budget,
             )?)
         }
 
@@ -971,7 +1175,12 @@ mod tests {
         fixture.write(&owner, "literal\\name.rs", b"literal")?;
         let uid = owner.uid;
         assert_eq!(fs::metadata(&fixture.shared)?.mode() & 0o777, 0o755);
-        for path in [&fixture.base, &fixture.target, &fixture.target.join("src"), &fixture.target.join("empty")] {
+        for path in [
+            &fixture.base,
+            &fixture.target,
+            &fixture.target.join("src"),
+            &fixture.target.join("empty"),
+        ] {
             let metadata = fs::metadata(path)?;
             assert_eq!(metadata.uid(), uid);
             assert_eq!(metadata.mode() & 0o777, 0o700);
@@ -980,15 +1189,24 @@ mod tests {
         assert_eq!(metadata.uid(), uid);
         assert_eq!(metadata.mode() & 0o777, 0o600);
         assert_eq!(metadata.nlink(), 1);
-        assert_eq!(fs::read(fixture.target.join("literal\\name.rs"))?, b"literal");
+        assert_eq!(
+            fs::read(fixture.target.join("literal\\name.rs"))?,
+            b"literal"
+        );
         let guard = fixture.guard(owner);
         guard.checked_cleanup()?;
-        assert!(!fixture.base.exists(), "owned source root remained after successful cleanup");
+        assert!(
+            !fixture.base.exists(),
+            "owned source root remained after successful cleanup"
+        );
         assert!(fixture.shared.is_dir(), "shared wrapper was deleted");
         fs::DirBuilder::new().mode(0o700).create(&fixture.base)?;
         fs::write(fixture.base.join("replacement"), b"after cleanup")?;
         drop(guard);
-        assert_eq!(fs::read(fixture.base.join("replacement"))?, b"after cleanup");
+        assert_eq!(
+            fs::read(fixture.base.join("replacement"))?,
+            b"after cleanup"
+        );
         Ok(())
     }
 
@@ -1005,13 +1223,25 @@ mod tests {
                 fs::write(&fixture.shared, b"occupied shared file")?;
             }
             let owner = fixture.plan(&[], &[])?;
-            let error = owner.create_shared(fixture.started, fixture.budget)
-                .err().ok_or("shared link or file was admitted")?;
-            assert!(error.to_string().contains("type is not admitted"), "{error}");
+            let error = owner
+                .create_shared(fixture.started, fixture.budget)
+                .err()
+                .ok_or("shared link or file was admitted")?;
+            assert!(
+                error.to_string().contains("type is not admitted"),
+                "{error}"
+            );
             assert_eq!(fs::read(outside.join("sentinel"))?, b"outside");
-            assert!(!outside.join("owned-base").exists(), "wrote through shared link");
+            assert!(
+                !outside.join("owned-base").exists(),
+                "wrote through shared link"
+            );
             if link {
-                assert!(fs::symlink_metadata(&fixture.shared)?.file_type().is_symlink());
+                assert!(
+                    fs::symlink_metadata(&fixture.shared)?
+                        .file_type()
+                        .is_symlink()
+                );
             } else {
                 assert_eq!(fs::read(&fixture.shared)?, b"occupied shared file");
             }
@@ -1025,17 +1255,29 @@ mod tests {
         fs::DirBuilder::new().mode(0o755).create(&fixture.shared)?;
         fs::set_permissions(&fixture.shared, fs::Permissions::from_mode(0o757))?;
         let owner = fixture.plan(&[], &[])?;
-        let error = owner.create_shared(fixture.started, fixture.budget)
-            .err().ok_or("other-writable shared wrapper was admitted")?;
-        assert!(error.to_string().contains("owner or permissions"), "{error}");
-        assert!(!fixture.base.exists(), "unsafe shared wrapper reached base creation");
+        let error = owner
+            .create_shared(fixture.started, fixture.budget)
+            .err()
+            .ok_or("other-writable shared wrapper was admitted")?;
+        assert!(
+            error.to_string().contains("owner or permissions"),
+            "{error}"
+        );
+        assert!(
+            !fixture.base.exists(),
+            "unsafe shared wrapper reached base creation"
+        );
         fs::set_permissions(&fixture.shared, fs::Permissions::from_mode(0o755))?;
         let observed = Identity::capture(&fs::metadata(&fixture.shared)?)?;
         owned(&observed, observed.uid, false)?;
         let foreign = observed.uid.wrapping_add(1);
         let error = owned(&observed, foreign, false)
-            .err().ok_or("foreign UID decision was admitted")?;
-        assert!(error.to_string().contains("owner or permissions"), "{error}");
+            .err()
+            .ok_or("foreign UID decision was admitted")?;
+        assert!(
+            error.to_string().contains("owner or permissions"),
+            "{error}"
+        );
         Ok(())
     }
 
@@ -1048,9 +1290,14 @@ mod tests {
         fs::rename(&fixture.shared, &moved)?;
         fs::DirBuilder::new().mode(0o755).create(&fixture.shared)?;
         fs::write(fixture.shared.join("sentinel"), b"replacement")?;
-        let error = owner.create_base_entry(fixture.started, fixture.budget)
-            .err().ok_or("replaced shared wrapper reached base creation")?;
-        assert!(error.to_string().contains("shared directory changed"), "{error}");
+        let error = owner
+            .create_base_entry(fixture.started, fixture.budget)
+            .err()
+            .ok_or("replaced shared wrapper reached base creation")?;
+        assert!(
+            error.to_string().contains("shared directory changed"),
+            "{error}"
+        );
         assert!(!moved.join("owned-base").exists());
         assert!(!fixture.base.exists());
         assert_eq!(fs::read(fixture.shared.join("sentinel"))?, b"replacement");
@@ -1068,8 +1315,14 @@ mod tests {
         fs::rename(&fixture.base, &moved)?;
         fs::DirBuilder::new().mode(0o700).create(&fixture.base)?;
         fs::write(fixture.base.join("sentinel"), b"replacement")?;
-        let error = guard.checked_cleanup().err().ok_or("replaced base was deleted")?;
-        assert!(error.to_string().contains("base directory changed"), "{error}");
+        let error = guard
+            .checked_cleanup()
+            .err()
+            .ok_or("replaced base was deleted")?;
+        assert!(
+            error.to_string().contains("base directory changed"),
+            "{error}"
+        );
         let mut report = Vec::new();
         guard.clean_up_reporting_to(&mut report);
         assert!(String::from_utf8(report)?.contains("inspect retained identities"));
@@ -1089,11 +1342,17 @@ mod tests {
         let target = base.join("tree");
         let mut namespace = RequestedNamespace::new(RequestedTreeLimits::STANDARD)
             .map_err(|error| refusal(error.to_string()))?;
-        namespace.admit_path(&target, "source.rs", RequestedEntryKind::File)
+        namespace
+            .admit_path(&target, "source.rs", RequestedEntryKind::File)
             .map_err(|error| refusal(error.to_string()))?;
         let owner = CleanupOwner::prepare(
-            &temporary, &shared, &base, &target, &namespace,
-            fixture.started, fixture.budget,
+            &temporary,
+            &shared,
+            &base,
+            &target,
+            &namespace,
+            fixture.started,
+            fixture.budget,
         )?;
         owner.create_shared(fixture.started, fixture.budget)?;
         owner.create_base_entry(fixture.started, fixture.budget)?;
@@ -1106,14 +1365,26 @@ mod tests {
         fs::rename(&temporary, &moved)?;
         symlink(&outside, &temporary)?;
         let index = owner.key_index("source.rs")?;
-        let error = owner.create_file(index, fixture.started, fixture.budget)
-            .err().ok_or("ancestor link replacement reached file write")?;
-        assert!(error.to_string().contains("type is not admitted"), "{error}");
-        assert!(!moved.join("ripr-git-candidate/base/tree/source.rs").exists());
+        let error = owner
+            .create_file(index, fixture.started, fixture.budget)
+            .err()
+            .ok_or("ancestor link replacement reached file write")?;
+        assert!(
+            error.to_string().contains("type is not admitted"),
+            "{error}"
+        );
+        assert!(
+            !moved
+                .join("ripr-git-candidate/base/tree/source.rs")
+                .exists()
+        );
         assert_eq!(fs::read(outside.join("sentinel"))?, b"outside");
         assert!(!outside.join("ripr-git-candidate").exists());
         let guard = TempRootGuard(base, GuardStorage::Requested(owner));
-        guard.checked_cleanup().err().ok_or("ancestor drift cleanup was admitted")?;
+        guard
+            .checked_cleanup()
+            .err()
+            .ok_or("ancestor drift cleanup was admitted")?;
         drop(guard);
         assert_eq!(fs::read(outside.join("sentinel"))?, b"outside");
         assert!(moved.join("ripr-git-candidate/base/tree").is_dir());
@@ -1123,7 +1394,11 @@ mod tests {
     #[test]
     fn requested_owner_symlink_and_hardlink_leaves_never_truncate() -> TestResult {
         for linked in [false, true] {
-            let fixture = Fixture::new(if linked { "hardlink-leaf" } else { "symlink-leaf" })?;
+            let fixture = Fixture::new(if linked {
+                "hardlink-leaf"
+            } else {
+                "symlink-leaf"
+            })?;
             let owner = fixture.plan(&["source.rs"], &[])?;
             fixture.acquire(&owner)?;
             let outside = fixture.root.join("outside-file");
@@ -1135,12 +1410,17 @@ mod tests {
                 symlink(&outside, &leaf)?;
             }
             let index = owner.key_index("source.rs")?;
-            let error = owner.create_file(index, fixture.started, fixture.budget)
-                .err().ok_or("occupied leaf was opened for truncation")?;
+            let error = owner
+                .create_file(index, fixture.started, fixture.budget)
+                .err()
+                .ok_or("occupied leaf was opened for truncation")?;
             assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
             assert_eq!(fs::read(&outside)?, b"outside unchanged");
             let guard = fixture.guard(owner);
-            guard.checked_cleanup().err().ok_or("uncertain occupied leaf cleanup was admitted")?;
+            guard
+                .checked_cleanup()
+                .err()
+                .ok_or("uncertain occupied leaf cleanup was admitted")?;
             drop(guard);
             assert_eq!(fs::read(&outside)?, b"outside unchanged");
             fs::symlink_metadata(leaf)?;
@@ -1157,7 +1437,10 @@ mod tests {
         let link = fixture.root.join("extra-link");
         fs::hard_link(fixture.target.join("source.rs"), &link)?;
         let guard = fixture.guard(owner);
-        let error = guard.checked_cleanup().err().ok_or("multiply linked file was removed")?;
+        let error = guard
+            .checked_cleanup()
+            .err()
+            .ok_or("multiply linked file was removed")?;
         assert!(error.to_string().contains("one link"), "{error}");
         drop(guard);
         assert_eq!(fs::read(&link)?, b"source");
@@ -1168,7 +1451,11 @@ mod tests {
     #[test]
     fn requested_owner_unknown_and_missing_membership_retains_without_retry() -> TestResult {
         for missing in [false, true] {
-            let fixture = Fixture::new(if missing { "missing-member" } else { "unknown-member" })?;
+            let fixture = Fixture::new(if missing {
+                "missing-member"
+            } else {
+                "unknown-member"
+            })?;
             let owner = fixture.plan(&["source.rs"], &["empty"])?;
             fixture.acquire(&owner)?;
             fixture.write(&owner, "source.rs", b"source")?;
@@ -1179,16 +1466,23 @@ mod tests {
                 fs::write(&unknown, b"unadmitted")?;
             }
             let guard = fixture.guard(owner);
-            let error = guard.checked_cleanup().err().ok_or("changed membership was accepted")?;
+            let error = guard
+                .checked_cleanup()
+                .err()
+                .ok_or("changed membership was accepted")?;
             assert!(
-                error.to_string().contains("membership") || error.to_string().contains("missing an admitted"),
+                error.to_string().contains("membership")
+                    || error.to_string().contains("missing an admitted"),
                 "{error}"
             );
             if !missing {
                 fs::remove_file(&unknown)?;
             }
             drop(guard);
-            assert!(fixture.target.join("empty").is_dir(), "Drop retried failed checked cleanup");
+            assert!(
+                fixture.target.join("empty").is_dir(),
+                "Drop retried failed checked cleanup"
+            );
             if !missing {
                 assert_eq!(fs::read(fixture.target.join("source.rs"))?, b"source");
             }
@@ -1207,12 +1501,18 @@ mod tests {
         let socket = fixture.target.join("socket");
         let anchored_socket = {
             let state = owner.lock()?;
-            let target = state.target.as_ref().ok_or("target descriptor is missing")?;
+            let target = state
+                .target
+                .as_ref()
+                .ok_or("target descriptor is missing")?;
             child(&target.file, OsStr::new("socket"))?
         };
         let listener = std::os::unix::net::UnixListener::bind(&anchored_socket)?;
         let guard = fixture.guard(owner);
-        guard.checked_cleanup().err().ok_or("non-UTF8/special membership was admitted")?;
+        guard
+            .checked_cleanup()
+            .err()
+            .ok_or("non-UTF8/special membership was admitted")?;
         drop(guard);
         assert_eq!(fs::read(non_utf8)?, b"unknown");
         assert_eq!(fs::read(fixture.target.join("source.rs"))?, b"source");
@@ -1229,14 +1529,20 @@ mod tests {
         fixture.write(&owner, "a.rs", b"a")?;
         fixture.write(&owner, "b.rs", b"b")?;
         let mut removed = None;
-        let error = owner.cleanup(&mut |index| {
-            removed = Some(index);
-            Err(refusal("actual partial cleanup refused"))
-        }).err().ok_or("partial cleanup callback was ignored")?;
+        let error = owner
+            .cleanup(&mut |index| {
+                removed = Some(index);
+                Err(refusal("actual partial cleanup refused"))
+            })
+            .err()
+            .ok_or("partial cleanup callback was ignored")?;
         assert!(error.to_string().contains("actual partial"), "{error}");
         let removed = removed.ok_or("cleanup did not perform a real removal")?;
         assert_eq!(owner.key(removed)?, "b.rs");
-        assert!(!fixture.target.join("b.rs").exists(), "callback ran before native removal");
+        assert!(
+            !fixture.target.join("b.rs").exists(),
+            "callback ran before native removal"
+        );
         assert_eq!(fs::read(fixture.target.join("a.rs"))?, b"a");
         let guard = fixture.guard(owner);
         drop(guard);
@@ -1259,14 +1565,16 @@ mod tests {
         assert!(!fixture.target.join("b.rs").exists());
         assert_eq!(fs::read(fixture.target.join("a.rs"))?, b"a");
         let guard = fixture.guard(owner);
-        let error = guard.checked_cleanup().err().ok_or("poisoned cleanup was retried")?;
+        let error = guard
+            .checked_cleanup()
+            .err()
+            .ok_or("poisoned cleanup was retried")?;
         assert!(error.to_string().contains("poisoned"), "{error}");
         drop(guard);
         assert_eq!(fs::read(fixture.target.join("a.rs"))?, b"a");
         assert!(fixture.base.is_dir());
         Ok(())
     }
-
 
     #[test]
     fn requested_owner_checks_every_intermediate_parent_identity() -> TestResult {
@@ -1275,21 +1583,37 @@ mod tests {
         fixture.acquire(&owner)?;
         let old = fixture.target.join("old-a");
         fs::rename(fixture.target.join("a"), &old)?;
-        fs::DirBuilder::new().mode(0o700).create(fixture.target.join("a"))?;
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(fixture.target.join("a"))?;
         // The final parent b keeps its real inode. Only a changed, so a
         // final-parent-only comparison would admit this write incorrectly.
         fs::rename(old.join("b"), fixture.target.join("a/b"))?;
         fs::write(fixture.target.join("a/b/sentinel"), b"replacement parent")?;
         let index = owner.key_index("a/b/source.rs")?;
-        let error = owner.create_file(index, fixture.started, fixture.budget)
-            .err().ok_or("changed intermediate parent was admitted")?;
-        assert!(error.to_string().contains("admitted parent changed"), "{error}");
+        let error = owner
+            .create_file(index, fixture.started, fixture.budget)
+            .err()
+            .ok_or("changed intermediate parent was admitted")?;
+        assert!(
+            error.to_string().contains("admitted parent changed"),
+            "{error}"
+        );
         assert!(!fixture.target.join("a/b/source.rs").exists());
-        assert_eq!(fs::read(fixture.target.join("a/b/sentinel"))?, b"replacement parent");
+        assert_eq!(
+            fs::read(fixture.target.join("a/b/sentinel"))?,
+            b"replacement parent"
+        );
         let guard = fixture.guard(owner);
-        guard.checked_cleanup().err().ok_or("changed intermediate parent cleanup was admitted")?;
+        guard
+            .checked_cleanup()
+            .err()
+            .ok_or("changed intermediate parent cleanup was admitted")?;
         drop(guard);
-        assert_eq!(fs::read(fixture.target.join("a/b/sentinel"))?, b"replacement parent");
+        assert_eq!(
+            fs::read(fixture.target.join("a/b/sentinel"))?,
+            b"replacement parent"
+        );
         assert!(old.is_dir());
         Ok(())
     }
@@ -1302,8 +1626,14 @@ mod tests {
         fixture.write(&owner, "source.rs", b"source")?;
         let guard = fixture.guard(owner);
         fs::set_permissions(&fixture.root, fs::Permissions::from_mode(0o705))?;
-        let error = guard.checked_cleanup().err().ok_or("ancestor mode drift was ignored")?;
-        assert!(error.to_string().contains("temp ancestor changed"), "{error}");
+        let error = guard
+            .checked_cleanup()
+            .err()
+            .ok_or("ancestor mode drift was ignored")?;
+        assert!(
+            error.to_string().contains("temp ancestor changed"),
+            "{error}"
+        );
         fs::set_permissions(&fixture.root, fs::Permissions::from_mode(0o700))?;
         drop(guard);
         assert_eq!(fs::read(fixture.target.join("source.rs"))?, b"source");
@@ -1316,11 +1646,26 @@ mod tests {
         let namespace = RequestedNamespace::new(RequestedTreeLimits::STANDARD)
             .map_err(|error| refusal(error.to_string()))?;
         let error = CleanupOwner::prepare(
-            &fixture.root, &fixture.shared, &fixture.base, &fixture.target, &namespace,
-            fixture.started, Duration::ZERO,
-        ).err().ok_or("expired owner admission was accepted")?;
-        assert!(error.to_string().contains("named-tree materialization deadline exceeded"), "{error}");
-        assert!(!fixture.shared.exists(), "expired admission created a shared wrapper");
+            &fixture.root,
+            &fixture.shared,
+            &fixture.base,
+            &fixture.target,
+            &namespace,
+            fixture.started,
+            Duration::ZERO,
+        )
+        .err()
+        .ok_or("expired owner admission was accepted")?;
+        assert!(
+            error
+                .to_string()
+                .contains("named-tree materialization deadline exceeded"),
+            "{error}"
+        );
+        assert!(
+            !fixture.shared.exists(),
+            "expired admission created a shared wrapper"
+        );
         Ok(())
     }
 }

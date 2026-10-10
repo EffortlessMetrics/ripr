@@ -62,12 +62,18 @@ pub(crate) struct ResolvedGitCandidate {
     pub(crate) _cleanup: TempRootGuard,
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 mod requested_root;
 
 enum GuardStorage {
     Legacy,
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     Requested(Box<requested_root::CleanupOwner>),
 }
 
@@ -80,7 +86,10 @@ impl TempRootGuard {
         Self(path, GuardStorage::Legacy)
     }
 
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     fn requested_owner(&self) -> Result<&requested_root::CleanupOwner, SubjectError> {
         match &self.1 {
             GuardStorage::Requested(owner) => Ok(owner),
@@ -91,7 +100,10 @@ impl TempRootGuard {
     pub(crate) fn checked_cleanup(&self) -> std::io::Result<()> {
         match &self.1 {
             GuardStorage::Legacy => remove_temp_root(&self.0),
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
             GuardStorage::Requested(owner) => owner.checked_cleanup(),
         }
     }
@@ -122,7 +134,10 @@ impl TempRootGuard {
             // problem into an abort.
             let report = match &self.1 {
                 GuardStorage::Legacy => cleanup_failure_report(&self.0, &error),
-                #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+                #[cfg(all(
+                    target_os = "linux",
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                ))]
                 GuardStorage::Requested(_) => format!(
                     "ripr: Requested candidate namespace retained after cleanup refusal: {} ({error}); \
                      inspect retained identities before removing any path",
@@ -925,7 +940,10 @@ enum RequestedMaterializationEvent {
     BeforeReturn,
 }
 
-#[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 fn requested_mkdir(
     path: &Path,
     shared_wrapper: bool,
@@ -996,7 +1014,13 @@ impl Drop for RequestedBaseRetention<'_> {
     }
 }
 
-#[cfg(any(test, not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))))]
+#[cfg(any(
+    test,
+    not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))
+))]
 fn requested_base_dir(
     path: &Path,
     started: std::time::Instant,
@@ -1038,7 +1062,10 @@ fn requested_base_dir(
     Ok(cleanup)
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn requested_owned_mkdir(
     owner: &requested_root::CleanupOwner,
     path: &Path,
@@ -1055,7 +1082,12 @@ fn requested_owned_mkdir(
 ) -> Result<(), SubjectError> {
     requested_checkpoint(started, budget)?;
     #[cfg(test)]
-    observe(RequestedMaterializationEvent::BeforeMkdir, path, started, budget)?;
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
     requested_checkpoint(started, budget)?;
     let result = if shared {
         owner.create_shared(started, budget)
@@ -1064,17 +1096,31 @@ fn requested_owned_mkdir(
     } else {
         owner.create_target(started, budget)
     };
-    result.map_err(|error| failed(format!(
-        "materialization mkdir failed: {error} (logical path {})", path.display()
-    )))?;
+    result.map_err(|error| {
+        failed(format!(
+            "materialization mkdir failed: {error} (logical path {})",
+            path.display()
+        ))
+    })?;
     #[cfg(test)]
-    observe(RequestedMaterializationEvent::AfterMkdir, path, started, budget)?;
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
     requested_checkpoint(started, budget)?;
-    owner.verify(started, budget)
-        .map_err(|error| failed(format!("materialization directory ownership failed: {error}")))
+    owner.verify(started, budget).map_err(|error| {
+        failed(format!(
+            "materialization directory ownership failed: {error}"
+        ))
+    })
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn requested_owned_base_dir(
     path: &Path,
     owner: Box<requested_root::CleanupOwner>,
@@ -1090,17 +1136,34 @@ fn requested_owned_base_dir(
 ) -> Result<TempRootGuard, SubjectError> {
     requested_checkpoint(started, budget)?;
     #[cfg(test)]
-    observe(RequestedMaterializationEvent::BeforeMkdir, path, started, budget)?;
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
     requested_checkpoint(started, budget)?;
-    owner.create_base_entry(started, budget)
+    owner
+        .create_base_entry(started, budget)
         .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
-    let mut retention = RequestedBaseRetention { path, report_to, pending: true };
-    owner.pin_base(started, budget)
+    let mut retention = RequestedBaseRetention {
+        path,
+        report_to,
+        pending: true,
+    };
+    owner
+        .pin_base(started, budget)
         .map_err(|error| failed(format!("materialization base ownership failed: {error}")))?;
     #[cfg(test)]
-    observe(RequestedMaterializationEvent::AfterMkdir, path, started, budget)?;
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
     requested_checkpoint(started, budget)?;
-    owner.verify(started, budget)
+    owner
+        .verify(started, budget)
         .map_err(|error| failed(format!("materialization base ownership failed: {error}")))?;
     let cleanup = TempRootGuard(path.to_path_buf(), GuardStorage::Requested(owner));
     retention.pending = false;
@@ -1177,43 +1240,98 @@ fn materialize_requested_configuration(
     )?;
     let namespace = requested_namespace(&listing.stdout, &target, budget_started, budget, limits)?;
     requested_checkpoint(budget_started, budget)?;
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     let owner = requested_root::CleanupOwner::prepare(
-        &temporary, &shared, &base_dir, &target, &namespace, budget_started, budget,
-    ).map_err(|error| failed(format!("materialization private namespace admission failed: {error}")))?;
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+        &temporary,
+        &shared,
+        &base_dir,
+        &target,
+        &namespace,
+        budget_started,
+        budget,
+    )
+    .map_err(|error| {
+        failed(format!(
+            "materialization private namespace admission failed: {error}"
+        ))
+    })?;
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     requested_owned_mkdir(
-        &owner, &shared, None, true, budget_started, budget,
+        &owner,
+        &shared,
+        None,
+        true,
+        budget_started,
+        budget,
         #[cfg(test)]
         &mut observe,
     )?;
-    #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     requested_mkdir(
-        &shared, true, budget_started, budget,
+        &shared,
+        true,
+        budget_started,
+        budget,
         #[cfg(test)]
         &mut observe,
     )?;
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     let cleanup = requested_owned_base_dir(
-        &base_dir, owner, budget_started, budget, &mut std::io::stderr(),
+        &base_dir,
+        owner,
+        budget_started,
+        budget,
+        &mut std::io::stderr(),
         #[cfg(test)]
         &mut observe,
     )?;
-    #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     let cleanup = requested_base_dir(
-        &base_dir, budget_started, budget, &mut std::io::stderr(),
+        &base_dir,
+        budget_started,
+        budget,
+        &mut std::io::stderr(),
         #[cfg(test)]
         &mut observe,
     )?;
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     requested_owned_mkdir(
-        cleanup.requested_owner()?, &target, None, false, budget_started, budget,
+        cleanup.requested_owner()?,
+        &target,
+        None,
+        false,
+        budget_started,
+        budget,
         #[cfg(test)]
         &mut observe,
     )?;
-    #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     requested_mkdir(
-        &target, false, budget_started, budget,
+        &target,
+        false,
+        budget_started,
+        budget,
         #[cfg(test)]
         &mut observe,
     )?;
@@ -1221,23 +1339,46 @@ fn materialize_requested_configuration(
     for (path, kind) in &namespace.entries {
         requested_checkpoint(budget_started, budget)?;
         if *kind != RequestedEntryKind::File {
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-            let source_index = cleanup.requested_owner()?.key_index(path)
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let source_index = cleanup
+                .requested_owner()?
+                .key_index(path)
                 .map_err(|error| failed(error.to_string()))?;
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-            let path = cleanup.requested_owner()?.key(source_index)
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let path = cleanup
+                .requested_owner()?
+                .key(source_index)
                 .map_err(|error| failed(error.to_string()))?;
             let destination = safe_join(&target, path)?;
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
             requested_owned_mkdir(
-                cleanup.requested_owner()?, &destination, Some(source_index), false,
-                budget_started, budget,
+                cleanup.requested_owner()?,
+                &destination,
+                Some(source_index),
+                false,
+                budget_started,
+                budget,
                 #[cfg(test)]
                 &mut observe,
             )?;
-            #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+            #[cfg(not(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )))]
             requested_mkdir(
-                &destination, false, budget_started, budget,
+                &destination,
+                false,
+                budget_started,
+                budget,
                 #[cfg(test)]
                 &mut observe,
             )?;
@@ -1246,9 +1387,15 @@ fn materialize_requested_configuration(
             }
         }
     }
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     let mut entries: Vec<(usize, String)> = Vec::new();
-    #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     let mut entries: Vec<(String, String)> = Vec::new();
     let mut original_modes = Some(Vec::<super::committed_source::frozen::FrozenFileMode>::new());
     // All source paths, ancestors, types, duplicates and budgets were admitted
@@ -1272,10 +1419,18 @@ fn materialize_requested_configuration(
                 "100755" => super::committed_source::frozen::FrozenFileMode::Executable,
                 _ => return Err(failed("named-tree original mode is unsupported".into())),
             });
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-            let path = cleanup.requested_owner()?.key_index(path)
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let path = cleanup
+                .requested_owner()?
+                .key_index(path)
                 .map_err(|error| failed(error.to_string()))?;
-            #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+            #[cfg(not(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )))]
             let path = path.to_string();
             entries.push((path, object.to_string()));
         }
@@ -1300,15 +1455,29 @@ fn materialize_requested_configuration(
     let mut session = crate::git::CatFileBatch::spawn(root, session_budget)
         .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
     let mut total_bytes: u64 = 0;
-    #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
     let mut chunk = vec![0_u8; 64 * 1024];
     for (entry_index, (path, object)) in entries.iter().enumerate() {
-        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
         let source_index = *path;
-        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-        let path = cleanup.requested_owner()?.key(source_index)
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let path = cleanup
+            .requested_owner()?
+            .key(source_index)
             .map_err(|error| failed(error.to_string()))?;
-        #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
         let path = path.as_str();
         requested_checkpoint(budget_started, budget)?;
         let destination = safe_join(&target, path)?;
@@ -1344,12 +1513,23 @@ fn materialize_requested_configuration(
             _ => None,
         };
         requested_checkpoint(budget_started, budget)?;
-        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-        let mut file = cleanup.requested_owner()?.create_file(source_index, budget_started, budget)
-            .map_err(|error| failed(format!(
-                "materialization write failed: {error} (logical path {})", destination.display()
-            )))?;
-        #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let mut file = cleanup
+            .requested_owner()?
+            .create_file(source_index, budget_started, budget)
+            .map_err(|error| {
+                failed(format!(
+                    "materialization write failed: {error} (logical path {})",
+                    destination.display()
+                ))
+            })?;
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
         let mut file = std::fs::File::create(&destination)
             .map_err(|error| failed(format!("materialization write failed: {error}")))?;
         requested_checkpoint(budget_started, budget)?;
@@ -1357,9 +1537,13 @@ fn materialize_requested_configuration(
         let mut remaining = size;
         while remaining > 0 {
             requested_checkpoint(budget_started, budget)?;
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-            let mut chunk = cleanup.requested_owner()?.blob_chunk()
-                .map_err(|error| failed(format!("materialization shared scratch failed: {error}")))?;
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let mut chunk = cleanup.requested_owner()?.blob_chunk().map_err(|error| {
+                failed(format!("materialization shared scratch failed: {error}"))
+            })?;
             let take = (remaining as usize).min(chunk.len()) as u64;
             session
                 .read_blob_bytes(&mut chunk[..take as usize])
@@ -1386,9 +1570,18 @@ fn materialize_requested_configuration(
             .end_blob()
             .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
         requested_checkpoint(budget_started, budget)?;
-        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
-        cleanup.requested_owner()?.seal_file(source_index, &file, size, budget_started, budget)
-            .map_err(|error| failed(format!("materialization written file ownership failed: {error}")))?;
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        cleanup
+            .requested_owner()?
+            .seal_file(source_index, &file, size, budget_started, budget)
+            .map_err(|error| {
+                failed(format!(
+                    "materialization written file ownership failed: {error}"
+                ))
+            })?;
         if let (Some(inventory), Some(hash)) = (&mut inventory, source_hash) {
             // Preserve the original mode validation even when its stored
             // inventory DATA is deferred from the product build.
@@ -1637,24 +1830,35 @@ mod tests {
         Ok((guard, tree))
     }
 
-
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     #[test]
     fn requested_linux_actual_materialization_uses_private_owner_cleanup() -> Result<(), String> {
         use std::os::unix::fs::{DirBuilderExt, MetadataExt};
         let (fixture, _, candidate) = fixture_repo("requested-private-owner")?;
         let (target, cleanup, configuration, inventory) = materialize_requested_configuration(
-            &fixture.0, &candidate, None,
+            &fixture.0,
+            &candidate,
+            None,
             crate::bounded_input::MAX_CLI_INPUT_BYTES,
             RequestedTreeLimits::STANDARD,
             |_, _, _, _| Ok(()),
-        ).map_err(|error| error.to_string())?;
+        )
+        .map_err(|error| error.to_string())?;
         assert_eq!(
-            std::fs::metadata(&target).map_err(|error| error.to_string())?.mode() & 0o777,
+            std::fs::metadata(&target)
+                .map_err(|error| error.to_string())?
+                .mode()
+                & 0o777,
             0o700
         );
         assert_eq!(
-            std::fs::metadata(target.join("src/lib.rs")).map_err(|error| error.to_string())?.mode() & 0o777,
+            std::fs::metadata(target.join("src/lib.rs"))
+                .map_err(|error| error.to_string())?
+                .mode()
+                & 0o777,
             0o600
         );
         assert_eq!(
@@ -1667,9 +1871,17 @@ mod tests {
         );
         assert!(inventory.is_some(), "actual source inventory was lost");
         let base = target.parent().ok_or("base path is missing")?.to_path_buf();
-        cleanup.checked_cleanup().map_err(|error| error.to_string())?;
-        assert!(!base.exists(), "checked Requested root cleanup did not remove the root");
-        std::fs::DirBuilder::new().mode(0o700).create(&base).map_err(|error| error.to_string())?;
+        cleanup
+            .checked_cleanup()
+            .map_err(|error| error.to_string())?;
+        assert!(
+            !base.exists(),
+            "checked Requested root cleanup did not remove the root"
+        );
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&base)
+            .map_err(|error| error.to_string())?;
         let replacement = RepoGuard(base.clone());
         std::fs::write(base.join("sentinel"), b"after checked cleanup")
             .map_err(|error| error.to_string())?;
@@ -1682,20 +1894,25 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     #[test]
-    fn requested_linux_source_directory_link_swap_refuses_before_blob_write() -> Result<(), String> {
+    fn requested_linux_source_directory_link_swap_refuses_before_blob_write() -> Result<(), String>
+    {
         use std::os::unix::fs::symlink;
         let (fixture, _, candidate) = fixture_repo("requested-source-link-swap")?;
         let outside = fixture.0.join("outside");
         std::fs::create_dir(&outside).map_err(|error| error.to_string())?;
-        std::fs::write(outside.join("sentinel"), b"outside")
-            .map_err(|error| error.to_string())?;
+        std::fs::write(outside.join("sentinel"), b"outside").map_err(|error| error.to_string())?;
         let mut target = None;
         let mut retained = None;
         let mut moved = None;
         let error = materialize_requested_configuration(
-            &fixture.0, &candidate, None,
+            &fixture.0,
+            &candidate,
+            None,
             crate::bounded_input::MAX_CLI_INPUT_BYTES,
             RequestedTreeLimits::STANDARD,
             |event, path, _, _| {
@@ -1704,7 +1921,9 @@ mod tests {
                     retained = path.parent().map(|base| RepoGuard(base.to_path_buf()));
                 }
                 if event == RequestedMaterializationEvent::AfterMkdir
-                    && target.as_ref().is_some_and(|target| target.join("src") == path)
+                    && target
+                        .as_ref()
+                        .is_some_and(|target| target.join("src") == path)
                 {
                     let original = path.with_file_name("original-src");
                     std::fs::rename(path, &original).map_err(|error| failed(error.to_string()))?;
@@ -1713,20 +1932,36 @@ mod tests {
                 }
                 Ok(())
             },
-        ).err().ok_or("source-directory link was followed")?;
-        assert!(error.to_string().contains("type is not admitted"), "{error}");
+        )
+        .err()
+        .ok_or("source-directory link was followed")?;
+        assert!(
+            error.to_string().contains("type is not admitted"),
+            "{error}"
+        );
         assert_eq!(
             std::fs::read(outside.join("sentinel")).map_err(|error| error.to_string())?,
             b"outside"
         );
-        assert!(!outside.join("lib.rs").exists(), "wrote a blob through the swapped source directory");
+        assert!(
+            !outside.join("lib.rs").exists(),
+            "wrote a blob through the swapped source directory"
+        );
         let moved = moved.ok_or("actual source-directory callback did not run")?;
-        assert!(moved.is_dir(), "refused cleanup deleted the original directory");
-        assert!(!moved.join("lib.rs").exists(), "blob write preceded its parent identity check");
+        assert!(
+            moved.is_dir(),
+            "refused cleanup deleted the original directory"
+        );
+        assert!(
+            !moved.join("lib.rs").exists(),
+            "blob write preceded its parent identity check"
+        );
         let target = target.ok_or("actual listing callback did not run")?;
         assert!(
             std::fs::symlink_metadata(target.join("src"))
-                .map_err(|error| error.to_string())?.file_type().is_symlink(),
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_symlink(),
             "refused cleanup deleted the replacement link"
         );
         drop(retained);
@@ -2764,7 +2999,10 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     mod retained_snapshot_fixture {
         use std::ffi::{OsStr, OsString};
         use std::fs::{File, Metadata, OpenOptions};
@@ -2877,7 +3115,12 @@ mod tests {
             Ok(pinned)
         }
 
-        fn current(parent: &Pinned, name: &OsStr, pinned: &Pinned, full: bool) -> Result<(), String> {
+        fn current(
+            parent: &Pinned,
+            name: &OsStr,
+            pinned: &Pinned,
+            full: bool,
+        ) -> Result<(), String> {
             let held = pinned.file.metadata().map_err(|error| error.to_string())?;
             let named = open(&child(&parent.file, name)?, pinned.identity.directory)?;
             let named = named.file.metadata().map_err(|error| error.to_string())?;
@@ -2908,7 +3151,8 @@ mod tests {
                 }
                 let name = entry.map_err(|error| error.to_string())?.file_name();
                 normal(&name)?;
-                let index = expected.iter()
+                let index = expected
+                    .iter()
                     .position(|expected| name == OsStr::new(expected))
                     .ok_or("fixture directory contains unknown membership")?;
                 if seen[index] {
@@ -2927,11 +3171,14 @@ mod tests {
                 return Err("fixture content admission exceeds its fixed bound".into());
             }
             let mut input = file.try_clone().map_err(|error| error.to_string())?;
-            input.seek(SeekFrom::Start(0)).map_err(|error| error.to_string())?;
+            input
+                .seek(SeekFrom::Start(0))
+                .map_err(|error| error.to_string())?;
             let mut bytes = [0_u8; 4097];
             let mut used = 0;
             while used <= expected.len() {
-                let read = input.read(&mut bytes[used..expected.len() + 1])
+                let read = input
+                    .read(&mut bytes[used..expected.len() + 1])
                     .map_err(|error| error.to_string())?;
                 if read == 0 {
                     break;
@@ -2962,12 +3209,20 @@ mod tests {
             pub(super) fn pin(target: &Path) -> Result<Self, String> {
                 let base = target.parent().ok_or("fixture target lacks a base")?;
                 let shared = base.parent().ok_or("fixture base lacks a shared parent")?;
-                let temporary = shared.parent().ok_or("fixture shared parent lacks a temp root")?;
+                let temporary = shared
+                    .parent()
+                    .ok_or("fixture shared parent lacks a temp root")?;
                 if shared.file_name() != Some(OsStr::new("ripr-git-candidate")) {
                     return Err("fixture shared parent differs".into());
                 }
-                let base_name = base.file_name().ok_or("fixture base name is missing")?.to_owned();
-                let target_name = target.file_name().ok_or("fixture target name is missing")?.to_owned();
+                let base_name = base
+                    .file_name()
+                    .ok_or("fixture base name is missing")?
+                    .to_owned();
+                let target_name = target
+                    .file_name()
+                    .ok_or("fixture target name is missing")?
+                    .to_owned();
                 normal(&base_name)?;
                 normal(&target_name)?;
                 let temporary = open(temporary, true)?;
@@ -2990,19 +3245,35 @@ mod tests {
                     return Err("fixture directory UIDs differ".into());
                 }
                 let fixture = Self {
-                    temporary, shared, base, target, source, tests, files,
-                    base_name, target_name,
+                    temporary,
+                    shared,
+                    base,
+                    target,
+                    source,
+                    tests,
+                    files,
+                    base_name,
+                    target_name,
                 };
                 fixture.audit()?;
                 Ok(fixture)
             }
 
             fn anchors(&self) -> Result<(), String> {
-                let temporary = self.temporary.file.metadata().map_err(|error| error.to_string())?;
+                let temporary = self
+                    .temporary
+                    .file
+                    .metadata()
+                    .map_err(|error| error.to_string())?;
                 if !self.temporary.identity.same_object(&temporary) {
                     return Err("fixture temp directory identity changed".into());
                 }
-                current(&self.temporary, OsStr::new("ripr-git-candidate"), &self.shared, false)?;
+                current(
+                    &self.temporary,
+                    OsStr::new("ripr-git-candidate"),
+                    &self.shared,
+                    false,
+                )?;
                 current(&self.shared, &self.base_name, &self.base, false)?;
                 current(&self.base, &self.target_name, &self.target, false)
             }
@@ -3021,14 +3292,26 @@ mod tests {
                 ] {
                     current(parent, OsStr::new(name), file, true)?;
                 }
-                members(&self.base, &[self.target_name.to_str().ok_or("fixture target is not UTF-8")?])?;
+                members(
+                    &self.base,
+                    &[self
+                        .target_name
+                        .to_str()
+                        .ok_or("fixture target is not UTF-8")?],
+                )?;
                 members(&self.target, &["ripr.toml", "src", "tests"])?;
                 members(&self.source, &["lib.rs", "renamed.rs"])?;
                 members(&self.tests, &["it.rs"])
             }
 
-            pub(super) fn record_intentional_change(&mut self, expected: &[u8]) -> Result<(), String> {
-                let metadata = self.files[1].file.metadata().map_err(|error| error.to_string())?;
+            pub(super) fn record_intentional_change(
+                &mut self,
+                expected: &[u8],
+            ) -> Result<(), String> {
+                let metadata = self.files[1]
+                    .file
+                    .metadata()
+                    .map_err(|error| error.to_string())?;
                 if !self.files[1].identity.same_object(&metadata)
                     || metadata.len() != self.files[1].identity.len
                 {
@@ -3070,7 +3353,12 @@ mod tests {
                     std::fs::remove_dir(child(&parent.file, name)?)
                         .map_err(|error| error.to_string())?;
                 }
-                current(&self.temporary, OsStr::new("ripr-git-candidate"), &self.shared, false)?;
+                current(
+                    &self.temporary,
+                    OsStr::new("ripr-git-candidate"),
+                    &self.shared,
+                    false,
+                )?;
                 current(&self.shared, &self.base_name, &self.base, false)?;
                 members(&self.base, &[])?;
                 let base = child(&self.shared.file, &self.base_name)?;
@@ -3092,13 +3380,19 @@ mod tests {
         let prepared =
             prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
         let physical = prepared.physical_root().to_path_buf();
-        let base = physical.parent().ok_or("healthy snapshot lacks a base")?.to_path_buf();
+        let base = physical
+            .parent()
+            .ok_or("healthy snapshot lacks a base")?
+            .to_path_buf();
         let authority = prepared
             .frozen_source_authority(&guard.0)
             .map_err(|error| error.to_string())?;
         let retained = Arc::clone(&authority);
         drop(authority);
-        assert!(physical.is_dir(), "a retained authority Arc must keep the healthy tree");
+        assert!(
+            physical.is_dir(),
+            "a retained authority Arc must keep the healthy tree"
+        );
         frozen::with_context(Some(Arc::clone(&retained)), || -> Result<(), String> {
             assert_eq!(
                 frozen::fs::read(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?,
@@ -3107,8 +3401,14 @@ mod tests {
             retained.ensure_clean().map_err(|error| error.to_string())
         })?;
         drop(retained);
-        assert!(!physical.exists(), "the last authority Arc must remove a healthy tree");
-        assert!(!base.exists(), "healthy cleanup must also remove its unique base");
+        assert!(
+            !physical.exists(),
+            "the last authority Arc must remove a healthy tree"
+        );
+        assert!(
+            !base.exists(),
+            "healthy cleanup must also remove its unique base"
+        );
         Ok(())
     }
 
@@ -3121,7 +3421,10 @@ mod tests {
         let prepared =
             prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
         let physical = prepared.physical_root().to_path_buf();
-        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
         let mut fixture_teardown = retained_snapshot_fixture::Teardown::pin(&physical)?;
         let authority = prepared
             .frozen_source_authority(&guard.0)
@@ -3156,7 +3459,10 @@ mod tests {
             *first ^= 1;
             std::fs::write(physical.join("src/lib.rs"), &changed)
                 .map_err(|error| error.to_string())?;
-            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
             fixture_teardown.record_intentional_change(&changed)?;
             let failure = frozen::fs::read(guard.0.join("src/lib.rs"))
                 .err()
@@ -3170,13 +3476,25 @@ mod tests {
             Ok(())
         })?;
         drop(authority);
-        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
         {
-            assert!(physical.is_dir(), "tampered Requested source must remain after cleanup refusal");
+            assert!(
+                physical.is_dir(),
+                "tampered Requested source must remain after cleanup refusal"
+            );
             fixture_teardown.finish()?;
-            assert!(!physical.exists(), "independent fixture teardown must remove its exact tree");
+            assert!(
+                !physical.exists(),
+                "independent fixture teardown must remove its exact tree"
+            );
         }
-        #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
         assert!(
             !physical.exists(),
             "the last authority Arc must remove the owned tree"

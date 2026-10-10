@@ -1693,11 +1693,13 @@ fn closeout_analyzed_input(
     // This distinct capture method claims before every fallible Postflight check.
     // Fresh buffers and replay state leave this scope before the existing copier.
     {
-        let original = invocation.capture_postflight_inputs(
-            &subject,
-            retained_input_bytes,
-            || whole.authority.ensure_clean().map_err(|error| error.to_string()),
-        )?;
+        let original =
+            invocation.capture_postflight_inputs(&subject, retained_input_bytes, || {
+                whole
+                    .authority
+                    .ensure_clean()
+                    .map_err(|error| error.to_string())
+            })?;
         let (raw, presentation, changed_paths, name_bytes) = original.into_parts();
         reconcile_postflight_inputs(
             &raw,
@@ -2577,9 +2579,21 @@ mod tests {
             ));
             fs::create_dir_all(root.join(".ripr")).map_err(|error| error.to_string())?;
             let git = |args: &[&str]| fixture_git_ok(&root, args);
-            git(&["-c", "init.templateDir=", "init", "--quiet", "-b", "postflight"])?;
+            git(&[
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--quiet",
+                "-b",
+                "postflight",
+            ])?;
             git(&["config", "--local", "user.name", "RIPR postflight fixture"])?;
-            git(&["config", "--local", "user.email", "postflight@example.invalid"])?;
+            git(&[
+                "config",
+                "--local",
+                "user.email",
+                "postflight@example.invalid",
+            ])?;
             git(&["config", "--local", "commit.gpgsign", "false"])?;
             fs::write(
                 root.join(POLICY_PATH),
@@ -2692,7 +2706,10 @@ mod tests {
                     presentation.len() as u64,
                     name_bytes,
                     coverage.ledger_bytes().len() as u64,
-                    multiply(configuration_bytes(&configuration, profile.max_binding_bytes)?, 2)?,
+                    multiply(
+                        configuration_bytes(&configuration, profile.max_binding_bytes)?,
+                        2,
+                    )?,
                 ],
             )?;
             let binding = build_expected_binding(BindingInputs {
@@ -2745,7 +2762,11 @@ mod tests {
                 &self.profile,
                 self.retained,
                 self.deadline,
-                || self.authority.ensure_clean().map_err(|error| error.to_string()),
+                || {
+                    self.authority
+                        .ensure_clean()
+                        .map_err(|error| error.to_string())
+                },
             )
             .map(|original| original.into_parts())
         }
@@ -2763,13 +2784,16 @@ mod tests {
 
         fn validate_original_identity(&self) -> Result<(), String> {
             use super::super::complete_request::{RequestedRoute, select_request_with_deadline};
-            let mut request =
-                match select_request_with_deadline(&self.root, &self.options.head, self.deadline)? {
-                    RequestedRoute::Complete(request) => *request,
-                    RequestedRoute::Ordinary => {
-                        return Err("postflight currentness lost the selected policy".into());
-                    }
-                };
+            let mut request = match select_request_with_deadline(
+                &self.root,
+                &self.options.head,
+                self.deadline,
+            )? {
+                RequestedRoute::Complete(request) => *request,
+                RequestedRoute::Ordinary => {
+                    return Err("postflight currentness lost the selected policy".into());
+                }
+            };
             assert_eq!(request.binding(), &self.binding.committed_request);
             let subject = request.resolve_whole_subject(&self.options)?;
             assert_eq!(subject, self.subject);
@@ -2790,10 +2814,17 @@ mod tests {
         let fixture = PostflightFixture::new()?;
         let original = fixture.capture()?;
         reconcile_postflight_inputs(
-            &original.0, &original.1, &original.2, original.3, fixture.expected(),
+            &original.0,
+            &original.1,
+            &original.2,
+            original.3,
+            fixture.expected(),
         )?;
         let generation = fixture.binding.generation_id()?;
-        fixture_git_ok(&fixture.root, &["config", "--local", "diff.renames", "false"])?;
+        fixture_git_ok(
+            &fixture.root,
+            &["config", "--local", "diff.renames", "false"],
+        )?;
         // The original closeout's literal/tree/effective-config observations agree.
         // Fresh producer-derived inputs must still refuse this output-changing config.
         fixture.validate_original_identity()?;
@@ -2803,18 +2834,29 @@ mod tests {
         assert_ne!(changed.2, original.2);
         error(
             reconcile_postflight_inputs(
-                &changed.0, &changed.1, &changed.2, changed.3, fixture.expected(),
+                &changed.0,
+                &changed.1,
+                &changed.2,
+                changed.3,
+                fixture.expected(),
             ),
             "postflight raw replay",
         )?;
         drop(changed);
-        fixture_git_ok(&fixture.root, &["config", "--local", "diff.renames", "true"])?;
+        fixture_git_ok(
+            &fixture.root,
+            &["config", "--local", "diff.renames", "true"],
+        )?;
         fixture.validate_original_identity()?;
         // A new DATA capture agrees with the same original ledger and binding.
         // No genuine invocation latch is reset or native token constructed.
         let recovered = fixture.capture()?;
         reconcile_postflight_inputs(
-            &recovered.0, &recovered.1, &recovered.2, recovered.3, fixture.expected(),
+            &recovered.0,
+            &recovered.1,
+            &recovered.2,
+            recovered.3,
+            fixture.expected(),
         )?;
         assert_eq!(fixture.binding.generation_id()?, generation);
         Ok(())
@@ -2831,14 +2873,22 @@ mod tests {
         expected.binding = &binding;
         error(
             reconcile_postflight_inputs(
-                &original.0, &original.1, &original.2, original.3, expected,
+                &original.0,
+                &original.1,
+                &original.2,
+                original.3,
+                expected,
             ),
             "original raw coverage differs",
         )?;
         let extended = format!("{}\n", original.1);
         error(
             reconcile_postflight_inputs(
-                &original.0, &extended, &original.2, original.3, fixture.expected(),
+                &original.0,
+                &extended,
+                &original.2,
+                original.3,
+                fixture.expected(),
             ),
             "original presentation differs",
         )?;
@@ -2850,19 +2900,31 @@ mod tests {
         assert_eq!(changed.len(), original.1.len());
         error(
             reconcile_postflight_inputs(
-                &original.0, &changed, &original.2, original.3, fixture.expected(),
+                &original.0,
+                &changed,
+                &original.2,
+                original.3,
+                fixture.expected(),
             ),
             "original presentation differs",
         )?;
         assert!(!original.2.is_empty());
         error(
             reconcile_postflight_inputs(
-                &original.0, &original.1, &[], original.3, fixture.expected(),
+                &original.0,
+                &original.1,
+                &[],
+                original.3,
+                fixture.expected(),
             ),
             "original full-name inventory differs",
         )?;
         reconcile_postflight_inputs(
-            &original.0, &original.1, &original.2, original.3, fixture.expected(),
+            &original.0,
+            &original.1,
+            &original.2,
+            original.3,
+            fixture.expected(),
         )
     }
 
@@ -2872,11 +2934,18 @@ mod tests {
         let fixture = PostflightFixture::new()?;
         let original = fixture.capture()?;
         let mut expected = fixture.expected();
-        expected.limits.max_raw_bytes = original.0.len().checked_sub(1)
+        expected.limits.max_raw_bytes = original
+            .0
+            .len()
+            .checked_sub(1)
             .ok_or("actual postflight raw input is empty")?;
         error(
             reconcile_postflight_inputs(
-                &original.0, &original.1, &original.2, original.3, expected,
+                &original.0,
+                &original.1,
+                &original.2,
+                original.3,
+                expected,
             ),
             "raw byte admission",
         )?;
@@ -2884,7 +2953,11 @@ mod tests {
         expected.limits.max_records = 0;
         error(
             reconcile_postflight_inputs(
-                &original.0, &original.1, &original.2, original.3, expected,
+                &original.0,
+                &original.1,
+                &original.2,
+                original.3,
+                expected,
             ),
             "raw framing record admission",
         )?;
@@ -2894,7 +2967,11 @@ mod tests {
         expected.profile = &profile;
         error(
             reconcile_postflight_inputs(
-                &original.0, &original.1, &original.2, original.3, expected,
+                &original.0,
+                &original.1,
+                &original.2,
+                original.3,
+                expected,
             ),
             "retained byte phase",
         )?;
@@ -2902,12 +2979,20 @@ mod tests {
         expected.deadline = Instant::now();
         error(
             reconcile_postflight_inputs(
-                &original.0, &original.1, &original.2, original.3, expected,
+                &original.0,
+                &original.1,
+                &original.2,
+                original.3,
+                expected,
             ),
             "held worker deadline",
         )?;
         reconcile_postflight_inputs(
-            &original.0, &original.1, &original.2, original.3, fixture.expected(),
+            &original.0,
+            &original.1,
+            &original.2,
+            original.3,
+            fixture.expected(),
         )
     }
 
