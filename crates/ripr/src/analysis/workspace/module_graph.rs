@@ -1097,6 +1097,8 @@ fn read_source(workspace_root: &Path, file: &Path) -> SourceRead {
 mod tests {
     use super::*;
 
+    type FrozenTestResult = Result<(), Box<dyn std::error::Error>>;
+
     #[test]
     fn frozen_walk_refuses_reported_escape_before_returning_reached_parent()
     -> Result<(), Box<dyn std::error::Error>> {
@@ -1117,9 +1119,9 @@ mod tests {
                 .ok_or("fixture has no parent")?
                 .join("outside.rs");
             std::fs::write(&outside, b"pub fn outside() {}")?;
-            with_context(Some(fixture.authority.clone()), || {
+            with_context(Some(fixture.authority.clone()), || -> FrozenTestResult {
                 let mut walk = PackageWalk::new(&fixture.logical, &fixture.logical)
-                    .expect("confined Cargo roots");
+                    .ok_or("confined Cargo roots")?;
                 assert!(
                     walk.find(&fixture.logical, &[fixture.logical.join("src/lib.rs")])
                         .is_none(),
@@ -1132,9 +1134,14 @@ mod tests {
                     walk.reached.is_empty(),
                     "parent was admitted before its edges"
                 );
-                let error = fixture.authority.ensure_clean().expect_err("sticky escape");
+                let error = fixture
+                    .authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or("sticky escape")?;
                 assert!(error.to_string().contains("outside repository"), "{error}");
-            });
+                Ok(())
+            })?;
         }
         Ok(())
     }
@@ -1165,14 +1172,14 @@ mod tests {
             fixture.logical.join("shared.rs"),
         ];
         let mut ordinary =
-            PackageWalk::new(&fixture.logical, &fixture.logical).expect("ordinary package");
+            PackageWalk::new(&fixture.logical, &fixture.logical).ok_or("ordinary package")?;
         let ordinary_results = targets
             .iter()
             .map(|target| ordinary.find(&fixture.logical, std::slice::from_ref(target)))
             .collect::<Vec<_>>();
-        with_context(Some(fixture.authority.clone()), || {
+        with_context(Some(fixture.authority.clone()), || -> FrozenTestResult {
             let mut frozen =
-                PackageWalk::new(&fixture.logical, &fixture.logical).expect("frozen package");
+                PackageWalk::new(&fixture.logical, &fixture.logical).ok_or("frozen package")?;
             let frozen_results = targets
                 .iter()
                 .map(|target| frozen.find(&fixture.logical, std::slice::from_ref(target)))
@@ -1180,11 +1187,9 @@ mod tests {
             assert_eq!(frozen_results, ordinary_results);
             assert_eq!(frozen.reached, ordinary.reached);
             assert_eq!(frozen.complete, ordinary.complete);
-            fixture
-                .authority
-                .ensure_clean()
-                .expect("internal dependencies");
-        });
+            fixture.authority.ensure_clean()?;
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -1202,11 +1207,16 @@ mod tests {
                 ("Cargo.toml", manifest.as_bytes()),
                 ("src/lib.rs", b"pub fn confined() {}"),
             ])?;
-            with_context(Some(fixture.authority.clone()), || {
+            with_context(Some(fixture.authority.clone()), || -> FrozenTestResult {
                 assert!(PackageWalk::new(&fixture.logical, &fixture.logical).is_none());
-                let error = fixture.authority.ensure_clean().expect_err("escaped root");
+                let error = fixture
+                    .authority
+                    .ensure_clean()
+                    .err()
+                    .ok_or("escaped root")?;
                 assert!(error.to_string().contains("outside repository"), "{error}");
-            });
+                Ok(())
+            })?;
         }
         Ok(())
     }
@@ -1220,10 +1230,10 @@ mod tests {
             ("Cargo.toml", MANIFEST.as_bytes()),
             ("src/lib.rs", b"pub fn confined() {}"),
         ])?;
-        with_context(Some(fixture.authority.clone()), || {
+        with_context(Some(fixture.authority.clone()), || -> FrozenTestResult {
             let target = fixture.logical.join("src/lib.rs");
             let mut walk =
-                PackageWalk::new(&fixture.logical, &fixture.logical).expect("confined roots");
+                PackageWalk::new(&fixture.logical, &fixture.logical).ok_or("confined roots")?;
             assert_eq!(
                 walk.find(&fixture.logical, std::slice::from_ref(&target)),
                 Some(Origin::Production)
@@ -1232,7 +1242,7 @@ mod tests {
             let seeds = PackageWalk::from_loaded_files(vec![(outside, ChildAnchor::Both)]);
             assert!(!seeds.complete);
             assert!(seeds.queue.is_empty());
-            let first = fixture.authority.ensure_clean().expect_err("seed escape");
+            let first = fixture.authority.ensure_clean().err().ok_or("seed escape")?;
             assert!(
                 walk.find(&fixture.logical, std::slice::from_ref(&target))
                     .is_none(),
@@ -1241,9 +1251,11 @@ mod tests {
             let retained = fixture
                 .authority
                 .ensure_clean()
-                .expect_err("retained refusal");
+                .err()
+                .ok_or("retained refusal")?;
             assert_eq!(retained.to_string(), first.to_string());
-        });
+            Ok(())
+        })?;
         Ok(())
     }
 
@@ -1255,7 +1267,7 @@ mod tests {
         let source = "unknown::declaration!();\n#[path = \"../../outside.rs\"] mod outside;\n";
         assert!(!rust_module_tree_scan(source).complete);
         let fixture = Fixture::new(&[("src/lib.rs", source.as_bytes())])?;
-        with_context(Some(fixture.authority.clone()), || {
+        with_context(Some(fixture.authority.clone()), || -> FrozenTestResult {
             let listing = WorkspaceListing {
                 rust_files: vec![fixture.logical.join("src/lib.rs")],
                 manifest_dirs: Vec::new(),
@@ -1265,9 +1277,11 @@ mod tests {
             let error = fixture
                 .authority
                 .ensure_clean()
-                .expect_err("reported escape");
+                .err()
+                .ok_or("reported escape")?;
             assert!(error.to_string().contains("outside repository"), "{error}");
-        });
+            Ok(())
+        })?;
         Ok(())
     }
 

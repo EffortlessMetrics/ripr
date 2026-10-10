@@ -1188,7 +1188,8 @@ pub(crate) mod tests {
         let error = fixture
             .authority
             .validate_logical_path(&outside)
-            .expect_err("existing outside dependency must refuse before any open");
+            .err()
+            .ok_or("existing outside dependency must refuse before any open")?;
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
         assert!(error.to_string().contains("outside repository"));
         assert_eq!(
@@ -1198,12 +1199,14 @@ pub(crate) mod tests {
         let retained = fixture
             .authority
             .ensure_clean()
-            .expect_err("sticky refusal");
+            .err()
+            .ok_or("sticky refusal")?;
         assert_eq!(retained.to_string(), error.to_string());
         let later = fixture
             .authority
             .validate_logical_path(&fixture.logical.join("one/a.rs"))
-            .expect_err("admission cannot reset a poisoned authority");
+            .err()
+            .ok_or("admission cannot reset a poisoned authority")?;
         assert_eq!(later.to_string(), error.to_string());
         let recovered = Fixture::new(&[("one/a.rs", b"one")])?;
         recovered
