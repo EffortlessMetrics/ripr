@@ -474,6 +474,8 @@ fn top_typescript_readiness_blocker(
 }
 
 use crate::config::OraclePolicy;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::core_error::CoreError;
 use crate::domain::{Finding, Summary};
 use std::collections::{BTreeSet, HashMap};
@@ -846,6 +848,24 @@ pub(crate) fn run_analysis_with_oracle_policy_and_rust_config(
         oracle_policy,
         languages,
         rust_config,
+    )
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn run_analysis_with_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    whole: &VerifiedWholeInput,
+) -> Result<AnalysisResult, CoreError> {
+    whole.validate_analysis(options, oracle_policy, languages, rust_config)?;
+    pipeline::run_diff_pipeline_with_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        whole,
     )
 }
 

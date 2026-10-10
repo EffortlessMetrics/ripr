@@ -33,6 +33,8 @@ use crate::analysis::diagnostic_origin::{OriginBuildContext, origins_for_rust_fi
 use crate::analysis::facts::RustIndex;
 use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
 use crate::analysis::workspace::limitations_for_absent_changed_files;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::OraclePolicy;
 use crate::domain::{
     ExposureClass, Finding, Probe, SourceCurrentness, StaticLimitKind, StopReason,
@@ -1805,6 +1807,53 @@ impl RustAdapter {
         enabled_languages: &[LanguageId],
         rust_config: &crate::config::RustLanguageConfig,
     ) -> Result<LanguageDiffResult, String> {
+        self.analyze_diff_for_languages_with_rust_config_and_verified_whole(
+            options,
+            oracle_policy,
+            changed_files,
+            enabled_languages,
+            rust_config,
+            #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+            None,
+        )
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    pub(crate) fn analyze_diff_for_languages_with_verified_whole(
+        &self,
+        options: &AnalysisOptions,
+        oracle_policy: &OraclePolicy,
+        changed_files: &[ChangedFile],
+        enabled_languages: &[LanguageId],
+        rust_config: &crate::config::RustLanguageConfig,
+        whole: &VerifiedWholeInput,
+    ) -> Result<LanguageDiffResult, String> {
+        self.analyze_diff_for_languages_with_rust_config_and_verified_whole(
+            options,
+            oracle_policy,
+            changed_files,
+            enabled_languages,
+            rust_config,
+            Some(whole),
+        )
+    }
+
+    fn analyze_diff_for_languages_with_rust_config_and_verified_whole(
+        &self,
+        options: &AnalysisOptions,
+        oracle_policy: &OraclePolicy,
+        changed_files: &[ChangedFile],
+        enabled_languages: &[LanguageId],
+        rust_config: &crate::config::RustLanguageConfig,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        whole: Option<&VerifiedWholeInput>,
+    ) -> Result<LanguageDiffResult, String> {
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_analysis(options, oracle_policy, enabled_languages, rust_config)?;
+            whole.validate_rust_subject(changed_files)?;
+            whole.validate_rust_policy(&capture_complete_rust_policy()?)?;
+        }
         // Exclude conventional generated surfaces before hard line limits and
         // partial-diff budgeting so machine output cannot consume the budget
         // that protects actionable source analysis.
@@ -1829,6 +1878,15 @@ impl RustAdapter {
                 "paths_identity": crate::analysis::source_calibration::paths_identity(analyzable_changed_files.iter().map(|file| file.path.as_path()))}),
             );
         }
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        match whole {
+            Some(whole) => whole.validate_changed_line_limit(changed_line_limit)?,
+            None => enforce_changed_rust_line_limit(
+                analyzable_changed_files.iter().copied(),
+                changed_line_limit,
+            )?,
+        }
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         enforce_changed_rust_line_limit(
             analyzable_changed_files.iter().copied(),
             changed_line_limit,
@@ -1840,6 +1898,24 @@ impl RustAdapter {
         // failing closed with zero findings. A malformed override fails closed
         // as `partial_budget_invalid`.
         let partial_budgets = partial_diff_budgets()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let partial_scope = match whole {
+            Some(whole) => {
+                whole.validate_partial_budgets(
+                    partial_budgets.file_budget,
+                    partial_budgets.line_budget,
+                    &partial_budgets.disclosures,
+                )?;
+                None
+            }
+            None => select_partial_diff_partition_with_identity(
+                &analyzable_changed_files,
+                changed_files,
+                &partial_budgets,
+                enabled_languages,
+            ),
+        };
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         let partial_scope = select_partial_diff_partition_with_identity(
             &analyzable_changed_files,
             changed_files,
@@ -2016,11 +2092,19 @@ impl RustAdapter {
         let mut dependent_scope = None;
         let mut withheld_macro_bindings = classify::WithheldMacroBindings::default();
         let scope_limit = diff_index_file_limit()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_index_limit(scope_limit)?;
+        }
         #[cfg(test)]
         if crate::analysis::source_calibration::active() {
             crate::analysis::source_calibration::limit(DIFF_INDEX_FILE_LIMIT_ENV, scope_limit);
         }
         let narrow_limit = diff_narrow_index_files(scope_limit)?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_narrow_limit(narrow_limit)?;
+        }
         // Open saved Rust documents are index-only inputs. They do not seed
         // changed-file probes, package expansion, or findings. Admit only
         // discovered, analyzable files, then apply the ordinary index budget.
@@ -2048,6 +2132,16 @@ impl RustAdapter {
         }
         // Parsed before any guard so an invalid override always names itself.
         let scope_mode = dependent_scope::DependentScopeMode::from_env()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_dependent_scope(match scope_mode {
+                dependent_scope::DependentScopeMode::Auto => "auto",
+                dependent_scope::DependentScopeMode::NameAdmitted => "named",
+                dependent_scope::DependentScopeMode::Full => "full",
+                #[cfg(test)]
+                dependent_scope::DependentScopeMode::CoreOnly => "test-core-only",
+            })?;
+        }
         if !dependent_package_roots.is_empty()
             && full_selection < analyzable_rust_files.len()
             && scope_mode.narrows(full_selection, narrow_limit)

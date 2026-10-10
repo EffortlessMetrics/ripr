@@ -11,6 +11,8 @@
 //! This avoids recompilation and keeps the analysis in-process.
 
 mod complete_execution;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) mod complete_input;
 #[cfg(test)]
 mod complete_native;
 mod generation;

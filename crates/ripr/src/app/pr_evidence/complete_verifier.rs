@@ -52,6 +52,9 @@ pub(super) struct VerifiedGeneration {
     manifest_sha256: String,
     artifact_sha256: [String; 9],
     total_finding_count: u64,
+    // Actual opened, final-rechecked files; observed DATA, not custody authority.
+    manifest_identity: (u64, u64, u64),
+    artifact_identity: [(u64, u64, u64); 9],
 }
 impl VerifiedGeneration {
     pub(super) fn generation_id(&self) -> &str {
@@ -65,6 +68,12 @@ impl VerifiedGeneration {
     }
     pub(super) fn total_finding_count(&self) -> u64 {
         self.total_finding_count
+    }
+    pub(super) fn manifest_identity(&self) -> (u64, u64, u64) {
+        self.manifest_identity
+    }
+    pub(super) fn artifact_identity(&self, role: ArtifactRole) -> (u64, u64, u64) {
+        self.artifact_identity[role.ordinal()]
     }
 }
 
@@ -263,6 +272,13 @@ fn verify_inner(
         manifest_sha256,
         artifact_sha256: std::array::from_fn(|i| manifest.artifacts[i].sha256.clone()),
         total_finding_count: total,
+        manifest_identity: (
+            manifest_file.identity.device, manifest_file.identity.inode,
+            manifest_file.identity.bytes,
+        ),
+        artifact_identity: std::array::from_fn(|i| (
+            files[i].identity.device, files[i].identity.inode, files[i].identity.bytes,
+        )),
     })
 }
 
@@ -665,25 +681,27 @@ fn require_keys(value: &Value, names: &[&str]) -> Result<(), String> {
     Ok(())
 }
 
-fn admit_buffers(
-    manifest: &CompleteManifest,
+/// Logical verifier-buffer DATA only; caller-retained buffers are additional.
+/// Reused by saved verification and the genuine factory's combined phase.
+pub(super) fn artifact_buffer_allowance(
     manifest_bytes: u64,
+    artifact_bytes: &[u64; 9],
     limits: &CompleteVerificationLimits,
-) -> Result<(), String> {
+) -> Result<u64, String> {
     let mut retained = json_allowance(manifest_bytes)?;
-    for artifact in &manifest.artifacts {
+    for (bytes, role) in artifact_bytes.iter().zip(ArtifactRole::ALL) {
         retained = retained
-            .checked_add(artifact.bytes)
+            .checked_add(*bytes)
             .ok_or("retained buffer total overflow")?;
         if matches!(
-            artifact.role,
+            role,
             ArtifactRole::FullCheck
                 | ArtifactRole::FindingIndex
                 | ArtifactRole::ReviewInput
                 | ArtifactRole::PrJson
         ) {
             retained = retained
-                .checked_add(json_allowance(artifact.bytes)?)
+                .checked_add(json_allowance(*bytes)?)
                 .ok_or("retained JSON representation total overflow")?;
         }
     }
@@ -696,13 +714,23 @@ fn admit_buffers(
         )
         .ok_or("retained relation total overflow")?;
     // Existing Vec-consuming decoder + worst-case lossy UTF8 expansion.
-    let copies = manifest.artifacts[0]
-        .bytes
+    let copies = artifact_bytes[0]
         .checked_mul(4)
         .ok_or("raw decoder expansion overflow")?;
     retained = retained
         .checked_add(copies)
         .ok_or("retained decoder byte total overflow")?;
+    Ok(retained)
+}
+
+fn admit_buffers(
+    manifest: &CompleteManifest,
+    manifest_bytes: u64,
+    limits: &CompleteVerificationLimits,
+) -> Result<(), String> {
+    // manifest.validate has already established this exact closed order.
+    let bytes = std::array::from_fn(|index| manifest.artifacts[index].bytes);
+    let retained = artifact_buffer_allowance(manifest_bytes, &bytes, limits)?;
     if retained > limits.max_buffered_bytes {
         return Err("artifact/JSON/raw/reducer buffer admission exceeded".into());
     }
@@ -915,9 +943,14 @@ fn open_no_follow(path: &Path, directory: bool) -> Result<File, String> {
     ))]
     {
         use std::os::unix::fs::OpenOptionsExt;
+        // SAME kernel ABI flags as the retained SourceAnchor owner.
+        #[cfg(target_arch = "x86_64")]
+        let (no_follow, directory_flag) = (0x0002_0000, 0x0001_0000);
+        #[cfg(target_arch = "aarch64")]
+        let (no_follow, directory_flag) = (0x0000_8000, 0x0000_4000);
         OpenOptions::new()
             .read(true)
-            .custom_flags(0x0002_0000 | 0x0000_0800 | if directory { 0x0001_0000 } else { 0 })
+            .custom_flags(no_follow | 0x0000_0800 | if directory { directory_flag } else { 0 })
             .open(path)
             .map_err(|e| format!("open no-follow staging descriptor: {e}"))
     }
@@ -2198,4 +2231,83 @@ mod tests {
                 .map_err(|error| error.to_string())
         })
     }
+
+    #[test]
+    fn saved_verifier_allowance_preserves_role_formula_exact_bound_and_overflow()
+    -> Result<(), String> {
+        let mut limits = fixture_binding()?.profile;
+        limits.max_relation_bytes = 0;
+        let files = [1_u64, 2, 3, 4, 5, 6, 7, 8, 9];
+        // EXACT existing manifest/json/raw/reducer formula; no caller allowance.
+        let expected = 2 * 64 + 45 + (5 + 6 + 7 + 8) * 64 + 4;
+        assert_eq!(artifact_buffer_allowance(2, &files, &limits)?, expected);
+        limits.max_buffered_bytes = expected;
+        let mut manifest = fixture_manifest(fixture_binding()?)?;
+        for (entry, bytes) in manifest.artifacts.iter_mut().zip(files) {
+            entry.bytes = bytes;
+        }
+        admit_buffers(&manifest, 2, &limits)?;
+        limits.max_buffered_bytes -= 1;
+        let error = require_error(
+            admit_buffers(&manifest, 2, &limits),
+            "saved verifier ignored exact combined allowance",
+        )?;
+        assert_eq!(error, "artifact/JSON/raw/reducer buffer admission exceeded");
+        let error = require_error(
+            artifact_buffer_allowance(u64::MAX, &files, &limits),
+            "saved verifier ignored manifest multiplication overflow",
+        )?;
+        assert_eq!(error, "JSON representation allowance overflow");
+        let mut overflow = [0_u64; 9];
+        overflow[ArtifactRole::CheckDiff.ordinal()] = u64::MAX;
+        overflow[ArtifactRole::PresentationDiff.ordinal()] = 1;
+        let error = require_error(
+            artifact_buffer_allowance(0, &overflow, &limits),
+            "saved verifier ignored aggregate overflow",
+        )?;
+        assert_eq!(error, "retained buffer total overflow");
+        Ok(())
+    }
+
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn verified_descriptor_data_observes_actual_files_and_equal_byte_replacement()
+    -> Result<(), String> {
+        use std::os::unix::fs::MetadataExt;
+        let source = frozen_source_fixture()?;
+        let stage = stage()?;
+        frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
+            let (binding, original) = saved_fixture(&source)?;
+            save_fixture(&stage.0, &binding, &original)?;
+            let observed = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            for role in ArtifactRole::ALL {
+                let metadata = std::fs::symlink_metadata(stage.0.join(role.path()))
+                    .map_err(|error| format!("actual proof identity fixture: {error}"))?;
+                assert_eq!(observed.artifact_identity(role),
+                    (metadata.dev(), metadata.ino(), metadata.len()));
+                assert_eq!(observed.artifact_sha256(role),
+                    sha256_bytes(&original[role.ordinal()]));
+            }
+            let metadata = std::fs::symlink_metadata(stage.0.join(MANIFEST_FILE))
+                .map_err(|error| format!("actual manifest identity fixture: {error}"))?;
+            assert_eq!(observed.manifest_identity(),
+                (metadata.dev(), metadata.ino(), metadata.len()));
+            // Equal bytes can form a fresh saved proof, but its observed file
+            // identity cannot reconcile an earlier IO closure's actual inode.
+            let role = ArtifactRole::FullCheck;
+            let replacement = stage.0.join("replacement");
+            std::fs::write(&replacement, &original[role.ordinal()])
+                .map_err(|error| format!("actual replacement fixture: {error}"))?;
+            std::fs::rename(replacement, stage.0.join(role.path()))
+                .map_err(|error| format!("actual replacement publish fixture: {error}"))?;
+            let fresh = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(fresh.artifact_sha256(role), observed.artifact_sha256(role));
+            assert_ne!(fresh.artifact_identity(role), observed.artifact_identity(role));
+            Ok(())
+        })
+    }
+
 }

@@ -20,6 +20,8 @@ use crate::analysis_outcome::{
     AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
     AnalysisStage,
 };
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::OraclePolicy;
 use crate::core_error::CoreError;
 use crate::domain::Finding;
@@ -58,6 +60,84 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy_and_rust_config(
     languages: &[LanguageId],
     rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, CoreError> {
+    run_diff_pipeline_with_optional_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        None,
+    )
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn run_diff_pipeline_with_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    whole: &VerifiedWholeInput,
+) -> Result<AnalysisResult, CoreError> {
+    run_diff_pipeline_with_optional_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        Some(whole),
+    )
+}
+
+fn run_diff_pipeline_with_optional_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    whole: Option<&VerifiedWholeInput>,
+) -> Result<AnalysisResult, CoreError> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_analysis(options, oracle_policy, languages, rust_config)?;
+        let authority = frozen::current()
+            .ok_or_else(|| "verified whole diff has no frozen source authority".to_string())?;
+        if options.root.as_os_str() != authority.logical_root().as_os_str()
+            || options.git_candidate.is_some()
+            || options.resolved_subject_identity.is_some()
+        {
+            return Err(authority
+                .refuse_external_effect(
+                    "verified whole diff requires its exact logical root and no GitCandidate",
+                )
+                .to_string()
+                .into());
+        }
+        let Some(canonical_diff) = frozen::canonical_diff() else {
+            return Err(authority
+                .refuse_external_effect("verified whole diff has no owned canonical input")
+                .to_string()
+                .into());
+        };
+        whole.validate_canonical_diff(&authority, &canonical_diff)?;
+        let result = committed_source::with_overlay(None, || {
+            run_pipeline_for_diff_text_with_verified_whole(
+                options,
+                oracle_policy,
+                languages,
+                rust_config,
+                &canonical_diff,
+                Some(whole),
+            )
+        });
+        let clean = authority.ensure_clean();
+        return match (result, clean) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(primary), Ok(())) => Err(primary.into()),
+            (Ok(_), Err(fault)) => Err(fault.to_string().into()),
+            (Err(primary), Err(fault)) => {
+                Err(format!("{primary}; frozen source authority: {fault}").into())
+            }
+        };
+    }
     if let Some(authority) = frozen::current() {
         if options.root.as_os_str() != authority.logical_root().as_os_str()
             || options.git_candidate.is_some()
@@ -638,6 +718,31 @@ fn run_pipeline_for_diff_text(
     rust_config: &crate::config::RustLanguageConfig,
     diff_text: &str,
 ) -> Result<AnalysisResult, String> {
+    run_pipeline_for_diff_text_with_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        diff_text,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        None,
+    )
+}
+
+fn run_pipeline_for_diff_text_with_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    diff_text: &str,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    whole: Option<&VerifiedWholeInput>,
+) -> Result<AnalysisResult, String> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_analysis(options, oracle_policy, languages, rust_config)?;
+        whole.validate_rust_policy(&super::capture_complete_rust_policy()?)?;
+    }
     #[cfg(test)]
     if super::source_calibration::active() {
         super::source_calibration::put(
@@ -647,6 +752,10 @@ fn run_pipeline_for_diff_text(
         );
     }
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_parsed_diff(&parsed_diff)?;
+    }
     #[cfg(test)]
     if super::source_calibration::active() {
         super::source_calibration::put(
@@ -705,6 +814,25 @@ fn run_pipeline_for_diff_text(
     // partial_budget_invalid), not a per-language advisory gap.
     if languages.contains(&LanguageId::Rust) {
         cancellation::checkpoint()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let result = match whole {
+            Some(whole) => RustAdapter.analyze_diff_for_languages_with_verified_whole(
+                options,
+                oracle_policy,
+                &analysis_changed_files,
+                languages,
+                rust_config,
+                whole,
+            )?,
+            None => RustAdapter.analyze_diff_for_languages_with_rust_config(
+                options,
+                oracle_policy,
+                &analysis_changed_files,
+                languages,
+                rust_config,
+            )?,
+        };
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         let result = RustAdapter.analyze_diff_for_languages_with_rust_config(
             options,
             oracle_policy,

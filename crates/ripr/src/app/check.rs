@@ -8,6 +8,8 @@ use crate::analysis::{
     run_repo_analysis_with_oracle_policy_and_rust_config,
     run_worktree_analysis_with_oracle_policy_and_rust_config,
 };
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::RiprConfig;
 use crate::core_error::CoreError;
 use crate::domain::LanguageId;
@@ -44,6 +46,23 @@ pub fn check_workspace_with_config(
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
     check_with_progress(input, config, AnalysisProgressScope::Diff, None)
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn check_workspace_with_verified_whole(
+    input: CheckInput,
+    config: &RiprConfig,
+    whole: &VerifiedWholeInput,
+) -> Result<CheckOutput, String> {
+    Ok(check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
+        input,
+        config,
+        AnalysisProgressScope::Diff,
+        None,
+        &Default::default(),
+        Some(whole),
+    )?
+    .0)
 }
 
 pub fn check_workspace_worktree_with_config(
@@ -173,11 +192,38 @@ fn check_with_progress_and_origins(
 }
 
 fn check_with_progress_and_origins_with_open_rust_paths(
+    input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+    open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    CoreError,
+> {
+    check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
+        input,
+        config,
+        scope,
+        sink,
+        open_rust_index_paths,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        None,
+    )
+}
+
+fn check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
     mut input: CheckInput,
     config: &RiprConfig,
     scope: AnalysisProgressScope,
     sink: Option<&dyn AnalysisProgressSink>,
     open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    whole: Option<&VerifiedWholeInput>,
 ) -> Result<
     (
         CheckOutput,
@@ -193,6 +239,13 @@ fn check_with_progress_and_origins_with_open_rust_paths(
     // acquisition, so a subject input can never fall through to worktree
     // analysis or an empty diff.
     super::analysis_subject::validate_input_subject(&input).map_err(|error| error.to_string())?;
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        if !matches!(scope, AnalysisProgressScope::Diff) {
+            return Err("verified whole input requires the diff checker".into());
+        }
+        whole.validate_check(&input, config)?;
+    }
     if let Some(authority) = frozen::current()
         && (input.perl_facts_path.is_some()
             || input.suppression_policy.is_some()
@@ -267,8 +320,35 @@ fn check_with_progress_and_origins_with_open_rust_paths(
         eprintln!("ripr: mode = {:?}", scope);
     }
 
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_analysis(
+            &options,
+            config.oracles(),
+            &languages,
+            &config.languages().rust,
+        )?;
+    }
+
     progress.emit(AnalysisProgressStage::Analyzing);
     let mut analysis = match scope {
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        AnalysisProgressScope::Diff => match whole {
+            Some(whole) => crate::analysis::run_analysis_with_verified_whole(
+                &options,
+                config.oracles(),
+                &languages,
+                &config.languages().rust,
+                whole,
+            )?,
+            None => run_analysis_with_oracle_policy_and_rust_config(
+                &options,
+                config.oracles(),
+                &languages,
+                &config.languages().rust,
+            )?,
+        },
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         AnalysisProgressScope::Diff => run_analysis_with_oracle_policy_and_rust_config(
             &options,
             config.oracles(),
