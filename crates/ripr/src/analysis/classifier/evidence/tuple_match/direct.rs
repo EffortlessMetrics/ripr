@@ -121,10 +121,13 @@ fn same_current_file(
     if !authority.validates_target(owner_file, owner_file, source) {
         return false;
     }
-    let Ok(owner_path) = authority.root.join(owner_file).canonicalize() else {
+    let Ok(owner_path) =
+        crate::analysis::committed_source::frozen::fs::canonicalize(authority.root.join(owner_file))
+    else {
         return false;
     };
-    let Ok(probe_path) = probe_file.canonicalize() else {
+    let Ok(probe_path) = crate::analysis::committed_source::frozen::fs::canonicalize(probe_file)
+    else {
         return false;
     };
     owner_path == probe_path

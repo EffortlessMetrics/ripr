@@ -493,13 +493,16 @@ fn same_current_file(
     if !authority.validates_target(owner_file, owner_file, source) {
         return false;
     }
-    let Ok(owner_path) = authority.root.join(owner_file).canonicalize() else {
+    let Ok(owner_path) =
+        crate::analysis::committed_source::frozen::fs::canonicalize(authority.root.join(owner_file))
+    else {
         return false;
     };
     // Probe locations are `--root` as given joined with the changed path, so
     // they resolve from the working directory. Joining them onto the
     // canonical authority root again only works for an absolute or `.` root.
-    let Ok(probe_path) = probe_file.canonicalize() else {
+    let Ok(probe_path) = crate::analysis::committed_source::frozen::fs::canonicalize(probe_file)
+    else {
         return false;
     };
     owner_path == probe_path

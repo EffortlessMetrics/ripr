@@ -48,6 +48,7 @@
 //! so different keys land in different files and a v1 cache hit on a
 //! v0.5 entry is impossible.
 
+use super::committed_source::frozen::{self, FrozenSourceAuthority, fs as frozen_fs};
 use super::facts::FileFacts;
 use super::seam_classification::ClassifiedSeam;
 #[cfg(test)]
@@ -58,7 +59,7 @@ use crate::config::{
 };
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 // The producer's layer names are also the only names cache maintenance may
 // inspect or remove. Defining both the typed names and inventory here makes a
@@ -2971,9 +2972,64 @@ pub(crate) struct WorkspaceGraphProvenance {
     pub(crate) path_dependency_limitations: Vec<PathDependencyLimitation>,
 }
 
+fn frozen_graph_context(root: &Path) -> std::io::Result<Option<Arc<FrozenSourceAuthority>>> {
+    let Some(authority) = frozen::current() else {
+        return Ok(None);
+    };
+    authority.ensure_clean()?;
+    let canonical = frozen_fs::canonicalize(root).map_err(|error| {
+        authority.refuse_external_effect(&format!("workspace graph root did not resolve: {error}"))
+    })?;
+    if canonical != authority.logical_root() {
+        return Err(authority.refuse_external_effect("workspace graph root differs from frozen root"));
+    }
+    frozen_graph_context_clean(&Some(authority.clone()))?;
+    Ok(Some(authority))
+}
+
+fn frozen_graph_context_clean(
+    authority: &Option<Arc<FrozenSourceAuthority>>,
+) -> std::io::Result<()> {
+    let Some(authority) = authority else {
+        return Ok(());
+    };
+    authority.ensure_clean()?;
+    match frozen::current() {
+        Some(current) if Arc::ptr_eq(&current, authority) => Ok(()),
+        _ => Err(authority.refuse_external_effect("workspace graph source context changed")),
+    }
+}
+
+fn refused_workspace_graph(error: std::io::Error) -> WorkspaceGraphProvenance {
+    WorkspaceGraphProvenance {
+        package_graph_status: "unavailable".to_string(),
+        package_graph_detail: Some(error.to_string()),
+        feature_graph_status: "unavailable".to_string(),
+        feature_graph_detail: Some(error.to_string()),
+        external_dependency_graph_status: "unavailable".to_string(),
+        external_dependency_graph_detail:
+            "external dependency metadata is not resolved; no network access was used".to_string(),
+        ..WorkspaceGraphProvenance::default()
+    }
+}
+
 /// Read local Cargo manifests and derive deterministic package/feature graph
 /// facts without invoking Cargo, rustc, a registry, or a network client.
+/// Frozen read failures remain sticky even though this provenance API returns
+/// DATA. The producer's final source check refuses any resulting partial value.
 pub(crate) fn workspace_graph_provenance(root: &Path) -> WorkspaceGraphProvenance {
+    let authority = match frozen_graph_context(root) {
+        Ok(authority) => authority,
+        Err(error) => return refused_workspace_graph(error),
+    };
+    let graph = workspace_graph_provenance_inner(root);
+    match frozen_graph_context_clean(&authority) {
+        Ok(()) => graph,
+        Err(error) => refused_workspace_graph(error),
+    }
+}
+
+fn workspace_graph_provenance_inner(root: &Path) -> WorkspaceGraphProvenance {
     let mut manifests = Vec::new();
     collect_named_workspace_files(root, root, "Cargo.toml", &mut manifests);
     manifests.sort_by(|left, right| left.0.cmp(&right.0));
@@ -3199,7 +3255,9 @@ fn is_absolute_declared_path(declared: &str) -> bool {
 /// manifest node downstream (#3613 review).
 fn classify_repo_relative_target(root: &Path, resolved: &str) -> PathDependencyResolution {
     let target = root.join(resolved);
-    if target.is_dir() && target.join("Cargo.toml").is_file() {
+    if frozen_fs::is_dir(&target)
+        && frozen_fs::is_file(target.join("Cargo.toml"))
+    {
         PathDependencyResolution::Resolved
     } else {
         PathDependencyResolution::TargetMissing
@@ -3921,7 +3979,7 @@ fn collect_named_workspace_files(
     file_name: &str,
     files: &mut Vec<(PathBuf, Vec<u8>)>,
 ) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
+    let Ok(entries) = frozen_fs::read_dir(directory) else {
         return;
     };
     for entry in entries.flatten() {
@@ -3938,7 +3996,7 @@ fn collect_named_workspace_files(
         } else if name == file_name {
             let relative = path.strip_prefix(root).unwrap_or(&path).to_path_buf();
             let bytes =
-                std::fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
+                frozen_fs::read(&path).unwrap_or_else(|_| b"<workspace input unreadable>".to_vec());
             files.push((relative, bytes));
         }
     }
@@ -3951,15 +4009,22 @@ fn collect_named_workspace_files(
 /// layout heuristics cannot place (custom Cargo target paths, #3616
 /// review) to the nearest owning manifest directory.
 pub(crate) fn workspace_manifest_dir_prefixes(root: &Path) -> Vec<String> {
+    let authority = match frozen_graph_context(root) {
+        Ok(authority) => authority,
+        Err(_) => return Vec::new(),
+    };
     let mut prefixes = Vec::new();
     collect_manifest_dir_prefixes(root, root, &mut prefixes);
+    if frozen_graph_context_clean(&authority).is_err() {
+        return Vec::new();
+    }
     prefixes.sort();
     prefixes.dedup();
     prefixes
 }
 
 fn collect_manifest_dir_prefixes(root: &Path, directory: &Path, prefixes: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
+    let Ok(entries) = frozen_fs::read_dir(directory) else {
         return;
     };
     for entry in entries.flatten() {

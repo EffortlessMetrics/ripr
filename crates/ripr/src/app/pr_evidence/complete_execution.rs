@@ -1776,6 +1776,211 @@ mod whole_worker {
             }
         }
 
+        fn pure_rename_fixture() -> Result<(CaptureFixture, String, String), String> {
+            use crate::testing::fixture_git::fixture_git_ok;
+
+            let (fixture, _, _) = CaptureFixture::new()?;
+            fs::write(
+                fixture.0.join("Cargo.toml"),
+                "[package]\nname = \"rename_fixture\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"nested/a.rs\"\n",
+            )
+            .map_err(|error| format!("rename fixture manifest: {error}"))?;
+            fs::write(
+                fixture.0.join("ripr.toml"),
+                "[analysis]\nmode = \"draft\"\n[languages]\nenabled = [\"rust\"]\n",
+            )
+            .map_err(|error| format!("rename fixture configuration: {error}"))?;
+            fs::write(fixture.0.join(".gitignore"), "target/\n")
+                .map_err(|error| format!("rename fixture target ignore: {error}"))?;
+            fixture_git_ok(
+                &fixture.0,
+                &["add", "--", "Cargo.toml", "ripr.toml", ".gitignore"],
+            )?;
+            fixture_git_ok(&fixture.0, &["commit", "--quiet", "-m", "rename baseline"])?;
+            let revision = || -> Result<String, String> {
+                let output = crate::git::run_git_output_with_deadline_and_limit_isolated(
+                    &fixture.0,
+                    &["rev-parse", "HEAD"],
+                    Duration::from_secs(30),
+                    4096,
+                )
+                .map_err(|error| error.to_string())?;
+                if !output.status.success() {
+                    return Err(format!(
+                        "pure rename fixture revision failed: {}",
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+                String::from_utf8(output.stdout)
+                    .map(|text| text.trim().to_string())
+                    .map_err(|error| format!("pure rename fixture revision UTF-8: {error}"))
+            };
+            let base = revision()?;
+            fixture_git_ok(&fixture.0, &["mv", "outside.rs", "renamed.rs"])?;
+            fixture_git_ok(&fixture.0, &["commit", "--quiet", "-m", "pure rename"])?;
+            let head = revision()?;
+            assert_ne!(base, head, "pure rename must create a distinct real commit");
+            Ok((fixture, base, head))
+        }
+
+        #[test]
+        fn actual_rename_config_keeps_scoped_loader_parity_and_changes_bound_inputs()
+        -> Result<(), String> {
+            use super::super::super::complete_contract::sha256_bytes;
+            use super::super::super::raw_coverage::{RawCoverageLimits, build_raw_coverage};
+            use crate::testing::fixture_git::fixture_git_ok;
+
+            let (fixture, base, head) = pure_rename_fixture()?;
+            let profile = capture_profile()?;
+            let budget = CaptureBudget::new(&profile, 0)?;
+            let deadline = Instant::now()
+                .checked_add(Duration::from_mins(1))
+                .ok_or("rename capture fixture deadline overflow")?;
+            let native = |value| {
+                usize::try_from(value)
+                    .map_err(|error| format!("rename fixture native admission: {error}"))
+            };
+            let limits = RawCoverageLimits {
+                file_limit: native(profile.file_limit)?,
+                max_raw_bytes: budget.raw,
+                max_records: native(profile.max_raw_records)?,
+                max_ledger_bytes: native(profile.max_artifact_bytes[3])?,
+                max_retained_path_bytes: native(profile.max_retained_path_bytes)?,
+                max_projection_bytes: native(profile.max_raw_projection_bytes)?,
+            };
+            let range = format!("{base}...{head}");
+            let mut observations = Vec::new();
+            for setting in ["true", "false"] {
+                fixture_git_ok(&fixture.0, &["config", "--local", "diff.renames", setting])?;
+                // Real original loaders, not a config-isolated alternate route.
+                // This captures DATA only, never native or completion authority.
+                let captured = capture_original_data(
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &profile,
+                    &budget,
+                    deadline,
+                    || Ok(()),
+                )?;
+                let ordinary_raw =
+                    crate::analysis::diff::load::load_canonical_pr_evidence_diff_bytes(
+                        &fixture.0,
+                        &base,
+                        &head,
+                    )?;
+                let ordinary_presentation =
+                    crate::analysis::load_pr_evidence_diff_range(&fixture.0, &base, &head)?;
+                let ordinary_names = crate::git::run_git_output_with_deadline(
+                    &fixture.0,
+                    &["diff", "--name-only", "-z", &range],
+                    Some(Duration::from_mins(5)),
+                )
+                .map_err(|error| error.to_string())?;
+                if !ordinary_names.status.success() {
+                    return Err(format!(
+                        "ordinary rename name inventory failed: {}",
+                        String::from_utf8_lossy(&ordinary_names.stderr)
+                    ));
+                }
+                let (ordinary_paths, _) =
+                    bound_original_names(&ordinary_names.stdout, &profile, 0)?;
+                assert_eq!(captured.raw, ordinary_raw, "{setting}");
+                assert_eq!(captured.presentation, ordinary_presentation, "{setting}");
+                assert_eq!(captured.changed_paths, ordinary_paths, "{setting}");
+                let raw_text = std::str::from_utf8(&captured.raw)
+                    .map_err(|error| format!("rename fixture raw UTF-8: {error}"))?;
+                let (_, coverage) = build_raw_coverage(&captured.raw, limits)?;
+                let summary = coverage.summary();
+                if setting == "true" {
+                    assert!(raw_text.contains("similarity index 100%"), "{raw_text}");
+                    assert!(raw_text.contains("rename from outside.rs"), "{raw_text}");
+                    assert!(raw_text.contains("rename to renamed.rs"), "{raw_text}");
+                    assert_eq!(summary.added_lines, 0);
+                    assert_eq!(summary.removed_lines, 0);
+                    assert_eq!(captured.changed_paths, ["renamed.rs"]);
+                } else {
+                    assert!(raw_text.contains("deleted file mode"), "{raw_text}");
+                    assert!(raw_text.contains("new file mode"), "{raw_text}");
+                    assert!(summary.added_lines > 0, "missing real added source");
+                    assert!(summary.removed_lines > 0, "missing real removed source");
+                    assert_eq!(captured.changed_paths, ["outside.rs", "renamed.rs"]);
+                }
+                observations.push((captured, coverage));
+            }
+            let (rename, rest) = observations.split_first().ok_or("rename capture is missing")?;
+            let delete_add = rest.first().ok_or("delete/add capture is missing")?;
+            assert_ne!(
+                rename.1.summary().raw_sha256,
+                delete_add.1.summary().raw_sha256
+            );
+            assert_ne!(
+                rename.1.summary().projection_sha256,
+                delete_add.1.summary().projection_sha256
+            );
+            assert_ne!(
+                sha256_bytes(rename.0.presentation.as_bytes()),
+                sha256_bytes(delete_add.0.presentation.as_bytes())
+            );
+            assert_ne!(rename.0.changed_paths, delete_add.0.changed_paths);
+            Ok(())
+        }
+
+        #[test]
+        fn actual_rename_config_drift_refuses_saved_canonical_input_then_recovers()
+        -> Result<(), String> {
+            use crate::testing::fixture_git::fixture_git_ok;
+
+            let (fixture, base, head) = pure_rename_fixture()?;
+            let options = PrEvidenceOptions {
+                root: ".".into(),
+                base,
+                base_explicit: true,
+                head,
+                check: false,
+            };
+            fixture_git_ok(&fixture.0, &["config", "--local", "diff.renames", "true"])?;
+            // Publish genuine ordinary producer artifacts, without a generation
+            // marker, mocked check JSON or a complete-execution token.
+            write_pr_evidence(&fixture.0, &options)?;
+            check_pr_evidence(&fixture.0, &options)?;
+            let saved = fs::read(fixture.0.join(PR_CANONICAL_DIFF))
+                .map_err(|error| format!("saved rename canonical input: {error}"))?;
+            assert!(
+                std::str::from_utf8(&saved)
+                    .map_err(|error| error.to_string())?
+                    .contains("rename from outside.rs"),
+                "ordinary producer did not retain the real pure rename"
+            );
+            fixture_git_ok(&fixture.0, &["config", "--local", "diff.renames", "false"])?;
+            // This is the actual canonical-input admission called by saved
+            // --check. The outer packet check can first notice changed names.
+            let failure = validate_producer_artifacts(&fixture.0, &options)
+                .err()
+                .ok_or("saved canonical input admitted a different actual Git diff")?;
+            assert!(
+                failure.contains("does not match the requested canonical base/head diff"),
+                "{failure}"
+            );
+            assert_eq!(
+                fs::read(fixture.0.join(PR_CANONICAL_DIFF))
+                    .map_err(|error| error.to_string())?,
+                saved,
+                "refusal must not rewrite the saved canonical input"
+            );
+            fixture_git_ok(&fixture.0, &["config", "--local", "diff.renames", "true"])?;
+            check_pr_evidence(&fixture.0, &options)?;
+            assert_eq!(
+                fs::read(fixture.0.join(PR_CANONICAL_DIFF))
+                    .map_err(|error| error.to_string())?,
+                saved,
+                "recovery must reuse the original ordinary artifacts"
+            );
+            // The native complete Postflight input recapture/join remains
+            // unimplemented; this ordinary-consumer control cannot grant it.
+            Ok(())
+        }
+
         #[test]
         fn actual_original_capture_matches_u0_u3_and_full_deleted_binary_name_inventory()
         -> Result<(), String> {

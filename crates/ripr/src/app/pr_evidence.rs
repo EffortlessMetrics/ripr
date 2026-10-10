@@ -3450,7 +3450,7 @@ mod tests {
         for path in [PR_CHECK_JSON, PR_CHECK_SUBJECT_JSON, PR_REVIEW_INPUT_JSON] {
             assert!(
                 !repo.join(path).exists(),
-                "stale authority survived: {path}"
+                "stale authority remained: {path}"
             );
         }
         assert!(check_pr_evidence(&repo, &options).is_err());

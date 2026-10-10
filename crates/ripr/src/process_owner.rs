@@ -372,11 +372,11 @@ impl OwnedProcess {
         if Instant::now() >= deadline || observed.is_ok_and(|status| status.is_some()) {
             return;
         }
-        let killed = self.request_kill();
+        let kill_result = self.request_kill();
         if Instant::now() >= deadline {
             return;
         }
-        if killed.is_ok() {
+        if kill_result.is_ok() {
             let _reaped = self.reap_until(deadline);
         }
         // Failure/expiry leaves cleanup unconfirmed; Drop grants no receipt.
@@ -388,9 +388,9 @@ impl OwnedProcess {
     #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
     fn enclosing_kill_until(&mut self, deadline: Instant) -> Result<(), String> {
         enclosing_time(deadline)?;
-        let killed = self.request_kill();
+        let kill_result = self.request_kill();
         enclosing_time(deadline)?;
-        killed.map_err(|error| format!("enclosing direct kill: {error}"))
+        kill_result.map_err(|error| format!("enclosing direct kill: {error}"))
     }
 
     #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
