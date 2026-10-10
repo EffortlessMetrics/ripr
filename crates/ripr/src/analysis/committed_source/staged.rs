@@ -12,6 +12,14 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Instant;
 
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod artifact_io;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) use artifact_io::{
+    ArtifactBudget, ArtifactClosureData, ArtifactDirectory, ArtifactFileData,
+    ArtifactPayloadData, ArtifactSlot, FinishedPayloads,
+};
+
 use serde::{Deserialize, Serialize};
 
 const SOURCE_BYTES_MAX: u64 = 512 * 1024 * 1024;

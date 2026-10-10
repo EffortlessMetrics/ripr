@@ -26,6 +26,11 @@ mod complete_verifier;
 #[cfg(test)]
 mod raw_coverage;
 
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod complete_image;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod complete_profile;
+
 use crate::app::{CheckInput, Mode, OutputFormat, check_workspace_with_config};
 use crate::cli::unknown_argument;
 use crate::config::{
