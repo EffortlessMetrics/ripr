@@ -492,13 +492,17 @@ fn validate_requested_revisions(
         format!("experimental launcher requested base reobservation failed: {error}")
     })?;
     if base != expected_base {
-        return Err("experimental launcher requested base commit changed after pinning".to_string());
+        return Err(
+            "experimental launcher requested base commit changed after pinning".to_string(),
+        );
     }
     let head = resolve_revision(repo, &options.head, "commit").map_err(|error| {
         format!("experimental launcher requested head reobservation failed: {error}")
     })?;
     if head != expected_head {
-        return Err("experimental launcher requested head commit changed after pinning".to_string());
+        return Err(
+            "experimental launcher requested head commit changed after pinning".to_string(),
+        );
     }
     let head_tree = resolve_revision(repo, &head, "tree").map_err(|error| {
         format!("experimental launcher requested head tree reobservation failed: {error}")
@@ -952,13 +956,27 @@ mod tests {
             let head_tree = resolve_revision(&repo, &options.head, "tree")?;
             let base_moved = run_git_output(
                 &repo,
-                &["commit-tree", &base_tree, "-p", &options.base, "-m", "same base tree"],
+                &[
+                    "commit-tree",
+                    &base_tree,
+                    "-p",
+                    &options.base,
+                    "-m",
+                    "same base tree",
+                ],
             )?
             .trim()
             .to_string();
             let head_moved = run_git_output(
                 &repo,
-                &["commit-tree", &head_tree, "-p", &options.head, "-m", "same head tree"],
+                &[
+                    "commit-tree",
+                    &head_tree,
+                    "-p",
+                    &options.head,
+                    "-m",
+                    "same head tree",
+                ],
             )?
             .trim()
             .to_string();
@@ -967,8 +985,16 @@ mod tests {
             assert_eq!(resolve_revision(&repo, &base_moved, "tree")?, base_tree);
             assert_eq!(resolve_revision(&repo, &head_moved, "tree")?, head_tree);
             for (revision, replacement, expected) in [
-                ("HEAD", Some(head_moved.as_str()), "requested head commit changed"),
-                (named_base, Some(base_moved.as_str()), "requested base commit changed"),
+                (
+                    "HEAD",
+                    Some(head_moved.as_str()),
+                    "requested head commit changed",
+                ),
+                (
+                    named_base,
+                    Some(base_moved.as_str()),
+                    "requested base commit changed",
+                ),
                 (named_base, None, "requested base reobservation failed"),
             ] {
                 let witness = repo.join("target/currentness-worker-succeeded");
@@ -1018,7 +1044,10 @@ mod tests {
                     PR_EVIDENCE_MD,
                     RECEIPT,
                 ] {
-                    assert!(!repo.join(relative).exists(), "{relative} retained authority");
+                    assert!(
+                        !repo.join(relative).exists(),
+                        "{relative} retained authority"
+                    );
                 }
                 super::super::tests::run_git(&repo, &["update-ref", "HEAD", &options.head])?;
                 super::super::tests::run_git(&repo, &["update-ref", named_base, &options.base])?;

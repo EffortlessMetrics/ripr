@@ -88,8 +88,24 @@ pub struct CompleteCapturedBytes {
 }
 impl CompleteCapturedBytes {
     /// Consume bytes and the unique combined receipt.
-    pub fn into_parts(self) -> (ExitStatus, Vec<u8>, Vec<u8>, Duration, bool, CompleteCaptureReceipt) {
-        (self.status, self.stdout, self.stderr, self.duration, self.timed_out, self.receipt)
+    pub fn into_parts(
+        self,
+    ) -> (
+        ExitStatus,
+        Vec<u8>,
+        Vec<u8>,
+        Duration,
+        bool,
+        CompleteCaptureReceipt,
+    ) {
+        (
+            self.status,
+            self.stdout,
+            self.stderr,
+            self.duration,
+            self.timed_out,
+            self.receipt,
+        )
     }
 }
 
@@ -108,7 +124,9 @@ impl CompleteCaptureError {
     }
     /// Read actual failed wait data, without admitting captured output.
     pub fn observed_outcome(&self) -> Option<(ExitStatus, Duration, bool)> {
-        self.observation.as_ref().map(|parts| (parts.0, parts.3, parts.4))
+        self.observation
+            .as_ref()
+            .map(|parts| (parts.0, parts.3, parts.4))
     }
     /// Consume failed observation bytes at most once; this grants no cleanup or success authority.
     pub fn take_failed_observation(
@@ -132,7 +150,8 @@ impl CompleteCaptureError {
 }
 impl std::fmt::Debug for CompleteCaptureError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.debug_struct("CompleteCaptureError")
+        formatter
+            .debug_struct("CompleteCaptureError")
             .field("message", &self.message)
             .field("combined_cleanup_confirmed", &self.receipt.is_some())
             .finish()
@@ -194,7 +213,13 @@ impl CompleteByteCapture {
         #[cfg(target_os = "linux")]
         {
             linux::capture_with_held(
-                command, source, env_remove, execution, Some(held_deadline), lease, settled,
+                command,
+                source,
+                env_remove,
+                execution,
+                Some(held_deadline),
+                lease,
+                settled,
             )
         }
         #[cfg(not(target_os = "linux"))]
@@ -205,7 +230,10 @@ impl CompleteByteCapture {
                 message: format!(
                     "complete byte capture for {error_context} requires qualified Linux group ownership; spawn refused"
                 ),
-                receipt: None, observation: None, timeout_only: false, lease,
+                receipt: None,
+                observation: None,
+                timeout_only: false,
+                lease,
             })
         }
     }
@@ -257,19 +285,22 @@ mod linux {
             }
             Ok(())
         })?;
-        let (parent, child) = UnixStream::pair()
-            .map_err(|error| format!("prepare {name} socket: {error}"))?;
+        let (parent, child) =
+            UnixStream::pair().map_err(|error| format!("prepare {name} socket: {error}"))?;
         // The endpoints have independent file descriptions. The worker endpoint
         // retains blocking stdio; only the controller endpoint is nonblocking.
-        parent.set_nonblocking(true)
+        parent
+            .set_nonblocking(true)
             .map_err(|error| format!("prepare nonblocking {name}: {error}"))?;
         #[cfg(test)]
         HOOKS.with(|hooks| {
             let mut hooks = hooks.borrow_mut();
             if hooks.hold_writer == Some(name) {
                 hooks.hold_writer = None;
-                hooks.held_writer = Some(child.try_clone()
-                    .map_err(|error| format!("retain native {name} writer control: {error}"))?);
+                hooks.held_writer =
+                    Some(child.try_clone().map_err(|error| {
+                        format!("retain native {name} writer control: {error}")
+                    })?);
             }
             Ok::<_, String>(())
         })?;
@@ -341,7 +372,9 @@ mod linux {
                     }
                     true
                 }
-                Err(error) if matches!(error.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) => {
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) =>
+                {
                     false
                 }
                 Err(error) => {
@@ -375,11 +408,15 @@ mod linux {
                 drop(self.stream.take());
                 return true;
             }
-            let end = self.offset.saturating_add(CHUNK_BYTES).min(self.bytes.len());
+            let end = self
+                .offset
+                .saturating_add(CHUNK_BYTES)
+                .min(self.bytes.len());
             match stream.write(&self.bytes[self.offset..end]) {
                 Ok(0) => {
                     self.error = Some(std::io::Error::new(
-                        ErrorKind::WriteZero, "bounded stdin write made no progress"
+                        ErrorKind::WriteZero,
+                        "bounded stdin write made no progress",
                     ));
                     drop(self.stream.take());
                     false
@@ -388,7 +425,9 @@ mod linux {
                     self.offset += count;
                     true
                 }
-                Err(error) if matches!(error.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) => {
+                Err(error)
+                    if matches!(error.kind(), ErrorKind::Interrupted | ErrorKind::WouldBlock) =>
+                {
                     false
                 }
                 Err(error) => {
@@ -415,7 +454,10 @@ mod linux {
         fn terminal(&self) -> bool {
             (self.stdout_capture.eof || self.stdout_capture.failed)
                 && (self.stderr_capture.eof || self.stderr_capture.failed)
-                && self.input.as_ref().is_none_or(|input| input.stream.is_none())
+                && self
+                    .input
+                    .as_ref()
+                    .is_none_or(|input| input.stream.is_none())
         }
 
         // The slice is a scheduling yield, while the supplied held deadline is
@@ -445,10 +487,16 @@ mod linux {
                     self.next_endpoint = (self.next_endpoint + 1) % 3;
                     let action_progress = match endpoint {
                         0 => self.stdout_capture.step(
-                            &mut self.stdout, "stdout", self.stdout_limit, &mut scratch,
+                            &mut self.stdout,
+                            "stdout",
+                            self.stdout_limit,
+                            &mut scratch,
                         ),
                         1 => self.stderr_capture.step(
-                            &mut self.stderr, "stderr", self.stderr_limit, &mut scratch,
+                            &mut self.stderr,
+                            "stderr",
+                            self.stderr_limit,
+                            &mut scratch,
                         ),
                         _ => self.input.as_mut().is_some_and(|input| input.step()),
                     };
@@ -483,7 +531,11 @@ mod linux {
         lease: Arc<dyn Any + Send + Sync>,
     ) -> CompleteCaptureError {
         CompleteCaptureError {
-            message, receipt, observation: None, timeout_only: false, lease,
+            message,
+            receipt,
+            observation: None,
+            timeout_only: false,
+            lease,
         }
     }
 
@@ -526,7 +578,8 @@ mod linux {
         if budget.timeout.is_zero() {
             return Err(failure(
                 format!("complete byte capture for {error_context} has no deadline"),
-                None, lease,
+                None,
+                lease,
             ));
         }
         for (name, limit) in [
@@ -536,41 +589,56 @@ mod linux {
         ] {
             if limit > MAX_STREAM_BYTES {
                 return Err(failure(
-                    format!("{name} byte budget exceeds the {MAX_STREAM_BYTES}-byte stream ceiling"),
-                    None, lease,
+                    format!(
+                        "{name} byte budget exceeds the {MAX_STREAM_BYTES}-byte stream ceiling"
+                    ),
+                    None,
+                    lease,
                 ));
             }
         }
-        for (name, limit) in [("stdout", budget.stdout_bytes), ("stderr", budget.stderr_bytes)] {
+        for (name, limit) in [
+            ("stdout", budget.stdout_bytes),
+            ("stderr", budget.stderr_bytes),
+        ] {
             if limit.checked_add(1).is_none() {
                 return Err(failure(
                     format!("{name} byte budget cannot admit its overflow sentinel"),
-                    None, lease,
+                    None,
+                    lease,
                 ));
             }
         }
         let started = strict_started.unwrap_or_else(Instant::now);
-        let worker_deadline = started.checked_add(budget.timeout).ok_or_else(|| failure(
-            format!("complete byte capture for {error_context} deadline overflow"),
-            None, lease.clone(),
-        ))?;
-        let worker_deadline = held_deadline.map_or(worker_deadline, |held| worker_deadline.min(held));
+        let worker_deadline = started.checked_add(budget.timeout).ok_or_else(|| {
+            failure(
+                format!("complete byte capture for {error_context} deadline overflow"),
+                None,
+                lease.clone(),
+            )
+        })?;
+        let worker_deadline =
+            held_deadline.map_or(worker_deadline, |held| worker_deadline.min(held));
         strict_time(held_deadline).map_err(|error| failure(error, None, lease.clone()))?;
-        let input = input.map(|bytes| {
-            if bytes.len() > budget.stdin_bytes {
-                return Err(format!(
-                    "stdin exceeds its {}-byte input budget", budget.stdin_bytes
-                ));
-            }
-            strict_time(held_deadline)?;
-            let mut copy = Vec::new();
-            copy.try_reserve_exact(bytes.len())
-                .map_err(|error| format!("reserve stdin for {error_context}: {error}"))?;
-            strict_time(held_deadline)?;
-            copy.extend_from_slice(bytes);
-            strict_time(held_deadline)?;
-            Ok(copy)
-        }).transpose().map_err(|error| failure(error, None, lease.clone()))?;
+        let input = input
+            .map(|bytes| {
+                if bytes.len() > budget.stdin_bytes {
+                    return Err(format!(
+                        "stdin exceeds its {}-byte input budget",
+                        budget.stdin_bytes
+                    ));
+                }
+                strict_time(held_deadline)?;
+                let mut copy = Vec::new();
+                copy.try_reserve_exact(bytes.len())
+                    .map_err(|error| format!("reserve stdin for {error_context}: {error}"))?;
+                strict_time(held_deadline)?;
+                copy.extend_from_slice(bytes);
+                strict_time(held_deadline)?;
+                Ok(copy)
+            })
+            .transpose()
+            .map_err(|error| failure(error, None, lease.clone()))?;
         #[cfg(test)]
         if held_deadline.is_some()
             && let Some(delay) = HOOKS.with(|hooks| hooks.borrow_mut().delay_admission_once.take())
@@ -580,8 +648,11 @@ mod linux {
         strict_time(held_deadline).map_err(|error| failure(error, None, lease.clone()))?;
         if Instant::now() >= worker_deadline {
             return Err(failure(
-                format!("complete byte capture for {error_context} admission exceeded its deadline"),
-                None, lease,
+                format!(
+                    "complete byte capture for {error_context} admission exceeded its deadline"
+                ),
+                None,
+                lease,
             ));
         }
         // All fallible pair preparation happens before spawning a worker.
@@ -595,17 +666,34 @@ mod linux {
                 Some(bytes) => {
                     let (stream, child) = pair("stdin")?;
                     strict_time(held_deadline)?;
-                    (Some(InputCapture {
-                        stream: Some(stream), bytes, offset: 0, complete: false, error: None,
-                    }), child)
+                    (
+                        Some(InputCapture {
+                            stream: Some(stream),
+                            bytes,
+                            offset: 0,
+                            complete: false,
+                            error: None,
+                        }),
+                        child,
+                    )
                 }
                 None => (None, Stdio::null()),
             };
-            Ok::<_, String>((stdout, stderr, input, stdout_child, stderr_child, stdin_child))
-        })().map_err(|error| failure(error, None, lease.clone()))?;
+            Ok::<_, String>((
+                stdout,
+                stderr,
+                input,
+                stdout_child,
+                stderr_child,
+                stdin_child,
+            ))
+        })()
+        .map_err(|error| failure(error, None, lease.clone()))?;
         let (stdout, stderr, input, stdout_child, stderr_child, stdin_child) = prepared;
         let mut transport = Transport {
-            stdout, stderr, input,
+            stdout,
+            stderr,
+            input,
             stdout_capture: OutputCapture::new(),
             stderr_capture: OutputCapture::new(),
             stdout_limit: budget.stdout_bytes,
@@ -622,20 +710,33 @@ mod linux {
             command.env_remove(name);
             strict_time(held_deadline).map_err(|error| failure(error, None, lease.clone()))?;
         }
-        command.stdout(stdout_child).stderr(stderr_child).stdin(stdin_child);
+        command
+            .stdout(stdout_child)
+            .stderr(stderr_child)
+            .stdin(stdin_child);
         strict_time(held_deadline).map_err(|error| failure(error, None, lease.clone()))?;
         // Consuming spawn drops the Command and every parent copy of its child
         // endpoints before it returns. No parent I/O helper is ever started.
         if Instant::now() >= worker_deadline {
             return Err(failure(
-                format!("complete byte capture for {error_context} setup exceeded its deadline; spawn refused"),
-                None, lease,
+                format!(
+                    "complete byte capture for {error_context} setup exceeded its deadline; spawn refused"
+                ),
+                None,
+                lease,
             ));
         }
         let mut owner = match held_deadline {
             Some(held) => QualifiedGroupOwner::spawn_with_deadline(command, held),
             None => QualifiedGroupOwner::spawn(command),
-        }.map_err(|error| failure(format!("failed to run {error_context}: {error}"), None, lease.clone()))?;
+        }
+        .map_err(|error| {
+            failure(
+                format!("failed to run {error_context}: {error}"),
+                None,
+                lease.clone(),
+            )
+        })?;
         strict_time(held_deadline).map_err(|error| failure(error, None, lease.clone()))?;
         #[cfg(test)]
         if let Some(delay) = HOOKS.with(|hooks| hooks.borrow_mut().delay_first_wait.take()) {
@@ -651,7 +752,8 @@ mod linux {
             if !(transport.stdout_capture.eof && transport.stderr_capture.eof) {
                 return Err(failure(
                     "late primary control did not establish actual output EOF".to_string(),
-                    None, lease,
+                    None,
+                    lease,
                 ));
             }
             thread::sleep(delay);
@@ -678,7 +780,9 @@ mod linux {
                     Err(clock) => errors.push(clock),
                 }
                 if parts.1 >= budget.timeout && !parts.2 {
-                    errors.push("primary observation exceeded its held execution deadline".to_string());
+                    errors.push(
+                        "primary observation exceeded its held execution deadline".to_string(),
+                    );
                 }
                 Some(parts)
             }
@@ -723,13 +827,15 @@ mod linux {
             errors.push(error);
         }
         if !stdout_eof {
-            errors.push("stdout actual EOF is unconfirmed within shared post-kill grace".to_string());
+            errors
+                .push("stdout actual EOF is unconfirmed within shared post-kill grace".to_string());
         }
         if let Some(error) = transport.stderr_capture.error.take() {
             errors.push(error);
         }
         if !stderr_eof {
-            errors.push("stderr actual EOF is unconfirmed within shared post-kill grace".to_string());
+            errors
+                .push("stderr actual EOF is unconfirmed within shared post-kill grace".to_string());
         }
         if let Some(input) = transport.input.as_ref() {
             if let Some(error) = &input.error {
@@ -739,7 +845,9 @@ mod linux {
                     errors.push(format!("write stdin for {error_context}: {error}"));
                 }
             } else if !input.complete {
-                errors.push(format!("stdin completion for {error_context} is unconfirmed"));
+                errors.push(format!(
+                    "stdin completion for {error_context} is unconfirmed"
+                ));
             }
         }
         if transport.late_action {
@@ -747,7 +855,14 @@ mod linux {
         }
         let before_release = Instant::now() < deadline;
         let late_action = transport.late_action;
-        let Transport { stdout, stderr, input, stdout_capture, stderr_capture, .. } = transport;
+        let Transport {
+            stdout,
+            stderr,
+            input,
+            stdout_capture,
+            stderr_capture,
+            ..
+        } = transport;
         // Local close is ownership release, never an EOF observation. An input
         // failure may authorize cleanup only after actual output EOF/group settle;
         // it can never turn failed capture into successful output.
@@ -757,8 +872,12 @@ mod linux {
         let released_in_time = before_release && Instant::now() < deadline && !late_action;
         let group = owner.take_settlement();
         let mut receipt = if stdout_eof && stderr_eof && released_in_time {
-            group.filter(|group| group.belongs_to_current_parent())
-                .map(|group| CompleteCaptureReceipt { group, lease: lease.clone() })
+            group
+                .filter(|group| group.belongs_to_current_parent())
+                .map(|group| CompleteCaptureReceipt {
+                    group,
+                    lease: lease.clone(),
+                })
         } else {
             None
         };
@@ -771,9 +890,15 @@ mod linux {
         if timed_out {
             errors.push(format!("complete worker timed out for {error_context}"));
         }
-        let observation = observation.map(|(status, _, timed_out)| (
-            status, stdout_capture.bytes, stderr_capture.bytes, started.elapsed(), timed_out,
-        ));
+        let observation = observation.map(|(status, _, timed_out)| {
+            (
+                status,
+                stdout_capture.bytes,
+                stderr_capture.bytes,
+                started.elapsed(),
+                timed_out,
+            )
+        });
         if let Err(clock) = strict_time(held_deadline) {
             receipt = None;
             timeout_only = false;
@@ -782,20 +907,41 @@ mod linux {
         if !errors.is_empty() {
             return Err(CompleteCaptureError {
                 message: format!("{error_context}: {}", errors.join("; ")),
-                receipt, observation, timeout_only, lease,
+                receipt,
+                observation,
+                timeout_only,
+                lease,
             });
         }
         let receipt = match receipt {
             Some(receipt) => receipt,
-            None => return Err(CompleteCaptureError {
-                message: format!("{error_context}: combined group, actual EOF and controller cleanup is unconfirmed"),
-                receipt: None, observation, timeout_only: false, lease,
-            }),
+            None => {
+                return Err(CompleteCaptureError {
+                    message: format!(
+                        "{error_context}: combined group, actual EOF and controller cleanup is unconfirmed"
+                    ),
+                    receipt: None,
+                    observation,
+                    timeout_only: false,
+                    lease,
+                });
+            }
         };
-        let (status, stdout, stderr, duration, timed_out) = observation.ok_or_else(|| failure(
-            format!("{error_context}: primary observation is unavailable"), None, lease.clone(),
-        ))?;
-        Ok(CompleteCapturedBytes { status, stdout, stderr, duration, timed_out, receipt })
+        let (status, stdout, stderr, duration, timed_out) = observation.ok_or_else(|| {
+            failure(
+                format!("{error_context}: primary observation is unavailable"),
+                None,
+                lease.clone(),
+            )
+        })?;
+        Ok(CompleteCapturedBytes {
+            status,
+            stdout,
+            stderr,
+            duration,
+            timed_out,
+            receipt,
+        })
     }
 
     #[cfg(test)]
@@ -809,7 +955,8 @@ mod linux {
             fn new() -> Result<Self, String> {
                 let path = std::env::temp_dir().join(format!(
                     "ripr-complete-capture-{}-{}",
-                    std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed),
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed),
                 ));
                 std::fs::create_dir(&path).map_err(|error| error.to_string())?;
                 Ok(Self(path))
@@ -834,8 +981,12 @@ mod linux {
             settled: impl FnMut(ExitStatus),
         ) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
             CompleteByteCapture::capture(
-                (Path::new("/bin/sh"), args), (Path::new("/"), input), &[],
-                (budget, "native complete capture control"), lease, settled,
+                (Path::new("/bin/sh"), args),
+                (Path::new("/"), input),
+                &[],
+                (budget, "native complete capture control"),
+                lease,
+                settled,
             )
         }
         fn refused(
@@ -858,13 +1009,19 @@ mod linux {
             settled: impl FnMut(ExitStatus),
         ) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
             CompleteByteCapture::capture_with_deadline(
-                (Path::new("/bin/sh"), args), (Path::new("/"), input), &[],
-                (budget, "native complete capture control"), held_deadline, lease, settled,
+                (Path::new("/bin/sh"), args),
+                (Path::new("/"), input),
+                &[],
+                (budget, "native complete capture control"),
+                held_deadline,
+                lease,
+                settled,
             )
         }
 
         #[test]
-        fn original_expired_clock_precedes_missing_executable_and_transport_setup() -> Result<(), String> {
+        fn original_expired_clock_precedes_missing_executable_and_transport_setup()
+        -> Result<(), String> {
             let lease = Arc::new(());
             let foreign = Arc::new(());
             let pairs = HOOKS.with(|hooks| hooks.borrow().pair_attempts);
@@ -872,20 +1029,26 @@ mod linux {
             let mut error = refused(
                 CompleteByteCapture::capture_with_deadline(
                     (Path::new("/ripr-deliberately-missing-held-worker"), &[]),
-                    (Path::new("/"), None), &[],
+                    (Path::new("/"), None),
+                    &[],
                     (budget(0, 64), "expired held control"),
-                    Instant::now(), lease.clone(), |_| {},
+                    Instant::now(),
+                    lease.clone(),
+                    |_| {},
                 ),
                 "held custody deadline",
             )?;
             assert_eq!(HOOKS.with(|hooks| hooks.borrow().pair_attempts), pairs);
             assert_eq!(super::super::super::linux::spawn_attempts(), attempts);
-            if !error.matches_lease(&lease) || error.matches_lease(&foreign)
+            if !error.matches_lease(&lease)
+                || error.matches_lease(&foreign)
                 || error.take_cleanup_receipt().is_some()
                 || error.take_failed_observation().is_some()
                 || error.is_timeout_only()
             {
-                return Err("expired preflight manufactured observation or lost custody".to_string());
+                return Err(
+                    "expired preflight manufactured observation or lost custody".to_string()
+                );
             }
             drop(error);
             assert_eq!(Arc::strong_count(&lease), 1);
@@ -893,7 +1056,8 @@ mod linux {
         }
 
         #[test]
-        fn original_clock_expiring_during_real_input_admission_does_not_restart() -> Result<(), String> {
+        fn original_clock_expiring_during_real_input_admission_does_not_restart()
+        -> Result<(), String> {
             let lease = Arc::new(());
             let pairs = HOOKS.with(|hooks| hooks.borrow().pair_attempts);
             let attempts = super::super::super::linux::spawn_attempts();
@@ -902,14 +1066,19 @@ mod linux {
             });
             let input = [19_u8; 64];
             let output = run_held(
-                &shell("cat"), Some(&input), budget(input.len(), 64),
-                Instant::now() + Duration::from_millis(20), lease.clone(), |_| {},
+                &shell("cat"),
+                Some(&input),
+                budget(input.len(), 64),
+                Instant::now() + Duration::from_millis(20),
+                lease.clone(),
+                |_| {},
             );
             HOOKS.with(|hooks| hooks.borrow_mut().delay_admission_once = None);
             let mut error = refused(output, "held custody deadline")?;
             assert_eq!(HOOKS.with(|hooks| hooks.borrow().pair_attempts), pairs);
             assert_eq!(super::super::super::linux::spawn_attempts(), attempts);
-            if error.take_cleanup_receipt().is_some() || error.observed_outcome().is_some()
+            if error.take_cleanup_receipt().is_some()
+                || error.observed_outcome().is_some()
                 || !error.matches_lease(&lease)
             {
                 return Err("late admission acquired worker authority".to_string());
@@ -918,22 +1087,37 @@ mod linux {
         }
 
         #[test]
-        fn strict_timely_capture_keeps_none_empty_binary_and_ceiling_parity() -> Result<(), String> {
+        fn strict_timely_capture_keeps_none_empty_binary_and_ceiling_parity() -> Result<(), String>
+        {
             for input in [None, Some(&[][..]), Some(&b"\0owned\xff"[..])] {
                 for output_limit in [64, MAX_STREAM_BYTES] {
                     let args = shell("cat; printf '\\377\\200' >&2; exit 7");
                     let input_limit = input.map_or(0, <[u8]>::len);
                     let ordinary_lease = Arc::new(());
                     let ordinary = run(
-                        &args, input, budget(input_limit, output_limit), ordinary_lease.clone(), |_| {},
-                    ).map_err(|error| error.to_string())?.into_parts();
+                        &args,
+                        input,
+                        budget(input_limit, output_limit),
+                        ordinary_lease.clone(),
+                        |_| {},
+                    )
+                    .map_err(|error| error.to_string())?
+                    .into_parts();
                     let strict_lease = Arc::new(());
                     let strict = run_held(
-                        &args, input, budget(input_limit, output_limit),
-                        Instant::now() + Duration::from_secs(2), strict_lease.clone(), |_| {},
-                    ).map_err(|error| error.to_string())?.into_parts();
-                    assert_eq!((strict.0, &strict.1, &strict.2, strict.4),
-                        (ordinary.0, &ordinary.1, &ordinary.2, ordinary.4));
+                        &args,
+                        input,
+                        budget(input_limit, output_limit),
+                        Instant::now() + Duration::from_secs(2),
+                        strict_lease.clone(),
+                        |_| {},
+                    )
+                    .map_err(|error| error.to_string())?
+                    .into_parts();
+                    assert_eq!(
+                        (strict.0, &strict.1, &strict.2, strict.4),
+                        (ordinary.0, &ordinary.1, &ordinary.2, ordinary.4)
+                    );
                     assert_eq!(strict.1, input.unwrap_or(&[]));
                     assert_eq!(strict.2, vec![255, 128]);
                     if !strict.5.matches_lease(&strict_lease)
@@ -948,63 +1132,112 @@ mod linux {
         }
 
         #[test]
-        fn strict_overflow_and_timeout_keep_failed_data_and_one_shot_cleanup_parity() -> Result<(), String> {
+        fn strict_overflow_and_timeout_keep_failed_data_and_one_shot_cleanup_parity()
+        -> Result<(), String> {
             for timeout in [false, true] {
-                let args = if timeout { shell("sleep 30") } else { shell("printf abc") };
+                let args = if timeout {
+                    shell("sleep 30")
+                } else {
+                    shell("printf abc")
+                };
                 let make_budget = || {
                     CompleteCaptureBudget::new(
-                        if timeout { Duration::from_millis(50) } else { Duration::from_secs(2) },
-                        0, if timeout { 64 } else { 1 }, 64,
+                        if timeout {
+                            Duration::from_millis(50)
+                        } else {
+                            Duration::from_secs(2)
+                        },
+                        0,
+                        if timeout { 64 } else { 1 },
+                        64,
                     )
                 };
-                let expected = if timeout { "timed out" } else { "stdout exceeds" };
-                let mut ordinary = refused(run(&args, None, make_budget(), Arc::new(()), |_| {}), expected)?;
+                let expected = if timeout {
+                    "timed out"
+                } else {
+                    "stdout exceeds"
+                };
+                let mut ordinary = refused(
+                    run(&args, None, make_budget(), Arc::new(()), |_| {}),
+                    expected,
+                )?;
                 let lease = Arc::new(());
-                let mut strict = refused(run_held(
-                    &args, None, make_budget(), Instant::now() + Duration::from_secs(2),
-                    lease.clone(), |_| {},
-                ), expected)?;
+                let mut strict = refused(
+                    run_held(
+                        &args,
+                        None,
+                        make_budget(),
+                        Instant::now() + Duration::from_secs(2),
+                        lease.clone(),
+                        |_| {},
+                    ),
+                    expected,
+                )?;
                 assert_eq!(strict.is_timeout_only(), ordinary.is_timeout_only());
-                let ordinary_data = ordinary.take_failed_observation()
+                let ordinary_data = ordinary
+                    .take_failed_observation()
                     .ok_or_else(|| "ordinary failure lost actual observation".to_string())?;
-                let strict_data = strict.take_failed_observation()
+                let strict_data = strict
+                    .take_failed_observation()
                     .ok_or_else(|| "strict failure lost actual observation".to_string())?;
-                assert_eq!((strict_data.0, &strict_data.1, &strict_data.2, strict_data.4),
-                    (ordinary_data.0, &ordinary_data.1, &ordinary_data.2, ordinary_data.4));
+                assert_eq!(
+                    (strict_data.0, &strict_data.1, &strict_data.2, strict_data.4),
+                    (
+                        ordinary_data.0,
+                        &ordinary_data.1,
+                        &ordinary_data.2,
+                        ordinary_data.4
+                    )
+                );
                 if strict.take_failed_observation().is_some() {
                     return Err("strict failed DATA was reused".to_string());
                 }
-                let receipt = strict.take_cleanup_receipt()
-                    .ok_or_else(|| "timely failed capture lost real cleanup settlement".to_string())?;
-                if !receipt.matches_lease(&lease) || strict.take_cleanup_receipt().is_some()
+                let receipt = strict.take_cleanup_receipt().ok_or_else(|| {
+                    "timely failed capture lost real cleanup settlement".to_string()
+                })?;
+                if !receipt.matches_lease(&lease)
+                    || strict.take_cleanup_receipt().is_some()
                     || ordinary.take_cleanup_receipt().is_none()
                 {
-                    return Err("failed parity capture fabricated or reused cleanup custody".to_string());
+                    return Err(
+                        "failed parity capture fabricated or reused cleanup custody".to_string()
+                    );
                 }
             }
             Ok(())
         }
 
         #[test]
-        fn actual_settled_callback_crossing_original_clock_cannot_mint_cleanup() -> Result<(), String> {
+        fn actual_settled_callback_crossing_original_clock_cannot_mint_cleanup()
+        -> Result<(), String> {
             let held = Instant::now() + Duration::from_millis(500);
             let lease = Arc::new(());
             let mut observed = None;
             let output = run_held(
-                &shell("printf owned"), None, budget(0, 64), held, lease.clone(),
+                &shell("printf owned"),
+                None,
+                budget(0, 64),
+                held,
+                lease.clone(),
                 |status| {
                     observed = Some(status);
-                    thread::sleep(held.saturating_duration_since(Instant::now()) + Duration::from_millis(10));
+                    thread::sleep(
+                        held.saturating_duration_since(Instant::now()) + Duration::from_millis(10),
+                    );
                 },
             );
             let mut error = refused(output, "held custody deadline")?;
-            let observed = observed.ok_or_else(|| "real timely group never reached settled callback".to_string())?;
-            if !observed.success() || !error.matches_lease(&lease)
-                || error.take_cleanup_receipt().is_some() || error.is_timeout_only()
+            let observed = observed
+                .ok_or_else(|| "real timely group never reached settled callback".to_string())?;
+            if !observed.success()
+                || !error.matches_lease(&lease)
+                || error.take_cleanup_receipt().is_some()
+                || error.is_timeout_only()
             {
                 return Err("late callback manufactured cleanup or lost actual status".to_string());
             }
-            let data = error.take_failed_observation()
+            let data = error
+                .take_failed_observation()
                 .ok_or_else(|| "late callback lost actual failed capture DATA".to_string())?;
             assert_eq!(data.0, observed);
             assert_eq!(data.1, b"owned");
@@ -1017,8 +1250,14 @@ mod linux {
             let foreign = Arc::new(());
             let input = b"\0owned\xff";
             let args = shell("cat; printf '\\377\\200' >&2");
-            let output = run(&args, Some(input), budget(input.len(), 64), lease.clone(), |_| {})
-                .map_err(|error| error.to_string())?;
+            let output = run(
+                &args,
+                Some(input),
+                budget(input.len(), 64),
+                lease.clone(),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             let (status, stdout, stderr, _, timeout, receipt) = output.into_parts();
             if !status.success() || timeout {
                 return Err("native positive child failed or timed out".to_string());
@@ -1026,12 +1265,15 @@ mod linux {
             assert_eq!(stdout, input);
             assert_eq!(stderr, vec![255, 128]);
             if !receipt.matches_lease(&lease) || receipt.matches_lease(&foreign) {
-                return Err("combined receipt accepted a different actual custody lease".to_string());
+                return Err(
+                    "combined receipt accepted a different actual custody lease".to_string()
+                );
             }
             assert_eq!(receipt.settled_status(), Some(status));
             let worker = receipt.observed_worker();
             let parent = receipt.observed_parent();
-            let actual_parent = super::super::super::ObservedProcessIdentity::read(std::process::id())?;
+            let actual_parent =
+                super::super::super::ObservedProcessIdentity::read(std::process::id())?;
             assert_eq!(parent.pid(), actual_parent.pid());
             assert_eq!(parent.parent(), actual_parent.parent());
             assert_eq!(parent.group(), actual_parent.group());
@@ -1049,8 +1291,14 @@ mod linux {
         #[test]
         fn some_empty_half_closes_but_none_retains_null_input() -> Result<(), String> {
             for input in [None, Some(&[][..])] {
-                let output = run(&shell("cat; printf eof"), input, budget(0, 64), Arc::new(()), |_| {})
-                    .map_err(|error| error.to_string())?;
+                let output = run(
+                    &shell("cat; printf eof"),
+                    input,
+                    budget(0, 64),
+                    Arc::new(()),
+                    |_| {},
+                )
+                .map_err(|error| error.to_string())?;
                 let (status, stdout, _, _, timeout, _) = output.into_parts();
                 if !status.success() || timeout || stdout != b"eof" {
                     return Err("empty/null input did not reach worker EOF".to_string());
@@ -1062,8 +1310,12 @@ mod linux {
         #[test]
         fn native_sender_bytes_and_would_block_are_not_eof() -> Result<(), String> {
             let (mut reader, mut writer) = UnixStream::pair().map_err(|error| error.to_string())?;
-            reader.set_nonblocking(true).map_err(|error| error.to_string())?;
-            writer.write_all(b"sent-before-block").map_err(|error| error.to_string())?;
+            reader
+                .set_nonblocking(true)
+                .map_err(|error| error.to_string())?;
+            writer
+                .write_all(b"sent-before-block")
+                .map_err(|error| error.to_string())?;
             let mut capture = OutputCapture::new();
             let mut scratch = [0u8; CHUNK_BYTES];
             capture.step(&mut reader, "stdout", 64, &mut scratch);
@@ -1085,13 +1337,21 @@ mod linux {
             let lease = Arc::new(());
             let mut observed = None;
             let mut failure = refused(
-                run(&shell("printf abc"), None, budget(0, 1), lease.clone(), |status| observed = Some(status)),
+                run(
+                    &shell("printf abc"),
+                    None,
+                    budget(0, 1),
+                    lease.clone(),
+                    |status| observed = Some(status),
+                ),
                 "stdout exceeds its 1-byte output budget",
             )?;
             if !observed.is_some_and(|status| status.success()) {
                 return Err("overflow control lacks actual exit0 primary".to_string());
             }
-            let receipt = failure.take_cleanup_receipt().ok_or("overflow never reached actual EOF/group cleanup")?;
+            let receipt = failure
+                .take_cleanup_receipt()
+                .ok_or("overflow never reached actual EOF/group cleanup")?;
             if !receipt.matches_lease(&lease) || failure.take_cleanup_receipt().is_some() {
                 return Err("cleanup receipt mismatched or transferable twice".to_string());
             }
@@ -1120,9 +1380,13 @@ mod linux {
         fn opened_stream_error_is_not_eof() -> Result<(), String> {
             let mut capture = OutputCapture::new();
             capture.step(&mut BrokenReader, "stdout", 3, &mut [0u8; CHUNK_BYTES]);
-            if capture.eof || !capture.failed || !capture.error.as_deref().is_some_and(|error| {
-                error.contains("intentional opened-stream failure")
-            }) {
+            if capture.eof
+                || !capture.failed
+                || !capture
+                    .error
+                    .as_deref()
+                    .is_some_and(|error| error.contains("intentional opened-stream failure"))
+            {
                 return Err("read error was converted to EOF or its failure was lost".to_string());
             }
             Ok(())
@@ -1136,14 +1400,23 @@ mod linux {
                 let lease = Arc::new(());
                 let mut observed = false;
                 let mut failure = refused(
-                    run(&shell("cat"), Some(b"owned"), budget(5, 64), lease.clone(), |_| observed = true),
+                    run(
+                        &shell("cat"),
+                        Some(b"owned"),
+                        budget(5, 64),
+                        lease.clone(),
+                        |_| observed = true,
+                    ),
                     &format!("prepare {name} socket: injected pair failure"),
                 )?;
-                if observed || failure.take_cleanup_receipt().is_some()
+                if observed
+                    || failure.take_cleanup_receipt().is_some()
                     || super::super::super::linux::spawn_attempts() != attempts
                     || !failure.matches_lease(&lease)
                 {
-                    return Err("partial pair preparation spawned a worker or dropped custody".to_string());
+                    return Err(
+                        "partial pair preparation spawned a worker or dropped custody".to_string(),
+                    );
                 }
             }
             Ok(())
@@ -1156,20 +1429,33 @@ mod linux {
             let mut status = None;
             let started = Instant::now();
             let mut failure = refused(
-                run(&shell("printf sent"), None, budget(0, 64), lease.clone(), |observed| status = Some(observed)),
+                run(
+                    &shell("printf sent"),
+                    None,
+                    budget(0, 64),
+                    lease.clone(),
+                    |observed| status = Some(observed),
+                ),
                 "stdout actual EOF is unconfirmed",
             )?;
             // Release the owned discriminator before checking assertions.
             HOOKS.with(|hooks| drop(hooks.borrow_mut().held_writer.take()));
             if !status.is_some_and(|status| status.success())
-                || failure.take_cleanup_receipt().is_some() || !failure.matches_lease(&lease)
+                || failure.take_cleanup_receipt().is_some()
+                || !failure.matches_lease(&lease)
                 || started.elapsed() < POST_KILL_DRAIN_GRACE
             {
                 return Err("retained writer manufactured EOF, cleanup or status".to_string());
             }
             drop(failure);
-            let output = run(&shell("printf recovered"), None, budget(0, 64), lease, |_| {})
-                .map_err(|error| error.to_string())?;
+            let output = run(
+                &shell("printf recovered"),
+                None,
+                budget(0, 64),
+                lease,
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             assert_eq!(output.into_parts().1, b"recovered");
             Ok(())
         }
@@ -1179,13 +1465,21 @@ mod linux {
             let lease = Arc::new(());
             let mut status = None;
             let mut failure = refused(
-                run(&shell("printf parent; /usr/bin/sleep 30 &"), None, budget(0, 64), lease.clone(), |observed| status = Some(observed)),
+                run(
+                    &shell("printf parent; /usr/bin/sleep 30 &"),
+                    None,
+                    budget(0, 64),
+                    lease.clone(),
+                    |observed| status = Some(observed),
+                ),
                 "primary exited with live group members",
             )?;
             if !status.is_some_and(|status| status.success()) {
                 return Err("descendant writer premise lacks actual exit0 primary".to_string());
             }
-            let receipt = failure.take_cleanup_receipt().ok_or("owned descendant did not settle and drain")?;
+            let receipt = failure
+                .take_cleanup_receipt()
+                .ok_or("owned descendant did not settle and drain")?;
             if !receipt.matches_lease(&lease) {
                 return Err("descendant cleanup receipt has another custody lease".to_string());
             }
@@ -1201,11 +1495,16 @@ mod linux {
             });
             let input = b"slice-input\0\xff";
             let output = run(
-                &shell("printf prefix; printf stderr >&2; cat"), Some(input),
-                budget(input.len(), 64), Arc::new(()), |_| {},
-            ).map_err(|error| error.to_string())?;
+                &shell("printf prefix; printf stderr >&2; cat"),
+                Some(input),
+                budget(input.len(), 64),
+                Arc::new(()),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             let (status, stdout, stderr, _, timeout, _) = output.into_parts();
-            if !status.success() || timeout
+            if !status.success()
+                || timeout
                 || HOOKS.with(|hooks| hooks.borrow().delayed_endpoints) != before + 1
             {
                 return Err("soft scheduling slice did not yield once and recover".to_string());
@@ -1227,19 +1526,26 @@ mod linux {
             let lease = Arc::new(());
             let mut failure = refused(
                 run(
-                    &shell("printf held; printf deadline >&2"), None,
+                    &shell("printf held; printf deadline >&2"),
+                    None,
                     CompleteCaptureBudget::new(Duration::from_millis(250), 0, 64, 64),
-                    lease.clone(), |_| {},
+                    lease.clone(),
+                    |_| {},
                 ),
                 "complete endpoint action exceeded its held clock boundary",
             )?;
             if HOOKS.with(|hooks| hooks.borrow().delayed_endpoints) != before + 1
-                || !failure.matches_lease(&lease) || failure.is_timeout_only()
+                || !failure.matches_lease(&lease)
+                || failure.is_timeout_only()
                 || failure.take_cleanup_receipt().is_some()
             {
-                return Err("actual endpoint clock overrun yielded success or cleanup authority".to_string());
+                return Err(
+                    "actual endpoint clock overrun yielded success or cleanup authority"
+                        .to_string(),
+                );
             }
-            let (_, stdout, stderr, _, _) = failure.take_failed_observation()
+            let (_, stdout, stderr, _, _) = failure
+                .take_failed_observation()
                 .ok_or("held-clock failure lost its actual failed observations")?;
             assert_eq!(stdout, b"held");
             assert_eq!(stderr, b"deadline");
@@ -1258,24 +1564,30 @@ mod linux {
                     &shell("exec 1>&- 2>&-; /usr/bin/sleep 0.15"),
                     None,
                     CompleteCaptureBudget::new(Duration::from_millis(100), 0, 64, 64),
-                    lease.clone(), |status| actual_status = Some(status),
+                    lease.clone(),
+                    |status| actual_status = Some(status),
                 ),
                 "primary observation exceeded its held execution deadline",
             )?;
-            let (status, duration, timed_out) = failure.observed_outcome()
+            let (status, duration, timed_out) = failure
+                .observed_outcome()
                 .ok_or("late primary control lost its actual wait data")?;
-            if !status.success() || actual_status != Some(status)
-                || duration < Duration::from_millis(250) || timed_out
+            if !status.success()
+                || actual_status != Some(status)
+                || duration < Duration::from_millis(250)
+                || timed_out
                 || failure.is_timeout_only()
             {
                 return Err("late exit0 was not preserved as failed non-timeout data".to_string());
             }
-            let receipt = failure.take_cleanup_receipt()
+            let receipt = failure
+                .take_cleanup_receipt()
                 .ok_or("late observed exit0 did not settle and release actual EOF endpoints")?;
             if !receipt.matches_lease(&lease) {
                 return Err("late primary cleanup has another custody lease".to_string());
             }
-            let (_, stdout, stderr, _, _) = failure.take_failed_observation()
+            let (_, stdout, stderr, _, _) = failure
+                .take_failed_observation()
                 .ok_or("late primary failure lost its empty actual output observations")?;
             assert_eq!(stdout, Vec::<u8>::new());
             assert_eq!(stderr, Vec::<u8>::new());
@@ -1286,7 +1598,13 @@ mod linux {
         fn blocked_stdin_is_bounded_and_early_close_is_not_success() -> Result<(), String> {
             let input = vec![0xffu8; 2 * 1024 * 1024];
             let mut failure = refused(
-                run(&shell("exec 0<&-; printf closed"), Some(&input), budget(input.len(), 64), Arc::new(()), |_| {}),
+                run(
+                    &shell("exec 0<&-; printf closed"),
+                    Some(&input),
+                    budget(input.len(), 64),
+                    Arc::new(()),
+                    |_| {},
+                ),
                 "write stdin",
             )?;
             if failure.take_cleanup_receipt().is_none() {
@@ -1298,22 +1616,28 @@ mod linux {
                     &shell("printf timed-out; printf diagnostic >&2; /usr/bin/sleep 30"),
                     Some(&input),
                     CompleteCaptureBudget::new(Duration::from_millis(250), input.len(), 64, 64),
-                    lease.clone(), |_| {},
+                    lease.clone(),
+                    |_| {},
                 ),
                 "complete worker timed out",
             )?;
-            let (observed_status, duration, timed_out) = failure.observed_outcome()
+            let (observed_status, duration, timed_out) = failure
+                .observed_outcome()
                 .ok_or("blocked input lost its actual failed wait observation")?;
             if !timed_out || duration > Duration::from_secs(8) || !failure.is_timeout_only() {
-                return Err("blocked input evaded the admitted failure/execution/drain bounds".to_string());
+                return Err(
+                    "blocked input evaded the admitted failure/execution/drain bounds".to_string(),
+                );
             }
-            let receipt = failure.take_cleanup_receipt()
+            let receipt = failure
+                .take_cleanup_receipt()
                 .ok_or("timeout did not settle the group and actual endpoints")?;
             if !receipt.matches_lease(&lease) {
                 return Err("timeout cleanup has another custody lease".to_string());
             }
             assert_eq!(receipt.settled_status(), Some(observed_status));
-            let (status, stdout, stderr, failed_duration, failed_timeout) = failure.take_failed_observation()
+            let (status, stdout, stderr, failed_duration, failed_timeout) = failure
+                .take_failed_observation()
                 .ok_or("timeout lost retained failed stdout/stderr data")?;
             assert_eq!(status, observed_status);
             assert_eq!(failed_duration, duration);
@@ -1329,14 +1653,23 @@ mod linux {
         }
 
         #[test]
-        fn large_binary_backpressure_preserves_both_outputs_and_input_offset() -> Result<(), String> {
+        fn large_binary_backpressure_preserves_both_outputs_and_input_offset() -> Result<(), String>
+        {
             let input: Vec<u8> = (0u8..251).cycle().take(2 * 1024 * 1024).collect();
             let script = "head -c 1048576 /dev/zero; head -c 1048576 /dev/zero >&2; cat";
             let output = run(
-                &shell(script), Some(&input),
-                CompleteCaptureBudget::new(Duration::from_secs(120), input.len(), 3 * 1024 * 1024, 1024 * 1024),
-                Arc::new(()), |_| {},
-            ).map_err(|error| error.to_string())?;
+                &shell(script),
+                Some(&input),
+                CompleteCaptureBudget::new(
+                    Duration::from_secs(120),
+                    input.len(),
+                    3 * 1024 * 1024,
+                    1024 * 1024,
+                ),
+                Arc::new(()),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             let (status, stdout, stderr, _, timeout, _) = output.into_parts();
             if !status.success() || timeout {
                 return Err("large interleaved native worker failed or timed out".to_string());
@@ -1352,15 +1685,22 @@ mod linux {
         }
 
         #[test]
-        fn continuously_readable_excess_remains_failed_and_deadline_bounded() -> Result<(), String> {
+        fn continuously_readable_excess_remains_failed_and_deadline_bounded() -> Result<(), String>
+        {
             let mut failure = refused(
-                run(&shell("exec cat /dev/zero"), None,
+                run(
+                    &shell("exec cat /dev/zero"),
+                    None,
                     CompleteCaptureBudget::new(Duration::from_millis(250), 0, 3, 64),
-                    Arc::new(()), |_| {}),
+                    Arc::new(()),
+                    |_| {},
+                ),
                 "stdout exceeds its 3-byte output budget",
             )?;
             if failure.is_timeout_only() {
-                return Err("overflow plus timeout was classified as a pure legacy timeout".to_string());
+                return Err(
+                    "overflow plus timeout was classified as a pure legacy timeout".to_string(),
+                );
             }
             if !failure.observed_outcome().is_some_and(|parts| parts.2) {
                 return Err("excess worker lost its actual timeout observation".to_string());
@@ -1372,7 +1712,8 @@ mod linux {
         }
 
         #[test]
-        fn actual_cargo_json_and_native_eight_mib_stream_keep_existing_admission() -> Result<(), String> {
+        fn actual_cargo_json_and_native_eight_mib_stream_keep_existing_admission()
+        -> Result<(), String> {
             let fixture = Fixture::new()?;
             std::fs::write(fixture.0.join("Cargo.toml"),
                 "[package]\nname=\"complete_capture_json_control\"\nversion=\"0.0.0\"\nedition=\"2024\"\n[workspace]\n")
@@ -1380,46 +1721,105 @@ mod linux {
             std::fs::create_dir(fixture.0.join("src")).map_err(|error| error.to_string())?;
             std::fs::write(fixture.0.join("src/main.rs"), "fn main() {}\n")
                 .map_err(|error| error.to_string())?;
-            let args = vec!["build".to_string(), "--offline".to_string(), "--manifest-path".to_string(),
-                fixture.0.join("Cargo.toml").display().to_string(), "--message-format=json".to_string()];
+            let args = vec![
+                "build".to_string(),
+                "--offline".to_string(),
+                "--manifest-path".to_string(),
+                fixture.0.join("Cargo.toml").display().to_string(),
+                "--message-format=json".to_string(),
+            ];
             let output = CompleteByteCapture::capture(
-                (Path::new("cargo"), &args), (&fixture.0, None), &[],
-                (CompleteCaptureBudget::new(Duration::from_secs(120), 0, 8 * 1024 * 1024, 64 * 1024), "actual Cargo JSON control"),
-                Arc::new(()), |_| {},
-            ).map_err(|error| error.to_string())?;
+                (Path::new("cargo"), &args),
+                (&fixture.0, None),
+                &[],
+                (
+                    CompleteCaptureBudget::new(
+                        Duration::from_secs(120),
+                        0,
+                        8 * 1024 * 1024,
+                        64 * 1024,
+                    ),
+                    "actual Cargo JSON control",
+                ),
+                Arc::new(()),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             let (status, stdout, _, _, timeout, _) = output.into_parts();
             let text = std::str::from_utf8(&stdout).map_err(|error| error.to_string())?;
-            if !status.success() || timeout || !text.contains("\"reason\":\"compiler-artifact\"")
+            if !status.success()
+                || timeout
+                || !text.contains("\"reason\":\"compiler-artifact\"")
                 || !text.contains("\"reason\":\"build-finished\",\"success\":true")
             {
-                return Err("actual Cargo JSON did not survive qualified socket capture".to_string());
+                return Err(
+                    "actual Cargo JSON did not survive qualified socket capture".to_string()
+                );
             }
             let output = run(
-                &shell("head -c 8388608 /dev/zero"), None,
+                &shell("head -c 8388608 /dev/zero"),
+                None,
                 CompleteCaptureBudget::new(Duration::from_secs(120), 0, 8 * 1024 * 1024, 64 * 1024),
-                Arc::new(()), |_| {},
-            ).map_err(|error| error.to_string())?;
+                Arc::new(()),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             let (status, stdout, _, _, timeout, _) = output.into_parts();
-            if !status.success() || timeout || stdout.len() != 8 * 1024 * 1024 || stdout.iter().any(|byte| *byte != 0) {
+            if !status.success()
+                || timeout
+                || stdout.len() != 8 * 1024 * 1024
+                || stdout.iter().any(|byte| *byte != 0)
+            {
                 return Err("native 8MiB output was changed, truncated or timed out".to_string());
             }
             Ok(())
         }
 
         #[test]
-        fn stream_ceilings_and_invalid_deadlines_refuse_before_transport_setup() -> Result<(), String> {
+        fn stream_ceilings_and_invalid_deadlines_refuse_before_transport_setup()
+        -> Result<(), String> {
             let fixture = Fixture::new()?;
             let marker = fixture.0.join("started");
-            let args = vec!["-c".to_string(), "printf ran > \"$1\"".to_string(),
-                "admission-proof".to_string(), marker.display().to_string()];
+            let args = vec![
+                "-c".to_string(),
+                "printf ran > \"$1\"".to_string(),
+                "admission-proof".to_string(),
+                marker.display().to_string(),
+            ];
             let cases = [
-                (CompleteCaptureBudget::new(Duration::from_secs(1), MAX_STREAM_BYTES + 1, 64, 64), "stdin byte budget exceeds"),
-                (CompleteCaptureBudget::new(Duration::from_secs(1), 1, MAX_STREAM_BYTES + 1, 64), "stdout byte budget exceeds"),
-                (CompleteCaptureBudget::new(Duration::from_secs(1), 1, 64, MAX_STREAM_BYTES + 1), "stderr byte budget exceeds"),
-                (CompleteCaptureBudget::new(Duration::from_secs(1), 1, 1024 * 1024 * 1024, 64), "stdout byte budget exceeds"),
-                (CompleteCaptureBudget::new(Duration::from_secs(1), 1, 64, 1024 * 1024 * 1024), "stderr byte budget exceeds"),
-                (CompleteCaptureBudget::new(Duration::ZERO, 1, 64, 64), "has no deadline"),
-                (CompleteCaptureBudget::new(Duration::MAX, 1, 64, 64), "deadline overflow"),
+                (
+                    CompleteCaptureBudget::new(
+                        Duration::from_secs(1),
+                        MAX_STREAM_BYTES + 1,
+                        64,
+                        64,
+                    ),
+                    "stdin byte budget exceeds",
+                ),
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(1), 1, MAX_STREAM_BYTES + 1, 64),
+                    "stdout byte budget exceeds",
+                ),
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(1), 1, 64, MAX_STREAM_BYTES + 1),
+                    "stderr byte budget exceeds",
+                ),
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(1), 1, 1024 * 1024 * 1024, 64),
+                    "stdout byte budget exceeds",
+                ),
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(1), 1, 64, 1024 * 1024 * 1024),
+                    "stderr byte budget exceeds",
+                ),
+                (
+                    CompleteCaptureBudget::new(Duration::ZERO, 1, 64, 64),
+                    "has no deadline",
+                ),
+                (
+                    CompleteCaptureBudget::new(Duration::MAX, 1, 64, 64),
+                    "deadline overflow",
+                ),
             ];
             for (budget, expected) in cases {
                 let attempts = super::super::super::linux::spawn_attempts();
@@ -1428,16 +1828,24 @@ mod linux {
                 // This input would independently fail its one-byte admission.
                 // The execution preflight must run before input copy or sockets.
                 let mut failure = refused(
-                    run(&args, Some(b"too-large"), budget, Arc::new(()), |_| observed = true),
+                    run(&args, Some(b"too-large"), budget, Arc::new(()), |_| {
+                        observed = true
+                    }),
                     expected,
                 )?;
-                if observed || marker.exists() || failure.take_cleanup_receipt().is_some()
-                    || failure.observed_outcome().is_some() || failure.is_timeout_only()
+                if observed
+                    || marker.exists()
+                    || failure.take_cleanup_receipt().is_some()
+                    || failure.observed_outcome().is_some()
+                    || failure.is_timeout_only()
                     || failure.take_failed_observation().is_some()
                     || super::super::super::linux::spawn_attempts() != attempts
                     || HOOKS.with(|hooks| hooks.borrow().pair_attempts) != pairs
                 {
-                    return Err("invalid admission allocated transport, spawned or fabricated observations".to_string());
+                    return Err(
+                        "invalid admission allocated transport, spawned or fabricated observations"
+                            .to_string(),
+                    );
                 }
             }
             Ok(())
@@ -1446,12 +1854,18 @@ mod linux {
         #[test]
         fn exact_stream_ceiling_preserves_small_native_capture() -> Result<(), String> {
             let output = run(
-                &shell("printf ceiling; printf accepted >&2"), None,
+                &shell("printf ceiling; printf accepted >&2"),
+                None,
                 CompleteCaptureBudget::new(
-                    Duration::from_secs(2), MAX_STREAM_BYTES, MAX_STREAM_BYTES, MAX_STREAM_BYTES,
+                    Duration::from_secs(2),
+                    MAX_STREAM_BYTES,
+                    MAX_STREAM_BYTES,
+                    MAX_STREAM_BYTES,
                 ),
-                Arc::new(()), |_| {},
-            ).map_err(|error| error.to_string())?;
+                Arc::new(()),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
             let (status, stdout, stderr, _, timeout, _) = output.into_parts();
             if !status.success() || timeout {
                 return Err("exact existing stream ceiling refused native small output".to_string());
@@ -1465,16 +1879,24 @@ mod linux {
         fn oversized_stdin_is_refused_before_actual_worker_start() -> Result<(), String> {
             let fixture = Fixture::new()?;
             let marker = fixture.0.join("started");
-            let args = vec!["-c".to_string(), "printf ran > \"$1\"".to_string(),
-                "input-proof".to_string(), marker.display().to_string()];
+            let args = vec![
+                "-c".to_string(),
+                "printf ran > \"$1\"".to_string(),
+                "input-proof".to_string(),
+                marker.display().to_string(),
+            ];
             let lease = Arc::new(());
             let attempts = super::super::super::linux::spawn_attempts();
             let mut observed = false;
             let mut failure = refused(
-                run(&args, Some(b"too-large"), budget(1, 64), lease, |_| observed = true),
+                run(&args, Some(b"too-large"), budget(1, 64), lease, |_| {
+                    observed = true
+                }),
                 "stdin exceeds its 1-byte input budget",
             )?;
-            if observed || marker.exists() || failure.take_cleanup_receipt().is_some()
+            if observed
+                || marker.exists()
+                || failure.take_cleanup_receipt().is_some()
                 || super::super::super::linux::spawn_attempts() != attempts
             {
                 return Err("oversized input spawned a child or fabricated cleanup".to_string());
@@ -1494,7 +1916,10 @@ mod unsupported_tests {
             (Path::new("must-never-be-launched"), &[]),
             (Path::new("."), None),
             &[],
-            (CompleteCaptureBudget::new(Duration::from_secs(1), 0, 1, 1), "unsupported control"),
+            (
+                CompleteCaptureBudget::new(Duration::from_secs(1), 0, 1, 1),
+                "unsupported control",
+            ),
             lease,
             |_| {},
         );
@@ -1507,7 +1932,7 @@ mod unsupported_tests {
                 } else {
                     Err(error.to_string())
                 }
-            },
+            }
             Ok(_) => Err("unsupported platform launched a complete capture".to_string()),
         }
     }

@@ -1119,9 +1119,11 @@ impl StagedFile {
 
 #[cfg(test)]
 mod tests {
-    use super::super::complete_contract::tests::{fixture_binding, fixture_manifest, require_error};
     #[cfg(target_os = "linux")]
     use super::super::complete_contract::tests::fixture_policy_bytes;
+    use super::super::complete_contract::tests::{
+        fixture_binding, fixture_manifest, require_error,
+    };
     #[cfg(target_os = "linux")]
     use super::super::complete_request::CommittedRequestBinding;
     use super::*;
@@ -1332,7 +1334,8 @@ mod tests {
         binding.effective_options.surface = surface;
         if surface == ProducerSurface::Xtask {
             binding.effective_options.include_unchanged_tests = false;
-            binding.effective_options.check_input_base = Some(binding.subject.requested_base.clone());
+            binding.effective_options.check_input_base =
+                Some(binding.subject.requested_base.clone());
             binding.effective_options.git_timeout_ms = Some(300_000);
         }
         let logical = source
@@ -1812,8 +1815,7 @@ mod tests {
             if role == ArtifactRole::ReviewInput {
                 value["check_sha256"] = Value::String(sha256_bytes(&changed[4]));
             }
-            changed[role.ordinal()] =
-                encode_payload(role, &generation, &value, &binding.profile)?;
+            changed[role.ordinal()] = encode_payload(role, &generation, &value, &binding.profile)?;
         }
         let markdown = std::str::from_utf8(&original[8]).map_err(|e| e.to_string())?;
         let old_prefix = markdown_prefix(old_generation);
@@ -1999,10 +2001,12 @@ mod tests {
                     }
                     1 => {
                         policy.diff_index_file_limit = alternate(policy.diff_index_file_limit);
-                        policy.diff_narrow_index_limit =
-                            policy.diff_narrow_index_limit.min(policy.diff_index_file_limit);
-                        policy.partial_diff_file_budget =
-                            policy.partial_diff_file_budget.min(policy.diff_index_file_limit);
+                        policy.diff_narrow_index_limit = policy
+                            .diff_narrow_index_limit
+                            .min(policy.diff_index_file_limit);
+                        policy.partial_diff_file_budget = policy
+                            .partial_diff_file_budget
+                            .min(policy.diff_index_file_limit);
                     }
                     2 => {
                         if policy.diff_narrow_index_limit < policy.diff_index_file_limit {
@@ -2042,7 +2046,9 @@ mod tests {
                     }
                     _ => {
                         if policy.partial_budget_disclosures.is_empty() {
-                            policy.partial_budget_disclosures.push("stale disclosure".into());
+                            policy
+                                .partial_budget_disclosures
+                                .push("stale disclosure".into());
                         } else {
                             policy.partial_budget_disclosures.clear();
                         }
@@ -2062,11 +2068,14 @@ mod tests {
             }
             // A missing stage cannot replace the specific early policy error.
             let mut wrong = binding.clone();
-            wrong.rust_execution_policy.changed_rust_line_limit =
-                match wrong.rust_execution_policy.changed_rust_line_limit.checked_add(1) {
-                    Some(next) => next,
-                    None => wrong.rust_execution_policy.changed_rust_line_limit - 1,
-                };
+            wrong.rust_execution_policy.changed_rust_line_limit = match wrong
+                .rust_execution_policy
+                .changed_rust_line_limit
+                .checked_add(1)
+            {
+                Some(next) => next,
+                None => wrong.rust_execution_policy.changed_rust_line_limit - 1,
+            };
             wrong.rust_execution_policy.partial_diff_line_budget = wrong
                 .rust_execution_policy
                 .partial_diff_line_budget
@@ -2090,74 +2099,103 @@ mod tests {
     }
 
     #[test]
-    fn wrong_declared_input_base_refuses_before_stage_or_frozen_authority()
-        -> Result<(), String> {
+    fn wrong_declared_input_base_refuses_before_stage_or_frozen_authority() -> Result<(), String> {
         let mut binding = fixture_binding()?;
         binding.effective_options.surface = ProducerSurface::Xtask;
         binding.effective_options.include_unchanged_tests = false;
         binding.effective_options.check_input_base = Some("wrong-original-base".into());
         binding.effective_options.git_timeout_ms = Some(300_000);
-        let error = require_error(verify_staged_generation(
-            Path::new("/absent-complete-stage"), &binding, &binding.profile,
-        ), "wrong declared input base reached stage verification")?;
-        assert!(error.to_string().contains("xtask declared input base differs"),
-            "wrong precedence: {error}");
+        let error = require_error(
+            verify_staged_generation(
+                Path::new("/absent-complete-stage"),
+                &binding,
+                &binding.profile,
+            ),
+            "wrong declared input base reached stage verification",
+        )?;
+        assert!(
+            error
+                .to_string()
+                .contains("xtask declared input base differs"),
+            "wrong precedence: {error}"
+        );
         Ok(())
     }
 
     #[test]
     #[cfg(target_os = "linux")]
-    fn xtask_input_base_is_bound_while_saved_effective_base_stays_absent()
-        -> Result<(), String> {
+    fn xtask_input_base_is_bound_while_saved_effective_base_stays_absent() -> Result<(), String> {
         let source = frozen_source_fixture()?;
         let stage = stage()?;
         frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
             let (binding, original) = saved_fixture_for_surface(&source, ProducerSurface::Xtask)?;
-            let wire: CompleteCheck = payload(&original[ArtifactRole::FullCheck.ordinal()],
-                ArtifactRole::FullCheck, &binding.generation_id()?)?;
-            assert_eq!(wire.effective_options.check_input_base.as_deref(), Some("base"));
+            let wire: CompleteCheck = payload(
+                &original[ArtifactRole::FullCheck.ordinal()],
+                ArtifactRole::FullCheck,
+                &binding.generation_id()?,
+            )?;
+            assert_eq!(
+                wire.effective_options.check_input_base.as_deref(),
+                Some("base")
+            );
             assert!(wire.check["base"].is_null());
-            let outcome: AnalysisOutcome = serde_json::from_value(
-                wire.check["analysis_outcome"]["outcome"].clone(),
-            ).map_err(|error| error.to_string())?;
-            assert_eq!(outcome.identity.base_revision, None,
-                "declared input must not replace effective supplied-diff provenance");
+            let outcome: AnalysisOutcome =
+                serde_json::from_value(wire.check["analysis_outcome"]["outcome"].clone())
+                    .map_err(|error| error.to_string())?;
+            assert_eq!(
+                outcome.identity.base_revision, None,
+                "declared input must not replace effective supplied-diff provenance"
+            );
             save_fixture(&stage.0, &binding, &original)?;
             let proof = verify_staged_generation(&stage.0, &binding, &binding.profile)
                 .map_err(|error| error.to_string())?;
             assert_eq!(proof.total_finding_count(), 1);
             for (pointer, wrong) in [
-                ("/value/effective_options/check_input_base", serde_json::json!("alias")),
+                (
+                    "/value/effective_options/check_input_base",
+                    serde_json::json!("alias"),
+                ),
                 ("/value/check/base", serde_json::json!("base")),
-                ("/value/check/analysis_outcome/outcome/identity/base_revision",
-                    serde_json::json!("base")),
+                (
+                    "/value/check/analysis_outcome/outcome/identity/base_revision",
+                    serde_json::json!("base"),
+                ),
             ] {
                 let mut changed = original.clone();
                 let mut value: Value = strict_json(&changed[ArtifactRole::FullCheck.ordinal()])?;
-                *value.pointer_mut(pointer).ok_or("fixture base mutation target missing")? = wrong;
+                *value
+                    .pointer_mut(pointer)
+                    .ok_or("fixture base mutation target missing")? = wrong;
                 changed[ArtifactRole::FullCheck.ordinal()] =
                     serde_json::to_vec(&value).map_err(|error| error.to_string())?;
                 // Re-sign every artifact descriptor; relational refusal must survive.
                 save_fixture(&stage.0, &binding, &changed)?;
-                let _error = require_error(verify_staged_generation(
-                    &stage.0, &binding, &binding.profile,
-                ), "re-signed input/effective base contradiction was accepted")?;
+                let _error = require_error(
+                    verify_staged_generation(&stage.0, &binding, &binding.profile),
+                    "re-signed input/effective base contradiction was accepted",
+                )?;
             }
             let mut missing = original.clone();
             let mut value: Value = strict_json(&missing[ArtifactRole::FullCheck.ordinal()])?;
-            value.pointer_mut("/value/effective_options").and_then(Value::as_object_mut)
-                .ok_or("fixture effective options missing")?.remove("check_input_base");
+            value
+                .pointer_mut("/value/effective_options")
+                .and_then(Value::as_object_mut)
+                .ok_or("fixture effective options missing")?
+                .remove("check_input_base");
             missing[ArtifactRole::FullCheck.ordinal()] =
                 serde_json::to_vec(&value).map_err(|error| error.to_string())?;
             save_fixture(&stage.0, &binding, &missing)?;
-            let _error = require_error(verify_staged_generation(
-                &stage.0, &binding, &binding.profile,
-            ), "re-signed missing declared input field was accepted")?;
+            let _error = require_error(
+                verify_staged_generation(&stage.0, &binding, &binding.profile),
+                "re-signed missing declared input field was accepted",
+            )?;
             save_fixture(&stage.0, &binding, &original)?;
             verify_staged_generation(&stage.0, &binding, &binding.profile)
                 .map_err(|error| error.to_string())?;
-            source.authority.ensure_clean().map_err(|error| error.to_string())
+            source
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())
         })
     }
-
 }

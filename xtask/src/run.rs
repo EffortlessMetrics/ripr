@@ -1793,20 +1793,25 @@ fn capture_owned_group_supervised(
             spawn_supervised_stream_reader(stderr, max_stream_bytes, overflow.clone())
         };
         let outcome = if checker_handoff {
-            guard.wait(started, timeout).map(owned_capture_group::legacy_wait)
+            guard
+                .wait(started, timeout)
+                .map(owned_capture_group::legacy_wait)
         } else {
-            guard.wait_supervised(started, timeout, || {
-                refuse_preparation_overflow(&overflow)?;
-                monitor()
-            }).map(owned_capture_group::legacy_wait)
+            guard
+                .wait_supervised(started, timeout, || {
+                    refuse_preparation_overflow(&overflow)?;
+                    monitor()
+                })
+                .map(owned_capture_group::legacy_wait)
         };
         let retained_outcome = match outcome {
             Ok(outcome) => Ok((outcome, None)),
             Err(reason) => match guard.abort() {
-                Ok(()) => {
-                    guard.settled_status()
-                        .ok_or_else(|| format!("{reason}; qualified primary reap unavailable"))
-                        .map(|status| (
+                Ok(()) => guard
+                    .settled_status()
+                    .ok_or_else(|| format!("{reason}; qualified primary reap unavailable"))
+                    .map(|status| {
+                        (
                             WaitOutcome {
                                 status,
                                 duration: started.elapsed(),
@@ -1814,8 +1819,8 @@ fn capture_owned_group_supervised(
                                 peak_rss_bytes: None,
                             },
                             Some(reason),
-                        ))
-                }
+                        )
+                    }),
                 Err(cleanup) => Err(format!(
                     "{reason}; qualified group cleanup unconfirmed: {cleanup}"
                 )),

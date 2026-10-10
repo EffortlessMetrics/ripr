@@ -858,12 +858,17 @@ impl CompleteBinding {
         match options.surface {
             ProducerSurface::Installed => {
                 if options.check_input_base.is_some() || options.git_timeout_ms.is_some() {
-                    return Err("installed supplied-diff input base/timeout differs from its surface".into());
+                    return Err(
+                        "installed supplied-diff input base/timeout differs from its surface"
+                            .into(),
+                    );
                 }
             }
             ProducerSurface::Xtask => {
                 if options.check_input_base.as_deref() != Some(s.requested_base.as_str()) {
-                    return Err("xtask declared input base differs from its original request".into());
+                    return Err(
+                        "xtask declared input base differs from its original request".into(),
+                    );
                 }
             }
         }
@@ -1200,7 +1205,6 @@ pub(super) mod tests {
         }
     }
 
-
     pub(in crate::app::pr_evidence) fn fixture_policy_bytes() -> &'static [u8] {
         br#"{"schema_version":"ripr.complete_request.v1","request":"complete","profile":"whole-head-v1"}"#
     }
@@ -1529,7 +1533,11 @@ pub(super) mod tests {
             serde_json::from_value::<CompleteBinding>(missing),
             "missing committed request was accepted",
         )?;
-        assert!(error.to_string().contains("missing field `committed_request`"));
+        assert!(
+            error
+                .to_string()
+                .contains("missing field `committed_request`")
+        );
         let mut unknown = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
         unknown["committed_request"]["grant"] = serde_json::json!(true);
         let error = require_error(
@@ -1566,12 +1574,10 @@ pub(super) mod tests {
                 2 => file.bytes += 1,
                 _ => file.sha256 = sha256_bytes(b"stale request"),
             }
-            wrong.inventory.logical_bytes = wrong.inventory.files.iter().map(|file| file.bytes).sum();
+            wrong.inventory.logical_bytes =
+                wrong.inventory.files.iter().map(|file| file.bytes).sum();
             assert_eq!(
-                require_error(
-                    wrong.validate(),
-                    "request inventory mismatch was accepted",
-                )?,
+                require_error(wrong.validate(), "request inventory mismatch was accepted",)?,
                 "committed request disagrees with admitted inventory"
             );
         }
@@ -1601,8 +1607,8 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn whole_head_request_requires_repository_root_without_rewriting_literals()
-    -> Result<(), String> {
+    fn whole_head_request_requires_repository_root_without_rewriting_literals() -> Result<(), String>
+    {
         let binding = fixture_binding()?;
         let mut subroot = binding.clone();
         subroot.subject.logical_root = "/repo/sub".into();
@@ -1620,8 +1626,8 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn rust_execution_policy_is_required_closed_bounded_and_generation_bound()
-    -> Result<(), String> {
+    fn rust_execution_policy_is_required_closed_bounded_and_generation_bound() -> Result<(), String>
+    {
         let binding = fixture_binding()?;
         binding.validate()?;
         let mut missing = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
@@ -1633,7 +1639,11 @@ pub(super) mod tests {
             serde_json::from_value::<CompleteBinding>(missing),
             "missing Rust policy field was accepted",
         )?;
-        assert!(error.to_string().contains("missing field `rust_execution_policy`"));
+        assert!(
+            error
+                .to_string()
+                .contains("missing field `rust_execution_policy`")
+        );
         let mut unknown = serde_json::to_value(&binding).map_err(|e| e.to_string())?;
         unknown["rust_execution_policy"]["grant"] = serde_json::json!(true);
         let error = require_error(
@@ -1681,7 +1691,10 @@ pub(super) mod tests {
         for disclosures in [vec!["".into()], vec!["x".repeat(1025)], vec!["x".into(); 3]] {
             let mut wrong = binding.clone();
             wrong.rust_execution_policy.partial_budget_disclosures = disclosures;
-            let error = require_error(wrong.validate(), "invalid Rust policy disclosures were accepted")?;
+            let error = require_error(
+                wrong.validate(),
+                "invalid Rust policy disclosures were accepted",
+            )?;
             assert_eq!(error, "invalid Rust policy disclosures");
         }
         let mut changed = binding.clone();
@@ -1696,28 +1709,43 @@ pub(super) mod tests {
     }
 
     #[test]
-    fn input_base_is_required_nullable_closed_and_has_literal_surface_policy()
-        -> Result<(), String> {
+    fn input_base_is_required_nullable_closed_and_has_literal_surface_policy() -> Result<(), String>
+    {
         let binding = fixture_binding()?;
         let mut value = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
-        assert_eq!(value["effective_options"]["check_input_base"], serde_json::Value::Null);
+        assert_eq!(
+            value["effective_options"]["check_input_base"],
+            serde_json::Value::Null
+        );
         serde_json::from_value::<CompleteBinding>(value.clone())
-            .map_err(|error| error.to_string())?.validate()?;
-        value["effective_options"].as_object_mut().ok_or("options missing")?
+            .map_err(|error| error.to_string())?
+            .validate()?;
+        value["effective_options"]
+            .as_object_mut()
+            .ok_or("options missing")?
             .remove("check_input_base");
-        let missing = require_error(serde_json::from_value::<CompleteBinding>(value),
-            "missing nullable input base was accepted")?;
+        let missing = require_error(
+            serde_json::from_value::<CompleteBinding>(value),
+            "missing nullable input base was accepted",
+        )?;
         assert!(missing.to_string().contains("missing field"));
         let mut value = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
         value["effective_options"]["check_input_base"] = serde_json::json!(false);
-        let _error = require_error(serde_json::from_value::<CompleteBinding>(value),
-            "wrong nullable input base type was accepted")?;
-        let text = serde_json::to_string(&binding.effective_options)
-            .map_err(|error| error.to_string())?;
-        let duplicate = text.replacen("\"check_input_base\":null",
-            "\"check_input_base\":null,\"check_input_base\":null", 1);
-        let duplicate = require_error(serde_json::from_str::<EffectiveOptions>(&duplicate),
-            "duplicate nullable input base was accepted")?;
+        let _error = require_error(
+            serde_json::from_value::<CompleteBinding>(value),
+            "wrong nullable input base type was accepted",
+        )?;
+        let text =
+            serde_json::to_string(&binding.effective_options).map_err(|error| error.to_string())?;
+        let duplicate = text.replacen(
+            "\"check_input_base\":null",
+            "\"check_input_base\":null,\"check_input_base\":null",
+            1,
+        );
+        let duplicate = require_error(
+            serde_json::from_str::<EffectiveOptions>(&duplicate),
+            "duplicate nullable input base was accepted",
+        )?;
         assert!(duplicate.to_string().contains("duplicate field"));
         let mut legacy = binding.clone();
         legacy.schema_version = "ripr.complete_binding.v3".into();
@@ -1739,15 +1767,17 @@ pub(super) mod tests {
         for wrong in [None, Some("alias".into()), Some("".into())] {
             let mut invalid = xtask.clone();
             invalid.effective_options.check_input_base = wrong;
-            let _error = require_error(invalid.validate(),
-                "wrong xtask original declared base was accepted")?;
+            let _error = require_error(
+                invalid.validate(),
+                "wrong xtask original declared base was accepted",
+            )?;
         }
         Ok(())
     }
 
     #[test]
     fn declared_input_base_changes_generation_and_invalid_alias_cannot_be_resigned()
-        -> Result<(), String> {
+    -> Result<(), String> {
         let mut first = fixture_binding()?;
         first.effective_options.surface = ProducerSurface::Xtask;
         first.effective_options.include_unchanged_tests = false;
@@ -1760,13 +1790,16 @@ pub(super) mod tests {
         successor.validate()?;
         assert_ne!(first.generation_id()?, successor.generation_id()?);
         let manifest = fixture_manifest(successor)?;
-        let _error = require_error(manifest.validate(&first, &first.profile),
-            "re-signed changed original/input base was accepted")?;
+        let _error = require_error(
+            manifest.validate(&first, &first.profile),
+            "re-signed changed original/input base was accepted",
+        )?;
         let mut alias = first.clone();
         alias.effective_options.check_input_base = Some("same-tree-alias".into());
-        let _error = require_error(alias.generation_id(),
-            "invalid declared input alias produced a generation")?;
+        let _error = require_error(
+            alias.generation_id(),
+            "invalid declared input alias produced a generation",
+        )?;
         Ok(())
     }
-
 }

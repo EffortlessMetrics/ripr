@@ -314,12 +314,13 @@ impl<'raw, 'saved> LedgerObserver<'raw, 'saved> {
         if record.start >= record.end {
             return Err("raw coverage record span is empty or reversed".to_string());
         }
-        let bytes = self
-            .raw
-            .get(record.start..record.end)
-            .ok_or_else(|| "raw coverage record span lies outside the original input".to_string())?;
+        let bytes = self.raw.get(record.start..record.end).ok_or_else(|| {
+            "raw coverage record span lies outside the original input".to_string()
+        })?;
         if !std::ptr::eq(bytes.as_ptr(), record.bytes.as_ptr()) || bytes != record.bytes {
-            return Err("raw coverage record is not the helper-owned original subslice".to_string());
+            return Err(
+                "raw coverage record is not the helper-owned original subslice".to_string(),
+            );
         }
         Ok(bytes)
     }
@@ -355,7 +356,9 @@ impl<'raw, 'saved> LedgerObserver<'raw, 'saved> {
             RawChangeSide::Removed => &mut counts.removed,
         };
         if index != *next {
-            return Err("raw coverage duplicate, overlapping or missing insertion slot".to_string());
+            return Err(
+                "raw coverage duplicate, overlapping or missing insertion slot".to_string(),
+            );
         }
         *next = next
             .checked_add(1)
@@ -436,7 +439,9 @@ impl RawDiffObserver for LedgerObserver<'_, '_> {
                 if reduction.section != Some(self.sections) {
                     return Err("raw coverage section ordinal is not sequential".to_string());
                 }
-                self.sections = self.sections.checked_add(1)
+                self.sections = self
+                    .sections
+                    .checked_add(1)
                     .ok_or_else(|| "raw coverage section count overflow".to_string())?;
             }
             RawRecordKind::HunkHeader
@@ -445,12 +450,16 @@ impl RawDiffObserver for LedgerObserver<'_, '_> {
                 if reduction.hunk != Some(self.hunks) {
                     return Err("raw coverage hunk ordinal is not sequential".to_string());
                 }
-                self.hunks = self.hunks.checked_add(1)
+                self.hunks = self
+                    .hunks
+                    .checked_add(1)
                     .ok_or_else(|| "raw coverage hunk count overflow".to_string())?;
             }
             _ => {}
         }
-        if reduction.section.is_some_and(|section| section >= self.sections)
+        if reduction
+            .section
+            .is_some_and(|section| section >= self.sections)
             || reduction.hunk.is_some_and(|hunk| hunk >= self.hunks)
         {
             return Err("raw coverage reduction references an unobserved section or hunk".into());
@@ -510,19 +519,26 @@ impl RawDiffObserver for LedgerObserver<'_, '_> {
             return Err("raw coverage EOF does not reconcile original consumption".to_string());
         }
         if parsed.changed_files.len() > self.limits.file_limit {
-            return Err("raw coverage final projection exceeds its admitted file bound".to_string());
+            return Err(
+                "raw coverage final projection exceeds its admitted file bound".to_string(),
+            );
         }
         let mut added_lines = 0usize;
         let mut removed_lines = 0usize;
         let mut previous_path: Option<&Path> = None;
         for file in &parsed.changed_files {
             if previous_path.is_some_and(|previous| previous >= file.path.as_path()) {
-                return Err("raw coverage final file ordinals are duplicate or out of order".into());
+                return Err(
+                    "raw coverage final file ordinals are duplicate or out of order".into(),
+                );
             }
             previous_path = Some(file.path.as_path());
             let counts = self.slots.remove(&file.path).unwrap_or_default();
-            if counts.added != file.added_lines.len() || counts.removed != file.removed_lines.len() {
-                return Err("raw coverage final side vectors do not reconcile insertion slots".into());
+            if counts.added != file.added_lines.len() || counts.removed != file.removed_lines.len()
+            {
+                return Err(
+                    "raw coverage final side vectors do not reconcile insertion slots".into(),
+                );
             }
             added_lines = added_lines
                 .checked_add(counts.added)
@@ -532,7 +548,9 @@ impl RawDiffObserver for LedgerObserver<'_, '_> {
                 .ok_or_else(|| "raw coverage removed-line count overflow".to_string())?;
         }
         if !self.slots.is_empty() {
-            return Err("raw coverage insertion path is absent from the final projection".to_string());
+            return Err(
+                "raw coverage insertion path is absent from the final projection".to_string(),
+            );
         }
         let projection_sha256 =
             semantic_projection_digest(parsed, self.limits.max_projection_bytes)?;
@@ -652,7 +670,10 @@ fn validate_projection_kind(
     projection: Option<(RawChangeSide, usize)>,
 ) -> Result<(), String> {
     match (kind, projection) {
-        (RawRecordKind::Body(BodyDisposition::Added(index)), Some((RawChangeSide::Added, slot)))
+        (
+            RawRecordKind::Body(BodyDisposition::Added(index)),
+            Some((RawChangeSide::Added, slot)),
+        )
         | (
             RawRecordKind::Body(BodyDisposition::Removed(index)),
             Some((RawChangeSide::Removed, slot)),
@@ -905,9 +926,15 @@ mod tests {
         assert_eq!(actual.deleted_file_count, expected.deleted_file_count);
         assert_eq!(actual.submodule_file_count, expected.submodule_file_count);
         assert_eq!(actual.renamed_file_count, expected.renamed_file_count);
-        assert_eq!(actual.pure_rename_file_count, expected.pure_rename_file_count);
+        assert_eq!(
+            actual.pure_rename_file_count,
+            expected.pure_rename_file_count
+        );
         assert_eq!(actual.pure_rename_paths, expected.pure_rename_paths);
-        assert_eq!(actual.truncated_file_sections, expected.truncated_file_sections);
+        assert_eq!(
+            actual.truncated_file_sections,
+            expected.truncated_file_sections
+        );
         assert_eq!(actual.raw_line1_bom_paths, expected.raw_line1_bom_paths);
         assert_eq!(actual.limitations, expected.limitations);
     }
@@ -945,7 +972,9 @@ mod tests {
             let mut value: Value =
                 serde_json::from_slice(line).map_err(|error| error.to_string())?;
             let original = value.clone();
-            let apply = mutate.take().ok_or("test entry mutation was applied twice")?;
+            let apply = mutate
+                .take()
+                .ok_or("test entry mutation was applied twice")?;
             apply(&mut value);
             let object = value.as_object().ok_or("test entry is not an object")?;
             let mut field = None;
@@ -966,7 +995,9 @@ mod tests {
             let start = text.find(&marker).ok_or("test field span is missing")? + marker.len();
             let end = json_value_end(line, start)?;
             output.extend_from_slice(&line[..start]);
-            let replacement = object.get(field).ok_or("test replacement field is missing")?;
+            let replacement = object
+                .get(field)
+                .ok_or("test replacement field is missing")?;
             output.extend(serde_json::to_vec(replacement).map_err(|error| error.to_string())?);
             output.extend_from_slice(&line[end..]);
         }
@@ -1044,7 +1075,8 @@ mod tests {
 
     #[test]
     fn raw_crlf_invalid_text_and_native_quoted_paths_are_lossless_data() -> Result<(), String> {
-        let mut input = b"--- /dev/null\r\n+++ \"b/src/raw_\\377.rs\"\r\n@@ -0,0 +1 @@\r\n+".to_vec();
+        let mut input =
+            b"--- /dev/null\r\n+++ \"b/src/raw_\\377.rs\"\r\n@@ -0,0 +1 @@\r\n+".to_vec();
         input.extend_from_slice(b"\xff\r\n--- /dev/null\r\n+++ \"b/src/raw_\\\\377.rs\"\r\n@@ -0,0 +1 @@\r\n+literal\r\n");
         let (parsed, coverage) = build_raw_coverage(&input, limits())?;
         let ordinary = parse_unified_diff_with_metadata(&String::from_utf8_lossy(&input));
@@ -1103,7 +1135,13 @@ mod tests {
         assert!(!parsed.limitations.is_empty(), "{parsed:?}");
         assert!(parsed.truncated_file_sections > 0, "{parsed:?}");
         let entries = ledger_entries(coverage.ledger_bytes())?;
-        for kind in ["combined_hunk", "body_conflict", "malformed_hunk", "binary", "rename"] {
+        for kind in [
+            "combined_hunk",
+            "body_conflict",
+            "malformed_hunk",
+            "binary",
+            "rename",
+        ] {
             assert!(entries.iter().any(|entry| entry["kind"] == kind), "{kind}");
         }
         assert!(
@@ -1140,7 +1178,10 @@ mod tests {
             "path_marker_rejected_new",
             "path_marker_symlink_new",
         ] {
-            assert!(entries.iter().any(|entry| entry["kind"] == kind), "{kind}: {entries:?}");
+            assert!(
+                entries.iter().any(|entry| entry["kind"] == kind),
+                "{kind}: {entries:?}"
+            );
         }
         assert!(
             entries.iter().any(|entry| {
@@ -1171,7 +1212,14 @@ mod tests {
         let unchanged = mutate_entry(coverage.ledger_bytes(), added, |_| {})?;
         assert_eq!(unchanged, coverage.ledger_bytes());
         verify_raw_coverage(FIRST.as_bytes(), &unchanged, limits())?;
-        for field in ["ordinal", "start", "end", "record_sha256", "section", "hunk"] {
+        for field in [
+            "ordinal",
+            "start",
+            "end",
+            "record_sha256",
+            "section",
+            "hunk",
+        ] {
             let changed = mutate_entry(coverage.ledger_bytes(), added, |entry| {
                 entry[field] = Value::from("stale");
             })?;
@@ -1188,7 +1236,14 @@ mod tests {
         })?;
         assert_saved_refusal(FIRST.as_bytes(), &changed)?;
         let eof = entries.len() - 1;
-        for field in ["records", "sections", "hunks", "projection_sha256", "files", "metadata"] {
+        for field in [
+            "records",
+            "sections",
+            "hunks",
+            "projection_sha256",
+            "files",
+            "metadata",
+        ] {
             let changed = mutate_entry(coverage.ledger_bytes(), eof, |entry| {
                 entry[field] = Value::Null;
             })?;
@@ -1268,9 +1323,7 @@ mod tests {
                 .ok_or("under-admitted coverage returned data")?;
             assert!(error.contains(expected), "{bound}: {error}");
         }
-        let input = format!(
-            "{FIRST}--- /dev/null\n+++ b/src/b.rs\n@@ -0,0 +1 @@\n+second\n"
-        );
+        let input = format!("{FIRST}--- /dev/null\n+++ b/src/b.rs\n@@ -0,0 +1 @@\n+second\n");
         let mut one_file = limits();
         one_file.file_limit = 1;
         let error = build_raw_coverage(input.as_bytes(), one_file)
@@ -1286,60 +1339,96 @@ mod tests {
         let mut observer = LedgerObserver::new(raw, limits(), LedgerSink::Build(Vec::new()))?;
         let detached = raw.to_vec();
         let error = observer
-            .record(RawRecord { ordinal: 0, start: 0, end: raw.len(), bytes: &detached })
+            .record(RawRecord {
+                ordinal: 0,
+                start: 0,
+                end: raw.len(),
+                bytes: &detached,
+            })
             .err()
             .ok_or("detached equal-byte record was accepted")?;
         assert!(error.contains("helper-owned original subslice"), "{error}");
-        let record = RawRecord { ordinal: 0, start: 0, end: raw.len(), bytes: raw };
+        let record = RawRecord {
+            ordinal: 0,
+            start: 0,
+            end: raw.len(),
+            bytes: raw,
+        };
         observer.record(record)?;
-        let error = observer.record(record).err().ok_or("unreduced duplicate record was accepted")?;
+        let error = observer
+            .record(record)
+            .err()
+            .ok_or("unreduced duplicate record was accepted")?;
         assert!(error.contains("unreduced record"), "{error}");
         let error = observer
             .finish(
-                RawEnd { bytes: raw.len(), records: 1, sections: 0, hunks: 0 },
+                RawEnd {
+                    bytes: raw.len(),
+                    records: 1,
+                    sections: 0,
+                    hunks: 0,
+                },
                 &ParsedDiff::default(),
             )
             .err()
             .ok_or("EOF with an unreduced record was accepted")?;
         assert!(error.contains("unreduced final record"), "{error}");
         let mut empty = LedgerObserver::new(b"", limits(), LedgerSink::Build(Vec::new()))?;
-        let end = RawEnd { bytes: 0, records: 0, sections: 0, hunks: 0 };
+        let end = RawEnd {
+            bytes: 0,
+            records: 0,
+            sections: 0,
+            hunks: 0,
+        };
         let error = empty
-            .finish(
-                RawEnd { sections: 1, ..end },
-                &ParsedDiff::default(),
-            )
+            .finish(RawEnd { sections: 1, ..end }, &ParsedDiff::default())
             .err()
             .ok_or("unobserved section count was accepted at EOF")?;
         assert!(error.contains("EOF does not reconcile"), "{error}");
         empty.finish(end, &ParsedDiff::default())?;
-        let error = empty.finish(end, &ParsedDiff::default())
-            .err().ok_or("duplicate EOF was accepted")?;
+        let error = empty
+            .finish(end, &ParsedDiff::default())
+            .err()
+            .ok_or("duplicate EOF was accepted")?;
         assert!(error.contains("duplicate EOF"), "{error}");
         let mut slots = LedgerObserver::new(b"", limits(), LedgerSink::Build(Vec::new()))?;
         slots.note_projection(Path::new("a.rs"), RawChangeSide::Added, 0)?;
-        let duplicate = slots.note_projection(Path::new("a.rs"), RawChangeSide::Added, 0)
-            .err().ok_or("duplicate insertion slot was accepted")?;
-        assert!(duplicate.contains("duplicate, overlapping or missing"), "{duplicate}");
-        let skipped = slots.note_projection(Path::new("a.rs"), RawChangeSide::Added, 2)
-            .err().ok_or("missing insertion slot was accepted")?;
-        assert!(skipped.contains("duplicate, overlapping or missing"), "{skipped}");
+        let duplicate = slots
+            .note_projection(Path::new("a.rs"), RawChangeSide::Added, 0)
+            .err()
+            .ok_or("duplicate insertion slot was accepted")?;
+        assert!(
+            duplicate.contains("duplicate, overlapping or missing"),
+            "{duplicate}"
+        );
+        let skipped = slots
+            .note_projection(Path::new("a.rs"), RawChangeSide::Added, 2)
+            .err()
+            .ok_or("missing insertion slot was accepted")?;
+        assert!(
+            skipped.contains("duplicate, overlapping or missing"),
+            "{skipped}"
+        );
         let mismatch = validate_projection_kind(
             RawRecordKind::Body(BodyDisposition::Added(0)),
             Some((RawChangeSide::Removed, 0)),
-        ).err().ok_or("changed insertion side was accepted")?;
-        assert!(mismatch.contains("kind and projection disagree"), "{mismatch}");
+        )
+        .err()
+        .ok_or("changed insertion side was accepted")?;
+        assert!(
+            mismatch.contains("kind and projection disagree"),
+            "{mismatch}"
+        );
         Ok(())
     }
 
     #[test]
-    fn full_projection_digest_binds_text_coordinates_paths_and_every_metadata_field(
-    ) -> Result<(), String> {
+    fn full_projection_digest_binds_text_coordinates_paths_and_every_metadata_field()
+    -> Result<(), String> {
         let baseline = parse_unified_diff_with_metadata(FIRST);
         let expected = semantic_projection_digest(&baseline, limits().max_projection_bytes)?;
-        let malformed = parse_unified_diff_with_metadata(
-            "--- a/a.rs\n+++ b/a.rs\n@@ malformed @@\n+ignored\n",
-        );
+        let malformed =
+            parse_unified_diff_with_metadata("--- a/a.rs\n+++ b/a.rs\n@@ malformed @@\n+ignored\n");
         let limitation = malformed
             .limitations
             .first()

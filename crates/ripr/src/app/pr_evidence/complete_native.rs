@@ -49,7 +49,9 @@ fn verify_held_deadline(duration_ms: u64, deadline: Instant) -> Result<(), Strin
 impl StageRootBinding {
     pub(super) fn validate(&self, path_limit: u64) -> Result<(), String> {
         if !lower_hex(&self.stage_nonce, 128) {
-            return Err("complete startup stage nonce is not 128 lowercase hexadecimal bytes".into());
+            return Err(
+                "complete startup stage nonce is not 128 lowercase hexadecimal bytes".into(),
+            );
         }
         for identity in [&self.stage, &self.source, &self.spool, &self.artifacts] {
             let path = identity.path.as_str();
@@ -61,7 +63,10 @@ impl StageRootBinding {
                     .split('/')
                     .any(|part| part.is_empty() || part == "." || part == "..")
             {
-                return Err("complete startup directory path is not bounded canonical absolute UTF-8".into());
+                return Err(
+                    "complete startup directory path is not bounded canonical absolute UTF-8"
+                        .into(),
+                );
             }
         }
         for (name, identity) in [
@@ -117,7 +122,9 @@ impl NativeStartup {
         profile.validate()?;
         verify_held_deadline(profile.deadline_ms, worker_deadline)?;
         if !lower_hex(generation_nonce, 32) {
-            return Err("complete startup generation nonce is not 32 lowercase hexadecimal bytes".into());
+            return Err(
+                "complete startup generation nonce is not 32 lowercase hexadecimal bytes".into(),
+            );
         }
         let path_limit = STARTUP_PATH_BYTES_MAX.min(profile.max_retained_path_bytes);
         binding.validate(path_limit)?;
@@ -224,7 +231,9 @@ mod tests {
     fn error<T>(result: Result<T, String>, category: &str) -> Result<String, String> {
         match result {
             Err(error) if error.contains(category) => Ok(error),
-            Err(error) => Err(format!("wrong error category: {error}; expected {category}")),
+            Err(error) => Err(format!(
+                "wrong error category: {error}; expected {category}"
+            )),
             Ok(_) => Err(format!("unexpected success; expected {category}")),
         }
     }
@@ -270,9 +279,18 @@ mod tests {
         let mut profile = super::super::complete_contract::tests::fixture_binding()?.profile;
         NativeStartup::source_budget(&profile)?;
         profile.max_source_bytes = 512 * 1024 * 1024 + 1;
-        error(NativeStartup::source_budget(&profile), "invalid staged source budget")?;
-        error(SourceBudget::new(1, 0, 1, 1), "invalid staged source budget")?;
-        error(SourceBudget::new(1, 1, 1, 256 * 1024 * 1024 + 1), "invalid staged source budget")?;
+        error(
+            NativeStartup::source_budget(&profile),
+            "invalid staged source budget",
+        )?;
+        error(
+            SourceBudget::new(1, 0, 1, 1),
+            "invalid staged source budget",
+        )?;
+        error(
+            SourceBudget::new(1, 1, 1, 256 * 1024 * 1024 + 1),
+            "invalid staged source budget",
+        )?;
         Ok(())
     }
 
@@ -299,9 +317,14 @@ mod tests {
 
     #[test]
     fn held_deadline_is_not_restarted_or_extended() -> Result<(), String> {
-        error(verify_held_deadline(1000, Instant::now()), "held deadline expired")?;
-        error(verify_held_deadline(1, Instant::now() + Duration::from_secs(60)),
-            "exceeds the admitted duration")?;
+        error(
+            verify_held_deadline(1000, Instant::now()),
+            "held deadline expired",
+        )?;
+        error(
+            verify_held_deadline(1, Instant::now() + Duration::from_secs(60)),
+            "exceeds the admitted duration",
+        )?;
         Ok(())
     }
 
@@ -320,10 +343,13 @@ mod tests {
         let mismatch = match (first, second) {
             (Err(error), _) if is_native_refusal(&error) => error,
             (_, Err(error)) if is_native_refusal(&error) => error,
-            (left, right) => return Err(format!("real finite-profile mismatch not observed: {left:?}; {right:?}")),
+            (left, right) => {
+                return Err(format!(
+                    "real finite-profile mismatch not observed: {left:?}; {right:?}"
+                ));
+            }
         };
         assert!(mismatch.starts_with("experimental worker "));
         Ok(())
     }
-
 }

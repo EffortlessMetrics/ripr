@@ -357,7 +357,8 @@ fn validate_configuration_inventory_with<'a>(
             .split_once('\t')
             .ok_or_else(|| failed("configuration inventory entry has no TAB".into()))?;
         let mut fields = metadata.split_whitespace();
-        let (Some(mode), Some(kind), Some(object)) = (fields.next(), fields.next(), fields.next()) else {
+        let (Some(mode), Some(kind), Some(object)) = (fields.next(), fields.next(), fields.next())
+        else {
             return Err(failed(
                 "configuration inventory metadata is malformed".into(),
             ));
@@ -581,7 +582,9 @@ fn materialize_with_configuration(
                 _ => return Err(failed("named-tree original mode is unsupported".into())),
             };
             modes.try_reserve(1).map_err(|error| {
-                failed(format!("named-tree mode inventory allocation failed: {error}"))
+                failed(format!(
+                    "named-tree mode inventory allocation failed: {error}"
+                ))
             })?;
             modes.push(original_mode);
         }
@@ -978,7 +981,8 @@ mod tests {
                 .collect::<Vec<_>>(),
             directories
         );
-        std::fs::write(guard.0.join("regular.rs"), b"live decoy").map_err(|error| error.to_string())?;
+        std::fs::write(guard.0.join("regular.rs"), b"live decoy")
+            .map_err(|error| error.to_string())?;
         let (ordinary, _cleanup) =
             materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
         frozen::with_context(Some(authority.clone()), || -> Result<(), String> {

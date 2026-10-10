@@ -16,11 +16,11 @@ mod complete_native;
 mod generation;
 
 #[cfg(test)]
-mod complete_request;
-#[cfg(test)]
 mod complete_contract;
 #[cfg(test)]
 mod complete_contract_tests;
+#[cfg(test)]
+mod complete_request;
 #[cfg(test)]
 mod complete_verifier;
 #[cfg(test)]

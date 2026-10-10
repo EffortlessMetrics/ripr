@@ -454,7 +454,6 @@ mod linux {
             Ok(())
         }
 
-
         #[test]
         fn elapsed_but_live_forwarder_deadline_is_not_rebased_to_fresh_timeout()
         -> Result<(), String> {
@@ -488,10 +487,14 @@ mod linux {
                 |_| {},
             ) {
                 Err(error) => error,
-                Ok(_) => return Err("forwarder rebased the original deadline into success".to_string()),
+                Ok(_) => {
+                    return Err("forwarder rebased the original deadline into success".to_string());
+                }
             };
             if entered.elapsed() > Duration::from_secs(9) {
-                return Err("elapsed/live forwarding exceeded the bounded control duration".to_string());
+                return Err(
+                    "elapsed/live forwarding exceeded the bounded control duration".to_string(),
+                );
             }
             if !error.message().contains("deadline")
                 || !error.matches_lease(&lease)
@@ -516,7 +519,9 @@ mod linux {
                 match no_live_member(primary) {
                     Ok(()) => break,
                     Err(error) if Instant::now() >= natural_end => {
-                        return Err(format!("finite elapsed/live fixture remained live: {error}"));
+                        return Err(format!(
+                            "finite elapsed/live fixture remained live: {error}"
+                        ));
                     }
                     Err(_) => {}
                 }

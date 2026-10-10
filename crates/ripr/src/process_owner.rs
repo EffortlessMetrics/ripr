@@ -200,14 +200,18 @@ impl OwnedProcess {
         deadline: Instant,
     ) -> std::io::Result<Self> {
         if Instant::now() >= deadline {
-            return Err(std::io::Error::other("owned process held deadline expired before spawn"));
+            return Err(std::io::Error::other(
+                "owned process held deadline expired before spawn",
+            ));
         }
         let mut owned = Self::spawn(command)?;
         // Store the original ceiling before any fallible post-spawn observation.
         owned.bounded_drop = true;
         owned.bounded_drop_until = Some(deadline);
         if Instant::now() >= deadline {
-            return Err(std::io::Error::other("owned process spawn crossed its held deadline"));
+            return Err(std::io::Error::other(
+                "owned process spawn crossed its held deadline",
+            ));
         }
         Ok(owned)
     }

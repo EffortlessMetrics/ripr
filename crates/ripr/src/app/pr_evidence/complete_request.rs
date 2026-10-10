@@ -47,7 +47,10 @@ struct Policy {
 
 impl CommittedRequestBinding {
     /// Bounded DATA capture through the sole existing policy decoder.
-    pub(super) fn from_original_blob(blob_oid: &str, original_bytes: Vec<u8>) -> Result<Self, String> {
+    pub(super) fn from_original_blob(
+        blob_oid: &str,
+        original_bytes: Vec<u8>,
+    ) -> Result<Self, String> {
         let oid = GitObjectId::parse(blob_oid).map_err(|error| error.to_string())?;
         if oid.as_str() != blob_oid {
             return Err("complete request blob identity is not canonical".into());
@@ -170,19 +173,31 @@ impl CompleteRequest {
         // rev-parse expression after --end-of-options; later argv use OIDs.
         let base_expression = format!("{}^{{commit}}", options.base);
         let base_commit = oid_output(&self.probe_subject(&[
-            "rev-parse", "--verify", "--end-of-options", &base_expression,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &base_expression,
         ])?)?;
         let base_tree_expression = format!("{}^{{tree}}", base_commit.as_str());
         let base_tree = oid_output(&self.probe_subject(&[
-            "rev-parse", "--verify", "--end-of-options", &base_tree_expression,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &base_tree_expression,
         ])?)?;
         let head = self.head_commit.as_str().to_string();
         let origin_commit = oid_output(&self.probe_subject(&[
-            "merge-base", "--all", base_commit.as_str(), &head,
+            "merge-base",
+            "--all",
+            base_commit.as_str(),
+            &head,
         ])?)?;
         let origin_tree_expression = format!("{}^{{tree}}", origin_commit.as_str());
         let origin_tree = oid_output(&self.probe_subject(&[
-            "rev-parse", "--verify", "--end-of-options", &origin_tree_expression,
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &origin_tree_expression,
         ])?)?;
         Ok(CompleteSubject {
             invocation_repository: self.invocation_repository.clone(),
@@ -379,13 +394,25 @@ pub(super) fn select_request_with_deadline(
     let tree_expression = format!("{}^{{tree}}", head_commit.as_str());
     let head_tree = oid_output(&preflight.git(
         repo,
-        &["rev-parse", "--verify", "--end-of-options", &tree_expression],
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &tree_expression,
+        ],
         POLICY_BYTES,
         CompleteGitEnvironment::Selector,
     )?)?;
     let entry = preflight.git(
         repo,
-        &["ls-tree", "--full-tree", "-z", head_tree.as_str(), "--", POLICY_PATH],
+        &[
+            "ls-tree",
+            "--full-tree",
+            "-z",
+            head_tree.as_str(),
+            "--",
+            POLICY_PATH,
+        ],
         POLICY_BYTES,
         CompleteGitEnvironment::Selector,
     )?;
@@ -442,13 +469,25 @@ pub(super) fn select_request_with_deadline(
     )?)?;
     let current_tree = oid_output(&preflight.git(
         repo,
-        &["rev-parse", "--verify", "--end-of-options", &tree_expression],
+        &[
+            "rev-parse",
+            "--verify",
+            "--end-of-options",
+            &tree_expression,
+        ],
         POLICY_BYTES,
         CompleteGitEnvironment::WholeInput,
     )?)?;
     let current_entry = preflight.git(
         repo,
-        &["ls-tree", "--full-tree", "-z", current_tree.as_str(), "--", POLICY_PATH],
+        &[
+            "ls-tree",
+            "--full-tree",
+            "-z",
+            current_tree.as_str(),
+            "--",
+            POLICY_PATH,
+        ],
         POLICY_BYTES,
         CompleteGitEnvironment::WholeInput,
     )?;
@@ -457,13 +496,13 @@ pub(super) fn select_request_with_deadline(
         || current_tree != head_tree
         || policy_entry(&current_entry)?.as_ref() != Some(&blob_oid)
     {
-        return Err("complete request repository, head, tree or policy changed during selection".into());
+        return Err(
+            "complete request repository, head, tree or policy changed during selection".into(),
+        );
     }
-    let invocation_repository =
-        std::fs::canonicalize(repo).map_err(|error| error.to_string())?;
+    let invocation_repository = std::fs::canonicalize(repo).map_err(|error| error.to_string())?;
     let work_tree = std::fs::canonicalize(work_tree).map_err(|error| error.to_string())?;
-    let git_directory =
-        std::fs::canonicalize(git_directory).map_err(|error| error.to_string())?;
+    let git_directory = std::fs::canonicalize(git_directory).map_err(|error| error.to_string())?;
     let common_directory =
         std::fs::canonicalize(common_directory).map_err(|error| error.to_string())?;
     if !invocation_repository.starts_with(&work_tree)
@@ -560,7 +599,9 @@ fn directory_tuple(bytes: &[u8]) -> Result<(PathBuf, PathBuf, PathBuf), String> 
     let text = text.strip_suffix('\n').unwrap_or(text);
     let mut lines = text.split('\n');
     let mut next = || {
-        let text = lines.next().ok_or("complete request directory identity is missing")?;
+        let text = lines
+            .next()
+            .ok_or("complete request directory identity is missing")?;
         path_output(text.as_bytes(), "repository directory")
     };
     let work_tree = next()?;
@@ -586,8 +627,7 @@ mod tests {
     use crate::testing::fixture_git::{fixture_git_ok, remove_fixture_tree};
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    const VALID: &str =
-        r#"{"schema_version":"ripr.complete_request.v1","request":"complete","profile":"whole-head-v1"}"#;
+    const VALID: &str = r#"{"schema_version":"ripr.complete_request.v1","request":"complete","profile":"whole-head-v1"}"#;
     static SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
     struct Fixture(PathBuf);
@@ -609,7 +649,14 @@ mod tests {
             ));
             std::fs::create_dir_all(&repo).map_err(|error| error.to_string())?;
             let fixture = Self(repo);
-            fixture.git(&["-c", "init.templateDir=", "init", "--quiet", "-b", "request"])?;
+            fixture.git(&[
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--quiet",
+                "-b",
+                "request",
+            ])?;
             fixture.git(&["config", "--local", "user.name", "RIPR request fixture"])?;
             fixture.git(&["config", "--local", "user.email", "request@example.invalid"])?;
             fixture.git(&["config", "--local", "commit.gpgsign", "false"])?;
@@ -623,10 +670,8 @@ mod tests {
             fixture_git_ok(&self.0, args)
         }
         fn policy(&self, bytes: &[u8]) -> Result<(), String> {
-            std::fs::create_dir_all(self.0.join(".ripr"))
-                .map_err(|error| error.to_string())?;
-            std::fs::write(self.0.join(POLICY_PATH), bytes)
-                .map_err(|error| error.to_string())?;
+            std::fs::create_dir_all(self.0.join(".ripr")).map_err(|error| error.to_string())?;
+            std::fs::write(self.0.join(POLICY_PATH), bytes).map_err(|error| error.to_string())?;
             self.git(&["add", "--", POLICY_PATH])?;
             self.git(&["commit", "--quiet", "-m", "committed request"])
         }
@@ -661,8 +706,7 @@ mod tests {
     fn committed_request_ignores_dirty_policy_and_selected_subroot() -> Result<(), String> {
         let fixture = Fixture::new()?;
         std::fs::create_dir_all(fixture.0.join(".ripr")).map_err(|error| error.to_string())?;
-        std::fs::write(fixture.0.join(POLICY_PATH), VALID)
-            .map_err(|error| error.to_string())?;
+        std::fs::write(fixture.0.join(POLICY_PATH), VALID).map_err(|error| error.to_string())?;
         assert!(matches!(
             select_request(&fixture.0, "HEAD")?,
             RequestedRoute::Ordinary
@@ -676,15 +720,10 @@ mod tests {
         assert_eq!(request.head_commit().as_str(), fixture.oid("HEAD")?);
         assert_eq!(request.head_tree().as_str(), fixture.oid("HEAD^{tree}")?);
         request.binding().validate()?;
-        let tree = request.probe_subject(&[
-            "rev-parse",
-            "--verify",
-            "--end-of-options",
-            "HEAD^{tree}",
-        ])?;
+        let tree =
+            request.probe_subject(&["rev-parse", "--verify", "--end-of-options", "HEAD^{tree}"])?;
         assert_eq!(&oid_output(&tree)?, request.head_tree());
-        std::fs::remove_file(fixture.0.join(POLICY_PATH))
-            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(fixture.0.join(POLICY_PATH)).map_err(|error| error.to_string())?;
         request.validate_current(Instant::now() + PREFLIGHT_DURATION)?;
         Ok(())
     }
@@ -729,21 +768,31 @@ mod tests {
         let fixture = Fixture::new()?;
         fixture.policy(VALID.as_bytes())?;
         let request = complete(select_request(&fixture.0, "HEAD")?)?;
-        fixture.git(&["commit", "--quiet", "--allow-empty", "-m", "same tree new head"])?;
+        fixture.git(&[
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "same tree new head",
+        ])?;
         assert_eq!(request.head_tree().as_str(), fixture.oid("HEAD^{tree}")?);
         let error = refusal(request.validate_current(Instant::now() + PREFLIGHT_DURATION))?;
         assert!(error.contains("changed"), "{error}");
         let request = complete(select_request(&fixture.0, "HEAD")?)?;
         fixture.git(&["rm", "--quiet", "--", POLICY_PATH])?;
         fixture.git(&["commit", "--quiet", "-m", "remove request"])?;
-        assert!(matches!(select_request(&fixture.0, "HEAD")?, RequestedRoute::Ordinary));
+        assert!(matches!(
+            select_request(&fixture.0, "HEAD")?,
+            RequestedRoute::Ordinary
+        ));
         let error = refusal(request.validate_current(Instant::now() + PREFLIGHT_DURATION))?;
         assert!(error.contains("disappeared"), "{error}");
         Ok(())
     }
 
     #[test]
-    fn explicit_commit_and_replacement_object_cannot_hide_committed_request() -> Result<(), String> {
+    fn explicit_commit_and_replacement_object_cannot_hide_committed_request() -> Result<(), String>
+    {
         let fixture = Fixture::new()?;
         let ordinary = fixture.oid("HEAD")?;
         fixture.policy(VALID.as_bytes())?;
@@ -754,7 +803,10 @@ mod tests {
         assert_eq!(request.binding().original_bytes, VALID.as_bytes());
         fixture.git(&["update-ref", "refs/heads/request", &ordinary])?;
         request.validate_current(Instant::now() + PREFLIGHT_DURATION)?;
-        assert!(matches!(select_request(&fixture.0, "HEAD")?, RequestedRoute::Ordinary));
+        assert!(matches!(
+            select_request(&fixture.0, "HEAD")?,
+            RequestedRoute::Ordinary
+        ));
         Ok(())
     }
 
@@ -769,8 +821,14 @@ mod tests {
         for (entry, expected) in [
             (format!("100644 blob {oid}\tother.json\0"), "another path"),
             (format!("100644 blob {oid}\t{POLICY_PATH}"), "NUL-delimited"),
-            (format!("100644 blob {oid}\t{POLICY_PATH}\0extra\0"), "NUL-delimited"),
-            (format!("100644 tree {oid}\t{POLICY_PATH}\0"), "regular committed 100644 blob"),
+            (
+                format!("100644 blob {oid}\t{POLICY_PATH}\0extra\0"),
+                "NUL-delimited",
+            ),
+            (
+                format!("100644 tree {oid}\t{POLICY_PATH}\0"),
+                "regular committed 100644 blob",
+            ),
         ] {
             let error = refusal(policy_entry(entry.as_bytes()))?;
             assert!(error.contains(expected), "{error}");
@@ -825,7 +883,8 @@ mod tests {
         Ok(())
     }
     #[test]
-    fn whole_subject_uses_unique_actual_origin_and_preserves_requested_options() -> Result<(), String> {
+    fn whole_subject_uses_unique_actual_origin_and_preserves_requested_options()
+    -> Result<(), String> {
         let fixture = Fixture::new()?;
         let base = fixture.oid("HEAD")?;
         fixture.git(&["branch", "complete-base", &base])?;
@@ -875,13 +934,18 @@ mod tests {
         let mut request = complete(select_request(&fixture.0, "HEAD")?)?;
         let subject = request.resolve_whole_subject(&options)?;
         fixture.git(&["checkout", "--quiet", "complete-base"])?;
-        fixture.git(&["commit", "--quiet", "--allow-empty", "-m", "same tree moved base"])?;
+        fixture.git(&[
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "same tree moved base",
+        ])?;
         assert_eq!(fixture.oid("HEAD^{tree}")?, subject.base_tree.as_str());
         assert_ne!(fixture.oid("HEAD")?, subject.base_commit.as_str());
         fixture.git(&["checkout", "--quiet", "request"])?;
-        let error = refusal(request.validate_whole_current(
-            &subject, Instant::now() + PREFLIGHT_DURATION,
-        ))?;
+        let error =
+            refusal(request.validate_whole_current(&subject, Instant::now() + PREFLIGHT_DURATION))?;
         assert!(error.contains("whole-subject identities"), "{error}");
         let mut recovered = complete(select_request(&fixture.0, "HEAD")?)?;
         let current = recovered.resolve_whole_subject(&options)?;
@@ -943,17 +1007,25 @@ mod tests {
         };
         let mut original = complete(select_request(&fixture.0, "HEAD")?)?;
         let old_subject = original.resolve_whole_subject(&options)?;
-        fixture.git(&["commit", "--quiet", "--allow-empty", "-m", "same tree moved head"])?;
+        fixture.git(&[
+            "commit",
+            "--quiet",
+            "--allow-empty",
+            "-m",
+            "same tree moved head",
+        ])?;
         let mut fresh = complete(select_request(&fixture.0, "HEAD")?)?;
         let rebound = fresh.resolve_whole_subject(&options)?;
         assert_ne!(rebound.head_commit, old_subject.head_commit);
         assert_eq!(rebound.head_tree, old_subject.head_tree);
-        let error = refusal(original.validate_whole_current(
-            &rebound, Instant::now() + PREFLIGHT_DURATION,
-        ))?;
-        assert!(error.contains("committed complete request or repository identity changed"), "{error}");
+        let error = refusal(
+            original.validate_whole_current(&rebound, Instant::now() + PREFLIGHT_DURATION),
+        )?;
+        assert!(
+            error.contains("committed complete request or repository identity changed"),
+            "{error}"
+        );
         fresh.validate_whole_current(&rebound, Instant::now() + PREFLIGHT_DURATION)?;
         Ok(())
     }
-
 }

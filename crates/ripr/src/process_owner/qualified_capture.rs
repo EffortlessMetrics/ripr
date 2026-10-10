@@ -143,7 +143,9 @@ mod linux {
             state,
             'R' | 'S' | 'D' | 'Z' | 'T' | 't' | 'X' | 'x' | 'K' | 'W' | 'P' | 'I'
         ) {
-            return Err("owned capture process state unsupported; ownership unavailable".to_string());
+            return Err(
+                "owned capture process state unsupported; ownership unavailable".to_string(),
+            );
         }
         let number = |index: usize| {
             fields
@@ -213,7 +215,9 @@ mod linux {
         let mut live = Vec::new();
         for (index, entry) in entries.enumerate() {
             if Instant::now() >= deadline {
-                return Err("owned capture complete group scan exceeded settlement bound".to_string());
+                return Err(
+                    "owned capture complete group scan exceeded settlement bound".to_string(),
+                );
             }
             if index >= PROC_ENTRIES {
                 return Err("owned capture complete group scan exceeded entry bound".to_string());
@@ -235,7 +239,9 @@ mod linux {
                     }
                 }
                 Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-                Err(err) => return Err(format!("owned capture complete group scan refused: {err}")),
+                Err(err) => {
+                    return Err(format!("owned capture complete group scan refused: {err}"));
+                }
             }
         }
         Ok(live)
@@ -303,8 +309,13 @@ mod linux {
                 return Err("owned capture did not create its own direct-child group".to_string());
             }
             Ok(Self {
-                child, leader, settled: false, refused: false, parent,
-                settlement: None, settled_status: None,
+                child,
+                leader,
+                settled: false,
+                refused: false,
+                parent,
+                settlement: None,
+                settled_status: None,
                 held_deadline: Some(held_deadline),
             })
         }
@@ -334,7 +345,9 @@ mod linux {
             if self.held_deadline.is_some() && Instant::now() >= deadline {
                 self.refused = true;
                 self.settlement = None;
-                return Err("owned capture settlement phase expired; cleanup unconfirmed".to_string());
+                return Err(
+                    "owned capture settlement phase expired; cleanup unconfirmed".to_string(),
+                );
             }
             Ok(())
         }
@@ -353,7 +366,8 @@ mod linux {
         }
 
         fn phase_deadline(&self, deadline: Instant) -> Instant {
-            self.held_deadline.map_or(deadline, |held| deadline.min(held))
+            self.held_deadline
+                .map_or(deadline, |held| deadline.min(held))
         }
 
         fn pause(&self, duration: Duration, deadline: Instant) {
@@ -431,7 +445,9 @@ mod linux {
             signal_authority(&self.leader, observed, members)?;
             self.qualified()?;
             let result = bounded_group_signal_with_held(
-                self.leader.group, self.phase_deadline(deadline), self.held_deadline,
+                self.leader.group,
+                self.phase_deadline(deadline),
+                self.held_deadline,
             );
             self.after_held(result)
         }
@@ -445,7 +461,9 @@ mod linux {
         fn settle_qualified(&mut self, terminate: bool) -> Result<(ExitStatus, bool), String> {
             self.check_held()?;
             if self.refused {
-                return Err("owned capture group settlement refused; cleanup unconfirmed".to_string());
+                return Err(
+                    "owned capture group settlement refused; cleanup unconfirmed".to_string(),
+                );
             }
             let deadline = self.phase_deadline(Instant::now() + POST_KILL_GROUP_CONFIRM_GRACE);
             self.check_phase(deadline)?;
@@ -473,7 +491,9 @@ mod linux {
             // until all live members are gone. Only now may try_wait reap it.
             let status = loop {
                 self.check_phase(deadline)?;
-                let observed = self.child.try_wait()
+                let observed = self
+                    .child
+                    .try_wait()
                     .map_err(|err| format!("owned capture bounded reap: {err}"));
                 if let Some(status) = self.after_phase(observed, deadline)? {
                     break status;
@@ -525,7 +545,9 @@ mod linux {
                     });
                 }
                 if let Some(held) = self.held_deadline {
-                    let deadline = started.checked_add(timeout).map_or(held, |phase| phase.min(held));
+                    let deadline = started
+                        .checked_add(timeout)
+                        .map_or(held, |phase| phase.min(held));
                     self.pause(Duration::from_millis(100), deadline);
                 } else {
                     thread::sleep(Duration::from_millis(100));
@@ -584,12 +606,14 @@ mod linux {
         let mut child = match held_deadline {
             Some(held) => OwnedProcess::spawn_with_bounded_drop_until(command, deadline.min(held)),
             None => OwnedProcess::spawn_with_bounded_drop(command),
-        }.map_err(|err| format!("owned group signal launch: {err}"))?;
+        }
+        .map_err(|err| format!("owned group signal launch: {err}"))?;
         loop {
             if held_deadline.is_some() {
                 held_time(deadline)?;
             }
-            let observed = child.try_wait()
+            let observed = child
+                .try_wait()
                 .map_err(|err| format!("owned group signal poll: {err}"))?;
             if held_deadline.is_some() {
                 held_time(deadline)?;
@@ -617,7 +641,6 @@ mod linux {
             thread::sleep(delay);
         }
     }
-
 
     #[cfg(test)]
     mod tests {
@@ -657,14 +680,20 @@ mod linux {
 
         #[test]
         fn scanned_stat_opened_descriptor_disappearance_is_not_a_survivor() -> Result<(), String> {
-            let mut child =
-                OwnedProcess::spawn_with_bounded_drop(test_command("/usr/bin/sleep", &["30"], true))
-                    .map_err(|err| format!("opened stat owned child: {err}"))?;
+            let mut child = OwnedProcess::spawn_with_bounded_drop(test_command(
+                "/usr/bin/sleep",
+                &["30"],
+                true,
+            ))
+            .map_err(|err| format!("opened stat owned child: {err}"))?;
             let pid = child.id();
             let deadline = Instant::now() + POST_KILL_GROUP_CONFIRM_GRACE;
             let before = loop {
                 let observed = identity(pid)?;
-                if observed.parent != std::process::id() || observed.group != pid || !observed.live() {
+                if observed.parent != std::process::id()
+                    || observed.group != pid
+                    || !observed.live()
+                {
                     return Err("opened stat child has no live direct-owner identity".to_string());
                 }
                 if observed.state == 'S' {
@@ -684,7 +713,9 @@ mod linux {
                 .map_err(|err| format!("opened stat production descriptor: {err}"))?;
             let still_live = identity(pid)?;
             if !before.same_owner(&still_live) || !still_live.live() {
-                return Err("opened stat identity changed before direct-owner termination".to_string());
+                return Err(
+                    "opened stat identity changed before direct-owner termination".to_string(),
+                );
             }
             child
                 .kill()
@@ -696,7 +727,9 @@ mod linux {
                     .map_err(|err| format!("opened stat bounded reap: {err}"))?
                 {
                     if status.success() {
-                        return Err("opened stat owned child exited without termination".to_string());
+                        return Err(
+                            "opened stat owned child exited without termination".to_string()
+                        );
                     }
                     break;
                 }
@@ -732,7 +765,8 @@ mod linux {
                 ('X', 12, false),
                 ('R', 12, true),
             ] {
-                let text = format!("9 (owned) {state} 1 {group} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17");
+                let text =
+                    format!("9 (owned) {state} 1 {group} 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17");
                 let expected = Identity {
                     pid: 9,
                     parent: 1,
@@ -814,7 +848,9 @@ mod linux {
                 );
                 match read_scanned_identity(failure, 9) {
                     Err(observed) => assert_eq!(observed, expected),
-                    Ok(_) => return Err("scanned stat discarded an original I/O failure".to_string()),
+                    Ok(_) => {
+                        return Err("scanned stat discarded an original I/O failure".to_string());
+                    }
                 }
             }
             Ok(())
@@ -832,7 +868,8 @@ mod linux {
         }
 
         #[test]
-        fn scanned_stat_preserves_exact_byte_bound_and_utf8_error_precedence() -> Result<(), String> {
+        fn scanned_stat_preserves_exact_byte_bound_and_utf8_error_precedence() -> Result<(), String>
+        {
             let mut text = "9 (owned) S 1 9 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 17".to_string();
             text.extend(std::iter::repeat_n(' ', PROC_BYTES as usize - text.len()));
             let observed = read_scanned_identity(text.as_bytes(), 9)?
@@ -862,7 +899,8 @@ mod linux {
         }
 
         #[test]
-        fn invalid_live_lease_refuses_numeric_signal_and_bounded_drop_remains_separate() -> Result<(), String> {
+        fn invalid_live_lease_refuses_numeric_signal_and_bounded_drop_remains_separate()
+        -> Result<(), String> {
             // An altered lease makes the actual live guard refuse without group kill.
             let mut guard = QualifiedGroupOwner::spawn(test_command("sleep", &["30"], true))?;
             let pid = guard.id();
@@ -902,38 +940,56 @@ mod linux {
                 ),
                 "held custody deadline",
             )?;
-            assert_eq!(spawn_attempts(), attempts, "expired clock must not attempt a worker spawn");
+            assert_eq!(
+                spawn_attempts(),
+                attempts,
+                "expired clock must not attempt a worker spawn"
+            );
 
-            let mut fixture = OwnedProcess::spawn_with_bounded_drop(
-                test_command("/usr/bin/sleep", &["30"], true),
-            ).map_err(|error| error.to_string())?;
+            let mut fixture = OwnedProcess::spawn_with_bounded_drop(test_command(
+                "/usr/bin/sleep",
+                &["30"],
+                true,
+            ))
+            .map_err(|error| error.to_string())?;
             let pid = fixture.id();
             let attempts = SIGNAL_ATTEMPTS.with(std::cell::Cell::get);
             let result = bounded_group_signal_with_held(
-                pid, Instant::now() + Duration::from_secs(2), Some(Instant::now()),
+                pid,
+                Instant::now() + Duration::from_secs(2),
+                Some(Instant::now()),
             );
             let still_live = identity(pid)?.live();
             let final_attempts = SIGNAL_ATTEMPTS.with(std::cell::Cell::get);
             close_fixture(&mut fixture)?;
             require_error(result, "held custody deadline")?;
-            assert_eq!(final_attempts, attempts, "expired clock must not launch fixed kill");
+            assert_eq!(
+                final_attempts, attempts,
+                "expired clock must not launch fixed kill"
+            );
             if !still_live {
-                return Err("expired clock dispatched a signal to its controlled fixture".to_string());
+                return Err(
+                    "expired clock dispatched a signal to its controlled fixture".to_string(),
+                );
             }
             Ok(())
         }
 
         #[test]
-        fn strict_monitor_expiry_poison_is_shared_with_abort_and_drop_owner() -> Result<(), String> {
+        fn strict_monitor_expiry_poison_is_shared_with_abort_and_drop_owner() -> Result<(), String>
+        {
             let held = Instant::now() + Duration::from_millis(500);
             let mut guard = QualifiedGroupOwner::spawn_with_deadline(
-                test_command("/usr/bin/sleep", &["30"], true), held,
+                test_command("/usr/bin/sleep", &["30"], true),
+                held,
             )?;
             assert_eq!(guard.held_deadline, Some(held));
             assert_eq!(guard.child.bounded_drop_until, Some(held));
             let signals = SIGNAL_ATTEMPTS.with(std::cell::Cell::get);
             let result = guard.wait_supervised(Instant::now(), Duration::from_secs(2), || {
-                thread::sleep(held.saturating_duration_since(Instant::now()) + Duration::from_millis(10));
+                thread::sleep(
+                    held.saturating_duration_since(Instant::now()) + Duration::from_millis(10),
+                );
                 Ok(())
             });
             let abort = guard.abort();
@@ -943,9 +999,14 @@ mod linux {
             close_fixture(&mut guard.child)?;
             require_error(result, "held custody deadline")?;
             require_error(abort, "held custody deadline")?;
-            assert_eq!(final_signals, signals, "expired abort must not reset the signal clock");
+            assert_eq!(
+                final_signals, signals,
+                "expired abort must not reset the signal clock"
+            );
             if !refused || settlement.is_some() || guard.settled_status().is_some() {
-                return Err("late monitor manufactured settlement or lost sticky refusal".to_string());
+                return Err(
+                    "late monitor manufactured settlement or lost sticky refusal".to_string(),
+                );
             }
             Ok(())
         }
@@ -954,10 +1015,14 @@ mod linux {
         fn strict_direct_drop_and_reap_cannot_restart_expired_grace() -> Result<(), String> {
             let held = Instant::now() + Duration::from_millis(500);
             let mut child = OwnedProcess::spawn_with_bounded_drop_until(
-                test_command("/usr/bin/sleep", &["30"], true), held,
-            ).map_err(|error| error.to_string())?;
+                test_command("/usr/bin/sleep", &["30"], true),
+                held,
+            )
+            .map_err(|error| error.to_string())?;
             assert_eq!(child.bounded_drop_until, Some(held));
-            thread::sleep(held.saturating_duration_since(Instant::now()) + Duration::from_millis(10));
+            thread::sleep(
+                held.saturating_duration_since(Instant::now()) + Duration::from_millis(10),
+            );
             let started = Instant::now();
             let reaped = child.reap_until(held);
             child.drop_until(held);
@@ -965,23 +1030,28 @@ mod linux {
             let still_live = identity(child.id())?.live();
             close_fixture(&mut child)?;
             if reaped || !still_live || elapsed >= Duration::from_millis(500) {
-                return Err(format!("expired direct fallback reset its grace: reaped={reaped}, live={still_live}, elapsed={elapsed:?}"));
+                return Err(format!(
+                    "expired direct fallback reset its grace: reaped={reaped}, live={still_live}, elapsed={elapsed:?}"
+                ));
             }
             Ok(())
         }
 
         #[test]
-        fn strict_actual_group_settlement_retains_original_clock_and_status() -> Result<(), String> {
+        fn strict_actual_group_settlement_retains_original_clock_and_status() -> Result<(), String>
+        {
             let held = Instant::now() + Duration::from_secs(2);
             let mut guard = QualifiedGroupOwner::spawn_with_deadline(
-                test_command("/bin/sh", &["-c", "exit 7"], true), held,
+                test_command("/bin/sh", &["-c", "exit 7"], true),
+                held,
             )?;
             let outcome = guard.wait(Instant::now(), Duration::from_secs(2))?;
             let (status, _, timed_out) = outcome.into_parts();
             if timed_out || status.code() != Some(7) {
                 return Err("strict actual primary status changed".to_string());
             }
-            let receipt = guard.take_settlement()
+            let receipt = guard
+                .take_settlement()
                 .ok_or_else(|| "strict timely group lost its real settlement".to_string())?;
             assert_eq!(receipt.status(), status);
             assert_eq!(guard.held_deadline, Some(held));
@@ -993,14 +1063,22 @@ mod linux {
 
         #[test]
         fn reaped_primary_cannot_supply_a_group_settlement() -> Result<(), String> {
-            let mut guard = QualifiedGroupOwner::spawn(test_command("sh", &["-c", "exit 0"], true))?;
+            let mut guard =
+                QualifiedGroupOwner::spawn(test_command("sh", &["-c", "exit 0"], true))?;
             let deadline = Instant::now() + POST_KILL_GROUP_CONFIRM_GRACE;
             loop {
-                if guard.child.try_wait().map_err(|error| error.to_string())?.is_some() {
+                if guard
+                    .child
+                    .try_wait()
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+                {
                     break;
                 }
                 if Instant::now() >= deadline {
-                    return Err("premature reap control did not observe actual primary exit".to_string());
+                    return Err(
+                        "premature reap control did not observe actual primary exit".to_string()
+                    );
                 }
                 thread::sleep(Duration::from_millis(5));
             }
@@ -1011,7 +1089,6 @@ mod linux {
             Ok(())
         }
     }
-
 }
 #[cfg(target_os = "linux")]
 pub use linux::{

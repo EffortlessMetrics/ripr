@@ -279,7 +279,12 @@ pub(super) use ripr::process_owner::QualifiedGroupOwner as OwnedCaptureGuard;
 
 pub(super) fn legacy_wait(outcome: ripr::process_owner::QualifiedGroupWait) -> WaitOutcome {
     let (status, duration, timed_out) = outcome.into_parts();
-    WaitOutcome { status, duration, timed_out, peak_rss_bytes: None }
+    WaitOutcome {
+        status,
+        duration,
+        timed_out,
+        peak_rss_bytes: None,
+    }
 }
 
 #[cfg(test)]

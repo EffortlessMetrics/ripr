@@ -710,8 +710,8 @@ pub(crate) fn capture_complete_rust_policy() -> Result<CompleteRustPolicySnapsho
 
 #[cfg(test)]
 mod complete_rust_policy_tests {
-    use super::*;
     use super::dependent_scope::DependentScopeMode;
+    use super::*;
     use std::env::VarError;
 
     const VALID: &[(&str, &str)] = &[
@@ -790,7 +790,10 @@ mod complete_rust_policy_tests {
                     "{PARTIAL_DIFF_LINE_BUDGET_ENV}={partial_lines} exceeds the effective analysis-cost limit ({lines}); clamped to {lines}"
                 ),
             ];
-            assert_eq!(snapshot.partial_budget_disclosures(), disclosures.as_slice());
+            assert_eq!(
+                snapshot.partial_budget_disclosures(),
+                disclosures.as_slice()
+            );
             assert_eq!(snapshot.partial_selection_version(), "partial-diff-v1");
             assert_eq!(snapshot.partial_language_tier_version(), "lang-tier-v1");
             assert_eq!(
@@ -841,7 +844,10 @@ mod complete_rust_policy_tests {
                     message.contains(name) && message.contains("positive integer"),
                     "existing parser changed refusal: {message}"
                 );
-                if matches!(*name, PARTIAL_DIFF_FILE_BUDGET_ENV | PARTIAL_DIFF_LINE_BUDGET_ENV) {
+                if matches!(
+                    *name,
+                    PARTIAL_DIFF_FILE_BUDGET_ENV | PARTIAL_DIFF_LINE_BUDGET_ENV
+                ) {
                     assert!(
                         message.starts_with("partial_budget_invalid: "),
                         "partial parser lost its typed prefix: {message}"
@@ -956,9 +962,7 @@ mod complete_rust_policy_tests {
         ] {
             let values = VALID
                 .iter()
-                .map(|(name, original)| {
-                    (*name, if *name == changed { value } else { *original })
-                })
+                .map(|(name, original)| (*name, if *name == changed { value } else { *original }))
                 .collect::<Vec<_>>();
             assert_ne!(
                 capture(&values, DependentScopeMode::Auto)?,

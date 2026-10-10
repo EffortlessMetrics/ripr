@@ -138,7 +138,10 @@ fn observed_tuple(text: &str) -> Result<NativeLimitTuple, String> {
         || address_space.0 > ADDRESS_SPACE_MAX
         || address_space.0 != address_space.1
     {
-        return Err("experimental worker Max address space is not the requested finite soft/hard limit".to_string());
+        return Err(
+            "experimental worker Max address space is not the requested finite soft/hard limit"
+                .to_string(),
+        );
     }
     let file = limits(text, "Max file size")?;
     require_limits(text, address_space.0, file.0)?;
@@ -218,17 +221,23 @@ mod tests {
     }
 
     #[test]
-    fn observation_uses_the_existing_parser_and_preserves_lower_finite_limits() -> Result<(), String> {
+    fn observation_uses_the_existing_parser_and_preserves_lower_finite_limits() -> Result<(), String>
+    {
         let text = "Max address space 134217728 134217728 bytes\nMax file size 16777216 16777216 bytes\nMax core file size 0 0 bytes\n";
         let observed = observed_tuple(text)?;
         assert_eq!(observed.address_space_bytes(), 134217728);
         assert_eq!(observed.file_size_bytes(), 16777216);
-        require_limits(text, observed.address_space_bytes(), observed.file_size_bytes())?;
+        require_limits(
+            text,
+            observed.address_space_bytes(),
+            observed.file_size_bytes(),
+        )?;
         Ok(())
     }
 
     #[test]
-    fn observation_refuses_unlimited_zero_unequal_and_out_of_bounds_profiles() -> Result<(), String> {
+    fn observation_refuses_unlimited_zero_unequal_and_out_of_bounds_profiles() -> Result<(), String>
+    {
         let valid = "Max address space 134217728 134217728 bytes\nMax file size 16777216 16777216 bytes\nMax core file size 0 0 bytes\n";
         for text in [
             valid.replace("134217728 134217728", "unlimited unlimited"),
@@ -242,7 +251,9 @@ mod tests {
             valid.replace("0 0 bytes", "0 1 bytes"),
         ] {
             let Err(error) = observed_tuple(&text) else {
-                return Err("nonfinite or mismatched profile produced native tuple data".to_string());
+                return Err(
+                    "nonfinite or mismatched profile produced native tuple data".to_string()
+                );
             };
             assert!(error.starts_with("experimental worker"), "{error}");
         }
@@ -250,12 +261,17 @@ mod tests {
     }
 
     #[test]
-    fn observation_refuses_first_invalid_address_space_before_later_malformed_file() -> Result<(), String> {
-        let text = "Max address space 0 0 bytes\nMax file size malformed\nMax core file size 0 0 bytes\n";
+    fn observation_refuses_first_invalid_address_space_before_later_malformed_file()
+    -> Result<(), String> {
+        let text =
+            "Max address space 0 0 bytes\nMax file size malformed\nMax core file size 0 0 bytes\n";
         let Err(error) = observed_tuple(text) else {
             return Err("competing invalid native limits were admitted".to_string());
         };
-        assert!(error.contains("Max address space is not the requested"), "{error}");
+        assert!(
+            error.contains("Max address space is not the requested"),
+            "{error}"
+        );
         Ok(())
     }
 
@@ -287,8 +303,12 @@ mod tests {
         match (observed_tuple(&text), observe_native_limits(deadline)) {
             (Ok(expected), Ok(actual)) => assert_eq!(actual, expected),
             (Err(expected), Err(actual)) => assert_eq!(actual, expected),
-            (Ok(_), Err(error)) => return Err(format!("actual native observation disagreed: {error}")),
-            (Err(error), Ok(_)) => return Err(format!("invalid actual native profile admitted: {error}")),
+            (Ok(_), Err(error)) => {
+                return Err(format!("actual native observation disagreed: {error}"));
+            }
+            (Err(error), Ok(_)) => {
+                return Err(format!("invalid actual native profile admitted: {error}"));
+            }
         }
         Ok(())
     }

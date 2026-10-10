@@ -26,7 +26,10 @@ const NOFOLLOW: i32 = 0x20000;
 const DIRECTORY: i32 = 0x4000;
 #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 const NOFOLLOW: i32 = 0x8000;
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 const NONBLOCK: i32 = 0x800;
 
 /// Serializable identity DATA. Opening and checking the actual object is separate.
@@ -67,7 +70,10 @@ fn absolute_path(path: &str, limit: u64) -> Result<&Path, String> {
     Ok(Path::new(path))
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn open_no_follow(path: &Path, directory: bool, create: bool) -> Result<File, String> {
     use std::os::unix::fs::OpenOptionsExt;
     // Keep the parent staging flags and pinned std descriptor ownership.
@@ -84,7 +90,10 @@ fn open_no_follow(path: &Path, directory: bool, create: bool) -> Result<File, St
         .map_err(|error| format!("staged no-follow open failed: {error}"))
 }
 
-#[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 fn open_no_follow(_: &Path, _: bool, _: bool) -> Result<File, String> {
     Err("staged descriptor I/O requires qualified Linux".into())
 }
@@ -277,8 +286,14 @@ impl SourceBudget {
         {
             return Err("invalid staged source budget".into());
         }
-        for bound in [max_source_bytes, max_entries, max_path_bytes, max_file_bytes] {
-            usize::try_from(bound).map_err(|error| format!("staged source bound exceeds native usize: {error}"))?;
+        for bound in [
+            max_source_bytes,
+            max_entries,
+            max_path_bytes,
+            max_file_bytes,
+        ] {
+            usize::try_from(bound)
+                .map_err(|error| format!("staged source bound exceeds native usize: {error}"))?;
         }
         Ok(Self {
             max_source_bytes,
@@ -322,7 +337,8 @@ fn relative_path(path: &Path, limit: u64, allow_root: bool) -> Result<u64, Strin
     {
         use std::os::unix::ffi::OsStrExt;
         let bytes = path.as_os_str().as_bytes();
-        let size = u64::try_from(bytes.len()).map_err(|error| format!("staged path size overflow: {error}"))?;
+        let size = u64::try_from(bytes.len())
+            .map_err(|error| format!("staged path size overflow: {error}"))?;
         if size > limit {
             return Err("staged source path byte bound exceeded".into());
         }
@@ -395,8 +411,9 @@ impl SourceAnchor {
                 return Err("staged source materialization is not fresh".into());
             }
             match usage.entries.get(Path::new("")) {
-                Some(SourceEntry::Directory { identity: Some(identity) })
-                    if *identity == (self.root.identity.dev, self.root.identity.ino) => {}
+                Some(SourceEntry::Directory {
+                    identity: Some(identity),
+                }) if *identity == (self.root.identity.dev, self.root.identity.ino) => {}
                 _ => return Err("staged source initial root reservation is invalid".into()),
             }
             // Retain the state lock through real emptiness/currentness checks.
@@ -442,12 +459,7 @@ impl SourceAnchor {
         result
     }
 
-    fn admit(
-        &self,
-        usage: &mut SourceUsage,
-        relative: &Path,
-        bytes: u64,
-    ) -> Result<u64, String> {
+    fn admit(&self, usage: &mut SourceUsage, relative: &Path, bytes: u64) -> Result<u64, String> {
         check_deadline(self.deadline)?;
         let path_bytes = relative_path(relative, self.budget.max_path_bytes, false)?;
         if usage.sealed {
@@ -456,7 +468,9 @@ impl SourceAnchor {
         if usage.entries.contains_key(relative) {
             return Err("duplicate staged source path".into());
         }
-        let parent = relative.parent().ok_or("staged source path has no parent")?;
+        let parent = relative
+            .parent()
+            .ok_or("staged source path has no parent")?;
         if !matches!(
             usage.entries.get(parent),
             Some(SourceEntry::Directory { identity: Some(_) })
@@ -504,7 +518,9 @@ impl SourceAnchor {
             };
             prefix.push(name);
             let expected = match usage.entries.get(&prefix) {
-                Some(SourceEntry::Directory { identity: Some(identity) }) => *identity,
+                Some(SourceEntry::Directory {
+                    identity: Some(identity),
+                }) => *identity,
                 _ => return Err("staged directory is not admitted".into()),
             };
             check_deadline(self.deadline)?;
@@ -527,9 +543,13 @@ impl SourceAnchor {
             }) => (*identity, *bytes),
             _ => return Err("staged source file is not finished and admitted".into()),
         };
-        let parent = relative.parent().ok_or("staged source file has no parent")?;
+        let parent = relative
+            .parent()
+            .ok_or("staged source file has no parent")?;
         let directory = self.directory_locked(usage, parent)?;
-        let name = relative.file_name().ok_or("staged source file has no name")?;
+        let name = relative
+            .file_name()
+            .ok_or("staged source file has no name")?;
         let file = open_no_follow(&descriptor_path(&directory)?.join(name), false, false)?;
         let metadata = file_metadata(&file, false)?;
         if object_identity(&metadata)? != identity || metadata.len() != bytes {
@@ -556,7 +576,8 @@ impl SourceAnchor {
                 .map_err(|error| format!("staged directory creation failed: {error}"))?;
             let file = open_no_follow(&destination, true, false)?;
             let identity = object_identity(&file_metadata(&file, true)?)?;
-            if let Some(SourceEntry::Directory { identity: slot }) = usage.entries.get_mut(relative) {
+            if let Some(SourceEntry::Directory { identity: slot }) = usage.entries.get_mut(relative)
+            {
                 *slot = Some(identity);
             } else {
                 return Err("staged directory reservation disappeared".into());
@@ -590,7 +611,8 @@ impl SourceAnchor {
             let name = relative.file_name().ok_or("staged file has no name")?;
             let file = open_no_follow(&descriptor_path(&directory)?.join(name), false, true)?;
             let identity = object_identity(&file_metadata(&file, false)?)?;
-            if let Some(SourceEntry::File { identity: slot, .. }) = usage.entries.get_mut(relative) {
+            if let Some(SourceEntry::File { identity: slot, .. }) = usage.entries.get_mut(relative)
+            {
                 *slot = Some(identity);
             } else {
                 return Err("staged file reservation disappeared".into());
@@ -619,7 +641,11 @@ impl SourceAnchor {
             for entry in usage.entries.values() {
                 match entry {
                     SourceEntry::Directory { identity: Some(_) }
-                    | SourceEntry::File { identity: Some(_), finished: true, .. } => {}
+                    | SourceEntry::File {
+                        identity: Some(_),
+                        finished: true,
+                        ..
+                    } => {}
                     _ => return Err("staged source has an unfinished reservation".into()),
                 }
             }
@@ -636,7 +662,11 @@ impl SourceAnchor {
             for entry in usage.entries.values() {
                 match entry {
                     SourceEntry::Directory { identity: Some(_) }
-                    | SourceEntry::File { identity: Some(_), finished: true, .. } => {}
+                    | SourceEntry::File {
+                        identity: Some(_),
+                        finished: true,
+                        ..
+                    } => {}
                     _ => return Err("staged source has an unfinished reservation".into()),
                 }
             }
@@ -701,15 +731,21 @@ impl SourceAnchor {
                     .map_err(|error| format!("staged source listing entry failed: {error}"))?
                     .file_name();
                 let size = relative_path(Path::new(&name), self.budget.max_path_bytes, false)?;
-                bytes = bytes.checked_add(size).ok_or("staged source listing byte overflow")?;
-                if usage.path_bytes.checked_add(bytes).ok_or("staged source listing retained byte overflow")?
+                bytes = bytes
+                    .checked_add(size)
+                    .ok_or("staged source listing byte overflow")?;
+                if usage
+                    .path_bytes
+                    .checked_add(bytes)
+                    .ok_or("staged source listing retained byte overflow")?
                     > self.budget.max_path_bytes
                 {
                     return Err("staged source listing path bound exceeded".into());
                 }
                 let parent_bytes = relative_path(relative, self.budget.max_path_bytes, true)?;
                 let separator = u64::from(parent_bytes != 0);
-                let child_bytes = parent_bytes.checked_add(separator)
+                let child_bytes = parent_bytes
+                    .checked_add(separator)
                     .and_then(|value| value.checked_add(size))
                     .ok_or("staged source listing child path overflow")?;
                 if child_bytes > self.budget.max_path_bytes {
@@ -721,8 +757,14 @@ impl SourceAnchor {
                 }
                 names.push(name);
             }
-            for child in usage.entries.keys().filter(|path| path.parent() == Some(relative)) {
-                let name = child.file_name().ok_or("admitted staged child has no name")?;
+            for child in usage
+                .entries
+                .keys()
+                .filter(|path| path.parent() == Some(relative))
+            {
+                let name = child
+                    .file_name()
+                    .ok_or("admitted staged child has no name")?;
                 if !names.iter().any(|actual| actual == name) {
                     return Err("staged source is missing an admitted child".into());
                 }
@@ -739,8 +781,12 @@ impl SourceAnchor {
             #[cfg(target_os = "linux")]
             {
                 use std::os::unix::fs::PermissionsExt;
-                file.set_permissions(fs::Permissions::from_mode(if executable { 0o755 } else { 0o644 }))
-                    .map_err(|error| format!("staged source mode write failed: {error}"))?;
+                file.set_permissions(fs::Permissions::from_mode(if executable {
+                    0o755
+                } else {
+                    0o644
+                }))
+                .map_err(|error| format!("staged source mode write failed: {error}"))?;
                 check_deadline(self.deadline)
             }
             #[cfg(not(target_os = "linux"))]
@@ -773,7 +819,11 @@ impl BoundedSourceWriter<'_> {
         if let Err(error) = check_deadline(self.owner.deadline) {
             return Err(self.io_failure(error));
         }
-        drop(self.owner.lock_usage().map_err(|error| self.io_failure(error))?);
+        drop(
+            self.owner
+                .lock_usage()
+                .map_err(|error| self.io_failure(error))?,
+        );
         Ok(())
     }
 
@@ -799,8 +849,12 @@ impl BoundedSourceWriter<'_> {
                 })
                 .ok_or("staged source lease reservation is missing")?;
             let expected = match entry {
-                SourceEntry::File { identity: Some(identity), bytes, finished: false, .. }
-                    if *bytes == self.declared_bytes => *identity,
+                SourceEntry::File {
+                    identity: Some(identity),
+                    bytes,
+                    finished: false,
+                    ..
+                } if *bytes == self.declared_bytes => *identity,
                 _ => return Err("staged source lease reservation is inconsistent".into()),
             };
             let parent = path.parent().ok_or("staged lease path has no parent")?;
@@ -831,17 +885,20 @@ impl BoundedSourceWriter<'_> {
 impl Write for BoundedSourceWriter<'_> {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
         self.ensure_ready()?;
-        let count = u64::try_from(bytes.len())
-            .map_err(|error| self.io_failure(format!("staged source write length overflow: {error}")))?;
+        let count = u64::try_from(bytes.len()).map_err(|error| {
+            self.io_failure(format!("staged source write length overflow: {error}"))
+        })?;
         if count > self.declared_bytes.saturating_sub(self.written) {
             return Err(self.io_failure("staged source write exceeds its declared length".into()));
         }
-        let written = self.file.write(bytes).map_err(|error| {
-            self.io_failure(format!("staged source write failed: {error}"))
-        })?;
-        self.written = self.written.checked_add(written as u64).ok_or_else(|| {
-            self.io_failure("staged source written byte count overflow".into())
-        })?;
+        let written = self
+            .file
+            .write(bytes)
+            .map_err(|error| self.io_failure(format!("staged source write failed: {error}")))?;
+        self.written = self
+            .written
+            .checked_add(written as u64)
+            .ok_or_else(|| self.io_failure("staged source written byte count overflow".into()))?;
         if let Err(error) = check_deadline(self.owner.deadline) {
             return Err(self.io_failure(error));
         }
@@ -866,9 +923,9 @@ impl Write for BoundedSourceWriter<'_> {
 
     fn flush(&mut self) -> io::Result<()> {
         self.ensure_ready()?;
-        self.file.flush().map_err(|error| {
-            self.io_failure(format!("staged source flush failed: {error}"))
-        })?;
+        self.file
+            .flush()
+            .map_err(|error| self.io_failure(format!("staged source flush failed: {error}")))?;
         if let Err(error) = check_deadline(self.owner.deadline) {
             return Err(self.io_failure(error));
         }
@@ -879,12 +936,17 @@ impl Write for BoundedSourceWriter<'_> {
 impl Drop for BoundedSourceWriter<'_> {
     fn drop(&mut self) {
         if !self.finished {
-            self.owner.fault("staged source lease dropped without exact finish");
+            self.owner
+                .fault("staged source lease dropped without exact finish");
         }
     }
 }
 
-#[cfg(all(test, target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    test,
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 mod tests {
     use super::*;
     use std::io::Read;
@@ -918,19 +980,26 @@ mod tests {
         }
 
         fn identity(&self, path: &Path) -> Result<DirectoryIdentity, String> {
-            let metadata = fs::metadata(path).map_err(|error| format!("fixture metadata: {error}"))?;
+            let metadata =
+                fs::metadata(path).map_err(|error| format!("fixture metadata: {error}"))?;
             Ok(DirectoryIdentity {
-                path: path.to_str().ok_or("fixture path is not UTF-8")?.to_string(),
+                path: path
+                    .to_str()
+                    .ok_or("fixture path is not UTF-8")?
+                    .to_string(),
                 dev: metadata.dev(),
                 ino: metadata.ino(),
             })
         }
 
         fn anchor(&self, bytes: u64, count: u64, paths: u64) -> Result<SourceAnchor, String> {
-            let directory = RetainedDirectory::open_absolute(
-                &self.identity(&self.path)?, 4096, self.deadline,
-            )?;
-            SourceAnchor::new(directory, SourceBudget::new(bytes, count, paths, 16)?, self.deadline)
+            let directory =
+                RetainedDirectory::open_absolute(&self.identity(&self.path)?, 4096, self.deadline)?;
+            SourceAnchor::new(
+                directory,
+                SourceBudget::new(bytes, count, paths, 16)?,
+                self.deadline,
+            )
         }
 
         fn cleanup(self) -> Result<(), String> {
@@ -941,7 +1010,9 @@ mod tests {
     fn error<T>(result: Result<T, String>, category: &str) -> Result<String, String> {
         match result {
             Err(error) if error.contains(category) => Ok(error),
-            Err(error) => Err(format!("wrong error category: {error}; expected {category}")),
+            Err(error) => Err(format!(
+                "wrong error category: {error}; expected {category}"
+            )),
             Ok(_) => Err(format!("unexpected success; expected {category}")),
         }
     }
@@ -953,19 +1024,33 @@ mod tests {
         anchor.create_dir(Path::new("src"))?;
         let native = PathBuf::from(OsString::from_vec(b"src/nonutf-\xff.rs".to_vec()));
         let mut writer = anchor.create_new_file(&native, 4)?;
-        writer.write_all(b"data").map_err(|error| format!("source write: {error}"))?;
+        writer
+            .write_all(b"data")
+            .map_err(|error| format!("source write: {error}"))?;
         writer.finish()?;
         anchor.set_executable(&native, true)?;
         anchor.finish_materialization()?;
         anchor.verify_materialized()?;
         let mut actual = String::new();
-        anchor.open_file(&native)?.read_to_string(&mut actual)
+        anchor
+            .open_file(&native)?
+            .read_to_string(&mut actual)
             .map_err(|error| format!("source read: {error}"))?;
         assert_eq!(actual, "data");
         assert_eq!(anchor.metadata(&native)?.mode() & 0o777, 0o755);
-        assert_eq!(anchor.read_directory(Path::new("src"))?,
-            vec![native.file_name().ok_or("native file name missing")?.to_os_string()]);
-        assert_eq!(anchor.path_identifier(), fixture.path.to_str().ok_or("fixture path invalid")?);
+        assert_eq!(
+            anchor.read_directory(Path::new("src"))?,
+            vec![
+                native
+                    .file_name()
+                    .ok_or("native file name missing")?
+                    .to_os_string()
+            ]
+        );
+        assert_eq!(
+            anchor.path_identifier(),
+            fixture.path.to_str().ok_or("fixture path invalid")?
+        );
         drop(anchor);
         fixture.cleanup()
     }
@@ -979,8 +1064,12 @@ mod tests {
             Err(error) => assert!(error.to_string().contains("exceeds its declared length")),
             Ok(bytes) => return Err(format!("oversized write unexpectedly wrote {bytes} bytes")),
         }
-        assert_eq!(fs::metadata(fixture.path.join("blob"))
-            .map_err(|error| format!("written file metadata: {error}"))?.len(), 0);
+        assert_eq!(
+            fs::metadata(fixture.path.join("blob"))
+                .map_err(|error| format!("written file metadata: {error}"))?
+                .len(),
+            0
+        );
         match writer.write_all(b"") {
             Err(error) => assert!(error.to_string().contains("unqualified")),
             Ok(()) => return Err("empty write_all ignored a real oversized-write fault".into()),
@@ -1003,7 +1092,9 @@ mod tests {
             let fixture = Fixture::new()?;
             let anchor = fixture.anchor(4, 4, 256)?;
             let mut writer = anchor.create_new_file(Path::new("blob"), 2)?;
-            writer.write_all(b"a").map_err(|error| format!("short source write: {error}"))?;
+            writer
+                .write_all(b"a")
+                .map_err(|error| format!("short source write: {error}"))?;
             if finish {
                 error(writer.finish(), "exact declared length")?;
             } else {
@@ -1017,7 +1108,8 @@ mod tests {
     }
 
     #[test]
-    fn budgets_duplicates_and_file_directory_overlap_refuse_before_creation() -> Result<(), String> {
+    fn budgets_duplicates_and_file_directory_overlap_refuse_before_creation() -> Result<(), String>
+    {
         for (bytes, count, paths, path, declared, category) in [
             (1, 4, 256, "large", 2, "declared byte bound"),
             (32, 1, 256, "entry", 1, "entry bound"),
@@ -1027,8 +1119,12 @@ mod tests {
             let fixture = Fixture::new()?;
             let anchor = fixture.anchor(bytes, count, paths)?;
             error(anchor.create_new_file(Path::new(path), declared), category)?;
-            assert_eq!(fs::read_dir(&fixture.path)
-                .map_err(|error| format!("budget listing: {error}"))?.count(), 0);
+            assert_eq!(
+                fs::read_dir(&fixture.path)
+                    .map_err(|error| format!("budget listing: {error}"))?
+                    .count(),
+                0
+            );
             drop(anchor);
             fixture.cleanup()?;
         }
@@ -1036,7 +1132,10 @@ mod tests {
         let anchor = fixture.anchor(4, 8, 256)?;
         let writer = anchor.create_new_file(Path::new("file"), 0)?;
         writer.finish()?;
-        error(anchor.create_dir(Path::new("file")), "duplicate staged source path")?;
+        error(
+            anchor.create_dir(Path::new("file")),
+            "duplicate staged source path",
+        )?;
         drop(anchor);
         fixture.cleanup()?;
 
@@ -1044,7 +1143,10 @@ mod tests {
         let anchor = fixture.anchor(4, 8, 256)?;
         let writer = anchor.create_new_file(Path::new("file"), 0)?;
         writer.finish()?;
-        error(anchor.create_new_file(Path::new("file/child"), 1), "parent is not an admitted directory")?;
+        error(
+            anchor.create_new_file(Path::new("file/child"), 1),
+            "parent is not an admitted directory",
+        )?;
         drop(anchor);
         fixture.cleanup()
     }
@@ -1055,17 +1157,39 @@ mod tests {
         fs::create_dir(fixture.path.join("real")).map_err(|error| format!("real dir: {error}"))?;
         symlink("real", fixture.path.join("alias")).map_err(|error| format!("link: {error}"))?;
         let mut link_identity = fixture.identity(&fixture.path.join("real"))?;
-        link_identity.path = fixture.path.join("alias").to_str().ok_or("alias path invalid")?.into();
-        error(RetainedDirectory::open_absolute(&link_identity, 4096, fixture.deadline),
-            "no-follow open")?;
-        fs::create_dir(fixture.path.join("real/child")).map_err(|error| format!("real child: {error}"))?;
+        link_identity.path = fixture
+            .path
+            .join("alias")
+            .to_str()
+            .ok_or("alias path invalid")?
+            .into();
+        error(
+            RetainedDirectory::open_absolute(&link_identity, 4096, fixture.deadline),
+            "no-follow open",
+        )?;
+        fs::create_dir(fixture.path.join("real/child"))
+            .map_err(|error| format!("real child: {error}"))?;
         let mut nested_identity = fixture.identity(&fixture.path.join("real/child"))?;
-        nested_identity.path = fixture.path.join("alias/child").to_str().ok_or("nested alias invalid")?.into();
-        error(RetainedDirectory::open_absolute(&nested_identity, 4096, fixture.deadline),
-            "no-follow open")?;
-        fs::write(fixture.path.join("regular"), b"").map_err(|error| format!("regular file: {error}"))?;
-        error(RetainedDirectory::open_absolute(&fixture.identity(&fixture.path.join("regular"))?,
-            4096, fixture.deadline), "no-follow open")?;
+        nested_identity.path = fixture
+            .path
+            .join("alias/child")
+            .to_str()
+            .ok_or("nested alias invalid")?
+            .into();
+        error(
+            RetainedDirectory::open_absolute(&nested_identity, 4096, fixture.deadline),
+            "no-follow open",
+        )?;
+        fs::write(fixture.path.join("regular"), b"")
+            .map_err(|error| format!("regular file: {error}"))?;
+        error(
+            RetainedDirectory::open_absolute(
+                &fixture.identity(&fixture.path.join("regular"))?,
+                4096,
+                fixture.deadline,
+            ),
+            "no-follow open",
+        )?;
         fixture.cleanup()?;
 
         let fixture = Fixture::new()?;
@@ -1073,8 +1197,12 @@ mod tests {
         anchor.create_dir(Path::new("dir"))?;
         fs::rename(fixture.path.join("dir"), fixture.path.join("old"))
             .map_err(|error| format!("rename directory: {error}"))?;
-        fs::create_dir(fixture.path.join("dir")).map_err(|error| format!("replace dir: {error}"))?;
-        error(anchor.metadata(Path::new("dir")), "directory identity changed")?;
+        fs::create_dir(fixture.path.join("dir"))
+            .map_err(|error| format!("replace dir: {error}"))?;
+        error(
+            anchor.metadata(Path::new("dir")),
+            "directory identity changed",
+        )?;
         drop(anchor);
         fixture.cleanup()
     }
@@ -1084,12 +1212,18 @@ mod tests {
         let fixture = Fixture::new()?;
         let anchor = fixture.anchor(4, 8, 256)?;
         let mut writer = anchor.create_new_file(Path::new("file"), 1)?;
-        writer.write_all(b"a").map_err(|error| format!("file write: {error}"))?;
+        writer
+            .write_all(b"a")
+            .map_err(|error| format!("file write: {error}"))?;
         writer.finish()?;
         fs::rename(fixture.path.join("file"), fixture.path.join("old"))
             .map_err(|error| format!("rename file: {error}"))?;
-        fs::write(fixture.path.join("file"), b"a").map_err(|error| format!("replace file: {error}"))?;
-        error(anchor.open_file(Path::new("file")), "identity or length changed")?;
+        fs::write(fixture.path.join("file"), b"a")
+            .map_err(|error| format!("replace file: {error}"))?;
+        error(
+            anchor.open_file(Path::new("file")),
+            "identity or length changed",
+        )?;
         drop(anchor);
         fixture.cleanup()?;
 
@@ -1113,8 +1247,14 @@ mod tests {
         fixture.cleanup()?;
 
         let fixture = Fixture::new()?;
-        error(RetainedDirectory::open_absolute(&fixture.identity(&fixture.path)?,
-            4096, Instant::now()), "deadline expired")?;
+        error(
+            RetainedDirectory::open_absolute(
+                &fixture.identity(&fixture.path)?,
+                4096,
+                Instant::now(),
+            ),
+            "deadline expired",
+        )?;
         fixture.cleanup()
     }
 
@@ -1122,18 +1262,26 @@ mod tests {
     fn stage_role_listing_is_closed_and_empty_roles_stop_at_first_entry() -> Result<(), String> {
         let fixture = Fixture::new()?;
         for name in ["source", "spool", "artifacts"] {
-            fs::create_dir(fixture.path.join(name)).map_err(|error| format!("role mkdir: {error}"))?;
+            fs::create_dir(fixture.path.join(name))
+                .map_err(|error| format!("role mkdir: {error}"))?;
         }
         let root = RetainedDirectory::open_absolute(
-            &fixture.identity(&fixture.path)?, 4096, fixture.deadline,
+            &fixture.identity(&fixture.path)?,
+            4096,
+            fixture.deadline,
         )?;
         root.require_role_entries(fixture.deadline)?;
-        let source = root.open_child("source", &fixture.identity(&fixture.path.join("source"))?,
-            fixture.deadline)?;
+        let source = root.open_child(
+            "source",
+            &fixture.identity(&fixture.path.join("source"))?,
+            fixture.deadline,
+        )?;
         source.require_empty(fixture.deadline)?;
-        fs::write(fixture.path.join("source/entry"), b"").map_err(|error| format!("role file: {error}"))?;
+        fs::write(fixture.path.join("source/entry"), b"")
+            .map_err(|error| format!("role file: {error}"))?;
         error(source.require_empty(fixture.deadline), "not empty")?;
-        fs::write(fixture.path.join("extra"), b"").map_err(|error| format!("extra file: {error}"))?;
+        fs::write(fixture.path.join("extra"), b"")
+            .map_err(|error| format!("extra file: {error}"))?;
         error(root.require_role_entries(fixture.deadline), "unexpected")?;
         drop(source);
         drop(root);
@@ -1141,21 +1289,29 @@ mod tests {
     }
 
     #[test]
-    fn held_directory_refuses_same_path_replacement_and_does_not_delete_stage() -> Result<(), String> {
+    fn held_directory_refuses_same_path_replacement_and_does_not_delete_stage() -> Result<(), String>
+    {
         let fixture = Fixture::new()?;
-        fs::create_dir(fixture.path.join("held")).map_err(|error| format!("held mkdir: {error}"))?;
+        fs::create_dir(fixture.path.join("held"))
+            .map_err(|error| format!("held mkdir: {error}"))?;
         let identity = fixture.identity(&fixture.path.join("held"))?;
         let retained = RetainedDirectory::open_absolute(&identity, 4096, fixture.deadline)?;
         fs::rename(fixture.path.join("held"), fixture.path.join("old"))
             .map_err(|error| format!("held rename: {error}"))?;
-        fs::create_dir(fixture.path.join("held")).map_err(|error| format!("held replace: {error}"))?;
-        error(retained.verify_current(fixture.deadline), "directory identity mismatch")?;
+        fs::create_dir(fixture.path.join("held"))
+            .map_err(|error| format!("held replace: {error}"))?;
+        error(
+            retained.verify_current(fixture.deadline),
+            "directory identity mismatch",
+        )?;
         drop(retained);
-        assert!(fs::metadata(fixture.path.join("old"))
-            .map_err(|error| format!("retained stage after drop: {error}"))?.is_dir());
+        assert!(
+            fs::metadata(fixture.path.join("old"))
+                .map_err(|error| format!("retained stage after drop: {error}"))?
+                .is_dir()
+        );
         fixture.cleanup()
     }
-
 
     #[test]
     fn materialized_getter_requires_prior_sealing_and_current_held_root() -> Result<(), String> {
@@ -1170,23 +1326,32 @@ mod tests {
         fixture.cleanup()?;
 
         let fixture = Fixture::new()?;
-        fs::create_dir(fixture.path.join("source")).map_err(|error| format!("source mkdir: {error}"))?;
+        fs::create_dir(fixture.path.join("source"))
+            .map_err(|error| format!("source mkdir: {error}"))?;
         let directory = RetainedDirectory::open_absolute(
-            &fixture.identity(&fixture.path.join("source"))?, 4096, fixture.deadline,
+            &fixture.identity(&fixture.path.join("source"))?,
+            4096,
+            fixture.deadline,
         )?;
-        let anchor = SourceAnchor::new(directory, SourceBudget::new(4, 8, 256, 4)?, fixture.deadline)?;
+        let anchor = SourceAnchor::new(
+            directory,
+            SourceBudget::new(4, 8, 256, 4)?,
+            fixture.deadline,
+        )?;
         anchor.finish_materialization()?;
         anchor.verify_materialized()?;
         fs::rename(fixture.path.join("source"), fixture.path.join("old"))
             .map_err(|error| format!("source rename: {error}"))?;
-        fs::create_dir(fixture.path.join("source")).map_err(|error| format!("source replace: {error}"))?;
+        fs::create_dir(fixture.path.join("source"))
+            .map_err(|error| format!("source replace: {error}"))?;
         error(anchor.verify_materialized(), "directory identity mismatch")?;
         drop(anchor);
         fixture.cleanup()
     }
 
     #[test]
-    fn fresh_getter_refuses_admitted_or_sealed_reuse_and_new_source_recovers() -> Result<(), String> {
+    fn fresh_getter_refuses_admitted_or_sealed_reuse_and_new_source_recovers() -> Result<(), String>
+    {
         let fixture = Fixture::new()?;
         let anchor = fixture.anchor(4, 8, 256)?;
         assert_eq!(anchor.deadline(), fixture.deadline);
@@ -1220,12 +1385,17 @@ mod tests {
         let anchor = fixture.anchor(4, 8, 256)?;
         anchor.verify_fresh()?;
         let mut writer = anchor.create_new_file(Path::new("file"), 4)?;
-        writer.write_all(b"head").map_err(|error| format!("fresh recovery write: {error}"))?;
+        writer
+            .write_all(b"head")
+            .map_err(|error| format!("fresh recovery write: {error}"))?;
         writer.finish()?;
         anchor.finish_materialization()?;
         anchor.verify_materialized()?;
-        assert_eq!(fs::read(fixture.path.join("file"))
-            .map_err(|error| format!("fresh recovery read: {error}"))?, b"head");
+        assert_eq!(
+            fs::read(fixture.path.join("file"))
+                .map_err(|error| format!("fresh recovery read: {error}"))?,
+            b"head"
+        );
         drop(anchor);
         fixture.cleanup()
     }
@@ -1236,9 +1406,11 @@ mod tests {
         let anchor = fixture.anchor(4, 8, 256)?;
         anchor.verify_fresh()?;
         let unexpected = fixture.path.join("unexpected");
-        fs::write(&unexpected, b"entry").map_err(|error| format!("fresh unexpected write: {error}"))?;
+        fs::write(&unexpected, b"entry")
+            .map_err(|error| format!("fresh unexpected write: {error}"))?;
         error(anchor.verify_fresh(), "role directory is not empty")?;
-        fs::remove_file(&unexpected).map_err(|error| format!("fresh unexpected removal: {error}"))?;
+        fs::remove_file(&unexpected)
+            .map_err(|error| format!("fresh unexpected removal: {error}"))?;
         error(anchor.verify_fresh(), "unqualified")?;
         drop(anchor);
         fixture.cleanup()?;
@@ -1246,11 +1418,12 @@ mod tests {
         let fixture = Fixture::new()?;
         let path = fixture.path.join("source");
         fs::create_dir(&path).map_err(|error| format!("fresh source mkdir: {error}"))?;
-        let directory = RetainedDirectory::open_absolute(
-            &fixture.identity(&path)?, 4096, fixture.deadline,
-        )?;
+        let directory =
+            RetainedDirectory::open_absolute(&fixture.identity(&path)?, 4096, fixture.deadline)?;
         let anchor = SourceAnchor::new(
-            directory, SourceBudget::new(4, 8, 256, 4)?, fixture.deadline,
+            directory,
+            SourceBudget::new(4, 8, 256, 4)?,
+            fixture.deadline,
         )?;
         anchor.verify_fresh()?;
         fs::rename(&path, fixture.path.join("old"))
@@ -1260,5 +1433,4 @@ mod tests {
         drop(anchor);
         fixture.cleanup()
     }
-
 }

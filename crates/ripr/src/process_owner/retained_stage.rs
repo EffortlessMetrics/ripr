@@ -214,7 +214,10 @@ impl ParentStage {
     ) -> Result<Self, String> {
         stage_time(held_deadline)?;
         validate_nonce(nonce)?;
-        if !nonce.bytes().all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')) {
+        if !nonce
+            .bytes()
+            .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))
+        {
             return Err("fixed stage nonce must be 128 lowercase hexadecimal bytes".to_string());
         }
         budget.validate()?;
@@ -529,7 +532,10 @@ mod native {
             }
             Ok(opened)
         }
-        fn binding_until(&self, deadline: Option<Instant>) -> Result<StageDirectoryBinding, String> {
+        fn binding_until(
+            &self,
+            deadline: Option<Instant>,
+        ) -> Result<StageDirectoryBinding, String> {
             if deadline.is_some() {
                 self.check_until(deadline)?;
             } else {
@@ -593,7 +599,13 @@ mod native {
         fn sync_until(&self, deadline: Option<Instant>) -> Result<(), String> {
             let deadline = self.effective_deadline(deadline);
             self.check_until(deadline)?;
-            for directory in [&self.root, &self.roles[0], &self.roles[1], &self.roles[2], &self.parent] {
+            for directory in [
+                &self.root,
+                &self.roles[0],
+                &self.roles[1],
+                &self.roles[2],
+                &self.parent,
+            ] {
                 directory.check_until(deadline)?;
                 sync_directory(directory, deadline)?;
                 directory.check_until(deadline)?;
@@ -610,7 +622,9 @@ mod native {
             &self,
             deadline: Instant,
         ) -> Result<StageInventory, String> {
-            let deadline = self.held_deadline.map_or(deadline, |held| held.min(deadline));
+            let deadline = self
+                .held_deadline
+                .map_or(deadline, |held| held.min(deadline));
             let deadline = inventory_deadline(deadline, self.budget.inventory_timeout)?;
             self.check_until(Some(deadline))?;
             stage_time(deadline)?;
@@ -1080,11 +1094,19 @@ mod native {
             .with_stable_mode_until(Some(deadline))?;
         let middle_path = base_path.join("var");
         let middle = PinnedDir::open_at_until(
-            &base, OsStr::new("var"), middle_path.clone(), false, Some(deadline),
+            &base,
+            OsStr::new("var"),
+            middle_path.clone(),
+            false,
+            Some(deadline),
         )?
         .with_stable_mode_until(Some(deadline))?;
         let parent = PinnedDir::open_at_until(
-            &middle, OsStr::new("tmp"), middle_path.join("tmp"), false, Some(deadline),
+            &middle,
+            OsStr::new("tmp"),
+            middle_path.join("tmp"),
+            false,
+            Some(deadline),
         )?
         .with_stable_mode_until(Some(deadline))?;
         base.check_until(Some(deadline))?;
@@ -1103,7 +1125,13 @@ mod native {
             return Err("fixed retained namespace parent identity changed".to_string());
         }
         let stage = create_pinned_stage(
-            parent, Some(ancestors), RETAINED_NAME, nonce, budget, Some(held_deadline), true,
+            parent,
+            Some(ancestors),
+            RETAINED_NAME,
+            nonce,
+            budget,
+            Some(held_deadline),
+            true,
         )?;
         if stage.stage_root() != Path::new(RETAINED_ROOT) {
             return Err("fixed retained namespace path changed".to_string());
@@ -1300,12 +1328,17 @@ mod native {
                     .map_err(|error| format!("control sync witness: {error}"))
             })?;
             return with_time(deadline, || {
-                witness.sync_all().map_err(|error| format!("sync retained stage directory: {error}"))
+                witness
+                    .sync_all()
+                    .map_err(|error| format!("sync retained stage directory: {error}"))
             });
         }
         with_time(deadline, || {
             directory.file.sync_all().map_err(|error| {
-                format!("sync retained stage directory {}: {error}", directory.path.display())
+                format!(
+                    "sync retained stage directory {}: {error}",
+                    directory.path.display()
+                )
             })
         })
     }
@@ -1348,20 +1381,32 @@ mod native {
                 (binary, args),
                 source,
                 env_remove,
-                (CompleteCaptureBudget::new(
-                    budget.timeout, input_cap, budget.stdout_bytes, budget.stderr_bytes,
-                ), context),
+                (
+                    CompleteCaptureBudget::new(
+                        budget.timeout,
+                        input_cap,
+                        budget.stdout_bytes,
+                        budget.stderr_bytes,
+                    ),
+                    context,
+                ),
                 std::sync::Arc::new(()),
                 |_| {},
             );
             let (status, stdout, stderr, _duration, timed_out) = match actual {
                 Ok(captured) => {
-                    let (status, stdout, stderr, duration, timed_out, _receipt) = captured.into_parts();
+                    let (status, stdout, stderr, duration, timed_out, _receipt) =
+                        captured.into_parts();
                     (status, stdout, stderr, duration, timed_out)
                 }
-                Err(mut error) if error.is_timeout_only() => error
-                    .take_failed_observation()
-                    .ok_or_else(|| format!("pure timeout omitted actual observation: {}", error.message()))?,
+                Err(mut error) if error.is_timeout_only() => {
+                    error.take_failed_observation().ok_or_else(|| {
+                        format!(
+                            "pure timeout omitted actual observation: {}",
+                            error.message()
+                        )
+                    })?
+                }
                 Err(error) => return Err(error.message().to_string()),
             };
             // The retained test still checks its exact output-overflow diagnostic;
@@ -1369,7 +1414,10 @@ mod native {
             if stdout.len() > budget.stdout_bytes || stderr.len() > budget.stderr_bytes {
                 return Err("actual shared capture exceeded admitted legacy byte data".to_string());
             }
-            Ok(LegacyByteObservation { status: Some(status), timed_out })
+            Ok(LegacyByteObservation {
+                status: Some(status),
+                timed_out,
+            })
         }
 
         fn io<T>(result: std::io::Result<T>) -> Result<T, String> {
@@ -1762,7 +1810,9 @@ mod native {
                 let fixture = Fixture::new()?;
                 let base = fixture.parent;
                 io(fs::DirBuilder::new().mode(0o700).create(base.join("var")))?;
-                io(fs::DirBuilder::new().mode(0o700).create(base.join("var/tmp")))?;
+                io(fs::DirBuilder::new()
+                    .mode(0o700)
+                    .create(base.join("var/tmp")))?;
                 Ok(Self { base })
             }
             fn root(&self) -> PathBuf {
@@ -1781,11 +1831,18 @@ mod native {
             budget().validate()?;
             let (parent, ancestors) = pin_fixed_chain(base, deadline)?;
             create_pinned_stage(
-                parent, Some(ancestors), RETAINED_NAME, &nonce, budget(), Some(deadline), true,
+                parent,
+                Some(ancestors),
+                RETAINED_NAME,
+                &nonce,
+                budget(),
+                Some(deadline),
+                true,
             )
         }
         fn held(seconds: u64) -> Result<Instant, String> {
-            Instant::now().checked_add(Duration::from_secs(seconds))
+            Instant::now()
+                .checked_add(Duration::from_secs(seconds))
                 .ok_or_else(|| "fixed control clock overflow".to_string())
         }
         struct FaultReset(FixedFault);
@@ -1811,18 +1868,32 @@ mod native {
             let inventory = stage.audit_closed_inventory()?;
             assert_eq!(inventory.aggregate.directories, 4);
             assert_eq!(inventory.aggregate.files, 0);
-            assert_eq!(inventory.aggregate.name_bytes, RETAINED_NAME.len() as u64 + 6 + 5 + 9);
+            assert_eq!(
+                inventory.aggregate.name_bytes,
+                RETAINED_NAME.len() as u64 + 6 + 5 + 9
+            );
             if inventory.aggregate.allocated_bytes == 0 {
-                return Err("fixed reservation allocation control has no actual subject".to_string());
+                return Err(
+                    "fixed reservation allocation control has no actual subject".to_string()
+                );
             }
-            for directory in [&binding.stage, &binding.source, &binding.spool, &binding.artifacts] {
+            for directory in [
+                &binding.stage,
+                &binding.source,
+                &binding.spool,
+                &binding.artifacts,
+            ] {
                 let observed = metadata(Path::new(&directory.path))?;
-                assert_eq!((observed.dev(), observed.ino()), (directory.dev, directory.ino));
+                assert_eq!(
+                    (observed.dev(), observed.ino()),
+                    (directory.dev, directory.ino)
+                );
                 assert_eq!(observed.mode() & 0o777, 0o700);
             }
             drop(stage);
             refusal(fixture.claim(held(5)?), "fixed retained namespace occupied")?;
-            if !fixture.root().join("source").is_dir() || !fixture.root().join("artifacts").is_dir() {
+            if !fixture.root().join("source").is_dir() || !fixture.root().join("artifacts").is_dir()
+            {
                 return Err("fixed stage Drop removed occupied roles".to_string());
             }
             Ok(())
@@ -1856,7 +1927,9 @@ mod native {
                             return Err("concurrent fixed claims both acquired a stage".to_string());
                         }
                     }
-                    Err(error) if error.contains("fixed retained namespace occupied") => refused += 1,
+                    Err(error) if error.contains("fixed retained namespace occupied") => {
+                        refused += 1
+                    }
                     Err(error) => return Err(format!("wrong concurrent claim refusal: {error}")),
                 }
             }
@@ -1868,8 +1941,8 @@ mod native {
         }
 
         #[test]
-        fn fixed_existing_empty_file_link_and_unknown_namespace_never_reopen()
-        -> Result<(), String> {
+        fn fixed_existing_empty_file_link_and_unknown_namespace_never_reopen() -> Result<(), String>
+        {
             for kind in ["empty", "file", "link", "unknown"] {
                 let fixture = FixedFixture::new()?;
                 let root = fixture.root();
@@ -1903,7 +1976,9 @@ mod native {
                 let deadline = held(5)?;
                 let error = match with_fault(fault, || fixture.claim(deadline)) {
                     Err(error) => error,
-                    Ok(_) => return Err("fixed setup fault unexpectedly acquired stage".to_string()),
+                    Ok(_) => {
+                        return Err("fixed setup fault unexpectedly acquired stage".to_string());
+                    }
                 };
                 if !error.contains(expected) {
                     return Err(format!("wrong fixed setup refusal: {error}"));
@@ -1921,12 +1996,19 @@ mod native {
                 let after = metadata(&fixture.root())?;
                 assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
                 if fault == FixedFault::SourceRoleFile {
-                    assert_eq!(io(fs::read(fixture.root().join("source")))?, b"occupied role");
+                    assert_eq!(
+                        io(fs::read(fixture.root().join("source")))?,
+                        b"occupied role"
+                    );
                 } else if fault == FixedFault::Sync {
                     match fs::symlink_metadata(fixture.root().join("source")) {
                         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                        Err(error) => return Err(format!("wrong early sync source refusal: {error}")),
-                        Ok(_) => return Err("early sync failure proceeded into role setup".to_string()),
+                        Err(error) => {
+                            return Err(format!("wrong early sync source refusal: {error}"));
+                        }
+                        Ok(_) => {
+                            return Err("early sync failure proceeded into role setup".to_string());
+                        }
                     }
                 } else if !fixture.root().join("source").is_dir() {
                     return Err("final sync failure lost its occupied source role".to_string());
@@ -1939,14 +2021,21 @@ mod native {
         fn fixed_owner_original_clock_refuses_binding_and_longer_inventory_clock()
         -> Result<(), String> {
             let fixture = FixedFixture::new()?;
-            let deadline = Instant::now().checked_add(Duration::from_millis(500))
+            let deadline = Instant::now()
+                .checked_add(Duration::from_millis(500))
                 .ok_or("fixed clock overflow")?;
             let stage = fixture.claim(deadline)?;
             stage.worker_binding()?;
             std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
             refusal(stage.worker_binding(), "stage operation deadline exceeded")?;
-            refusal(stage.audit_closed_inventory(), "stage operation deadline exceeded")?;
-            refusal(stage.audit_closed_inventory_with_deadline(held(5)?), "stage operation deadline exceeded")?;
+            refusal(
+                stage.audit_closed_inventory(),
+                "stage operation deadline exceeded",
+            )?;
+            refusal(
+                stage.audit_closed_inventory_with_deadline(held(5)?),
+                "stage operation deadline exceeded",
+            )?;
             let root = fixture.root();
             drop(stage);
             if !root.join("source").is_dir() {
@@ -1960,23 +2049,52 @@ mod native {
         -> Result<(), String> {
             let fixture = FixedFixture::new()?;
             let stage = fixture.claim(held(5)?)?;
-            io(fs::rename(fixture.base.join("var"), fixture.base.join("retained-var")))?;
-            io(fs::DirBuilder::new().mode(0o700).create(fixture.base.join("var")))?;
-            io(fs::DirBuilder::new().mode(0o700).create(fixture.base.join("var/tmp")))?;
-            refusal(stage.worker_binding(), "stage root identity/permissions changed")?;
-            refusal(stage.audit_closed_inventory(), "stage root identity/permissions changed")?;
+            io(fs::rename(
+                fixture.base.join("var"),
+                fixture.base.join("retained-var"),
+            ))?;
+            io(fs::DirBuilder::new()
+                .mode(0o700)
+                .create(fixture.base.join("var")))?;
+            io(fs::DirBuilder::new()
+                .mode(0o700)
+                .create(fixture.base.join("var/tmp")))?;
+            refusal(
+                stage.worker_binding(),
+                "stage root identity/permissions changed",
+            )?;
+            refusal(
+                stage.audit_closed_inventory(),
+                "stage root identity/permissions changed",
+            )?;
             drop(stage);
-            if !fixture.base.join("retained-var/tmp").join(RETAINED_NAME).is_dir() {
+            if !fixture
+                .base
+                .join("retained-var/tmp")
+                .join(RETAINED_NAME)
+                .is_dir()
+            {
                 return Err("ancestor drift control removed retained occupation".to_string());
             }
             // External whole-reservation relocation ends the stable-namespace
             // premise. No claim of historical restart detection is made here.
             let fixture = FixedFixture::new()?;
             let stage = fixture.claim(held(5)?)?;
-            io(fs::rename(stage.source_root(), fixture.root().join("retained-source")))?;
-            io(fs::DirBuilder::new().mode(0o700).create(stage.source_root()))?;
-            refusal(stage.worker_binding(), "stage root identity/permissions changed")?;
-            refusal(stage.audit_closed_inventory(), "stage root identity/permissions changed")
+            io(fs::rename(
+                stage.source_root(),
+                fixture.root().join("retained-source"),
+            ))?;
+            io(fs::DirBuilder::new()
+                .mode(0o700)
+                .create(stage.source_root()))?;
+            refusal(
+                stage.worker_binding(),
+                "stage root identity/permissions changed",
+            )?;
+            refusal(
+                stage.audit_closed_inventory(),
+                "stage root identity/permissions changed",
+            )
         }
 
         #[test]
@@ -1986,12 +2104,21 @@ mod native {
                 let stage = fixture.claim(held(5)?)?;
                 let path = fixture.base.join(relative);
                 let before = metadata(&path)?;
-                io(fs::set_permissions(&path, fs::Permissions::from_mode(0o755)))?;
+                io(fs::set_permissions(
+                    &path,
+                    fs::Permissions::from_mode(0o755),
+                ))?;
                 let after = metadata(&path)?;
                 assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
                 assert_ne!(before.mode() & 0o7777, after.mode() & 0o7777);
-                refusal(stage.worker_binding(), "stage root identity/permissions changed")?;
-                refusal(stage.audit_closed_inventory(), "stage root identity/permissions changed")?;
+                refusal(
+                    stage.worker_binding(),
+                    "stage root identity/permissions changed",
+                )?;
+                refusal(
+                    stage.audit_closed_inventory(),
+                    "stage root identity/permissions changed",
+                )?;
                 drop(stage);
                 refusal(fixture.claim(held(5)?), "fixed retained namespace occupied")?;
                 if !fixture.root().join("source").is_dir() {
@@ -2006,14 +2133,24 @@ mod native {
         -> Result<(), String> {
             let before = FIXED_MKDIR_ATTEMPTS.with(|attempts| attempts.get());
             let nonce = format!("{:0128x}", NEXT.fetch_add(1, Ordering::Relaxed));
-            refusal(ParentStage::claim_retained(&nonce, budget(), Instant::now(), 0, 0),
-                "stage operation deadline exceeded")?;
-            refusal(ParentStage::claim_retained(&nonce, budget(), held(5)?, 0, 0),
-                "experimental worker invalid finite resource profile")?;
+            refusal(
+                ParentStage::claim_retained(&nonce, budget(), Instant::now(), 0, 0),
+                "stage operation deadline exceeded",
+            )?;
+            refusal(
+                ParentStage::claim_retained(&nonce, budget(), held(5)?, 0, 0),
+                "experimental worker invalid finite resource profile",
+            )?;
             assert_eq!(FIXED_MKDIR_ATTEMPTS.with(|attempts| attempts.get()), before);
             let fixture = FixedFixture::new()?;
-            refusal(fixture.claim(Instant::now()), "stage operation deadline exceeded")?;
-            if io(fs::read_dir(fixture.base.join("var/tmp")))?.next().is_some() {
+            refusal(
+                fixture.claim(Instant::now()),
+                "stage operation deadline exceeded",
+            )?;
+            if io(fs::read_dir(fixture.base.join("var/tmp")))?
+                .next()
+                .is_some()
+            {
                 return Err("expired fixture claim occupied a namespace".to_string());
             }
             Ok(())
