@@ -936,6 +936,70 @@ fn requested_mkdir(
     requested_checkpoint(started, budget)
 }
 
+/// A created Requested base whose cleanup ownership has not been handed off.
+///
+/// Reporting never removes a path: a postcreation failure or unwind may have
+/// left an incomplete or replaced namespace whose cleanup is not established.
+struct RequestedBaseRetention<'a> {
+    path: &'a Path,
+    report_to: &'a mut dyn Write,
+    pending: bool,
+}
+
+impl Drop for RequestedBaseRetention<'_> {
+    fn drop(&mut self) {
+        if self.pending {
+            let _ = writeln!(
+                self.report_to,
+                "ripr: candidate materialization root was created but acquisition did not finish: {}; \
+                 retained without cleanup",
+                self.path.display()
+            );
+        }
+    }
+}
+
+fn requested_base_dir(
+    path: &Path,
+    started: std::time::Instant,
+    budget: Duration,
+    report_to: &mut dyn Write,
+    #[cfg(test)] observe: &mut impl FnMut(
+        RequestedMaterializationEvent,
+        &Path,
+        std::time::Instant,
+        Duration,
+    ) -> Result<(), SubjectError>,
+) -> Result<TempRootGuard, SubjectError> {
+    requested_checkpoint(started, budget)?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    std::fs::create_dir(path)
+        .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
+    let mut retention = RequestedBaseRetention {
+        path,
+        report_to,
+        pending: true,
+    };
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    let cleanup = TempRootGuard(path.to_path_buf());
+    retention.pending = false;
+    Ok(cleanup)
+}
+
 fn materialize_requested_configuration(
     root: &Path,
     candidate_tree: &str,
@@ -985,7 +1049,6 @@ fn materialize_requested_configuration(
     let shared = temporary.join("ripr-git-candidate");
     let base_dir = shared.join(unique);
     let target = base_dir.join(candidate_tree);
-    let cleanup = TempRootGuard(base_dir.clone());
     requested_checkpoint(budget_started, budget)?;
     let listing = crate::git::run_git_output_with_deadline_and_limit_strict(
         root,
@@ -1015,11 +1078,11 @@ fn materialize_requested_configuration(
         #[cfg(test)]
         &mut observe,
     )?;
-    requested_mkdir(
+    let cleanup = requested_base_dir(
         &base_dir,
-        false,
         budget_started,
         budget,
+        &mut std::io::stderr(),
         #[cfg(test)]
         &mut observe,
     )?;
@@ -1410,6 +1473,319 @@ mod tests {
         let children = requested_fixture_tree(&guard.0, &[("a", &empty), ("b", &empty)])?;
         let tree = requested_fixture_tree(&guard.0, &[("empty", &empty), ("shared", &children)])?;
         Ok((guard, tree))
+    }
+
+    #[test]
+    fn requested_occupied_base_refusal_preserves_unowned_sentinel() -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-occupied-base")?;
+        let mut target = None;
+        let mut occupied = None;
+        let mut after_base = false;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if target.as_deref().and_then(Path::parent) == Some(path) {
+                    if event == RequestedMaterializationEvent::BeforeMkdir {
+                        std::fs::create_dir(path).map_err(|error| failed(error.to_string()))?;
+                        occupied = Some(RepoGuard(path.to_path_buf()));
+                        std::fs::write(path.join("sentinel"), b"unowned occupied base")
+                            .map_err(|error| failed(error.to_string()))?;
+                    } else if event == RequestedMaterializationEvent::AfterMkdir {
+                        after_base = true;
+                    }
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("occupied base was accepted")?;
+        assert!(
+            failure.to_string().contains("materialization mkdir failed"),
+            "{failure}"
+        );
+        assert!(!after_base, "occupied base reached postcreation");
+        let occupied = occupied.ok_or("occupied base fixture was not created")?;
+        assert_eq!(
+            std::fs::read(occupied.0.join("sentinel")).map_err(|error| error.to_string())?,
+            b"unowned occupied base"
+        );
+        assert!(!target.ok_or("listing was not reached")?.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_listing_refusal_never_acquires_precreated_base_cleanup() -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-listing-refusal-base")?;
+        let mut occupied = None;
+        let mut mkdir_calls = 0;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::BeforeMkdir {
+                    mkdir_calls += 1;
+                }
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    let base = path.parent().ok_or_else(|| failed("base missing".into()))?;
+                    std::fs::create_dir_all(base).map_err(|error| failed(error.to_string()))?;
+                    occupied = Some(RepoGuard(base.to_path_buf()));
+                    std::fs::write(base.join("sentinel"), b"listing refusal sentinel")
+                        .map_err(|error| failed(error.to_string()))?;
+                    return Err(failed("fixture listing refused before creation".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("listing refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture listing refused before creation".into()).to_string()
+        );
+        assert_eq!(mkdir_calls, 0, "listing refusal reached mkdir");
+        let occupied = occupied.ok_or("listing fixture was not reached")?;
+        assert_eq!(
+            std::fs::read(occupied.0.join("sentinel")).map_err(|error| error.to_string())?,
+            b"listing refusal sentinel"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_postcreation_error_reports_retention_without_cleanup() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-base-postcreation-error")?;
+        let base = guard.0.join("created-base");
+        let mut report = Vec::new();
+        let failure = requested_base_dir(
+            &base,
+            std::time::Instant::now(),
+            Duration::from_secs(2),
+            &mut report,
+            &mut |event, path, _, _| {
+                if event == RequestedMaterializationEvent::AfterMkdir {
+                    std::fs::write(path.join("sentinel"), b"retained partial base")
+                        .map_err(|error| failed(error.to_string()))?;
+                    return Err(failed("fixture postcreation refusal".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("postcreation refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture postcreation refusal".into()).to_string()
+        );
+        assert_eq!(
+            std::fs::read(base.join("sentinel")).map_err(|error| error.to_string())?,
+            b"retained partial base"
+        );
+        let report = String::from_utf8(report).map_err(|error| error.to_string())?;
+        assert!(
+            report.contains("retained without cleanup"),
+            "actual retention report missing: {report}"
+        );
+        assert!(
+            report.contains(&base.display().to_string()),
+            "actual retained path missing: {report}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_postcreation_unwind_reports_and_retains_created_root() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-base-postcreation-unwind")?;
+        let base = guard.0.join("created-base");
+        let mut report = Vec::new();
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            requested_base_dir(
+                &base,
+                std::time::Instant::now(),
+                Duration::from_secs(2),
+                &mut report,
+                &mut |event, path, _, _| {
+                    if event == RequestedMaterializationEvent::AfterMkdir {
+                        std::fs::write(path.join("sentinel"), b"retained during unwind")
+                            .map_err(|error| failed(error.to_string()))?;
+                        std::panic::resume_unwind(Box::new("fixture postcreation unwind"));
+                    }
+                    Ok(())
+                },
+            )
+        }))
+        .err()
+        .ok_or("postcreation callback did not unwind")?;
+        assert_eq!(
+            unwind.downcast_ref::<&str>(),
+            Some(&"fixture postcreation unwind")
+        );
+        assert_eq!(
+            std::fs::read(base.join("sentinel")).map_err(|error| error.to_string())?,
+            b"retained during unwind"
+        );
+        let report = String::from_utf8(report).map_err(|error| error.to_string())?;
+        assert!(
+            report.contains("retained without cleanup"),
+            "actual unwind retention report missing: {report}"
+        );
+        assert!(
+            report.contains(&base.display().to_string()),
+            "actual unwind retained path missing: {report}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_swap_then_error_keeps_created_and_replacement_roots() -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-base-swap-refusal")?;
+        let moved = guard.0.join("retained-created-base");
+        let mut target = None;
+        let mut replacement = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::AfterMkdir
+                    && target.as_deref().and_then(Path::parent) == Some(path)
+                {
+                    std::fs::write(path.join("sentinel"), b"original created base")
+                        .map_err(|error| failed(error.to_string()))?;
+                    std::fs::rename(path, &moved).map_err(|error| failed(error.to_string()))?;
+                    std::fs::create_dir(path).map_err(|error| failed(error.to_string()))?;
+                    replacement = Some(RepoGuard(path.to_path_buf()));
+                    std::fs::write(path.join("sentinel"), b"replacement base")
+                        .map_err(|error| failed(error.to_string()))?;
+                    return Err(failed("fixture swapped base refusal".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("swapped base refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture swapped base refusal".into()).to_string()
+        );
+        assert_eq!(
+            std::fs::read(moved.join("sentinel")).map_err(|error| error.to_string())?,
+            b"original created base"
+        );
+        let replacement = replacement.ok_or("actual base swap was not reached")?;
+        assert_eq!(
+            std::fs::read(replacement.0.join("sentinel")).map_err(|error| error.to_string())?,
+            b"replacement base"
+        );
+        assert!(!target.ok_or("listing was not reached")?.exists());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested_base_link_swap_then_error_preserves_link_and_outside_sentinel()
+    -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-base-link-refusal")?;
+        let moved = guard.0.join("retained-created-base");
+        let outside = guard.0.join("outside-source");
+        std::fs::create_dir(&outside).map_err(|error| error.to_string())?;
+        std::fs::write(outside.join("sentinel"), b"outside retained sentinel")
+            .map_err(|error| error.to_string())?;
+        let mut target = None;
+        let mut replacement = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::AfterMkdir
+                    && target.as_deref().and_then(Path::parent) == Some(path)
+                {
+                    std::fs::write(path.join("sentinel"), b"original before link swap")
+                        .map_err(|error| failed(error.to_string()))?;
+                    std::fs::rename(path, &moved).map_err(|error| failed(error.to_string()))?;
+                    std::os::unix::fs::symlink(&outside, path)
+                        .map_err(|error| failed(error.to_string()))?;
+                    replacement = Some(RepoGuard(path.to_path_buf()));
+                    return Err(failed("fixture linked base refusal".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("linked base refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture linked base refusal".into()).to_string()
+        );
+        assert_eq!(
+            std::fs::read(moved.join("sentinel")).map_err(|error| error.to_string())?,
+            b"original before link swap"
+        );
+        let replacement = replacement.ok_or("actual link swap was not reached")?;
+        assert!(
+            std::fs::symlink_metadata(&replacement.0)
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_symlink(),
+            "refused acquisition removed the replacement link"
+        );
+        assert_eq!(
+            std::fs::read(outside.join("sentinel")).map_err(|error| error.to_string())?,
+            b"outside retained sentinel"
+        );
+        assert!(!target.ok_or("listing was not reached")?.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_success_hands_off_existing_checked_cleanup() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-base-success-handoff")?;
+        let base = guard.0.join("created-base");
+        let mut report = Vec::new();
+        let mut postcreation = false;
+        let cleanup = requested_base_dir(
+            &base,
+            std::time::Instant::now(),
+            Duration::from_secs(2),
+            &mut report,
+            &mut |event, path, _, _| {
+                if event == RequestedMaterializationEvent::AfterMkdir {
+                    postcreation = path.is_dir();
+                }
+                Ok(())
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(postcreation, "actual exclusive base creation was not reached");
+        assert_eq!(cleanup.0, base);
+        assert!(report.is_empty(), "successful handoff reported retention");
+        std::fs::write(base.join("sentinel"), b"owned successful base")
+            .map_err(|error| error.to_string())?;
+        cleanup.checked_cleanup().map_err(|error| error.to_string())?;
+        assert!(!base.exists(), "existing checked cleanup did not remove base");
+        drop(cleanup);
+        assert!(!base.exists(), "existing Drop recreated a removed base");
+        Ok(())
     }
 
     #[test]
