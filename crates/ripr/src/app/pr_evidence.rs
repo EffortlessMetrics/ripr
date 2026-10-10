@@ -15,6 +15,8 @@ mod complete_execution;
 pub(crate) mod complete_input;
 #[cfg(test)]
 mod complete_native;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod complete_native_test;
 mod generation;
 
 #[cfg(test)]
