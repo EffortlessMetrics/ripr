@@ -481,7 +481,7 @@ fn ordinary_5400_guard_refuses_one_7038_line_owner_before_partial_selection() ->
         assert_eq!(numstat.trim(), "7038\t0\tsrc/oversized.rs");
         write_diff(repo, &subject)?;
         for partial in ["1", "invalid"] {
-            let error = crate::analysis::language::RustAdapter::with_forced_diff_limits_for_test(
+            let error = crate::analysis::RustAdapter::with_forced_diff_limits_for_test(
                 &[
                     (LINE_LIMIT, "5400"),
                     ("RIPR_PARTIAL_DIFF_LINE_BUDGET", partial),

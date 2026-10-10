@@ -79,6 +79,13 @@ pub(crate) use facts::validated_file_wide_harness_targets;
 pub(crate) use generated_rust_corpus::{
     CorpusPayloadSize, analyzable_corpus_payload_size, review_guidance_input_paths,
 };
+#[cfg(all(
+    test,
+    feature = "lang-rust",
+    feature = "lang-typescript",
+    feature = "lang-python"
+))]
+pub(crate) use language::RustAdapter;
 #[cfg(test)]
 pub(crate) use language::{
     CompleteDependentScopePolicy, CompleteRustPolicySnapshot, capture_complete_rust_policy,
