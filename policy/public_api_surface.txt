@@ -107,6 +107,25 @@ pub use ripr::process_owner::ObservedProcessIdentity
 pub use ripr::process_owner::QualifiedGroupOwner
 pub use ripr::process_owner::QualifiedGroupSettlement
 pub use ripr::process_owner::QualifiedGroupWait
+# Issue #1627: owner process-owner/retained-stage; reason: one fixed permanent
+# host-local stage shared by installed and xtask callers, plus sealed read-only
+# native-limit observations. These hidden types grant no arbitrary-path create,
+# cleanup, analysis or physical disk-quota authority; covered_by:
+# cargo test -p ripr --lib process_owner::retained_stage,
+# cargo test -p ripr --lib process_owner::native_limits,
+# cargo xtask check-public-api.
+pub use ripr::process_owner::NativeLimitTuple
+pub use ripr::process_owner::ParentStage
+pub use ripr::process_owner::StageBudget
+pub use ripr::process_owner::StageDirectoryBinding
+pub use ripr::process_owner::StageEntry
+pub use ripr::process_owner::StageEntryKind
+pub use ripr::process_owner::StageInventory
+pub use ripr::process_owner::StageInventoryClosure
+pub use ripr::process_owner::StageRole
+pub use ripr::process_owner::StageRoleBudget
+pub use ripr::process_owner::StageRootBinding
+pub use ripr::process_owner::StageUsage
 pub use ripr::output::CargoMutantsOutcomeRecord
 pub use ripr::output::parse_cargo_mutants_outcomes_json
 pub fn ripr::output::start_here_state::normalize_start_here_output_state

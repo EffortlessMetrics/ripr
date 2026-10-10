@@ -454,6 +454,117 @@ mod linux {
             Ok(())
         }
 
+
+        #[test]
+        fn elapsed_but_live_forwarder_deadline_is_not_rebased_to_fresh_timeout()
+        -> Result<(), String> {
+            let fixture = Fixture::new()?;
+            let args = shell(
+                "/usr/bin/cat /proc/$$/stat > primary; printf held-clock-started; exec /usr/bin/sleep 2",
+            );
+            let lease = Arc::new(());
+            let foreign = Arc::new(());
+            let issued = Instant::now();
+            let held = issued
+                .checked_add(Duration::from_secs(2))
+                .ok_or("original deadline overflow")?;
+            // Consume real caller time while preserving a live original clock
+            // at entry. A replacement now+timeout clock would outlast this worker.
+            thread::sleep(Duration::from_millis(500));
+            let entered = Instant::now();
+            if entered <= issued || entered >= held {
+                return Err("elapsed/live deadline premise was not established".to_string());
+            }
+            let mut error = match capture_complete_bytes_in_dir_with_deadline(
+                (Path::new("/bin/sh"), &args),
+                (&fixture.0, None),
+                &[],
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(3), 0, 64, 64),
+                    "elapsed/live forwarder",
+                ),
+                held,
+                lease.clone(),
+                |_| {},
+            ) {
+                Err(error) => error,
+                Ok(_) => return Err("forwarder rebased the original deadline into success".to_string()),
+            };
+            if entered.elapsed() > Duration::from_secs(9) {
+                return Err("elapsed/live forwarding exceeded the bounded control duration".to_string());
+            }
+            if !error.message().contains("deadline")
+                || !error.matches_lease(&lease)
+                || error.matches_lease(&foreign)
+                || error.take_cleanup_receipt().is_some()
+                || error.is_timeout_only()
+            {
+                return Err(format!("wrong elapsed/live deadline refusal: {error}"));
+            }
+            // This actual pre-exec kernel record excludes a pre-spawn refusal.
+            // The failed witness is not a native settlement or cleanup grant.
+            let primary = record(&fixture.0.join("primary"))?;
+            if primary.0 != primary.1 || primary.0 == 0 || primary.2 == 0 || !primary.3 {
+                return Err("elapsed/live worker did not establish real group progress".to_string());
+            }
+            // An expired owner may not certify cleanup. The fixture execs one
+            // finite worker; observe its natural disappearance before recovery.
+            let natural_end = Instant::now()
+                .checked_add(Duration::from_secs(3))
+                .ok_or("natural-completion control deadline overflow")?;
+            loop {
+                match no_live_member(primary) {
+                    Ok(()) => break,
+                    Err(error) if Instant::now() >= natural_end => {
+                        return Err(format!("finite elapsed/live fixture remained live: {error}"));
+                    }
+                    Err(_) => {}
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            drop(error);
+            fs::remove_file(fixture.0.join("primary"))
+                .map_err(|error| format!("completed worker witness removal: {error}"))?;
+            let recovery_lease = Arc::new(());
+            let fresh = Instant::now()
+                .checked_add(Duration::from_secs(3))
+                .ok_or("recovery deadline overflow")?;
+            let output = capture_complete_bytes_in_dir_with_deadline(
+                (Path::new("/bin/sh"), &args),
+                (&fixture.0, None),
+                &[],
+                (
+                    CompleteCaptureBudget::new(Duration::from_secs(3), 0, 64, 64),
+                    "elapsed/live fresh-clock recovery",
+                ),
+                fresh,
+                recovery_lease.clone(),
+                |_| {},
+            )
+            .map_err(|error| error.to_string())?;
+            let (status, stdout, stderr, _, timed_out, receipt) = output.into_parts();
+            assert_eq!(status.code(), Some(0));
+            assert_eq!(stdout, b"held-clock-started");
+            assert_eq!(stderr, b"");
+            assert!(!timed_out);
+            if !receipt.matches_lease(&recovery_lease)
+                || receipt.matches_lease(&lease)
+                || receipt.matches_lease(&foreign)
+                || receipt.settled_status() != Some(status)
+            {
+                return Err("fresh-clock recovery lost its real invocation receipt".to_string());
+            }
+            let actual = record(&fixture.0.join("primary"))?;
+            let observed = receipt.observed_worker();
+            assert_eq!(
+                (observed.pid(), observed.group(), observed.start()),
+                (actual.0, actual.1, actual.2),
+            );
+            assert_eq!(receipt.observed_parent().pid(), std::process::id());
+            no_live_member(actual)?;
+            Ok(())
+        }
+
         #[test]
         fn expired_forwarder_refuses_before_executable_lookup_without_receipt() -> Result<(), String>
         {

@@ -7,79 +7,11 @@ use std::collections::BTreeMap;
 pub(super) const WORKER_FLAG: &str = "--experimental-complete-execution-worker";
 pub(super) const GENERATION_FIELD: &str = "experimental_complete_execution";
 pub(super) const RECEIPT: &str = "target/ripr/pr/complete-execution.receipt.json";
+#[cfg(test)]
 const ADDRESS_SPACE_MAX: u64 = 2 * 1024 * 1024 * 1024;
-const FILE_MAX: u64 = 256 * 1024 * 1024;
-#[cfg(target_os = "linux")]
-const LIMITS_MAX: u64 = 16 * 1024;
-
-#[cfg(any(target_os = "linux", test))]
-fn limits(text: &str, name: &str) -> Result<(u64, u64), String> {
-    let mut rows = text.lines().filter_map(|line| line.strip_prefix(name));
-    let row = rows
-        .next()
-        .ok_or_else(|| format!("experimental worker missing {name}"))?;
-    if rows.next().is_some() {
-        return Err(format!("experimental worker duplicate {name}"));
-    }
-    let values: Vec<_> = row.split_whitespace().collect();
-    if values.len() != 3 || values[2] != "bytes" {
-        return Err(format!("experimental worker malformed {name}"));
-    }
-    let number = |value: &str| {
-        value
-            .parse::<u64>()
-            .map_err(|error| format!("experimental worker nonfinite {name}: {error}"))
-    };
-    Ok((number(values[0])?, number(values[1])?))
-}
-
-#[cfg(any(target_os = "linux", test))]
-fn require_limits(text: &str, address_space: u64, file: u64) -> Result<(), String> {
-    for (name, expected, maximum) in [
-        ("Max address space", address_space, ADDRESS_SPACE_MAX),
-        ("Max file size", file, FILE_MAX),
-    ] {
-        if expected == 0 || expected > maximum || limits(text, name)? != (expected, expected) {
-            return Err(format!(
-                "experimental worker {name} is not the requested finite soft/hard limit"
-            ));
-        }
-    }
-    if limits(text, "Max core file size")? != (0, 0) {
-        return Err("experimental worker core-file limit is not zero".to_string());
-    }
-    Ok(())
-}
-
-pub(super) fn verify_limits(address_space: u64, file: u64) -> Result<(), String> {
-    if address_space == 0 || address_space > ADDRESS_SPACE_MAX || file == 0 || file > FILE_MAX {
-        return Err("experimental worker invalid finite resource profile".to_string());
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let mut text = String::new();
-        fs::File::open("/proc/self/limits")
-            .map_err(|error| {
-                format!("experimental worker resource verification unavailable: {error}")
-            })?
-            .take(LIMITS_MAX + 1)
-            .read_to_string(&mut text)
-            .map_err(|error| {
-                format!("experimental worker resource verification failed: {error}")
-            })?;
-        if text.len() as u64 > LIMITS_MAX {
-            return Err(
-                "experimental worker resource verification exceeds its byte bound".to_string(),
-            );
-        }
-        require_limits(&text, address_space, file)
-    }
-    #[cfg(not(target_os = "linux"))]
-    {
-        let _ = (address_space, file);
-        Err("experimental complete-execution requires qualified Linux resource limits".to_string())
-    }
-}
+#[cfg(test)]
+use crate::process_owner::native_limits::require_limits;
+pub(super) use crate::process_owner::native_limits::verify_limits;
 
 pub(super) fn run_worker(args: &[String]) -> Result<(), String> {
     let address_space = args

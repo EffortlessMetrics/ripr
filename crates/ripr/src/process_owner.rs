@@ -32,7 +32,9 @@
 //! passthrough whose termination kills and reaps the direct child, with the
 //! Unix process-group authority unchanged in its callers.
 
+pub(crate) mod native_limits;
 mod qualified_capture;
+mod retained_stage;
 
 #[doc(hidden)]
 pub use qualified_capture::{
@@ -43,6 +45,14 @@ pub use qualified_capture::{
 #[doc(hidden)]
 pub use qualified_capture::{
     ObservedProcessIdentity, QualifiedGroupOwner, QualifiedGroupSettlement, QualifiedGroupWait,
+};
+
+#[doc(hidden)]
+pub use native_limits::NativeLimitTuple;
+#[doc(hidden)]
+pub use retained_stage::{
+    ParentStage, StageBudget, StageDirectoryBinding, StageEntry, StageEntryKind, StageInventory,
+    StageInventoryClosure, StageRole, StageRoleBudget, StageRootBinding, StageUsage,
 };
 
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};

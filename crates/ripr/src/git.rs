@@ -2083,7 +2083,13 @@ mod tests {
                   Instant::now() + Duration::from_secs(30))),
         ).map_err(|error| error.to_string())?;
         assert!(output.status.success());
-        assert_eq!(output.stdout, b"0123456789abcdef".repeat(4096 * 8));
+        // The pinned libtest child prints this exact preface before the
+        // existing harness writes its payload and exits without a suffix.
+        let mut expected_stdout = b"\nrunning 1 test\n".to_vec();
+        expected_stdout.extend_from_slice(&b"0123456789abcdef".repeat(4096 * 8));
+        assert!(output.stdout == expected_stdout,
+            "held flood whole-output mismatch: expected {} bytes, got {}",
+            expected_stdout.len(), output.stdout.len());
         assert!(output.stderr.is_empty());
         let started = Instant::now();
         let execution = started + Duration::from_secs(2);
