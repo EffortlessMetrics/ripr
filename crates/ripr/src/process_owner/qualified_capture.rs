@@ -8,7 +8,11 @@ pub use bytes::{
 };
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-pub(crate) use bytes::{CompleteFailedClosed, CompleteTerminalCustodian, CompleteTerminalFailure};
+pub(crate) use bytes::{
+    CompleteEnclosingCustodian, CompleteEnclosingDisposed, CompleteEnclosingFailure,
+    CompleteEnclosingPhysicalClosure, CompleteFailedClosed, CompleteTerminalCustodian,
+    CompleteTerminalFailure,
+};
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -265,6 +269,169 @@ mod linux {
         Ok(live)
     }
 
+    /// Actual progress only; every field begins empty before any capture attempt.
+    #[cfg(all(test, feature = "lang-rust"))]
+    pub(crate) struct EnclosingDispositionProgress {
+        leader: Option<Identity>,
+        parent: Option<Identity>,
+        primary_status: Option<ExitStatus>,
+        helper_status: Option<ExitStatus>,
+        no_live_members: bool,
+        empty_before_reap_at: Option<Instant>,
+        group_deadline: Option<Instant>,
+    }
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    impl EnclosingDispositionProgress {
+        pub(super) fn new() -> Self {
+            Self {
+                leader: None,
+                parent: None,
+                primary_status: None,
+                helper_status: None,
+                no_live_members: false,
+                empty_before_reap_at: None,
+                group_deadline: None,
+            }
+        }
+
+        pub(super) fn observed_worker(&self) -> Option<ObservedProcessIdentity> {
+            self.leader.as_ref().cloned().map(ObservedProcessIdentity)
+        }
+
+        pub(super) fn observed_parent(&self) -> Option<ObservedProcessIdentity> {
+            self.parent.as_ref().cloned().map(ObservedProcessIdentity)
+        }
+
+        pub(super) fn admit_group_deadline(&mut self, deadline: Instant) {
+            self.group_deadline = Some(deadline);
+        }
+
+        pub(super) fn group_deadline(&self) -> Option<Instant> {
+            self.group_deadline
+        }
+
+        pub(super) fn no_live_members(&self) -> bool {
+            self.no_live_members
+        }
+
+        pub(super) fn status(&self) -> Option<ExitStatus> {
+            self.primary_status
+        }
+    }
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    fn observe_enclosing_worker(
+        child: &OwnedProcess,
+        expected: Option<&Identity>,
+        deadline: Instant,
+    ) -> Result<ObservedProcessIdentity, String> {
+        super::super::enclosing_time(deadline)?;
+        if child.enclosing_observed_reap.is_some() {
+            return Err("enclosing retained worker was actually reaped; no PID lookup".to_string());
+        }
+        let observed = identity(child.id())?;
+        super::super::enclosing_time(deadline)?;
+        if observed.pid != child.id()
+            || observed.pid != observed.group
+            || observed.parent != std::process::id()
+            || observed.start == 0
+            || expected.is_some_and(|original| !original.same_owner(&observed))
+        {
+            return Err("enclosing retained worker identity audit refused".to_string());
+        }
+        Ok(ObservedProcessIdentity(observed))
+    }
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    fn dispose_enclosing_primary(
+        child: &mut OwnedProcess,
+        expected: Option<(&Identity, &Identity)>,
+        deadline: Instant,
+        signaled_group: bool,
+        progress: &mut EnclosingDispositionProgress,
+    ) -> Result<(), String> {
+        // These identity observations audit a still-owned, unreaped handle.
+        // They never authorize a numeric group signal or renewed qualification.
+        super::super::enclosing_time(deadline)?;
+        let parent = identity(std::process::id())?;
+        super::super::enclosing_time(deadline)?;
+        let observed = identity(child.id())?;
+        super::super::enclosing_time(deadline)?;
+        if parent.pid != std::process::id()
+            || !parent.live()
+            || observed.pid != child.id()
+            || observed.pid != observed.group
+            || observed.parent != parent.pid
+            || observed.start == 0
+        {
+            return Err("enclosing direct identity audit refused; custody retained".to_string());
+        }
+        if let Some((leader, original_parent)) = expected
+            && (!leader.same_owner(&observed) || !original_parent.same_owner(&parent))
+        {
+            return Err("enclosing original group identity changed; custody retained".to_string());
+        }
+        progress.leader = Some(observed.clone());
+        progress.parent = Some(parent);
+        child.enclosing_kill_until(deadline)?;
+        loop {
+            super::super::enclosing_time(deadline)?;
+            let actual = identity(child.id())?;
+            super::super::enclosing_time(deadline)?;
+            if !observed.same_owner(&actual) {
+                return Err("enclosing unreaped identity changed; custody retained".to_string());
+            }
+            let members = scan_group(observed.group, deadline)?;
+            super::super::enclosing_time(deadline)?;
+            if members.is_empty() {
+                progress.no_live_members = true;
+                progress.empty_before_reap_at = Some(Instant::now());
+                break;
+            }
+            // Keep the primary unreaped. Only a real signal under the initial
+            // U scope allows bounded polling for asynchronous descendant exit.
+            // Direct-only custody cannot acquire that authority after failure.
+            if !signaled_group && members.iter().any(|pid| *pid != observed.pid) {
+                return Err("enclosing live descendants remain; custody retained".to_string());
+            }
+            thread::sleep(
+                Duration::from_millis(5)
+                    .min(deadline.saturating_duration_since(Instant::now())),
+            );
+        }
+        child.enclosing_reap_until(deadline, &mut progress.primary_status)?;
+        super::super::enclosing_time(deadline)
+    }
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    fn actual_direct_closure(
+        child: &OwnedProcess,
+        expected: Option<(&Identity, &Identity)>,
+        progress: &EnclosingDispositionProgress,
+    ) -> bool {
+        let Some((status, reaped_at)) = child.enclosing_observed_reap else {
+            return false;
+        };
+        let (Some(leader), Some(parent), Some(audited_at)) = (
+            progress.leader.as_ref(),
+            progress.parent.as_ref(),
+            progress.empty_before_reap_at,
+        ) else {
+            return false;
+        };
+        progress.no_live_members
+            && progress.primary_status == Some(status)
+            && audited_at <= reaped_at
+            && leader.pid == child.id()
+            && leader.pid == leader.group
+            && leader.parent == parent.pid
+            && leader.start != 0
+            && expected.is_none_or(|(expected_leader, expected_parent)| {
+                expected_leader.same_owner(leader) && expected_parent.same_owner(parent)
+            })
+    }
+
     /// Setup or fixed-signal failure with actual unqualified direct-child custody.
     /// No identity, status, or settlement is fabricated from these handles.
     pub(crate) struct GroupSetupFailure {
@@ -276,6 +443,45 @@ mod linux {
             Self {
                 message,
                 child: None,
+            }
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn observe_enclosing_worker(
+            &self,
+            deadline: Instant,
+        ) -> Result<ObservedProcessIdentity, String> {
+            let child = self.child.as_ref().ok_or_else(|| {
+                "enclosing setup has no actual pinned child".to_string()
+            })?;
+            observe_enclosing_worker(child, None, deadline)
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn dispose_enclosing_until(
+            &mut self,
+            deadline: Instant,
+            progress: &mut EnclosingDispositionProgress,
+        ) -> Result<(), String> {
+            let child = self.child.as_mut().ok_or_else(|| {
+                "enclosing setup has no actual pinned child; no disposition".to_string()
+            })?;
+            dispose_enclosing_primary(child, None, deadline, false, progress)
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn require_actual_enclosing_physical_closure(
+            &self,
+            progress: &EnclosingDispositionProgress,
+        ) -> Result<(), &'static str> {
+            if self
+                .child
+                .as_ref()
+                .is_some_and(|child| actual_direct_closure(child, None, progress))
+            {
+                Ok(())
+            } else {
+                Err("enclosing setup still lacks genuine physical closure; actual custody retained")
             }
         }
 
@@ -298,6 +504,17 @@ mod linux {
         }
     }
 
+    #[cfg(all(test, feature = "lang-rust"))]
+    struct EnclosingGroupScope {
+        original_deadline: Instant,
+        enclosing_deadline: Instant,
+        leader: Identity,
+        parent: Identity,
+        attempted: bool,
+        pending_helper: Option<OwnedProcess>,
+        empty_audit_before_reap: Option<Instant>,
+    }
+
     /// Owns a fresh unreaped direct-child group until qualified settlement.
     pub struct QualifiedGroupOwner {
         child: OwnedProcess,
@@ -309,6 +526,10 @@ mod linux {
         settled_status: Option<ExitStatus>,
         held_deadline: Option<Instant>,
         unconfirmed_signal: Option<OwnedProcess>,
+        #[cfg(all(test, feature = "lang-rust"))]
+        enclosing_scope: Option<EnclosingGroupScope>,
+        #[cfg(all(test, feature = "lang-rust"))]
+        enclosing_direct_reaped: bool,
     }
     impl QualifiedGroupOwner {
         /// Spawn and immediately lease a fresh direct-child Linux group.
@@ -336,6 +557,10 @@ mod linux {
                 settled_status: None,
                 held_deadline: None,
                 unconfirmed_signal: None,
+                #[cfg(all(test, feature = "lang-rust"))]
+                enclosing_scope: None,
+                #[cfg(all(test, feature = "lang-rust"))]
+                enclosing_direct_reaped: false,
             })
         }
 
@@ -393,11 +618,302 @@ mod linux {
                 settled_status: None,
                 held_deadline: Some(held_deadline),
                 unconfirmed_signal: None,
+                #[cfg(all(test, feature = "lang-rust"))]
+                enclosing_scope: None,
+                #[cfg(all(test, feature = "lang-rust"))]
+                enclosing_direct_reaped: false,
             })
         }
 
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn admit_enclosing_scope(
+            &mut self,
+            enclosing_deadline: Instant,
+        ) -> Result<(), String> {
+            let original_deadline = self.held_deadline.ok_or_else(|| {
+                "enclosing group admission has no original capture deadline".to_string()
+            })?;
+            super::super::enclosing_time(original_deadline)?;
+            super::super::enclosing_time(enclosing_deadline)?;
+            if self.child.enclosing_observed_reap.is_some()
+                || original_deadline >= enclosing_deadline
+                || self.refused
+                || self.settled
+                || self.enclosing_scope.is_some()
+            {
+                return Err("enclosing group admission is not initial or pre-admitted".to_string());
+            }
+            let leader = identity(self.child.id())?;
+            require_owner(&self.leader, &leader)?;
+            let parent = identity(std::process::id())?;
+            if !self.parent.same_owner(&parent) || !parent.live() {
+                return Err("enclosing group initial parent identity changed".to_string());
+            }
+            super::super::enclosing_time(original_deadline)?;
+            super::super::enclosing_time(enclosing_deadline)?;
+            // This scope is issued only while the actual initial T lease is
+            // live, before header/input pumping. It never resets that lease.
+            self.enclosing_scope = Some(EnclosingGroupScope {
+                original_deadline,
+                enclosing_deadline,
+                leader: self.leader.clone(),
+                parent: self.parent.clone(),
+                attempted: false,
+                pending_helper: None,
+                empty_audit_before_reap: None,
+            });
+            Ok(())
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        fn record_enclosing_empty_audit(&mut self, result: &Result<Vec<u32>, String>) {
+            if let Some(scope) = self.enclosing_scope.as_mut() {
+                let now = Instant::now();
+                scope.empty_audit_before_reap = (
+                    result.as_ref().is_ok_and(Vec::is_empty)
+                    && self.child.enclosing_observed_reap.is_none()
+                    && self.unconfirmed_signal.is_none()
+                    && scope.pending_helper.is_none()
+                    && self.held_deadline == Some(scope.original_deadline)
+                    && scope.leader.same_owner(&self.leader)
+                    && scope.parent.same_owner(&self.parent)
+                ).then_some(now);
+            }
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn initial_enclosing_worker_for_test(
+            &self,
+        ) -> Result<ObservedProcessIdentity, String> {
+            self.enclosing_scope
+                .as_ref()
+                .map(|scope| ObservedProcessIdentity(scope.leader.clone()))
+                .ok_or_else(|| "actual initial U observation is absent".to_string())
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn observe_pending_enclosing_helper_for_test(
+            &self,
+            deadline: Instant,
+        ) -> Result<(ObservedProcessIdentity, Option<Instant>), String> {
+            super::super::enclosing_time(deadline)?;
+            let scope = self.enclosing_scope.as_ref().ok_or("actual initial U scope is absent")?;
+            let helper = scope.pending_helper.as_ref().ok_or("actual pending U helper is absent")?;
+            let observed = identity(helper.id())?;
+            super::super::enclosing_time(deadline)?;
+            if observed.pid != helper.id()
+                || observed.parent != scope.parent.pid
+                || observed.start == 0
+            {
+                return Err("actual pending U helper identity changed".to_string());
+            }
+            Ok((ObservedProcessIdentity(observed), helper.bounded_drop_until))
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn remove_enclosing_empty_audit_for_test(&mut self) -> Result<(), String> {
+            let scope = self.enclosing_scope.as_mut().ok_or("missing actual initial U scope")?;
+            if scope.empty_audit_before_reap.take().is_none() {
+                return Err("negative control had no real empty audit to remove".to_string());
+            }
+            Ok(())
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        fn record_reaped_enclosing_disposition(
+            &mut self,
+            deadline: Instant,
+            progress: &mut EnclosingDispositionProgress,
+        ) -> Result<(), String> {
+            super::super::enclosing_time(deadline)?;
+            let (status, reaped_at) = self.child.enclosing_observed_reap
+                .ok_or("enclosing native reap observation is absent")?;
+            let scope = self.enclosing_scope.as_mut().ok_or(
+                "enclosing actual primary was already reaped without initial U scope; custody retained"
+            )?;
+            let audited_at = scope.empty_audit_before_reap.ok_or(
+                "enclosing reaped primary lacks actual before-reap empty audit; custody retained"
+            )?;
+            if scope.attempted
+                || audited_at > reaped_at
+                || reaped_at >= scope.enclosing_deadline
+                || scope.enclosing_deadline < deadline
+                || self.held_deadline != Some(scope.original_deadline)
+                || self.unconfirmed_signal.is_some()
+                || scope.pending_helper.is_some()
+                || !scope.leader.same_owner(&self.leader)
+                || !scope.parent.same_owner(&self.parent)
+            {
+                return Err(
+                    "enclosing reaped-primary observations mismatched; custody retained".to_string(),
+                );
+            }
+            scope.attempted = true;
+            let parent = identity(std::process::id())?;
+            super::super::enclosing_time(deadline)?;
+            if !scope.parent.same_owner(&parent) || !parent.live() {
+                return Err("enclosing reaped-primary parent changed; custody retained".to_string());
+            }
+            // No /proc leader read or numeric signal occurs after the pin was
+            // actually reaped. These are the retained native audit/reap DATA.
+            progress.leader = Some(scope.leader.clone());
+            progress.parent = Some(parent);
+            progress.primary_status = Some(status);
+            progress.no_live_members = true;
+            progress.empty_before_reap_at = Some(audited_at);
+            super::super::enclosing_time(deadline)
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn has_enclosing_scope(&self) -> bool {
+            self.enclosing_scope.is_some()
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn enclosing_failure_state(&self) -> (Option<Instant>, bool, bool, bool, bool) {
+            (
+                self.held_deadline,
+                self.refused,
+                self.settled,
+                self.settlement.is_some(),
+                self.settled_status.is_some(),
+            )
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn observe_enclosing_worker(
+            &self,
+            deadline: Instant,
+        ) -> Result<ObservedProcessIdentity, String> {
+            observe_enclosing_worker(&self.child, Some(&self.leader), deadline)
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn dispose_enclosing_until(
+            &mut self,
+            deadline: Instant,
+            progress: &mut EnclosingDispositionProgress,
+        ) -> Result<(), String> {
+            if self.child.enclosing_observed_reap.is_some() {
+                return self.record_reaped_enclosing_disposition(deadline, progress);
+            }
+            // Dispose the old numeric-signal helper while the primary remains
+            // unreaped. A pending helper must never outlive the group's pin.
+            if let Some(helper) = self.unconfirmed_signal.as_mut() {
+                helper.enclosing_dispose_helper_until(deadline, &mut progress.helper_status)?;
+            }
+            let mut primary_deadline = deadline;
+            let mut signaled_group = false;
+            if let Some(scope) = self.enclosing_scope.as_mut() {
+                super::super::enclosing_time(deadline)?;
+                if scope.attempted
+                    || self.held_deadline != Some(scope.original_deadline)
+                    || scope.enclosing_deadline < deadline
+                    || scope.pending_helper.is_some()
+                    || !scope.leader.same_owner(&self.leader)
+                    || !scope.parent.same_owner(&self.parent)
+                {
+                    return Err("enclosing group scope changed or was already used".to_string());
+                }
+                scope.attempted = true;
+                let parent = identity(std::process::id())?;
+                if !scope.parent.same_owner(&parent) || !parent.live() {
+                    return Err("enclosing group parent changed; custody retained".to_string());
+                }
+                // The once-created two-second signal/scan window tightens the
+                // same terminal cutoff; it never resets a helper's clock.
+                primary_deadline = progress
+                    .group_deadline
+                    .ok_or("enclosing group subcutoff was not pre-admitted")?;
+                super::super::enclosing_time(primary_deadline)?;
+                let observed = identity(self.child.id());
+                let members = scan_group(scope.leader.group, primary_deadline);
+                let members = signal_authority(&scope.leader, observed, members)?;
+                super::super::enclosing_time(primary_deadline)?;
+                if !members.is_empty() {
+                    let result = bounded_group_signal_with_held(
+                        scope.leader.group,
+                        primary_deadline,
+                        Some(scope.enclosing_deadline),
+                    );
+                    if let Err(failure) = result {
+                        let (message, helper) = failure.into_parts();
+                        // This inline slot existed before initial capture.
+                        // No old/new unknown helper is replaced or discarded.
+                        scope.pending_helper = helper;
+                        return Err(message);
+                    }
+                }
+                super::super::enclosing_time(primary_deadline)?;
+                signaled_group = true;
+            }
+            // Preserve refused/settled/held_deadline and every original fact.
+            // No old abort/qualified/settle or receipt constructor is used.
+            let result = dispose_enclosing_primary(
+                &mut self.child,
+                Some((&self.leader, &self.parent)),
+                primary_deadline,
+                signaled_group,
+                progress,
+            );
+            if actual_direct_closure(
+                &self.child,
+                Some((&self.leader, &self.parent)),
+                progress,
+            ) {
+                // Record only genuine physical closure from this endpoint,
+                // including native reap followed by a late clock refusal.
+                self.enclosing_direct_reaped = true;
+            }
+            result?;
+            super::super::enclosing_time(deadline)
+        }
+
+        #[cfg(all(test, feature = "lang-rust"))]
+        pub(super) fn require_actual_enclosing_physical_closure(
+            &self,
+            progress: &EnclosingDispositionProgress,
+        ) -> Result<(), &'static str> {
+            let helpers_closed = self.unconfirmed_signal.as_ref()
+                .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
+                && self.enclosing_scope.as_ref().is_none_or(|scope| {
+                    scope.pending_helper.as_ref()
+                        .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
+                });
+            let direct_closed = actual_direct_closure(
+                &self.child,
+                Some((&self.leader, &self.parent)),
+                progress,
+            );
+            let original_audit_closed = self.enclosing_scope.as_ref().is_some_and(|scope| {
+                let Some((_, reaped_at)) = self.child.enclosing_observed_reap else {
+                    return false;
+                };
+                scope.empty_audit_before_reap.is_some_and(|audited_at| {
+                    audited_at <= reaped_at
+                })
+                    && self.held_deadline == Some(scope.original_deadline)
+                    && scope.leader.same_owner(&self.leader)
+                    && scope.parent.same_owner(&self.parent)
+            });
+            if helpers_closed && (direct_closed || original_audit_closed) {
+                Ok(())
+            } else {
+                Err("enclosing group still lacks genuine physical closure; actual custody retained")
+            }
+        }
+
         pub(crate) fn retained_process_count(&self) -> usize {
-            usize::from(!self.settled) + usize::from(self.unconfirmed_signal.is_some())
+            let count =
+                usize::from(!self.settled) + usize::from(self.unconfirmed_signal.is_some());
+            #[cfg(all(test, feature = "lang-rust"))]
+            let count = count
+                + usize::from(
+                    self.enclosing_scope
+                        .as_ref()
+                        .is_some_and(|scope| scope.pending_helper.is_some()),
+                );
+            count
         }
 
         #[cfg(test)]
@@ -407,6 +923,24 @@ mod linux {
 
         #[cfg(test)]
         pub(crate) fn close_fixture_custody(&mut self) -> Result<(), String> {
+            #[cfg(all(test, feature = "lang-rust"))]
+            if let Some(scope) = self.enclosing_scope.as_mut()
+                && let Some(helper) = scope.pending_helper.as_mut()
+            {
+                // Fixture-only teardown is never a negative/capture grant.
+                // Close the actual numeric helper before releasing the pin.
+                helper.request_kill().map_err(|error| error.to_string())?;
+                if !helper.reap_within(Duration::from_secs(5)) {
+                    return Err("fixture enclosing helper reap was unconfirmed".to_string());
+                }
+            }
+            #[cfg(all(test, feature = "lang-rust"))]
+            if let Some(helper) = self.unconfirmed_signal.as_mut() {
+                helper.request_kill().map_err(|error| error.to_string())?;
+                if !helper.reap_within(Duration::from_secs(5)) {
+                    return Err("fixture original signal reap was unconfirmed".to_string());
+                }
+            }
             // Explicit test-only closeout is not settlement and grants no receipt.
             self.child
                 .request_kill()
@@ -533,6 +1067,8 @@ mod linux {
             let deadline = self.phase_deadline(deadline);
             self.check_phase(deadline)?;
             let result = scan_group(self.leader.group, deadline);
+            #[cfg(all(test, feature = "lang-rust"))]
+            self.record_enclosing_empty_audit(&result);
             if result.is_err() {
                 self.refused = true;
             }
@@ -678,6 +1214,15 @@ mod linux {
     }
     impl Drop for QualifiedGroupOwner {
         fn drop(&mut self) {
+            #[cfg(all(test, feature = "lang-rust"))]
+            if (self.enclosing_scope.is_some() || self.enclosing_direct_reaped)
+                && self.child.enclosing_observed_reap.is_some()
+            {
+                // Only an admitted enclosing scope or its actual endpoint
+                // avoids revisiting a numerically unpinned PID during Drop.
+                // Ordinary capture without that endpoint keeps old behavior.
+                return;
+            }
             if !self.settled && !self.refused {
                 let _ = self.abort();
             }
@@ -1370,6 +1915,50 @@ mod linux {
             Ok(())
         }
 
+        #[cfg(feature = "lang-rust")]
+        #[test]
+        fn enclosing_same_cutoff_disposes_actual_primary_and_retained_signal_helper()
+        -> Result<(), String> {
+            let started = Instant::now();
+            let held = started + Duration::from_millis(100);
+            let outer = started + Duration::from_secs(5);
+            let mut owner = QualifiedGroupOwner::spawn_with_deadline(
+                test_command("/usr/bin/sleep", &["30"], true),
+                held,
+            )
+            .map_err(close_setup_failure)?;
+            let failed = super::super::super::with_post_spawn_deadline_barrier(|| owner.abort());
+            let primary = owner.id();
+            let before = owner.leader.clone();
+            let helper = owner
+                .unconfirmed_signal
+                .as_ref()
+                .ok_or("real failed signal did not retain its helper")?
+                .id();
+            let mut progress = EnclosingDispositionProgress::new();
+            // This endpoint was admitted before either child could spawn.
+            owner.dispose_enclosing_until(outer, &mut progress)?;
+            require_error(failed, "spawn crossed its held deadline")?;
+            if progress.primary_status.is_none()
+                || progress.helper_status.is_none()
+                || !progress.no_live_members
+                || progress.leader.as_ref().is_none_or(|actual| !before.same_owner(actual))
+                || owner.held_deadline != Some(held)
+                || !owner.refused
+                || owner.settled
+                || owner.settlement.is_some()
+                || owner.settled_status.is_some()
+                || owner.child.bounded_drop_until != Some(held)
+                || Instant::now() >= outer
+            {
+                return Err(
+                    "enclosing helper disposition changed capture or lost actual progress".to_string(),
+                );
+            }
+            require_not_live(primary)?;
+            require_not_live(helper)
+        }
+
         #[test]
         fn reaped_primary_cannot_supply_a_group_settlement() -> Result<(), String> {
             let mut guard =
@@ -1405,3 +1994,6 @@ pub(crate) use linux::GroupSetupFailure;
 pub use linux::{
     ObservedProcessIdentity, QualifiedGroupOwner, QualifiedGroupSettlement, QualifiedGroupWait,
 };
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use linux::EnclosingDispositionProgress;

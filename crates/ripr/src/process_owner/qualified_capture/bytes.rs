@@ -361,6 +361,7 @@ pub(crate) struct CompleteTerminalCustodian<L: Any + Send + Sync> {
     lease: Arc<L>,
     attempted: bool,
     failure: Option<CompleteCaptureError>,
+    enclosing_deadline: Option<Instant>,
 }
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
@@ -374,6 +375,7 @@ impl<L: Any + Send + Sync> CompleteTerminalCustodian<L> {
             lease,
             attempted: false,
             failure: None,
+            enclosing_deadline: None,
         })
     }
 
@@ -416,9 +418,10 @@ impl<L: Any + Send + Sync> CompleteTerminalCustodian<L> {
         {
             return Ok(closed);
         }
-        let reason = self.failure.is_none().then_some(
-            "no failed capture has a checked terminal disposition; custody unconfirmed",
-        );
+        let reason = self
+            .failure
+            .is_none()
+            .then_some("no failed capture has a checked terminal disposition; custody unconfirmed");
         Err(CompleteTerminalFailure {
             reason,
             capture: self.failure.as_mut(),
@@ -448,6 +451,344 @@ fn take_timely_terminal_receipt(
         return None;
     }
     Some(receipt)
+}
+
+/// A separately admitted outer owner. Moving custody here grants no capture
+/// success, settlement, EOF, source, cleanup or publication authority.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteEnclosingCustodian<L: Any + Send + Sync> {
+    inner: Option<CompleteTerminalCustodian<L>>,
+    original_deadline: Instant,
+    enclosing_deadline: Instant,
+    entered: bool,
+    disposal_attempted: bool,
+    disposal_deadline: Option<Instant>,
+    disposal_error: Option<String>,
+    progress: super::EnclosingDispositionProgress,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+struct EnclosingReturnGuard<'a, L: Any + Send + Sync> {
+    destination: &'a mut Option<CompleteTerminalCustodian<L>>,
+    inner: Option<CompleteTerminalCustodian<L>>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl<L: Any + Send + Sync> Drop for EnclosingReturnGuard<'_, L> {
+    fn drop(&mut self) {
+        // The exclusive destination was emptied before the callback. Restore
+        // the same owner by value without allocation, reporting or acceptance.
+        *self.destination = self.inner.take();
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl<L: Any + Send + Sync> CompleteEnclosingCustodian<L> {
+    pub(crate) fn admit(
+        inner_slot: &mut Option<CompleteTerminalCustodian<L>>,
+        enclosing_deadline: Instant,
+    ) -> Result<Self, &'static str> {
+        let inner = inner_slot
+            .as_ref()
+            .ok_or("enclosing admission has no original custodian")?;
+        let now = Instant::now();
+        if inner.attempted
+            || inner.failure.is_some()
+            || now >= inner.held_deadline
+            || inner.held_deadline >= enclosing_deadline
+        {
+            // The rejected caller still owns exactly the original inner slot.
+            return Err("enclosing admission requires an unattempted live original T below U");
+        }
+        let original_deadline = inner.held_deadline;
+        let mut admitted = inner_slot.take();
+        if let Some(inner) = admitted.as_mut() {
+            // Install the separate clock only during original pre-spawn admission.
+            inner.enclosing_deadline = Some(enclosing_deadline);
+        }
+        Ok(Self {
+            inner: admitted,
+            original_deadline,
+            enclosing_deadline,
+            entered: false,
+            disposal_attempted: false,
+            disposal_deadline: None,
+            disposal_error: None,
+            progress: super::EnclosingDispositionProgress::new(),
+        })
+    }
+
+    pub(crate) fn with_inner<R>(
+        &mut self,
+        work: impl FnOnce(&mut CompleteTerminalCustodian<L>) -> R,
+    ) -> Result<R, &'static str> {
+        if self.entered || self.disposal_attempted {
+            return Err("enclosing inner boundary was already entered; custody retained");
+        }
+        if Instant::now() >= self.original_deadline {
+            return Err("enclosing inner boundary reached the original capture deadline");
+        }
+        self.entered = true;
+        let inner = self
+            .inner
+            .take()
+            .ok_or("enclosing inner owner is unavailable; custody retained")?;
+        let mut guard = EnclosingReturnGuard {
+            destination: &mut self.inner,
+            inner: Some(inner),
+        };
+        let inner = guard
+            .inner
+            .as_mut()
+            .ok_or("enclosing transfer did not retain its original owner")?;
+        Ok(work(inner))
+    }
+
+    pub(crate) fn inner(&self) -> Option<&CompleteTerminalCustodian<L>> {
+        self.inner.as_ref()
+    }
+
+    pub(crate) fn original_deadline(&self) -> Instant {
+        self.original_deadline
+    }
+
+    pub(crate) fn enclosing_deadline(&self) -> Instant {
+        self.enclosing_deadline
+    }
+
+    pub(crate) fn matches_lease(&self, lease: &Arc<L>) -> bool {
+        self.inner
+            .as_ref()
+            .is_some_and(|inner| inner.matches_lease(lease))
+    }
+
+    pub(crate) fn observed_retained_worker(&self) -> Result<super::ObservedProcessIdentity, String> {
+        crate::process_owner::enclosing_time(self.enclosing_deadline)?;
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or("enclosing original owner is unavailable")?;
+        let failure = inner
+            .failure
+            .as_ref()
+            .ok_or("enclosing owner has no failed capture")?;
+        if inner.held_deadline != self.original_deadline
+            || !failure.matches_lease(&inner.lease)
+            || failure.custody.len() != 1
+        {
+            return Err("enclosing retained worker binding mismatched".to_string());
+        }
+        let custody = &failure.custody[0];
+        match (&custody.setup, &custody.group) {
+            (Some(setup), None) => setup.observe_enclosing_worker(self.enclosing_deadline),
+            (None, Some(group)) => group.observe_enclosing_worker(self.enclosing_deadline),
+            _ => Err("enclosing actual primary custody is unavailable".to_string()),
+        }
+    }
+
+    fn require_actual_physical_closure(&self) -> Result<(), &'static str> {
+        let inner = self
+            .inner
+            .as_ref()
+            .ok_or("actual enclosing owner is absent")?;
+        let failure = inner
+            .failure
+            .as_ref()
+            .ok_or("actual first capture failure is absent")?;
+        if inner.held_deadline != self.original_deadline
+            || !failure.matches_lease(&inner.lease)
+            || failure.custody.len() != 1
+        {
+            return Err("actual enclosing identity or first failure changed; custody retained");
+        }
+        let custody = &failure.custody[0];
+        match (&custody.setup, &custody.group) {
+            (Some(setup), None) => setup.require_actual_enclosing_physical_closure(&self.progress),
+            (None, Some(group)) => group.require_actual_enclosing_physical_closure(&self.progress),
+            _ => Err("actual enclosing primary custody is absent; no physical closure"),
+        }
+    }
+
+    pub(crate) fn take_physically_closed(
+        slot: &mut Option<Self>,
+    ) -> Result<CompleteEnclosingPhysicalClosure<L>, &'static str> {
+        // Borrow first. Refusal never takes, replaces or destroys the owner.
+        // These are historical actual physical observations, not timely
+        // capture/U admission. No clock, new I/O or deadline is introduced.
+        slot.as_ref()
+            .ok_or("actual enclosing slot is absent")?
+            .require_actual_physical_closure()?;
+        match slot.take() {
+            Some(enclosing) => Ok(CompleteEnclosingPhysicalClosure { enclosing }),
+            None => Err("actual enclosing slot is absent"),
+        }
+    }
+
+    pub(crate) fn try_dispose_failure(
+        &mut self,
+    ) -> Result<CompleteEnclosingDisposed, CompleteEnclosingFailure<'_, L>> {
+        if self.disposal_attempted {
+            return Err(CompleteEnclosingFailure { enclosing: self });
+        }
+        self.disposal_attempted = true;
+        let result = self.dispose_failure();
+        match result {
+            Ok(disposed) => Ok(disposed),
+            Err(error) => {
+                self.disposal_error = Some(error);
+                Err(CompleteEnclosingFailure { enclosing: self })
+            }
+        }
+    }
+
+    fn dispose_failure(&mut self) -> Result<CompleteEnclosingDisposed, String> {
+        crate::process_owner::enclosing_time(self.enclosing_deadline)?;
+        // Create this shared terminal cutoff once. Helpers cannot restart it.
+        let terminal_started = Instant::now();
+        let deadline = terminal_started
+            .checked_add(crate::process_owner::enclosing_disposal_grace())
+            .map_or(self.enclosing_deadline, |phase| phase.min(self.enclosing_deadline));
+        self.disposal_deadline = Some(deadline);
+        let group_deadline = terminal_started
+            .checked_add(super::linux::terminal_settlement_grace())
+            .map_or(deadline, |phase| phase.min(deadline));
+        self.progress.admit_group_deadline(group_deadline);
+        let inner = self
+            .inner
+            .as_mut()
+            .ok_or("enclosing original owner is unavailable")?;
+        if inner.held_deadline != self.original_deadline {
+            return Err("enclosing original deadline changed; custody retained".to_string());
+        }
+        let failure = inner
+            .failure
+            .as_mut()
+            .ok_or("enclosing owner has no failed capture; no disposition")?;
+        if !failure.matches_lease(&inner.lease) || failure.custody.len() != 1 {
+            return Err(
+                "enclosing actual lease or custody slot mismatched; custody retained".to_string(),
+            );
+        }
+        let custody = &mut failure.custody[0];
+        match (&mut custody.setup, &mut custody.group) {
+            (Some(setup), None) => {
+                setup.dispose_enclosing_until(deadline, &mut self.progress)?;
+            }
+            (None, Some(group)) => {
+                group.dispose_enclosing_until(deadline, &mut self.progress)?;
+            }
+            _ => {
+                return Err(
+                    "enclosing actual process owner is unavailable; custody retained".to_string(),
+                );
+            }
+        }
+        crate::process_owner::enclosing_time(deadline)?;
+        if !self.progress.no_live_members() {
+            return Err("enclosing primary group observation is incomplete".to_string());
+        }
+        let worker = self
+            .progress
+            .observed_worker()
+            .ok_or("enclosing actual worker observation is unavailable")?;
+        let parent = self
+            .progress
+            .observed_parent()
+            .ok_or("enclosing actual parent observation is unavailable")?;
+        let status = self
+            .progress
+            .status()
+            .ok_or("enclosing actual direct reap status is unavailable")?;
+        let lease: Arc<dyn Any + Send + Sync> = inner.lease.clone();
+        crate::process_owner::enclosing_time(deadline)?;
+        let disposed = CompleteEnclosingDisposed {
+            worker,
+            parent,
+            status,
+            original_deadline: self.original_deadline,
+            enclosing_deadline: self.enclosing_deadline,
+            lease,
+        };
+        crate::process_owner::enclosing_time(deadline)?;
+        Ok(disposed)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteEnclosingPhysicalClosure<L: Any + Send + Sync> {
+    enclosing: CompleteEnclosingCustodian<L>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl<L: Any + Send + Sync> CompleteEnclosingPhysicalClosure<L> {
+    pub(crate) fn enclosing(&self) -> &CompleteEnclosingCustodian<L> {
+        &self.enclosing
+    }
+
+    pub(crate) fn message(&self) -> &str {
+        self.enclosing
+            .inner()
+            .and_then(CompleteTerminalCustodian::failure)
+            .map_or("actual capture failure is absent", CompleteCaptureError::message)
+    }
+}
+
+/// Negative observed disposition DATA, never a capture/group/EOF receipt.
+/// Unknown or live descendants cause refusal instead of this observation.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteEnclosingDisposed {
+    worker: super::ObservedProcessIdentity,
+    parent: super::ObservedProcessIdentity,
+    status: ExitStatus,
+    original_deadline: Instant,
+    enclosing_deadline: Instant,
+    lease: Arc<dyn Any + Send + Sync>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl CompleteEnclosingDisposed {
+    pub(crate) fn observed_worker(&self) -> &super::ObservedProcessIdentity {
+        &self.worker
+    }
+
+    pub(crate) fn observed_parent(&self) -> &super::ObservedProcessIdentity {
+        &self.parent
+    }
+
+    pub(crate) fn status(&self) -> ExitStatus {
+        self.status
+    }
+
+    pub(crate) fn original_deadline(&self) -> Instant {
+        self.original_deadline
+    }
+
+    pub(crate) fn enclosing_deadline(&self) -> Instant {
+        self.enclosing_deadline
+    }
+
+    pub(crate) fn matches_lease<L: Any + Send + Sync>(&self, lease: &Arc<L>) -> bool {
+        let supplied: Arc<dyn Any + Send + Sync> = lease.clone();
+        Arc::ptr_eq(&self.lease, &supplied)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteEnclosingFailure<'a, L: Any + Send + Sync> {
+    enclosing: &'a CompleteEnclosingCustodian<L>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl<L: Any + Send + Sync> CompleteEnclosingFailure<'_, L> {
+    pub(crate) fn message(&self) -> &str {
+        self.enclosing.disposal_error.as_deref().unwrap_or(
+            "enclosing disposition was already attempted; actual custody retained",
+        )
+    }
+
+    pub(crate) fn enclosing(&self) -> &CompleteEnclosingCustodian<L> {
+        self.enclosing
+    }
 }
 
 /// Borrowed reporting only; this value contains no owned process custody.
@@ -531,15 +872,30 @@ impl CompleteByteCapture {
         }
         // Claim the sole slot before any fallible capture admission or spawn.
         custodian.attempted = true;
-        match Self::capture_with_deadline(
-            command,
-            source,
-            env_remove,
-            execution,
-            custodian.held_deadline,
-            custodian.lease.clone(),
-            |_| {},
-        ) {
+        let result = match custodian.enclosing_deadline {
+            Some(enclosing) => {
+                let lease: Arc<dyn Any + Send + Sync> = custodian.lease.clone();
+                linux::capture_with_enclosing(
+                    command,
+                    source,
+                    env_remove,
+                    execution,
+                    (custodian.held_deadline, enclosing),
+                    None,
+                    lease,
+                )
+            }
+            None => Self::capture_with_deadline(
+                command,
+                source,
+                env_remove,
+                execution,
+                custodian.held_deadline,
+                custodian.lease.clone(),
+                |_| {},
+            ),
+        };
+        match result {
             Ok(output) => Ok(output),
             Err(error) => {
                 // A by-value slot: this transfer allocates nothing and never
@@ -576,14 +932,26 @@ impl CompleteByteCapture {
         }
         custodian.attempted = true;
         let lease: Arc<dyn Any + Send + Sync> = custodian.lease.clone();
-        match linux::capture_with_execution_window(
-            command,
-            source,
-            env_remove,
-            execution,
-            (custodian.held_deadline, started, execution_deadline),
-            lease,
-        ) {
+        let result = match custodian.enclosing_deadline {
+            Some(enclosing) => linux::capture_with_enclosing(
+                command,
+                source,
+                env_remove,
+                execution,
+                (custodian.held_deadline, enclosing),
+                Some((started, execution_deadline)),
+                lease,
+            ),
+            None => linux::capture_with_execution_window(
+                command,
+                source,
+                env_remove,
+                execution,
+                (custodian.held_deadline, started, execution_deadline),
+                lease,
+            ),
+        };
+        match result {
             Ok(output) => Ok(output),
             Err(error) => {
                 custodian.failure = Some(error);
@@ -1026,6 +1394,8 @@ mod linux {
         held_deadline: Option<Instant>,
         #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
         execution_window: Option<(Instant, Instant)>,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        enclosing_deadline: Option<Instant>,
     }
 
     pub(super) fn capture_with_held(
@@ -1046,6 +1416,8 @@ mod linux {
                 held_deadline,
                 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
                 execution_window: None,
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                enclosing_deadline: None,
             },
             lease,
             settled,
@@ -1069,6 +1441,32 @@ mod linux {
             CaptureClocks {
                 held_deadline: Some(clocks.0),
                 execution_window: Some((clocks.1, clocks.2)),
+                enclosing_deadline: None,
+            },
+            lease,
+            |_| {},
+        )
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    pub(super) fn capture_with_enclosing(
+        command: (&Path, &[String]),
+        source: (&Path, Option<&[u8]>),
+        env_remove: &[&str],
+        execution: (CompleteCaptureBudget, &str),
+        deadlines: (Instant, Instant),
+        execution_window: Option<(Instant, Instant)>,
+        lease: Arc<dyn Any + Send + Sync>,
+    ) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
+        capture_with_clocks(
+            command,
+            source,
+            env_remove,
+            execution,
+            CaptureClocks {
+                held_deadline: Some(deadlines.0),
+                execution_window,
+                enclosing_deadline: Some(deadlines.1),
             },
             lease,
             |_| {},
@@ -1144,9 +1542,7 @@ mod linux {
             if original_started > now
                 || execution_deadline <= original_started
                 || now >= execution_deadline
-                || !reserve_end.is_some_and(|end| {
-                    held_deadline.is_some_and(|held| end <= held)
-                })
+                || !reserve_end.is_some_and(|end| held_deadline.is_some_and(|held| end <= held))
             {
                 return Err(failure_storage.failure(
                     "absolute execution window is invalid or lacks original settlement and drain reserve"
@@ -1313,6 +1709,15 @@ mod linux {
             })?,
         };
         if let Err(error) = strict_time(held_deadline) {
+            failure_storage.custody.push(CaptureCustody::group(owner));
+            return Err(failure_storage.failure(error, None, lease));
+        }
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(enclosing) = clocks.enclosing_deadline
+            && let Err(error) = owner.admit_enclosing_scope(enclosing)
+        {
+            // Header/input remains withheld. The actual owner enters exactly
+            // the existing pre-admitted error slot on failed initial minting.
             failure_storage.custody.push(CaptureCustody::group(owner));
             return Err(failure_storage.failure(error, None, lease));
         }
@@ -1525,6 +1930,13 @@ mod linux {
             errors.push(clock);
         }
         if !errors.is_empty() {
+            #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+            if held_deadline.is_some()
+                && (owner.retained_process_count() != 0 || owner.has_enclosing_scope())
+            {
+                failure_storage.custody.push(CaptureCustody::group(owner));
+            }
+            #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
             if held_deadline.is_some() && owner.retained_process_count() != 0 {
                 failure_storage.custody.push(CaptureCustody::group(owner));
             }
@@ -1549,6 +1961,13 @@ mod linux {
         let receipt = match receipt {
             Some(receipt) => receipt,
             None => {
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                if held_deadline.is_some()
+                    && (owner.retained_process_count() != 0 || owner.has_enclosing_scope())
+                {
+                    failure_storage.custody.push(CaptureCustody::group(owner));
+                }
+                #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
                 if held_deadline.is_some() && owner.retained_process_count() != 0 {
                     failure_storage.custody.push(CaptureCustody::group(owner));
                 }
@@ -1574,6 +1993,13 @@ mod linux {
         let (status, stdout, stderr, duration, timed_out) = match observation {
             Some(observation) => observation,
             None => {
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                if held_deadline.is_some()
+                    && (owner.retained_process_count() != 0 || owner.has_enclosing_scope())
+                {
+                    failure_storage.custody.push(CaptureCustody::group(owner));
+                }
+                #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
                 if held_deadline.is_some() && owner.retained_process_count() != 0 {
                     failure_storage.custody.push(CaptureCustody::group(owner));
                 }
@@ -1670,7 +2096,9 @@ mod linux {
         mod terminal {
             use super::*;
             use crate::process_owner::{
-                CompleteFailedClosed, CompleteTerminalCustodian, CompleteTerminalFailure,
+                CompleteEnclosingCustodian, CompleteEnclosingDisposed, CompleteEnclosingFailure,
+                CompleteEnclosingPhysicalClosure, CompleteFailedClosed, CompleteTerminalCustodian,
+                CompleteTerminalFailure,
             };
             use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -1765,6 +2193,787 @@ mod linux {
                     (Err(primary), Err(closeout)) => Err(format!(
                         "{primary}; fixture-only closeout unconfirmed; custody remains in caller: {closeout}"
                     )),
+                }
+            }
+
+            fn enclosing_report_to_string(report: CompleteEnclosingFailure<'_, Lease>) -> String {
+                // This typed report owns only a borrow; the actual error, child
+                // and composite lease remain in the pre-existing outer owner.
+                report.message().to_string()
+            }
+
+            fn physically_closed_report_to_string(
+                closed: CompleteEnclosingPhysicalClosure<Lease>,
+            ) -> String {
+                closed.message().to_string()
+            }
+
+            fn enclosing(
+                held: Instant,
+                outer: Instant,
+                lease: Arc<Lease>,
+            ) -> Result<CompleteEnclosingCustodian<Lease>, String> {
+                let mut slot = Some(CompleteTerminalCustodian::new(held, lease)?);
+                let admitted = CompleteEnclosingCustodian::admit(&mut slot, outer)
+                    .map_err(str::to_string)?;
+                if slot.is_some() {
+                    return Err("enclosing admission duplicated the original owner".to_string());
+                }
+                Ok(admitted)
+            }
+
+            fn expire_inner(
+                enclosing: &mut CompleteEnclosingCustodian<Lease>,
+                script: &str,
+            ) -> Result<String, String> {
+                enclosing
+                    .with_inner(|inner| {
+                        crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                            match capture(script, None, budget(0, 64), inner) {
+                                Err(report) => Ok(report),
+                                Ok(_) => Err("post-spawn crossing admitted capture".to_string()),
+                            }
+                        })
+                    })
+                    .map_err(str::to_string)?
+            }
+
+            fn require_enclosing_binding(
+                enclosing: &CompleteEnclosingCustodian<Lease>,
+                lease: &Arc<Lease>,
+                held: Instant,
+                outer: Instant,
+            ) -> Result<(), String> {
+                let inner = enclosing.inner().ok_or("enclosing original owner was lost")?;
+                let failure = inner.failure().ok_or("enclosing actual error was lost")?;
+                if inner.original_deadline() != held
+                    || enclosing.original_deadline() != held
+                    || enclosing.enclosing_deadline() != outer
+                    || !enclosing.matches_lease(lease)
+                    || !failure.matches_lease(lease)
+                    || !failure.message().contains("spawn crossed its held deadline")
+                    || !inner.attempted
+                    || inner.retained_process_count() != 1
+                {
+                    return Err(
+                        "enclosing transfer changed the original capture or lease".to_string(),
+                    );
+                }
+                Ok(())
+            }
+
+            fn require_enclosing_disposed(
+                disposed: &CompleteEnclosingDisposed,
+                before: &super::super::super::super::ObservedProcessIdentity,
+                lease: &Arc<Lease>,
+                held: Instant,
+                outer: Instant,
+                expected_success: bool,
+            ) -> Result<(), String> {
+                let actual = disposed.observed_worker();
+                let parent = disposed.observed_parent();
+                if actual.pid() != before.pid()
+                    || actual.start() != before.start()
+                    || actual.group() != before.group()
+                    || actual.parent() != before.parent()
+                    || parent.pid() != std::process::id()
+                    || parent.start() == 0
+                    || actual.parent() != parent.pid()
+                    || disposed.status().success() != expected_success
+                    || disposed.original_deadline() != held
+                    || disposed.enclosing_deadline() != outer
+                    || !disposed.matches_lease(lease)
+                    || Instant::now() >= outer
+                {
+                    return Err(
+                        "enclosing direct disposition changed actual identity or clocks".to_string(),
+                    );
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn enclosing_by_value_return_disposes_real_expired_child_under_pre_admitted_u()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(500);
+                let outer = started + Duration::from_secs(5);
+                let (lease, dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                std::thread::sleep(Duration::from_millis(25));
+                let report = expire_inner(&mut owner, "exec /usr/bin/sleep 30")?;
+                if !report.contains("spawn crossed its held deadline") {
+                    return Err(format!("unexpected inner report: {report}"));
+                }
+                let before = owner.observed_retained_worker()?;
+                let checks = require_enclosing_binding(&owner, &lease, held, outer);
+                let disposed = owner.try_dispose_failure().map_err(enclosing_report_to_string)?;
+                checks?;
+                require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)?;
+                let inner = owner.inner.as_mut().ok_or("original inner slot lost")?;
+                let child = retained_child(inner)?;
+                if child.bounded_drop_until != Some(held)
+                    || child.try_wait().map_err(|error| error.to_string())?.is_none()
+                    || inner.take_cleanup_receipt().is_some()
+                    || inner.try_closeout_failure().is_ok()
+                    || dropped.load(Ordering::SeqCst)
+                {
+                    return Err(
+                        "enclosing disposal rebased capture or fabricated its receipt".to_string(),
+                    );
+                }
+                match owner.try_dispose_failure() {
+                    Err(error) if error.enclosing().matches_lease(&lease) => Ok(()),
+                    Err(error) => Err(error.message().to_string()),
+                    Ok(_) => Err("enclosing negative disposition was replayed".to_string()),
+                }
+            }
+
+            #[test]
+            fn enclosing_by_value_guard_restores_real_owner_after_report_unwind()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(100);
+                let outer = started + Duration::from_secs(5);
+                let (lease, dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                let panic_payload: Box<dyn Any + Send> = Box::new("inner borrowed report");
+                let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let _outcome = owner.with_inner(|inner| {
+                        crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                            let args = shell("exec /usr/bin/sleep 30");
+                            match CompleteByteCapture::capture_with_terminal_custody(
+                                (Path::new("/bin/sh"), &args),
+                                (Path::new("/"), None),
+                                &[],
+                                (budget(0, 64), "enclosing real unwind"),
+                                inner,
+                            ) {
+                                Err(report) => {
+                                    let _text = report.to_string();
+                                    std::panic::resume_unwind(panic_payload);
+                                }
+                                Ok(_) => {}
+                            }
+                        });
+                    });
+                }));
+                let before = owner.observed_retained_worker()?;
+                let checks = require_enclosing_binding(&owner, &lease, held, outer);
+                let disposed = owner.try_dispose_failure().map_err(enclosing_report_to_string)?;
+                checks?;
+                if unwound.is_ok() || dropped.load(Ordering::SeqCst) {
+                    return Err(
+                        "unwind lost the actual outside owner or resource lease".to_string(),
+                    );
+                }
+                require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)
+            }
+
+            #[test]
+            fn enclosing_admission_and_reentry_never_replace_the_original_slot()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_secs(1);
+                let outer = started + Duration::from_secs(3);
+                let (lease, _dropped) = lease()?;
+                let mut slot = Some(CompleteTerminalCustodian::new(held, lease.clone())?);
+                match CompleteEnclosingCustodian::admit(&mut slot, held) {
+                    Err(_) => {}
+                    Ok(_) => return Err("enclosing admission accepted T equal to U".to_string()),
+                }
+                let rejected = slot.as_ref().ok_or("rejected admission dropped original slot")?;
+                if rejected.original_deadline() != held || !rejected.matches_lease(&lease) {
+                    return Err("rejected admission replaced original state".to_string());
+                }
+                let mut owner = CompleteEnclosingCustodian::admit(&mut slot, outer)
+                    .map_err(str::to_string)?;
+                owner.with_inner(|inner| {
+                    inner.attempted = true;
+                }).map_err(str::to_string)?;
+                match owner.with_inner(|_| ()) {
+                    Err(_) if owner.matches_lease(&lease) => {}
+                    Err(error) => return Err(error.to_string()),
+                    Ok(()) => return Err("enclosing boundary accepted a second attempt".to_string()),
+                }
+                let mut used = owner.inner.take();
+                match CompleteEnclosingCustodian::admit(&mut used, outer) {
+                    Err(_) if used.as_ref().is_some_and(|inner| inner.attempted) => Ok(()),
+                    Err(error) => Err(error.to_string()),
+                    Ok(_) => Err("enclosing admission replaced an attempted owner".to_string()),
+                }
+            }
+
+            #[test]
+            fn enclosing_real_live_descendant_refuses_before_primary_reap()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(100);
+                let outer = started + Duration::from_secs(5);
+                let (lease, _dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                let _report = expire_inner(
+                    &mut owner,
+                    "/usr/bin/sleep 0.5 & exec /usr/bin/sleep 30",
+                )?;
+                let before = owner.observed_retained_worker()?;
+                let refused = match owner.try_dispose_failure() {
+                    Err(error) => error.message().contains("live descendants remain"),
+                    Ok(_) => false,
+                };
+                let inner = owner.inner.as_mut().ok_or("descendant refusal lost inner")?;
+                let child = retained_child(inner)?;
+                let original = child.bounded_drop_until;
+                // Controlled finite descendant exits naturally. This fixture
+                // teardown uses the ALREADY admitted U and grants no disposition.
+                std::thread::sleep(Duration::from_millis(600));
+                let mut status = None;
+                child.enclosing_reap_until(outer, &mut status)?;
+                if !refused
+                    || original != Some(held)
+                    || status.is_none()
+                    || before.pid() != child.id()
+                    || owner.progress.status().is_some()
+                    || owner.progress.no_live_members()
+                    || !owner.matches_lease(&lease)
+                {
+                    return Err(
+                        "live-descendant refusal reaped, replaced or certified custody".to_string(),
+                    );
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn enclosing_late_after_real_reap_retains_status_without_disposition()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(50);
+                let outer = started + Duration::from_millis(250);
+                let (lease, _dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                let _report = expire_inner(&mut owner, "exec /usr/bin/sleep 30")?;
+                let failed = crate::process_owner::with_enclosing_after_reap_delay(
+                    Duration::from_millis(300),
+                    || match owner.try_dispose_failure() {
+                        Err(error) => error.message().contains("admitted ceiling"),
+                        Ok(_) => false,
+                    },
+                );
+                let inner = owner.inner.as_mut().ok_or("late disposition lost inner")?;
+                let child = retained_child(inner)?;
+                let actual = child.try_wait().map_err(|error| error.to_string())?;
+                if !failed
+                    || actual.is_none()
+                    || owner.progress.status() != actual
+                    || owner.original_deadline() != held
+                    || owner.enclosing_deadline() != outer
+                    || !owner.matches_lease(&lease)
+                    || !owner.progress.no_live_members()
+                {
+                    return Err(
+                        "late actual reap discarded status or granted disposition".to_string(),
+                    );
+                }
+                match owner.try_dispose_failure() {
+                    Err(_) => Ok(()),
+                    Ok(_) => Err("late enclosing disposition was retried".to_string()),
+                }
+            }
+
+            #[test]
+            fn enclosing_qualified_refusal_keeps_original_flags_and_deadline()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(100);
+                let outer = started + Duration::from_secs(5);
+                let (lease, _dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                HOOKS.with(|hooks| {
+                    hooks.borrow_mut().delay_first_wait = Some(Duration::from_millis(150));
+                });
+                let report = owner.with_inner(|inner| {
+                    capture(
+                        "exec 1>&- 2>&-; exec /usr/bin/sleep 30",
+                        None,
+                        budget(0, 64),
+                        inner,
+                    )
+                }).map_err(str::to_string)?;
+                if report.is_ok() {
+                    return Err("qualified held expiry admitted capture".to_string());
+                }
+                let before = owner.observed_retained_worker()?;
+                let disposed = owner.try_dispose_failure().map_err(enclosing_report_to_string)?;
+                require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)?;
+                let inner = owner.inner.as_mut().ok_or("qualified disposal lost inner")?;
+                let failure = inner.failure.as_mut().ok_or("qualified actual error lost")?;
+                let group = failure.custody[0].group.as_ref().ok_or("qualified owner lost")?;
+                if group.enclosing_failure_state() != (Some(held), true, false, false, false)
+                {
+                    return Err(
+                        "enclosing endpoint requalified or reset failed capture".to_string(),
+                    );
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn enclosing_initial_scope_disposes_real_qualified_descendants() -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(100);
+                let outer = started + Duration::from_secs(5);
+                let (lease, _dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                HOOKS.with(|hooks| {
+                    hooks.borrow_mut().delay_first_wait = Some(Duration::from_millis(150));
+                });
+                let report = owner.with_inner(|inner| {
+                    capture(
+                        "exec 1>&- 2>&-; /usr/bin/sleep 30 & exec /usr/bin/sleep 30",
+                        None,
+                        budget(0, 64),
+                        inner,
+                    )
+                }).map_err(str::to_string)?;
+                let primary = match report {
+                    Err(message) => message,
+                    Ok(_) => return Err("qualified descendant expiry admitted capture".to_string()),
+                };
+                let before = owner.observed_retained_worker()?;
+                let checks = (|| {
+                    let disposed = owner
+                        .try_dispose_failure()
+                        .map_err(enclosing_report_to_string)?;
+                    require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)?;
+                    let inner = owner.inner.as_mut().ok_or("descendant original owner lost")?;
+                    let failure = inner.failure.as_mut().ok_or("descendant first failure lost")?;
+                    let group = failure.custody[0].group.as_ref().ok_or("descendant group lost")?;
+                    if failure.message() != primary
+                        || group.enclosing_failure_state() != (Some(held), true, false, false, false)
+                        || failure.take_cleanup_receipt().is_some()
+                        || inner.try_closeout_failure().is_ok()
+                    {
+                        return Err(
+                            "negative group disposal altered failure or minted receipt".to_string(),
+                        );
+                    }
+                    // This is the endpoint's actual no-live-before-reap audit,
+                    // not a receipt inferred from a retained handle count.
+                    if !owner.progress.no_live_members() || owner.progress.status().is_none() {
+                        return Err(
+                            "descendant negative disposition lost actual observations".to_string(),
+                        );
+                    }
+                    Ok(())
+                })();
+                let inner = owner.inner.as_mut().ok_or("descendant fixture owner lost")?;
+                fixture_closeout(inner, checks)
+            }
+
+            #[test]
+            fn enclosing_uncertain_new_signal_helper_preserves_unreaped_primary()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(100);
+                let outer = started + Duration::from_secs(5);
+                let (lease, _dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                HOOKS.with(|hooks| {
+                    hooks.borrow_mut().delay_first_wait = Some(Duration::from_millis(150));
+                });
+                let report = owner.with_inner(|inner| {
+                    capture(
+                        "exec 1>&- 2>&-; /usr/bin/sleep 30 & exec /usr/bin/sleep 30",
+                        None,
+                        budget(0, 64),
+                        inner,
+                    )
+                }).map_err(str::to_string)?;
+                let primary = match report {
+                    Err(message) => message,
+                    Ok(_) => return Err("signal uncertainty control admitted capture".to_string()),
+                };
+                let before = owner.observed_retained_worker()?;
+                let message = crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                    match owner.try_dispose_failure() {
+                        Err(report) => {
+                            if !report.enclosing().matches_lease(&lease) {
+                                return Err(
+                                    "helper refusal transferred the actual lease".to_string(),
+                                );
+                            }
+                            Ok(report.message().to_string())
+                        }
+                        Ok(_) => Err("unknown helper minted negative disposition".to_string()),
+                    }
+                })?;
+                let checks = (|| {
+                    if !message.contains("spawn crossed its held deadline")
+                        || owner.original_deadline() != held
+                        || owner.enclosing_deadline() != outer
+                        || owner.progress.status().is_some()
+                        || owner.progress.no_live_members()
+                    {
+                        return Err(
+                            "helper uncertainty released primary pin or rebased clocks".to_string(),
+                        );
+                    }
+                    let after = owner.observed_retained_worker()?;
+                    if after.pid() != before.pid()
+                        || after.start() != before.start()
+                        || after.group() != before.group()
+                        || after.parent() != before.parent()
+                    {
+                        return Err("helper uncertainty replaced the pinned primary".to_string());
+                    }
+                    let inner = owner.inner
+                        .as_mut()
+                        .ok_or("helper uncertainty original owner lost")?;
+                    let failure = inner.failure
+                        .as_mut()
+                        .ok_or("helper uncertainty first error lost")?;
+                    let group = failure.custody[0].group.as_ref().ok_or("helper uncertainty group lost")?;
+                    let (helper, helper_clock) =
+                        group.observe_pending_enclosing_helper_for_test(outer)?;
+                    if helper.pid() == before.pid()
+                        || helper.parent() != std::process::id()
+                        || helper_clock != owner.progress.group_deadline()
+                        || inner.held_deadline != held
+                        || failure.message() != primary
+                        || group.retained_process_count() != 2
+                        || group.enclosing_failure_state() != (Some(held), true, false, false, false)
+                        || failure.take_cleanup_receipt().is_some()
+                    {
+                        return Err(
+                            "actual pending helper or original refusal was discarded".to_string(),
+                        );
+                    }
+                    match owner.try_dispose_failure() {
+                        Err(_) => Ok(()),
+                        Ok(_) => Err("helper refusal reset its one-shot cutoff".to_string()),
+                    }
+                })();
+                let mut slot = Some(owner);
+                let checks = checks.and_then(|()| {
+                    match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
+                        Err(_) => {
+                            let actual = slot.as_ref().ok_or("live helper moved actual owner")?;
+                            let inner = actual.inner().ok_or("live helper lost original custodian")?;
+                            if inner.retained_process_count() != 2
+                                || actual.original_deadline() != held
+                                || actual.enclosing_deadline() != outer
+                                || !actual.matches_lease(&lease)
+                            {
+                                return Err(
+                                    "physical refusal discarded live helper or primary".to_string(),
+                                );
+                            }
+                            Ok(())
+                        }
+                        Ok(_) => Err("unreaped helper manufactured physical closure".to_string()),
+                    }
+                });
+                let owner = slot.as_mut().ok_or("helper uncertainty actual fixture owner lost")?;
+                let inner = owner.inner.as_mut().ok_or("helper uncertainty fixture owner lost")?;
+                fixture_closeout(inner, checks)
+            }
+
+            fn late_reap_control(remove_actual_audit: bool) -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(200);
+                let outer = started + Duration::from_secs(5);
+                let (lease, _dropped) = lease()?;
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                let report = crate::process_owner::with_enclosing_after_try_wait_delay(
+                    Duration::from_millis(300),
+                    || {
+                        owner.with_inner(|inner| {
+                            capture("exit 0", None, budget(0, 64), inner)
+                        }).map_err(str::to_string)
+                    },
+                )?;
+                let primary = match report {
+                    Err(message) => message,
+                    Ok(_) => return Err("late actual reap admitted capture".to_string()),
+                };
+                let before = {
+                    let inner = owner.inner.as_mut().ok_or("late reap original owner lost")?;
+                    let failure = inner.failure.as_mut().ok_or("late reap first error lost")?;
+                    let group = failure.custody[0].group.as_mut().ok_or("late reap group lost")?;
+                    let observed = group.initial_enclosing_worker_for_test()?;
+                    if remove_actual_audit {
+                        // This destructive negative control removes real DATA.
+                        // It never fabricates an empty audit or a positive grant.
+                        group.remove_enclosing_empty_audit_for_test()?;
+                    }
+                    observed
+                };
+                let checks = (|| {
+                    match owner.observed_retained_worker() {
+                        Err(error) if error.contains("actually reaped; no PID lookup") => {}
+                        Err(error) => return Err(format!("wrong reaped-worker refusal: {error}")),
+                        Ok(_) => return Err("reaped worker getter revisited numeric PID".to_string()),
+                    }
+                    let result = owner.try_dispose_failure();
+                    if remove_actual_audit {
+                        let message = match result {
+                            Err(report) => report.message().to_string(),
+                            Ok(_) => {
+                                return Err(
+                                    "missing empty audit admitted U disposition".to_string(),
+                                );
+                            }
+                        };
+                        if !message.contains("lacks actual before-reap empty audit") {
+                            return Err(format!("wrong missing-audit refusal: {message}"));
+                        }
+                    } else {
+                        let disposed = result.map_err(enclosing_report_to_string)?;
+                        require_enclosing_disposed(&disposed, &before, &lease, held, outer, true)?;
+                        if !disposed.status().success() {
+                            return Err(
+                                "retained actual successful native reap was altered".to_string(),
+                            );
+                        }
+                    }
+                    let same_lease = owner.matches_lease(&lease);
+                    let inner = owner.inner.as_mut().ok_or("late reap original owner lost")?;
+                    let failure = inner.failure.as_mut().ok_or("late reap first error lost")?;
+                    let group = failure.custody[0].group.as_mut().ok_or("late reap group lost")?;
+                    let original_flags = group.enclosing_failure_state();
+                    let child = group.fixture_child();
+                    let actual_reap = child.enclosing_observed_reap;
+                    let actual_drop_clock = child.bounded_drop_until;
+                    if failure.message() != primary
+                        || actual_reap.is_none_or(|(status, at)| !status.success() || at >= outer)
+                        || actual_drop_clock != Some(held)
+                        || original_flags != (Some(held), true, false, false, false)
+                        || (remove_actual_audit && owner.progress.status().is_some())
+                        || (remove_actual_audit && owner.progress.no_live_members())
+                        || !same_lease
+                        || failure.take_cleanup_receipt().is_some()
+                    {
+                        return Err(
+                            "late real reap changed old refusal or inferred a missing audit".to_string(),
+                        );
+                    }
+                    Ok(())
+                })();
+                let mut slot = Some(owner);
+                let checks = checks.and_then(|()| {
+                    if remove_actual_audit {
+                        match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
+                            Err(_) => {
+                                let actual = slot
+                                    .as_ref()
+                                    .ok_or("missing audit moved actual owner")?;
+                                if actual.original_deadline() != held
+                                    || actual.enclosing_deadline() != outer
+                                    || !actual.matches_lease(&lease)
+                                {
+                                    return Err(
+                                        "physical refusal replaced original missing-audit owner".to_string(),
+                                    );
+                                }
+                                Ok(())
+                            }
+                            Ok(_) => Err("missing audit manufactured physical closure".to_string()),
+                        }
+                    } else {
+                        Ok(())
+                    }
+                });
+                let owner = slot.as_mut().ok_or("late reap actual fixture owner lost")?;
+                let inner = owner.inner.as_mut().ok_or("late reap fixture owner lost")?;
+                fixture_closeout(inner, checks)
+            }
+
+            #[test]
+            fn enclosing_recorded_reap_before_late_t_check_preserves_negative_closeout()
+            -> Result<(), String> {
+                late_reap_control(false)
+            }
+
+            #[test]
+            fn enclosing_late_reap_without_actual_empty_audit_stays_retained()
+            -> Result<(), String> {
+                late_reap_control(true)
+            }
+
+            #[test]
+            fn enclosing_native_reap_observed_after_u_allows_only_physical_extraction()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(500);
+                let outer = started + Duration::from_millis(700);
+                let (lease, dropped) = lease()?;
+                let weak = Arc::downgrade(&lease);
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                let report = crate::process_owner::with_enclosing_before_try_wait_delay(
+                    Duration::from_millis(800),
+                    || {
+                        owner
+                            .with_inner(|inner| capture("exit 0", None, budget(0, 64), inner))
+                            .map_err(str::to_string)
+                    },
+                )?;
+                let primary = match report {
+                    Err(message) => message,
+                    Ok(_) => return Err("after-U native reap admitted capture".to_string()),
+                };
+                let (before, status, reaped_at, flags) = {
+                    let inner = owner.inner.as_mut().ok_or("after-U original owner lost")?;
+                    let failure = inner.failure.as_mut().ok_or("after-U first error lost")?;
+                    let group = failure.custody[0]
+                        .group
+                        .as_mut()
+                        .ok_or("after-U actual group lost")?;
+                    let before = group.initial_enclosing_worker_for_test()?;
+                    let flags = group.enclosing_failure_state();
+                    let (status, reaped_at) = group
+                        .fixture_child()
+                        .enclosing_observed_reap
+                        .ok_or("after-U control did not record actual native Some")?;
+                    (before, status, reaped_at, flags)
+                };
+                let timely = match owner.try_dispose_failure() {
+                    Err(report) => report.message().to_string(),
+                    Ok(_) => return Err("after-U reap minted timely disposition".to_string()),
+                };
+                let mut slot = Some(owner);
+                let checks = (|| {
+                    if reaped_at < outer
+                        || !status.success()
+                        || flags != (Some(held), true, false, false, false)
+                        || !timely.contains("admitted ceiling")
+                    {
+                        return Err(
+                            "actual native reap did not cross U while preserving T refusal".to_string(),
+                        );
+                    }
+                    let closed = CompleteEnclosingCustodian::take_physically_closed(&mut slot)
+                        .map_err(str::to_string)?;
+                    let owner = closed.enclosing();
+                    let inner = owner.inner().ok_or("after-U physical move lost original owner")?;
+                    let failure = inner.failure().ok_or("after-U physical move lost first error")?;
+                    if slot.is_some()
+                        || closed.message() != primary
+                        || owner.original_deadline() != held
+                        || owner.enclosing_deadline() != outer
+                        || !owner.matches_lease(&lease)
+                        || failure.state().is_some_and(|state| {
+                            state.receipt.is_some()
+                                || state.terminal.as_ref().is_some_and(|evidence| {
+                                    evidence.group_only.is_some() || evidence.release.is_some()
+                                })
+                        })
+                        || dropped.load(Ordering::SeqCst)
+                    {
+                        return Err(
+                            "after-U physical move changed ownership or granted timely evidence".to_string(),
+                        );
+                    }
+                    if before.start() == 0 || before.pid() != before.group() {
+                        return Err("after-U initial owned identity was not genuine".to_string());
+                    }
+                    drop(lease);
+                    let message = physically_closed_report_to_string(closed);
+                    if message != primary || !dropped.load(Ordering::SeqCst) || weak.upgrade().is_some() {
+                        return Err(
+                            "after-U physical report retained or dropped the wrong lease".to_string(),
+                        );
+                    }
+                    match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
+                        Err(_) => Ok(()),
+                        Ok(_) => Err("after-U physical closure replayed".to_string()),
+                    }
+                })();
+                if let Some(owner) = slot.as_mut()
+                    && let Some(inner) = owner.inner.as_mut()
+                {
+                    fixture_closeout(inner, checks)
+                } else {
+                    checks
+                }
+            }
+
+            #[test]
+            fn enclosing_late_physical_reap_moves_same_owner_without_timely_authority()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_millis(50);
+                let outer = started + Duration::from_millis(250);
+                let (lease, dropped) = lease()?;
+                let weak = Arc::downgrade(&lease);
+                let mut owner = enclosing(held, outer, lease.clone())?;
+                let primary = expire_inner(&mut owner, "exec /usr/bin/sleep 30")?;
+                let before = owner.observed_retained_worker()?;
+                let timely = crate::process_owner::with_enclosing_after_reap_delay(
+                    Duration::from_millis(300),
+                    || match owner.try_dispose_failure() {
+                        Err(report) => Ok(report.message().to_string()),
+                        Ok(_) => {
+                            Err("late physical control minted timely U disposition".to_string())
+                        }
+                    },
+                )?;
+                let mut slot = Some(owner);
+                let checks = (|| {
+                    if !timely.contains("admitted ceiling") || Instant::now() < outer {
+                        return Err("real post-reap U crossing was not exercised".to_string());
+                    }
+                    let closed = CompleteEnclosingCustodian::take_physically_closed(&mut slot)
+                        .map_err(str::to_string)?;
+                    let owner = closed.enclosing();
+                    let inner = owner.inner().ok_or("physical closure lost original owner")?;
+                    let failure = inner
+                        .failure()
+                        .ok_or("physical closure lost actual first error")?;
+                    if slot.is_some()
+                        || closed.message() != primary
+                        || owner.original_deadline() != held
+                        || owner.enclosing_deadline() != outer
+                        || !owner.matches_lease(&lease)
+                        || owner.progress.observed_worker().is_none_or(|actual| {
+                            actual.pid() != before.pid()
+                                || actual.start() != before.start()
+                                || actual.group() != before.group()
+                                || actual.parent() != before.parent()
+                        })
+                        || owner.progress.status().is_none()
+                        || !owner.progress.no_live_members()
+                        || failure.state().is_some_and(|state| {
+                            state.receipt.is_some() || state.terminal.is_some()
+                        })
+                        || dropped.load(Ordering::SeqCst)
+                        || weak.upgrade().is_none()
+                    {
+                        return Err(
+                            "physical move changed ownership or fabricated timely authority".to_string(),
+                        );
+                    }
+                    drop(lease);
+                    if physically_closed_report_to_string(closed) != primary
+                        || !dropped.load(Ordering::SeqCst)
+                        || weak.upgrade().is_some()
+                    {
+                        return Err(
+                            "physical-only terminal report failed actual closed-owner disposition".to_string(),
+                        );
+                    }
+                    match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
+                        Err(_) => Ok(()),
+                        Ok(_) => {
+                            Err("physical closure was replayed from an empty slot".to_string())
+                        }
+                    }
+                })();
+                if let Some(owner) = slot.as_mut() {
+                    let inner = owner.inner.as_mut().ok_or("physical fixture owner lost")?;
+                    fixture_closeout(inner, checks)
+                } else {
+                    checks
                 }
             }
 
@@ -2114,13 +3323,16 @@ mod linux {
                     || parent.start() == 0
                     || Instant::now() >= held
                 {
-                    return Err("negative disposition changed actual identity, lease or clock".to_string());
+                    return Err(
+                        "negative disposition changed actual identity, lease or clock".to_string(),
+                    );
                 }
                 Ok(())
             }
 
             #[test]
-            fn missing_eof_retains_real_group_only_negative_and_refuses_replay() -> Result<(), String> {
+            fn missing_eof_retains_real_group_only_negative_and_refuses_replay()
+            -> Result<(), String> {
                 let started = Instant::now();
                 let held = started + Duration::from_secs(12);
                 let execution_deadline = started + Duration::from_secs(4);
@@ -2139,14 +3351,20 @@ mod linux {
                 HOOKS.with(|hooks| drop(hooks.borrow_mut().held_writer.take()));
                 let checks = (|| {
                     let message = match result {
-                        Err(message) if message.contains("stdout actual EOF is unconfirmed") => message,
+                        Err(message) if message.contains("stdout actual EOF is unconfirmed") => {
+                            message
+                        }
                         Err(message) => return Err(message),
-                        Ok(_) => return Err("missing actual EOF became captured success".to_string()),
+                        Ok(_) => {
+                            return Err("missing actual EOF became captured success".to_string());
+                        }
                     };
                     if started.elapsed() < POST_KILL_DRAIN_GRACE
                         || custodian.take_cleanup_receipt().is_some()
                     {
-                        return Err("missing EOF fabricated a combined receipt or reset drain".to_string());
+                        return Err(
+                            "missing EOF fabricated a combined receipt or reset drain".to_string()
+                        );
                     }
                     let expected = custodian
                         .failure()
@@ -2160,14 +3378,19 @@ mod linux {
                     if !closed.settled_status().success()
                         || closed.observed_worker().pid() != expected.pid()
                         || closed.observed_worker().start() != expected.start()
-                        || custodian.failure().map(CompleteCaptureError::message) != Some(message.as_str())
+                        || custodian.failure().map(CompleteCaptureError::message)
+                            != Some(message.as_str())
                         || custodian.take_cleanup_receipt().is_some()
                     {
-                        return Err("negative closeout changed group proof or first refusal".to_string());
+                        return Err(
+                            "negative closeout changed group proof or first refusal".to_string()
+                        );
                     }
                     match custodian.try_closeout_failure() {
                         Err(report) if report.message() == message => Ok(()),
-                        Err(report) => Err(format!("negative replay changed the first error: {report}")),
+                        Err(report) => {
+                            Err(format!("negative replay changed the first error: {report}"))
+                        }
                         Ok(_) => Err("group-only negative disposition replayed".to_string()),
                     }
                 })();
@@ -2181,7 +3404,9 @@ mod linux {
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
                 let message = match capture("printf overflow", None, budget(0, 3), &mut custodian) {
-                    Err(message) if message.contains("stdout exceeds its 3-byte output budget") => message,
+                    Err(message) if message.contains("stdout exceeds its 3-byte output budget") => {
+                        message
+                    }
                     Err(message) => return fixture_closeout(&mut custodian, Err(message)),
                     Ok(_) => return Err("overflow became successful captured output".to_string()),
                 };
@@ -2198,9 +3423,13 @@ mod linux {
                         || closed.observed_worker().pid() != expected.pid()
                         || closed.observed_worker().start() != expected.start()
                         || custodian.take_cleanup_receipt().is_some()
-                        || custodian.failure().map(CompleteCaptureError::message) != Some(message.as_str())
+                        || custodian.failure().map(CompleteCaptureError::message)
+                            != Some(message.as_str())
                     {
-                        return Err("combined negative changed actual observation or first error".to_string());
+                        return Err(
+                            "combined negative changed actual observation or first error"
+                                .to_string(),
+                        );
                     }
                     let (_, stdout, stderr, _, timed_out) = custodian
                         .take_failed_observation()
@@ -2216,11 +3445,14 @@ mod linux {
                         Ok(_) => return Err("combined negative disposition replayed".to_string()),
                     }
                     let recovery_lease = Arc::new(());
-                    let mut recovery = CompleteTerminalCustodian::new(held, recovery_lease.clone())?;
+                    let mut recovery =
+                        CompleteTerminalCustodian::new(held, recovery_lease.clone())?;
                     let output = capture("printf recovered", None, budget(0, 64), &mut recovery)?;
                     let (status, stdout, stderr, _, timed_out, receipt) = output.into_parts();
                     if !status.success() || timed_out || !receipt.matches_lease(&recovery_lease) {
-                        return Err("independent recovery lost genuine capture semantics".to_string());
+                        return Err(
+                            "independent recovery lost genuine capture semantics".to_string()
+                        );
                     }
                     assert_eq!(stdout, b"recovered");
                     assert_eq!(stderr, Vec::<u8>::new());
@@ -2236,7 +3468,9 @@ mod linux {
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
                 let message = match capture("printf overflow", None, budget(0, 3), &mut custodian) {
-                    Err(message) if message.contains("stdout exceeds its 3-byte output budget") => message,
+                    Err(message) if message.contains("stdout exceeds its 3-byte output budget") => {
+                        message
+                    }
                     Err(message) => return fixture_closeout(&mut custodian, Err(message)),
                     Ok(_) => return Err("late extraction control admitted overflow".to_string()),
                 };
@@ -2251,7 +3485,9 @@ mod linux {
                         match custodian.try_closeout_failure() {
                             Err(report) if report.message() == message => Ok(()),
                             Err(report) => Err(report.to_string()),
-                            Ok(_) => Err("late extraction minted a negative disposition".to_string()),
+                            Ok(_) => {
+                                Err("late extraction minted a negative disposition".to_string())
+                            }
                         }
                     })?;
                     let restored = custodian
@@ -2264,9 +3500,13 @@ mod linux {
                         || restored.observed_worker().start() != expected.start()
                         || !restored.matches_lease(&lease)
                         || custodian.original_deadline() != held
-                        || custodian.failure().map(CompleteCaptureError::message) != Some(message.as_str())
+                        || custodian.failure().map(CompleteCaptureError::message)
+                            != Some(message.as_str())
                     {
-                        return Err("late extraction restored a different receipt, clock or lease".to_string());
+                        return Err(
+                            "late extraction restored a different receipt, clock or lease"
+                                .to_string(),
+                        );
                     }
                     if custodian.take_cleanup_receipt().is_some() {
                         return Err("expired custody transferred cleanup authority".to_string());
@@ -2286,7 +3526,9 @@ mod linux {
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
                 thread::sleep(Duration::from_millis(100));
                 if Instant::now() >= execution_deadline {
-                    return Err("elapsed execution control did not retain a live cutoff".to_string());
+                    return Err(
+                        "elapsed execution control did not retain a live cutoff".to_string()
+                    );
                 }
                 let result = capture_until(
                     "printf actual-progress; exec /usr/bin/sleep 30",
@@ -2299,7 +3541,11 @@ mod linux {
                     match result {
                         Err(message) if message.contains("complete worker timed out") => {}
                         Err(message) => return Err(message),
-                        Ok(_) => return Err("absolute execution timeout became capture success".to_string()),
+                        Ok(_) => {
+                            return Err(
+                                "absolute execution timeout became capture success".to_string()
+                            );
+                        }
                     }
                     let observed = super::super::super::super::linux::last_wait_window()
                         .ok_or("actual group wait did not record its supplied window")?;
@@ -2312,7 +3558,8 @@ mod linux {
                         .ok_or("actual timeout lost failed byte observations")?;
                     assert_eq!(stdout, b"actual-progress");
                     assert_eq!(stderr, Vec::<u8>::new());
-                    if !timed_out || Instant::now() < execution_deadline
+                    if !timed_out
+                        || Instant::now() < execution_deadline
                         || custodian.original_deadline() != held
                     {
                         return Err("actual wait rebased the admitted absolute window".to_string());
@@ -2362,9 +3609,15 @@ mod linux {
                     let held = started + Duration::from_secs(10);
                     let (admitted_started, execution_deadline) = match variant {
                         0 => (started, held - Duration::from_secs(6)),
-                        1 => (started + Duration::from_secs(1), started + Duration::from_secs(2)),
+                        1 => (
+                            started + Duration::from_secs(1),
+                            started + Duration::from_secs(2),
+                        ),
                         2 => (started, started),
-                        _ => (started - Duration::from_secs(1), started - Duration::from_millis(1)),
+                        _ => (
+                            started - Duration::from_secs(1),
+                            started - Duration::from_millis(1),
+                        ),
                     };
                     let lease = Arc::new(());
                     let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
@@ -2387,12 +3640,19 @@ mod linux {
                         || !custodian.matches_lease(&lease)
                         || custodian.original_deadline() != held
                     {
-                        return Err("invalid window allocated endpoints, spawned or changed custody".to_string());
+                        return Err(
+                            "invalid window allocated endpoints, spawned or changed custody"
+                                .to_string(),
+                        );
                     }
                     match custodian.try_closeout_failure() {
                         Err(report) if report.capture_error().is_some() => {}
                         Err(report) => return Err(report.to_string()),
-                        Ok(_) => return Err("count-free preflight minted negative disposition".to_string()),
+                        Ok(_) => {
+                            return Err(
+                                "count-free preflight minted negative disposition".to_string()
+                            );
+                        }
                     }
                 }
                 Ok(())
@@ -2405,7 +3665,12 @@ mod linux {
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
                 let result = crate::process_owner::with_post_spawn_deadline_barrier(|| {
-                    capture("exec /usr/bin/sleep 30", None, budget(0, 64), &mut custodian)
+                    capture(
+                        "exec /usr/bin/sleep 30",
+                        None,
+                        budget(0, 64),
+                        &mut custodian,
+                    )
                 });
                 let checks = (|| {
                     match result {
@@ -2419,7 +3684,11 @@ mod linux {
                     match custodian.try_closeout_failure() {
                         Err(report) if report.capture_error().is_some() => {}
                         Err(report) => return Err(report.to_string()),
-                        Ok(_) => return Err("unqualified direct custody became checked negative".to_string()),
+                        Ok(_) => {
+                            return Err(
+                                "unqualified direct custody became checked negative".to_string()
+                            );
+                        }
                     }
                     let retained = super::super::super::super::ObservedProcessIdentity::read(
                         retained_child(&mut custodian)?.id(),
@@ -2430,7 +3699,10 @@ mod linux {
                         || custodian.original_deadline() != held
                         || custodian.take_cleanup_receipt().is_some()
                     {
-                        return Err("negative refusal lost real unqualified child or original ceiling".to_string());
+                        return Err(
+                            "negative refusal lost real unqualified child or original ceiling"
+                                .to_string(),
+                        );
                     }
                     require_retained_identity(retained_child(&mut custodian)?, held)
                 })();
