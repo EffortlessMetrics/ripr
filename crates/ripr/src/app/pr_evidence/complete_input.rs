@@ -18,9 +18,7 @@ use super::complete_contract::{
 use super::complete_execution::{CaptureBudget, QualifiedWholeInvocation};
 use super::complete_native::NativeStartup;
 use super::complete_request::{CompleteRequest, CompleteSubject, POLICY_PATH};
-use super::complete_verifier::{
-    VerifiedGeneration, artifact_buffer_allowance, verify_staged_generation,
-};
+use super::complete_verifier::artifact_buffer_allowance;
 use super::raw_coverage::{
     RawCoverage, RawCoverageLimits, build_raw_coverage, semantic_projection_digest,
 };
@@ -82,13 +80,8 @@ pub(super) struct FreshWholeInput {
     invocation: QualifiedWholeInvocation,
     request: CompleteRequest,
     subject: CompleteSubject,
-    caller_root: PathBuf,
-    surface: ProducerSurface,
-    raw: Vec<u8>,
     coverage: RawCoverage,
-    presentation: String,
     binding: CompleteBinding,
-    generation_id: String,
     build_identity: String,
     profile: CompleteVerificationLimits,
     retained_input_bytes: u64,
@@ -99,32 +92,20 @@ pub(super) struct AnalyzedWholeInput {
     output: CheckOutput,
 }
 
-pub(super) struct StagedWholeInput<T> {
-    analyzed: AnalyzedWholeInput,
-    staged: T,
-}
-
-/// Observed source/check DATA after postflight, still no publication grant.
-/// Root must independently settle its cohort and qualify the closed artifacts.
-pub(super) struct WholeInputEvidence<T> {
-    staged: T,
-}
-
-/// Borrowed DATA for root's fallible output rebase/reducers/artifact preparation.
-/// This never lends the token or a mutable native/invocation/source owner.
+/// Analysis-only borrows during the genuine worker inspection. No artifact,
+/// token or mutable native/invocation/source owner is lent to the inspector.
 pub(super) struct WholeInputData<'a> {
     input: &'a FreshWholeInput,
-    artifact_attempt: ArtifactAttempt,
 }
 
-/// Live one-shot emitter bookkeeping, never serialized or an execution grant.
-/// No mutable latch borrow survives external manifest preparation.
+/// Unverified test-only IO bookkeeping. No state can become verified or grant
+/// execution, cleanup or publication; the deferred genuine staging path remains
+/// recoverable in the immutable predecessor. No latch borrow crosses a callback.
 enum ArtifactAttemptState {
     Fresh,
     Claimed,
     Closed,
     Verifying,
-    Verified,
     Failed(String),
 }
 
@@ -276,21 +257,6 @@ impl ArtifactAttempt {
         }
     }
 
-    fn verified_after_success(&self, _: &VerifiedGeneration) -> Result<(), String> {
-        self.ensure_verifying()?;
-        let mut state = self
-            .state
-            .try_borrow_mut()
-            .map_err(|error| format!("whole-input verified phase is borrowed: {error}"))?;
-        match &*state {
-            ArtifactAttemptState::Verifying => {
-                *state = ArtifactAttemptState::Verified;
-                Ok(())
-            }
-            ArtifactAttemptState::Failed(error) => Err(error.clone()),
-            _ => Err("whole-input artifact phase changed before actual verification".into()),
-        }
-    }
 
     // IO-only helper for its actual closure controls; not the stage admission.
     fn finish_work<T>(&self, work: Result<T, String>) -> Result<T, String> {
@@ -324,7 +290,6 @@ impl ArtifactAttempt {
                 format!("{primary}; whole-input artifact first fault: {first}"),
             ),
             (Err(primary), _) => Err(primary),
-            (Ok(value), ArtifactAttemptState::Verified) => Ok(value),
             (Ok(value), ArtifactAttemptState::Closed) if !require_verified => Ok(value),
             (Ok(_), ArtifactAttemptState::Failed(first)) => Err(first.clone()),
             (Ok(_), _) if require_verified => {
@@ -469,32 +434,32 @@ fn combined_verifier_bytes(
     )
 }
 
-fn reconcile_observed_generation(
-    observed: &ObservedArtifacts,
-    verified: &VerifiedGeneration,
-    expected_generation: &str,
-) -> Result<(), String> {
-    if verified.generation_id() != expected_generation
-        || verified.manifest_sha256() != digest_text(observed.manifest.sha256())?
-        || verified.manifest_identity()
-            != (
-                observed.manifest.identity().0,
-                observed.manifest.identity().1,
-                observed.manifest.bytes(),
-            )
-    {
-        return Err("whole-input verified manifest differs from actual IO closure".into());
-    }
-    for (file, role) in observed.files.iter().zip(ArtifactRole::ALL) {
-        if file.name() != role.path()
-            || verified.artifact_sha256(role) != digest_text(file.sha256())?
-            || verified.artifact_identity(role)
-                != (file.identity().0, file.identity().1, file.bytes())
-        {
-            return Err("whole-input verified artifact differs from actual IO closure".into());
-        }
-    }
-    Ok(())
+
+
+/// Logical payload/representation reservation for the inspector's canonical
+/// replay, bounded numstat streams and bounded witness. This is not exact RSS
+/// or all parser/output node memory; the genuine native AS bound still applies.
+fn admit_analysis_inspection(
+    retained_input: u64,
+    canonical_bytes: usize,
+    profile: &CompleteVerificationLimits,
+) -> Result<u64, String> {
+    let canonical_bytes = u64::try_from(canonical_bytes)
+        .map_err(|error| format!("native analysis canonical length conversion: {error}"))?;
+    let stream_with_sentinel = (64_u64 * 1024)
+        .checked_add(1)
+        .ok_or("native analysis collector sentinel overflow")?;
+    admit_sum(
+        profile.max_buffered_bytes,
+        &[
+            retained_input,
+            multiply(profile.max_raw_projection_bytes, 2)?,
+            canonical_bytes,
+            profile.max_binding_bytes,
+            multiply(stream_with_sentinel, 2)?,
+            64 * 1024,
+        ],
+    )
 }
 
 fn checkpoint(deadline: Instant) -> Result<(), String> {
@@ -1084,7 +1049,6 @@ pub(super) fn prepare(
     validate_surface_seed(&surface_check, surface, options)?;
     let subject = invocation.take_subject()?;
     caller_root_at(&subject.root, &surface_check.root)?;
-    let caller_root = surface_check.root.clone();
     let prepared = prepare_staged_named_tree(
         &subject.invocation_repository,
         subject.head_tree.clone(),
@@ -1282,6 +1246,10 @@ pub(super) fn prepare(
         .ensure_clean()
         .map_err(|error| error.to_string())?;
     checkpoint(startup.deadline())?;
+    // Original bytes and the generation calculation are retained through the
+    // same binding/admission checks; no publication-only copy escapes this
+    // analysis component. The retained phase charge stays conservative.
+    drop((raw, presentation, generation_id));
     Ok(FreshWholeInput {
         whole: VerifiedWholeInput {
             phase: Phase::Fresh,
@@ -1301,13 +1269,8 @@ pub(super) fn prepare(
         invocation,
         request,
         subject,
-        caller_root,
-        surface,
-        raw,
         coverage,
-        presentation,
         binding,
-        generation_id,
         build_identity,
         profile: profile.clone(),
         retained_input_bytes,
@@ -1454,6 +1417,66 @@ impl VerifiedWholeInput {
 }
 
 impl FreshWholeInput {
+    /// Ordinary observation on the exact retained input creates no token or receipt.
+    pub(super) fn observe_ordinary_guard(&self) -> Result<String, String> {
+        if self.whole.phase != Phase::Fresh {
+            return Err("native analysis control ordinary observation is not fresh".into());
+        }
+        let deadline = self.startup.deadline();
+        checkpoint(deadline)?;
+        self.startup.verify_stage_current()?;
+        super::complete_execution::verify_limits(
+            self.profile.address_space_bytes,
+            self.profile.file_size_bytes,
+        )?;
+        if capture_complete_rust_policy()? != self.whole.policy
+            || crate::build_identity::cache_identity() != self.build_identity
+        {
+            return Err("native analysis control policy or build changed".into());
+        }
+        // Admit the separate ordinary parser/input overlap before allocation.
+        // Actual native AS bounds allocator/AST overhead independently.
+        admit_sum(
+            self.profile.max_buffered_bytes,
+            &[
+                self.retained_input_bytes,
+                multiply(self.profile.max_raw_projection_bytes, 2)?,
+                self.whole.canonical.len() as u64,
+                self.profile.max_binding_bytes,
+            ],
+        )?;
+        let result = frozen::with_context(Some(Arc::clone(&self.whole.authority)), || {
+            frozen::with_canonical_diff(Arc::clone(&self.whole.canonical), || {
+                crate::app::check::check_workspace_with_config(
+                    self.whole.check.clone(),
+                    &self.whole.config,
+                )
+            })
+        });
+        self.whole
+            .authority
+            .ensure_clean()
+            .map_err(|error| error.to_string())?;
+        self.startup.source().verify_materialized()?;
+        self.startup.verify_stage_current()?;
+        super::complete_execution::verify_limits(
+            self.profile.address_space_bytes, self.profile.file_size_bytes,
+        )?;
+        if capture_complete_rust_policy()? != self.whole.policy
+            || crate::build_identity::cache_identity() != self.build_identity
+        {
+            return Err("native analysis control policy or build changed".into());
+        }
+        checkpoint(deadline)?;
+        match result {
+            Err(error) if error.contains("diff_scope_oversized:") => Ok(error),
+            Err(error) => Err(format!("native analysis control ordinary guard differed: {error}")),
+            Ok(_) => Err(
+                "native analysis control ordinary guard accepted the oversized subject".into(),
+            ),
+        }
+    }
+
     pub(super) fn execute(mut self) -> Result<AnalyzedWholeInput, String> {
         checkpoint(self.startup.deadline())?;
         self.startup.verify_stage_current()?;
@@ -1482,272 +1505,141 @@ impl FreshWholeInput {
     }
 }
 
-impl<'a> WholeInputData<'a> {
+impl WholeInputData<'_> {
     pub(super) fn subject(&self) -> &CompleteSubject {
         &self.input.subject
     }
-    pub(super) fn caller_root(&self) -> &Path {
-        &self.input.caller_root
-    }
+
     pub(super) fn authority_root(&self) -> &Path {
         self.input.whole.authority.logical_root()
     }
-    pub(super) fn surface(&self) -> ProducerSurface {
-        self.input.surface
-    }
-    pub(super) fn check_input(&self) -> &CheckInput {
-        &self.input.whole.check
-    }
-    pub(super) fn analysis_options(&self) -> &AnalysisOptions {
-        &self.input.whole.options
-    }
-    pub(super) fn configuration(&self) -> &FullConfiguration {
-        &self.input.binding.full_configuration
-    }
-    pub(super) fn config(&self) -> &RiprConfig {
-        &self.input.whole.config
-    }
-    pub(super) fn rust_policy(&self) -> &CompleteRustPolicySnapshot {
-        &self.input.whole.policy
-    }
-    pub(super) fn frozen(&self) -> &Arc<FrozenSourceAuthority> {
-        &self.input.whole.authority
-    }
-    pub(super) fn raw(&self) -> &[u8] {
-        &self.input.raw
-    }
-    pub(super) fn presentation(&self) -> &str {
-        &self.input.presentation
-    }
-    pub(super) fn changed_paths(&self) -> &[String] {
-        &self.input.binding.subject.changed_paths
-    }
-    pub(super) fn binding(&self) -> &CompleteBinding {
-        &self.input.binding
-    }
-    pub(super) fn generation_id(&self) -> &str {
-        &self.input.generation_id
-    }
-    pub(super) fn canonical_diff(&self) -> &str {
-        &self.input.whole.canonical
-    }
+
     pub(super) fn coverage(&self) -> &RawCoverage {
         &self.input.coverage
     }
-    pub(super) fn committed_request(&self) -> &super::complete_request::CommittedRequestBinding {
-        self.input.request.binding()
+
+    pub(super) fn changed_paths(&self) -> &[String] {
+        &self.input.binding.subject.changed_paths
     }
+
+    pub(super) fn canonical_diff(&self) -> &str {
+        &self.input.whole.canonical
+    }
+
     pub(super) fn build_identity(&self) -> &str {
         &self.input.build_identity
-    }
-    pub(super) fn generation_nonce(&self) -> &str {
-        self.input.startup.generation_nonce()
-    }
-    pub(super) fn profile(&self) -> &CompleteVerificationLimits {
-        &self.input.profile
-    }
-
-    /// Private genuine role/clock borrow, never returned to root's callback.
-    fn artifact_context(&self) -> Result<(&RetainedDirectory, Instant), String> {
-        let deadline = self.input.startup.deadline();
-        checkpoint(deadline)?;
-        if self.input.whole.phase != Phase::Closed {
-            return Err("whole-input artifact preparation precedes completed analysis".into());
-        }
-        if self.input.whole.deadline != deadline
-            || self.input.startup.source().deadline() != deadline
-        {
-            return Err("whole-input artifact original held deadlines differ".into());
-        }
-        if self.input.startup.profile() != &self.input.profile {
-            return Err("whole-input artifact profile differs from actual startup".into());
-        }
-        require_artifact_context(&self.input.whole.authority, &self.input.whole.canonical)?;
-        self.input.startup.source().verify_materialized()?;
-        verify_artifact_native_limits(&self.input.profile, deadline)?;
-        self.input.startup.verify_stage_current()?;
-        checkpoint(deadline)?;
-        Ok((self.input.startup.artifacts(), deadline))
-    }
-
-    /// One live consuming attempt for the actual artifact role. Root admits
-    /// all serialization/retained aliases and manifest growth before calling;
-    /// file DATA never proves allocated stage usage or publication authority.
-    pub(super) fn stage_artifacts(
-        &self,
-        payloads: [&[u8]; 9],
-        manifest: impl FnOnce(&ArtifactPayloadData) -> Result<Vec<u8>, String>,
-    ) -> Result<ArtifactClosureData, String> {
-        self.artifact_attempt.claim()?;
-        let result = (|| {
-            let (directory, deadline) = self.artifact_context()?;
-            let budget = artifact_budget(&self.input.profile)?;
-            emit_artifacts_after_claim(
-                &self.artifact_attempt,
-                directory,
-                deadline,
-                budget,
-                payloads,
-                || self.artifact_context().map(|_| ()),
-                manifest,
-            )
-        })();
-        self.artifact_attempt.remember(result)
-    }
-
-    /// Saved verification runs under the still-held genuine source/native
-    /// owners. Neither IO closure nor caller expectation can mint this result.
-    /// Root's outer worker custody supplies syscall/process deadline enforcement.
-    pub(super) fn verify_artifacts(&self) -> Result<VerifiedGeneration, String> {
-        let observed = self.artifact_attempt.claim_verification()?;
-        let result = (|| {
-            let (_, deadline) = self.artifact_context()?;
-            self.artifact_attempt.ensure_verifying()?;
-            let files = observed.files.map(|file| file.bytes());
-            combined_verifier_bytes(
-                self.input.retained_input_bytes,
-                &files,
-                observed.manifest.bytes(),
-                &self.input.profile,
-            )?;
-            self.input.binding.validate()?;
-            if self.input.binding.generation_id()? != self.input.generation_id {
-                return Err("whole-input expected generation binding changed".into());
-            }
-            if capture_complete_rust_policy()? != self.input.whole.policy
-                || crate::build_identity::cache_identity() != self.input.build_identity
-            {
-                return Err("whole-input policy or build changed before verification".into());
-            }
-            // Actual verifier opens/rechecks the bound artifact role itself;
-            // no raw FD or wider native-owner getter escapes this leaf.
-            let verified = verify_staged_generation(
-                Path::new(&self.input.startup.binding().artifacts.path),
-                &self.input.binding,
-                &self.input.profile,
-            )
-            .map_err(|error| error.to_string())?;
-            reconcile_observed_generation(&observed, &verified, &self.input.generation_id)?;
-            self.artifact_attempt.ensure_verifying()?;
-            self.artifact_context()?;
-            if capture_complete_rust_policy()? != self.input.whole.policy
-                || crate::build_identity::cache_identity() != self.input.build_identity
-            {
-                return Err("whole-input policy or build changed during verification".into());
-            }
-            checkpoint(deadline)?;
-            self.artifact_attempt.verified_after_success(&verified)?;
-            Ok(verified)
-        })();
-        self.artifact_attempt.remember(result)
     }
 }
 
 impl AnalyzedWholeInput {
-    /// Root preserves caller-facing output/probe spelling with its typed
-    /// rebase, while keeping supplied-diff output/outcome base None. All
-    /// preparation here precedes original-literal postflight and is unqualified.
-    pub(super) fn stage<T>(
-        mut self,
-        work: impl FnOnce(&mut CheckOutput, &WholeInputData<'_>) -> Result<T, String>,
-    ) -> Result<StagedWholeInput<T>, String> {
+    /// Inspect under genuine contexts, then perform the SAME consuming
+    /// postflight/closeout. Success always refuses publication.
+    pub(super) fn inspect_then_refuse_publication(
+        self,
+        inspect: impl FnOnce(&CheckOutput, &WholeInputData<'_>) -> Result<(), String>,
+    ) -> Result<(), String> {
         checkpoint(self.input.startup.deadline())?;
-        let data = WholeInputData {
-            input: &self.input,
-            artifact_attempt: ArtifactAttempt::new(),
-        };
-        let staged = frozen::with_context(Some(Arc::clone(&self.input.whole.authority)), || {
-            frozen::with_canonical_diff(Arc::clone(&self.input.whole.canonical), || {
-                work(&mut self.output, &data)
+        if self.input.whole.phase != Phase::Closed {
+            return Err("native analysis control inspection precedes completed analysis".into());
+        }
+        admit_analysis_inspection(
+            self.input.retained_input_bytes,
+            self.input.whole.canonical.len(),
+            &self.input.profile,
+        )?;
+        let inspected = {
+            let data = WholeInputData { input: &self.input };
+            frozen::with_context(Some(Arc::clone(&self.input.whole.authority)), || {
+                frozen::with_canonical_diff(Arc::clone(&self.input.whole.canonical), || {
+                    inspect(&self.output, &data)
+                })
             })
-        });
-        let staged = data.artifact_attempt.finish_verified_work(staged)?;
+        };
+        inspected?;
         self.input
             .whole
             .authority
             .ensure_clean()
             .map_err(|error| error.to_string())?;
         checkpoint(self.input.startup.deadline())?;
-        Ok(StagedWholeInput {
-            analyzed: self,
-            staged,
-        })
+        closeout_analyzed_input(
+            self.input,
+            Some(QualifiedWholeInvocation::verify_analysis_current),
+        )?;
+        Err(NATIVE_ANALYSIS_PUBLICATION_REFUSAL.into())
     }
 }
 
-impl<T> StagedWholeInput<T> {
-    /// This observed postflight is not group settlement or return-time atomic
-    /// currentness. Root still owns final custody and generation qualification.
-    pub(super) fn validate_current(self) -> Result<WholeInputEvidence<T>, String> {
-        let StagedWholeInput { analyzed, staged } = self;
-        let FreshWholeInput {
-            whole,
-            startup,
-            invocation,
-            request,
-            subject,
-            caller_root: _,
-            surface: _,
-            raw: _,
-            coverage: _,
-            presentation: _,
-            binding,
-            generation_id: _,
-            build_identity,
-            profile,
-            retained_input_bytes,
-        } = analyzed.input;
-        checkpoint(startup.deadline())?;
-        startup.verify_stage_current()?;
-        super::complete_execution::verify_limits(
-            profile.address_space_bytes,
-            profile.file_size_bytes,
-        )?;
-        if startup.profile() != &profile
-            || capture_complete_rust_policy()? != whole.policy
-            || crate::build_identity::cache_identity() != build_identity
-        {
-            return Err(
-                "whole-input native profile, Rust policy or actual build identity changed".into(),
-            );
-        }
-        // The bounded copier's maximum new payload is reserved before growth.
-        // Root's staged artifact/output buffers have their own admitted phase.
-        admit_sum(
-            profile.max_buffered_bytes,
-            &[retained_input_bytes, profile.max_binding_bytes],
-        )?;
-        // This reconciles the retained immutable effective config. It is not
-        // a reobservation of dirty live ripr.toml. Root must supply the genuine
-        // bounded live-config pre/postflight join before production admission.
-        let observed = FullConfiguration::capture(&whole.config, &profile)?;
-        if observed != binding.full_configuration {
-            return Err("whole-input complete effective configuration changed".into());
-        }
-        drop(observed);
-        verify_source_current(&whole.authority, startup.deadline())?;
-        frozen::with_context(Some(Arc::clone(&whole.authority)), || {
-            verify_policy_file(&whole.authority, &request)
-        })?;
-        request.validate_whole_current(&subject, startup.deadline())?;
-        startup.verify_stage_current()?;
-        checkpoint(startup.deadline())?;
-        let VerifiedWholeInput { authority, .. } = whole;
-        authority
-            .finalize()
-            .map_err(|error| format!("whole-input source lease closeout: {error}"))?;
-        // Retain qualified invocation/native custody through all observations
-        // and source-context closeout. Their release grants no publication.
-        drop(invocation);
-        drop(startup);
-        Ok(WholeInputEvidence { staged })
-    }
-}
+/// Distinct refusal after actual inspection AND source/native closeout.
+pub(super) const NATIVE_ANALYSIS_PUBLICATION_REFUSAL: &str =
+    "native analysis control intentionally refuses publication";
 
-impl<T> WholeInputEvidence<T> {
-    pub(super) fn into_staged_data(self) -> T {
-        self.staged
+fn closeout_analyzed_input(
+    input: FreshWholeInput,
+    native_observer: Option<fn(&QualifiedWholeInvocation) -> Result<(), String>>,
+) -> Result<(), String> {
+    let FreshWholeInput {
+        whole,
+        startup,
+        invocation,
+        request,
+        subject,
+        coverage: _,
+        binding,
+        build_identity,
+        profile,
+        retained_input_bytes,
+    } = input;
+    if let Some(observe) = native_observer {
+        observe(&invocation)?;
     }
+    checkpoint(startup.deadline())?;
+    startup.verify_stage_current()?;
+    super::complete_execution::verify_limits(
+        profile.address_space_bytes,
+        profile.file_size_bytes,
+    )?;
+    if startup.profile() != &profile
+        || capture_complete_rust_policy()? != whole.policy
+        || crate::build_identity::cache_identity() != build_identity
+    {
+        return Err(
+            "whole-input native profile, Rust policy or actual build identity changed".into(),
+        );
+    }
+    // The bounded copier's maximum new payload is reserved before growth.
+    // Root's staged artifact/output buffers have their own admitted phase.
+    admit_sum(
+        profile.max_buffered_bytes,
+        &[retained_input_bytes, profile.max_binding_bytes],
+    )?;
+    // This reconciles the retained immutable effective config. It is not
+    // a reobservation of dirty live ripr.toml. Root must supply the genuine
+    // bounded live-config pre/postflight join before production admission.
+    let observed = FullConfiguration::capture(&whole.config, &profile)?;
+    if observed != binding.full_configuration {
+        return Err("whole-input complete effective configuration changed".into());
+    }
+    drop(observed);
+    verify_source_current(&whole.authority, startup.deadline())?;
+    frozen::with_context(Some(Arc::clone(&whole.authority)), || {
+        verify_policy_file(&whole.authority, &request)
+    })?;
+    request.validate_whole_current(&subject, startup.deadline())?;
+    startup.verify_stage_current()?;
+    checkpoint(startup.deadline())?;
+    let VerifiedWholeInput { authority, .. } = whole;
+    authority
+        .finalize()
+        .map_err(|error| format!("whole-input source lease closeout: {error}"))?;
+    if let Some(observe) = native_observer {
+        observe(&invocation)?;
+    }
+    // Retain qualified invocation/native custody through all observations
+    // and source-context closeout. Their release grants no publication.
+    drop(invocation);
+    drop(startup);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1959,6 +1851,15 @@ mod tests {
         error(admit_sum(16, &[3, 5, 9]), "buffer bound")?;
         error(admit_sum(u64::MAX, &[u64::MAX, 1]), "overflow")?;
         error(multiply(u64::MAX, 3), "overflow")?;
+        let mut profile = artifact_test_profile()?;
+        let reserved = admit_analysis_inspection(7, 11, &profile)?;
+        profile.max_buffered_bytes = reserved;
+        assert_eq!(admit_analysis_inspection(7, 11, &profile)?, reserved);
+        profile.max_buffered_bytes -= 1;
+        error(admit_analysis_inspection(7, 11, &profile), "buffer bound")?;
+        error(admit_analysis_inspection(u64::MAX, 11, &profile), "overflow")?;
+        profile.max_buffered_bytes = reserved;
+        assert_eq!(admit_analysis_inspection(7, 11, &profile)?, reserved);
         Ok(())
     }
 
@@ -2448,6 +2349,7 @@ mod tests {
             "in-custody verification",
         )?;
         let closed = attempt.claim_verification()?;
+        assert_eq!(&closed.files, observed.payloads().files());
         assert_eq!(closed.manifest.identity(), observed.manifest().identity());
         assert_eq!(closed.manifest.bytes(), observed.manifest().bytes());
         attempt.ensure_verifying()?;

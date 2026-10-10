@@ -540,6 +540,14 @@ mod whole_worker {
         checkpoint(deadline)
     }
 
+    fn actual_libtest_argv(args: &[String], deadline: Instant) -> Result<(), String> {
+        checkpoint(deadline)?;
+        super::super::complete_native_test::authenticate_actual_libtest_argv(
+            super::super::complete_native_test::WORKER_TEST_NAME, args,
+        )?;
+        checkpoint(deadline)
+    }
+
     fn same_optional_path(left: &Option<PathBuf>, right: &Option<PathBuf>) -> bool {
         match (left, right) {
             (None, None) => true,
@@ -615,10 +623,22 @@ mod whole_worker {
 
     impl NativeAnalyzeEntry {
         fn observe(args: &[String], entered: Instant) -> Result<Self, String> {
+            Self::observe_entry(args, entered, actual_argv)
+        }
+
+        fn observe_libtest(args: &[String], entered: Instant) -> Result<Self, String> {
+            Self::observe_entry(args, entered, actual_libtest_argv)
+        }
+
+        fn observe_entry(
+            args: &[String],
+            entered: Instant,
+            authenticate_argv: fn(&[String], Instant) -> Result<(), String>,
+        ) -> Result<Self, String> {
             let scalars = Scalars::parse(args, entered)?;
             verify_limits(scalars.address_space_bytes, scalars.file_bytes)?;
             checkpoint(scalars.deadline)?;
-            actual_argv(args, scalars.deadline)?;
+            authenticate_argv(args, scalars.deadline)?;
             let worker = ObservedProcessIdentity::read(std::process::id())?;
             if !live(&worker)
                 || worker.pid() != worker.group()
@@ -960,6 +980,16 @@ mod whole_worker {
             &self.entry.parent
         }
 
+        /// Live worker/parent/profile/stage observations, never settlement.
+        pub(in crate::app::pr_evidence) fn verify_analysis_current(&self) -> Result<(), String> {
+            self.entry.recheck()?;
+            if stable_build()? != self.build_identity {
+                return Err("whole worker compiled build identity changed".into());
+            }
+            self.stage_current()?;
+            checkpoint(self.entry.scalars.deadline)
+        }
+
         pub(in crate::app::pr_evidence) fn take_subject(
             &mut self,
         ) -> Result<CompleteSubject, String> {
@@ -1090,6 +1120,39 @@ mod whole_worker {
     ) -> Result<(), String> {
         let entered = Instant::now();
         let entry = NativeAnalyzeEntry::observe(args, entered)?;
+        continue_whole_worker(entry, continuation)
+    }
+
+    /// Fixed ignored libtest entry; the unchanged CLI guard remains separate.
+    pub(in crate::app::pr_evidence) fn with_libtest_worker(
+        args: &[String],
+        continuation: impl FnOnce(
+            QualifiedWholeInvocation,
+            NativeStartup,
+            CompleteRequest,
+            PrEvidenceOptions,
+            ProducerSurface,
+            CheckInput,
+            CompleteVerificationLimits,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
+        let entered = Instant::now();
+        let entry = NativeAnalyzeEntry::observe_libtest(args, entered)?;
+        continue_whole_worker(entry, continuation)
+    }
+
+    fn continue_whole_worker(
+        entry: NativeAnalyzeEntry,
+        continuation: impl FnOnce(
+            QualifiedWholeInvocation,
+            NativeStartup,
+            CompleteRequest,
+            PrEvidenceOptions,
+            ProducerSurface,
+            CheckInput,
+            CompleteVerificationLimits,
+        ) -> Result<(), String>,
+    ) -> Result<(), String> {
         // Blocking stdin is only byte-bounded here. The actual outer qualified
         // parent owns cancellation; clock checks do not preempt read syscalls.
         let header = read_header(std::io::stdin().lock(), &entry.scalars)?;
@@ -1877,5 +1940,6 @@ mod whole_worker {
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 pub(super) use whole_worker::{
-    CaptureBudget, QualifiedWholeInvocation, WHOLE_WORKER_FLAG, with_whole_worker,
+    CaptureBudget, QualifiedWholeInvocation, WHOLE_WORKER_FLAG, with_libtest_worker,
+    with_whole_worker,
 };

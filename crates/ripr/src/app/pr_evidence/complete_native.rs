@@ -191,13 +191,7 @@ impl NativeStartup {
         &self.source
     }
 
-    pub(super) fn spool(&self) -> &RetainedDirectory {
-        &self.spool
-    }
 
-    pub(super) fn artifacts(&self) -> &RetainedDirectory {
-        &self.artifacts
-    }
 
     pub(super) fn verify_stage_current(&self) -> Result<(), String> {
         self.stage.verify_current(self.deadline)?;
