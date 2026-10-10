@@ -1136,7 +1136,7 @@ mod native {
             return Err("stage root is not UTF-8".to_string());
         }
         let mut reservation_synced = false;
-        let result = (|| {
+        let result: Result<ParentStage, String> = (|| {
             let mut builder = fs::DirBuilder::new();
             builder.mode(0o700);
             time()?;
