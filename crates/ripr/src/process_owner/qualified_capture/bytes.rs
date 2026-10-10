@@ -1674,42 +1674,43 @@ mod linux {
                 let held = Instant::now() + Duration::from_secs(5);
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
-                let args = shell("printf overflow");
-                let mut report = match CompleteByteCapture::capture_with_terminal_custody(
-                    (Path::new("/bin/sh"), &args),
-                    (Path::new("/"), None),
-                    &[],
-                    (budget(0, 3), "terminal settled negative"),
-                    &mut custodian,
-                ) {
-                    Err(report) => report,
-                    Ok(_) => return Err("terminal overflow became success".to_string()),
-                };
-                if !report.message().contains("stdout exceeds its 3-byte output budget") {
-                    return Err(format!("unexpected terminal failure: {report}"));
-                }
-                let error = report
-                    .capture_error()
-                    .ok_or("terminal overflow lost actual capture error")?;
-                if error.is_timeout_only() || !error.matches_lease(&lease) {
-                    return Err("terminal overflow changed failure or lease".to_string());
-                }
-                let (status, _, timed_out) = report
-                    .observed_outcome()
-                    .ok_or("settled terminal negative lost its native observation")?;
-                if !status.success() || timed_out {
-                    return Err("controlled negative changed its actual exit data".to_string());
-                }
-                let receipt = report
-                    .take_cleanup_receipt()
-                    .ok_or("settled terminal negative lost actual combined receipt")?;
-                if !receipt.matches_lease(&lease)
-                    || report.take_cleanup_receipt().is_some()
-                    || Instant::now() >= held
                 {
-                    return Err("settled terminal negative changed receipt or clock".to_string());
+                    let args = shell("printf overflow");
+                    let mut report = match CompleteByteCapture::capture_with_terminal_custody(
+                        (Path::new("/bin/sh"), &args),
+                        (Path::new("/"), None),
+                        &[],
+                        (budget(0, 3), "terminal settled negative"),
+                        &mut custodian,
+                    ) {
+                        Err(report) => report,
+                        Ok(_) => return Err("terminal overflow became success".to_string()),
+                    };
+                    if !report.message().contains("stdout exceeds its 3-byte output budget") {
+                        return Err(format!("unexpected terminal failure: {report}"));
+                    }
+                    let error = report
+                        .capture_error()
+                        .ok_or("terminal overflow lost actual capture error")?;
+                    if error.is_timeout_only() || !error.matches_lease(&lease) {
+                        return Err("terminal overflow changed failure or lease".to_string());
+                    }
+                    let (status, _, timed_out) = report
+                        .observed_outcome()
+                        .ok_or("settled terminal negative lost its native observation")?;
+                    if !status.success() || timed_out {
+                        return Err("controlled negative changed its actual exit data".to_string());
+                    }
+                    let receipt = report
+                        .take_cleanup_receipt()
+                        .ok_or("settled terminal negative lost actual combined receipt")?;
+                    if !receipt.matches_lease(&lease)
+                        || report.take_cleanup_receipt().is_some()
+                        || Instant::now() >= held
+                    {
+                        return Err("settled terminal negative changed receipt or clock".to_string());
+                    }
                 }
-                drop(report);
                 let (_, stdout, stderr, _, timed_out) = custodian
                     .take_failed_observation()
                     .ok_or("terminal failure lost actual rejected output bytes")?;
