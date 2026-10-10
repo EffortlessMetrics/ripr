@@ -378,6 +378,35 @@ impl SourceAnchor {
         self.root.path_identifier()
     }
 
+    /// Returns the original held deadline without creating a new budget.
+    pub(crate) fn deadline(&self) -> Instant {
+        self.deadline
+    }
+
+    /// Observes actual untouched source I/O; the caller owns one-shot lifecycle.
+    pub(crate) fn verify_fresh(&self) -> Result<(), String> {
+        let result = (|| {
+            self.root.verify_current(self.deadline)?;
+            let usage = self.lock_usage()?;
+            if usage.sealed {
+                return Err("staged source materialization is already sealed".into());
+            }
+            if usage.entries.len() != 1 || usage.path_bytes != 0 || usage.source_bytes != 0 {
+                return Err("staged source materialization is not fresh".into());
+            }
+            match usage.entries.get(Path::new("")) {
+                Some(SourceEntry::Directory { identity: Some(identity) })
+                    if *identity == (self.root.identity.dev, self.root.identity.ino) => {}
+                _ => return Err("staged source initial root reservation is invalid".into()),
+            }
+            // Retain the state lock through real emptiness/currentness checks.
+            // Success neither reserves the source nor permits another lifecycle.
+            self.root.require_empty(self.deadline)?;
+            check_deadline(self.deadline)
+        })();
+        self.remember(result)
+    }
+
     pub(crate) fn verify_roots(&self) -> Result<(), String> {
         let result = (|| {
             self.root.verify_current(self.deadline)?;
@@ -575,6 +604,26 @@ impl SourceAnchor {
                 written: 0,
                 finished: false,
             })
+        })();
+        self.remember(result)
+    }
+
+    /// Checks already sealed source I/O without sealing or accepting saved DATA.
+    pub(crate) fn verify_materialized(&self) -> Result<(), String> {
+        let result = (|| {
+            self.root.verify_current(self.deadline)?;
+            let usage = self.lock_usage()?;
+            if !usage.sealed {
+                return Err("staged source materialization is not sealed".into());
+            }
+            for entry in usage.entries.values() {
+                match entry {
+                    SourceEntry::Directory { identity: Some(_) }
+                    | SourceEntry::File { identity: Some(_), finished: true, .. } => {}
+                    _ => return Err("staged source has an unfinished reservation".into()),
+                }
+            }
+            check_deadline(self.deadline)
         })();
         self.remember(result)
     }
@@ -908,6 +957,7 @@ mod tests {
         writer.finish()?;
         anchor.set_executable(&native, true)?;
         anchor.finish_materialization()?;
+        anchor.verify_materialized()?;
         let mut actual = String::new();
         anchor.open_file(&native)?.read_to_string(&mut actual)
             .map_err(|error| format!("source read: {error}"))?;
@@ -941,6 +991,7 @@ mod tests {
         }
         error(writer.finish(), "unqualified")?;
         error(anchor.finish_materialization(), "unqualified")?;
+        error(anchor.verify_materialized(), "unqualified")?;
         error(anchor.create_new_file(Path::new("next"), 1), "unqualified")?;
         drop(anchor);
         fixture.cleanup()
@@ -1102,6 +1153,111 @@ mod tests {
         drop(retained);
         assert!(fs::metadata(fixture.path.join("old"))
             .map_err(|error| format!("retained stage after drop: {error}"))?.is_dir());
+        fixture.cleanup()
+    }
+
+
+    #[test]
+    fn materialized_getter_requires_prior_sealing_and_current_held_root() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let anchor = fixture.anchor(4, 8, 256)?;
+        let writer = anchor.create_new_file(Path::new("file"), 0)?;
+        writer.finish()?;
+        error(anchor.verify_materialized(), "not sealed")?;
+        // The read-only observation refused rather than quietly sealing it.
+        error(anchor.finish_materialization(), "unqualified")?;
+        drop(anchor);
+        fixture.cleanup()?;
+
+        let fixture = Fixture::new()?;
+        fs::create_dir(fixture.path.join("source")).map_err(|error| format!("source mkdir: {error}"))?;
+        let directory = RetainedDirectory::open_absolute(
+            &fixture.identity(&fixture.path.join("source"))?, 4096, fixture.deadline,
+        )?;
+        let anchor = SourceAnchor::new(directory, SourceBudget::new(4, 8, 256, 4)?, fixture.deadline)?;
+        anchor.finish_materialization()?;
+        anchor.verify_materialized()?;
+        fs::rename(fixture.path.join("source"), fixture.path.join("old"))
+            .map_err(|error| format!("source rename: {error}"))?;
+        fs::create_dir(fixture.path.join("source")).map_err(|error| format!("source replace: {error}"))?;
+        error(anchor.verify_materialized(), "directory identity mismatch")?;
+        drop(anchor);
+        fixture.cleanup()
+    }
+
+    #[test]
+    fn fresh_getter_refuses_admitted_or_sealed_reuse_and_new_source_recovers() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let anchor = fixture.anchor(4, 8, 256)?;
+        assert_eq!(anchor.deadline(), fixture.deadline);
+        anchor.verify_fresh()?;
+        anchor.verify_fresh()?;
+        anchor.create_dir(Path::new("src"))?;
+        error(anchor.verify_fresh(), "not fresh")?;
+        error(anchor.finish_materialization(), "unqualified")?;
+        drop(anchor);
+        fixture.cleanup()?;
+
+        let fixture = Fixture::new()?;
+        let anchor = fixture.anchor(4, 8, 256)?;
+        let writer = anchor.create_new_file(Path::new("file"), 1)?;
+        error(anchor.verify_fresh(), "not fresh")?;
+        drop(writer);
+        error(anchor.verify_fresh(), "unqualified")?;
+        drop(anchor);
+        fixture.cleanup()?;
+
+        let fixture = Fixture::new()?;
+        let anchor = fixture.anchor(4, 8, 256)?;
+        anchor.finish_materialization()?;
+        error(anchor.verify_fresh(), "already sealed")?;
+        error(anchor.verify_fresh(), "unqualified")?;
+        drop(anchor);
+        fixture.cleanup()?;
+
+        // Recovery requires another actual fresh source; no state is reset.
+        let fixture = Fixture::new()?;
+        let anchor = fixture.anchor(4, 8, 256)?;
+        anchor.verify_fresh()?;
+        let mut writer = anchor.create_new_file(Path::new("file"), 4)?;
+        writer.write_all(b"head").map_err(|error| format!("fresh recovery write: {error}"))?;
+        writer.finish()?;
+        anchor.finish_materialization()?;
+        anchor.verify_materialized()?;
+        assert_eq!(fs::read(fixture.path.join("file"))
+            .map_err(|error| format!("fresh recovery read: {error}"))?, b"head");
+        drop(anchor);
+        fixture.cleanup()
+    }
+
+    #[test]
+    fn fresh_getter_refuses_unadmitted_entries_and_replaced_held_root() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let anchor = fixture.anchor(4, 8, 256)?;
+        anchor.verify_fresh()?;
+        let unexpected = fixture.path.join("unexpected");
+        fs::write(&unexpected, b"entry").map_err(|error| format!("fresh unexpected write: {error}"))?;
+        error(anchor.verify_fresh(), "role directory is not empty")?;
+        fs::remove_file(&unexpected).map_err(|error| format!("fresh unexpected removal: {error}"))?;
+        error(anchor.verify_fresh(), "unqualified")?;
+        drop(anchor);
+        fixture.cleanup()?;
+
+        let fixture = Fixture::new()?;
+        let path = fixture.path.join("source");
+        fs::create_dir(&path).map_err(|error| format!("fresh source mkdir: {error}"))?;
+        let directory = RetainedDirectory::open_absolute(
+            &fixture.identity(&path)?, 4096, fixture.deadline,
+        )?;
+        let anchor = SourceAnchor::new(
+            directory, SourceBudget::new(4, 8, 256, 4)?, fixture.deadline,
+        )?;
+        anchor.verify_fresh()?;
+        fs::rename(&path, fixture.path.join("old"))
+            .map_err(|error| format!("fresh source rename: {error}"))?;
+        fs::create_dir(&path).map_err(|error| format!("fresh source replacement: {error}"))?;
+        error(anchor.verify_fresh(), "directory identity mismatch")?;
+        drop(anchor);
         fixture.cleanup()
     }
 

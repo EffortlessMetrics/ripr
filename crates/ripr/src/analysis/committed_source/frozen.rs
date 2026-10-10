@@ -6,6 +6,7 @@
 //! This is a source boundary, not complete coverage or aggregate resource proof.
 
 use crate::domain::GitObjectId;
+use super::staged::SourceAnchor;
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -86,6 +87,11 @@ impl FrozenInventory {
     }
 }
 
+enum FrozenOwner {
+    Temporary(Arc<super::super::git_candidate_execution::TempRootGuard>),
+    ParentStaged(Arc<SourceAnchor>),
+}
+
 struct Fault {
     kind: io::ErrorKind,
     message: String,
@@ -97,8 +103,9 @@ pub(crate) struct FrozenSourceAuthority {
     tree: GitObjectId,
     configuration: super::super::git_candidate_execution::CapturedConfiguration,
     inventory: Arc<FrozenInventory>,
-    // The last scoped/worker Arc owns the materialization's cleanup lifetime.
-    _owner: Arc<super::super::git_candidate_execution::TempRootGuard>,
+    // Temporary ownership retains its original cleanup. A staged lease never
+    // deletes the parent-owned source namespace.
+    _owner: FrozenOwner,
     fault: Mutex<Option<Fault>>,
     #[cfg(test)]
     worker_contexts: std::sync::atomic::AtomicU8,
@@ -153,13 +160,70 @@ impl FrozenSourceAuthority {
             tree,
             configuration,
             inventory,
-            _owner: owner,
+            _owner: FrozenOwner::Temporary(owner),
             fault: Mutex::new(None),
             #[cfg(test)]
             worker_contexts: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]
             opened_reads: std::sync::atomic::AtomicUsize::new(0),
         }))
+    }
+
+    /// Wraps actual already sealed source I/O. The caller still supplies the
+    /// authenticated Git inventory/configuration/tree and their admitted bounds.
+    pub(crate) fn new_staged(
+        logical_root: &Path,
+        tree: GitObjectId,
+        configuration: super::super::git_candidate_execution::CapturedConfiguration,
+        inventory: Arc<FrozenInventory>,
+        owner: Arc<SourceAnchor>,
+    ) -> io::Result<Arc<Self>> {
+        owner.verify_materialized().map_err(io::Error::other)?;
+        let authority = Arc::new(Self {
+            logical_root: normalized_absolute(logical_root)?,
+            // Identifier DATA only. Every staged I/O branch uses owner handles.
+            physical_root: PathBuf::from(owner.path_identifier()),
+            tree,
+            configuration,
+            inventory,
+            _owner: FrozenOwner::ParentStaged(owner),
+            fault: Mutex::new(None),
+            #[cfg(test)]
+            worker_contexts: std::sync::atomic::AtomicU8::new(0),
+            #[cfg(test)]
+            opened_reads: std::sync::atomic::AtomicUsize::new(0),
+        });
+        // Reconcile both namespaces before lending any frozen source context.
+        // Each list is dropped before the next; its aggregate budget remains
+        // separate from the root caller's full inventory/other retained buffers.
+        for directory in &authority.inventory.directories {
+            authority.inspect(directory)?;
+            let FrozenOwner::ParentStaged(owner) = &authority._owner else {
+                return Err(io::Error::other("staged source owner is missing"));
+            };
+            let names = owner.read_directory(directory)
+                .map_err(|error| authority.changed(directory, &error))?;
+            for name in names {
+                let child = directory.join(name);
+                if !authority.known(&child) {
+                    return Err(authority.changed(&child, "unexpected staged snapshot entry"));
+                }
+            }
+        }
+        for file in authority.inventory.files.keys() {
+            authority.inspect(file)?;
+        }
+        authority.verify_staged_current()?;
+        Ok(authority)
+    }
+
+    fn verify_staged_current(&self) -> io::Result<()> {
+        if let FrozenOwner::ParentStaged(owner) = &self._owner {
+            self.ensure_clean()?;
+            owner.verify_materialized()
+                .map_err(|error| self.changed(Path::new(""), &error))?;
+        }
+        Ok(())
     }
 
     pub(crate) fn logical_root(&self) -> &Path {
@@ -226,7 +290,28 @@ impl FrozenSourceAuthority {
             }
         };
         let primary = authority.ensure_clean().err();
-        let owner = Arc::try_unwrap(authority._owner).map_err(|owner| {
+        let owner = match authority._owner {
+            FrozenOwner::Temporary(owner) => owner,
+            FrozenOwner::ParentStaged(owner) => {
+                // NativeStartup intentionally retains its own source Arc.
+                // Release this lease without unwrapping or deleting the stage.
+                let verification = owner.verify_materialized().map_err(io::Error::other);
+                return match (primary, verification) {
+                    (None, Ok(())) => Ok(()),
+                    (Some(primary), Ok(())) => Err(primary),
+                    (primary, Err(verification)) => Err(io::Error::new(
+                        primary.as_ref().map_or(verification.kind(), io::Error::kind),
+                        match primary {
+                            Some(primary) => format!(
+                                "{primary}; frozen staged source verification failed: {verification}"
+                            ),
+                            None => format!("frozen staged source verification failed: {verification}"),
+                        },
+                    )),
+                };
+            }
+        };
+        let owner = Arc::try_unwrap(owner).map_err(|owner| {
             io::Error::new(
                 io::ErrorKind::WouldBlock,
                 format!(
@@ -288,6 +373,20 @@ impl FrozenSourceAuthority {
         self.ensure_clean()?;
         if !self.known(relative) {
             return Err(Self::absent(relative));
+        }
+        if let FrozenOwner::ParentStaged(owner) = &self._owner {
+            owner.verify_materialized().map_err(|error| self.changed(relative, &error))?;
+            let metadata = owner.metadata(relative)
+                .map_err(|error| self.changed(relative, &error))?;
+            if let Some(file) = self.inventory.files.get(relative) {
+                if !metadata.file_type().is_file() || metadata.len() != file.size {
+                    return Err(self.changed(relative, "admitted file type or size changed"));
+                }
+            } else if !metadata.file_type().is_dir() {
+                return Err(self.changed(relative, "admitted directory type changed"));
+            }
+            owner.verify_materialized().map_err(|error| self.changed(relative, &error))?;
+            return Ok(metadata);
         }
         // Validate all physical parents before touching the requested file.
         // The snapshot is privately owned; concurrent external mutation is not
@@ -362,12 +461,22 @@ impl FrozenSourceAuthority {
                 "frozen source is a directory",
             ));
         };
-        let physical = self.physical_root.join(&relative);
         #[cfg(test)]
         self.opened_reads
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let mut file = open_source_no_follow(&physical)
-            .map_err(|error| self.physical_error(&relative, error))?;
+        let mut file = match &self._owner {
+            FrozenOwner::Temporary(_) => {
+                let physical = self.physical_root.join(&relative);
+                open_source_no_follow(&physical)
+                    .map_err(|error| self.physical_error(&relative, error))?
+            }
+            FrozenOwner::ParentStaged(owner) => {
+                owner.verify_materialized()
+                    .map_err(|error| self.changed(&relative, &error))?;
+                owner.open_file(&relative)
+                    .map_err(|error| self.changed(&relative, &error))?
+            }
+        };
         let opened = file
             .metadata()
             .map_err(|error| self.physical_error(&relative, error))?;
@@ -412,6 +521,7 @@ impl FrozenSourceAuthority {
             ));
         }
         self.ensure_clean()?;
+        self.verify_staged_current()?;
         Ok(bytes)
     }
 
@@ -594,6 +704,13 @@ pub(crate) mod fs {
 
     pub(crate) enum FrozenReadDir {
         Ordinary(std::fs::ReadDir),
+        ParentStaged {
+            inner: std::vec::IntoIter<OsString>,
+            authority: Arc<FrozenSourceAuthority>,
+            relative: PathBuf,
+            failed: bool,
+            seen: BTreeSet<PathBuf>,
+        },
         NamedTree {
             inner: std::fs::ReadDir,
             authority: Arc<FrozenSourceAuthority>,
@@ -605,6 +722,11 @@ pub(crate) mod fs {
 
     pub(crate) enum FrozenDirEntry {
         Ordinary(std::fs::DirEntry),
+        ParentStaged {
+            authority: Arc<FrozenSourceAuthority>,
+            relative: PathBuf,
+            name: OsString,
+        },
         NamedTree {
             inner: std::fs::DirEntry,
             authority: Arc<FrozenSourceAuthority>,
@@ -621,6 +743,19 @@ pub(crate) mod fs {
                         io::ErrorKind::NotADirectory,
                         "frozen source is a file",
                     ));
+                }
+                if let FrozenOwner::ParentStaged(owner) = &authority._owner {
+                    owner.verify_materialized()
+                        .map_err(|error| authority.changed(&relative, &error))?;
+                    let names = owner.read_directory(&relative)
+                        .map_err(|error| authority.changed(&relative, &error))?;
+                    return Ok(FrozenReadDir::ParentStaged {
+                        inner: names.into_iter(),
+                        authority,
+                        relative,
+                        failed: false,
+                        seen: BTreeSet::new(),
+                    });
                 }
                 let inner = std::fs::read_dir(authority.physical_root.join(&relative))
                     .map_err(|error| authority.physical_error(&relative, error))?;
@@ -644,6 +779,71 @@ pub(crate) mod fs {
                 Self::Ordinary(inner) => inner
                     .next()
                     .map(|entry| entry.map(FrozenDirEntry::Ordinary)),
+                Self::ParentStaged {
+                    inner,
+                    authority,
+                    relative,
+                    failed,
+                    seen,
+                } => {
+                    if *failed {
+                        return None;
+                    }
+                    if let Err(error) = authority.verify_staged_current() {
+                        *failed = true;
+                        return Some(Err(error));
+                    }
+                    let Some(name) = inner.next() else {
+                        // Release the exhausted Vec allocation before another
+                        // bounded actual list; do not retain two list buffers.
+                        drop(std::mem::replace(inner, Vec::new().into_iter()));
+                        let closeout = (|| {
+                            let FrozenOwner::ParentStaged(owner) = &authority._owner else {
+                                return Err(io::Error::other("staged iterator owner is missing"));
+                            };
+                            let actual = owner.read_directory(relative)
+                                .map_err(|error| authority.changed(relative, &error))?;
+                            for name in actual {
+                                let child = relative.join(name);
+                                if !authority.known(&child) || !seen.contains(&child) {
+                                    return Err(authority.changed(&child, "staged snapshot membership changed"));
+                                }
+                                authority.inspect(&child)?;
+                            }
+                            if let Some(missing) = authority.inventory.files.keys()
+                                .chain(authority.inventory.directories.iter())
+                                .find(|path| {
+                                    path.parent() == Some(relative.as_path()) && !seen.contains(*path)
+                                })
+                            {
+                                return Err(authority.changed(missing, "admitted staged snapshot child is missing"));
+                            }
+                            authority.verify_staged_current()
+                        })();
+                        *failed = true;
+                        return match closeout {
+                            Ok(()) => None,
+                            Err(error) => Some(Err(error)),
+                        };
+                    };
+                    let result = (|| {
+                        let child = relative.join(&name);
+                        if !authority.known(&child) {
+                            return Err(authority.changed(&child, "unexpected staged snapshot entry"));
+                        }
+                        authority.inspect(&child)?;
+                        seen.insert(child.clone());
+                        Ok(FrozenDirEntry::ParentStaged {
+                            authority: authority.clone(),
+                            relative: child,
+                            name,
+                        })
+                    })();
+                    if result.is_err() {
+                        *failed = true;
+                    }
+                    Some(result)
+                }
                 Self::NamedTree {
                     inner,
                     authority,
@@ -703,6 +903,10 @@ pub(crate) mod fs {
                     authority,
                     relative,
                     ..
+                } | Self::ParentStaged {
+                    authority,
+                    relative,
+                    ..
                 } => authority.logical_root.join(relative),
             }
         }
@@ -710,6 +914,7 @@ pub(crate) mod fs {
         pub(crate) fn file_name(&self) -> OsString {
             match self {
                 Self::Ordinary(inner) | Self::NamedTree { inner, .. } => inner.file_name(),
+                Self::ParentStaged { name, .. } => name.clone(),
             }
         }
 
@@ -717,6 +922,10 @@ pub(crate) mod fs {
             match self {
                 Self::Ordinary(inner) => inner.file_type(),
                 Self::NamedTree {
+                    authority,
+                    relative,
+                    ..
+                } | Self::ParentStaged {
                     authority,
                     relative,
                     ..
@@ -731,6 +940,10 @@ pub(crate) mod fs {
             match self {
                 Self::Ordinary(inner) => inner.metadata(),
                 Self::NamedTree {
+                    authority,
+                    relative,
+                    ..
+                } | Self::ParentStaged {
                     authority,
                     relative,
                     ..
@@ -1117,4 +1330,283 @@ pub(crate) mod tests {
         assert_eq!(failure.kind(), io::ErrorKind::InvalidData);
         Ok(())
     }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    struct StagedFixture {
+        root: PathBuf,
+        logical: PathBuf,
+        physical: PathBuf,
+        anchor: Arc<super::super::staged::SourceAnchor>,
+        authority: Arc<FrozenSourceAuthority>,
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    impl StagedFixture {
+        // Owned byte I/O only; synthetic object IDs never claim real Git,
+        // native resource custody, analyzer admission or whole coverage.
+        fn new(files: &[(PathBuf, &[u8])]) -> Result<Self, Box<dyn Error>> {
+            use super::super::staged::{DirectoryIdentity, RetainedDirectory, SourceAnchor, SourceBudget};
+            use std::io::Write;
+            use std::os::unix::fs::MetadataExt;
+            let base = std::env::temp_dir().canonicalize()?;
+            let root = base.join(format!(
+                "ripr-frozen-staged-{}-{}",
+                std::process::id(),
+                NEXT.fetch_add(1, Ordering::SeqCst),
+            ));
+            std::fs::create_dir(&root)?;
+            let logical = root.join("logical");
+            let physical = root.join("source");
+            std::fs::create_dir(&logical)?;
+            std::fs::create_dir(&physical)?;
+            let metadata = std::fs::metadata(&physical)?;
+            let identity = DirectoryIdentity {
+                path: physical.to_str().ok_or("staged fixture path is not UTF-8")?.into(),
+                dev: metadata.dev(),
+                ino: metadata.ino(),
+            };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            let anchor = Arc::new(SourceAnchor::new(
+                RetainedDirectory::open_absolute(&identity, 4096, deadline)?,
+                SourceBudget::new(1024 * 1024, 100, 32 * 1024, 1024 * 1024)?,
+                deadline,
+            )?);
+            let mut inventory = FrozenInventory::new();
+            for (path, bytes) in files {
+                if let Some(parent) = path.parent() {
+                    let mut prefix = PathBuf::new();
+                    for component in parent.components() {
+                        prefix.push(component.as_os_str());
+                        if !inventory.directories.contains(&prefix) {
+                            anchor.create_dir(&prefix)?;
+                            inventory.insert_directory(&prefix);
+                        }
+                    }
+                }
+                let mut writer = anchor.create_new_file(path, bytes.len() as u64)?;
+                writer.write_all(bytes)?;
+                writer.finish()?;
+                inventory.insert_file(path.clone(), FrozenFile {
+                    mode: FrozenFileMode::Regular,
+                    blob_oid: GitObjectId::parse("1111111111111111111111111111111111111111")
+                        .map_err(|error| io::Error::other(error.to_string()))?,
+                    size: bytes.len() as u64,
+                    sha256: Sha256::digest(bytes).into(),
+                });
+            }
+            anchor.finish_materialization()?;
+            let authority = FrozenSourceAuthority::new_staged(
+                &logical,
+                GitObjectId::parse("1111111111111111111111111111111111111111")
+                    .map_err(|error| io::Error::other(error.to_string()))?,
+                super::super::super::git_candidate_execution::CapturedConfiguration::Absent,
+                Arc::new(inventory),
+                anchor.clone(),
+            )?;
+            Ok(Self { root, logical, physical, anchor, authority })
+        }
+
+        fn cleanup(self) -> Result<(), Box<dyn Error>> {
+            let Self { root, anchor, authority, .. } = self;
+            drop(authority);
+            drop(anchor);
+            std::fs::remove_dir_all(root)?;
+            Ok(())
+        }
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    fn staged_error<T>(result: io::Result<T>, category: &str) -> Result<io::Error, Box<dyn Error>> {
+        match result {
+            Err(error) if error.to_string().contains(category) => Ok(error),
+            Err(error) => Err(format!("wrong staged error: {error}; expected {category}").into()),
+            Ok(_) => Err(format!("unexpected staged success; expected {category}").into()),
+        }
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[test]
+    fn staged_context_reads_named_bytes_and_preserves_real_entry_metadata()
+    -> Result<(), Box<dyn Error>> {
+        use std::os::unix::ffi::OsStringExt;
+        let native = PathBuf::from(OsString::from_vec(b"src/native-\xff.rs".to_vec()));
+        let fixture = StagedFixture::new(&[
+            ("src/a.rs".into(), b"named head"),
+            (native.clone(), b"native"),
+        ])?;
+        std::fs::create_dir(fixture.logical.join("src"))?;
+        std::fs::write(fixture.logical.join("src/a.rs"), b"live")?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            assert_eq!(fs::read(fixture.logical.join("src/a.rs"))?, b"named head");
+            std::fs::remove_file(fixture.logical.join("src/a.rs"))?;
+            assert_eq!(fs::read(fixture.logical.join("src/a.rs"))?, b"named head");
+            assert_eq!(fs::read(fixture.logical.join(&native))?, b"native");
+            let mut names = Vec::new();
+            for entry in fs::read_dir(fixture.logical.join("src"))? {
+                let entry = entry?;
+                assert!(entry.file_type()?.is_file());
+                assert!(entry.metadata()?.is_file());
+                assert_eq!(entry.path().parent(), Some(fixture.logical.join("src").as_path()));
+                names.push(entry.file_name());
+            }
+            names.sort();
+            let mut expected = vec![
+                OsString::from("a.rs"),
+                native.file_name().ok_or_else(|| io::Error::other("native name missing"))?.to_os_string(),
+            ];
+            expected.sort();
+            assert_eq!(names, expected);
+            fixture.authority.ensure_clean()
+        })?;
+        fixture.cleanup()
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[test]
+    fn staged_prefix_authenticates_full_tail_and_escape_refuses_before_open()
+    -> Result<(), Box<dyn Error>> {
+        let fixture = StagedFixture::new(&[("large.rs".into(), b"abcdefgh")])?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            assert_eq!(fs::read_prefix(fixture.logical.join("large.rs"), 2)?, b"ab");
+            assert_eq!(fs::read_with_limit(fixture.logical.join("large.rs"), 2)?, b"abc");
+            std::fs::write(fixture.physical.join("large.rs"), b"abcdefgX")?;
+            let error = staged_error(fs::read_prefix(fixture.logical.join("large.rs"), 2),
+                "source bytes differ").map_err(|error| io::Error::other(error.to_string()))?;
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            Ok(())
+        })?;
+        fixture.cleanup()?;
+
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            let before = fixture.authority.opened_reads.load(Ordering::SeqCst);
+            let error = staged_error(fs::read(fixture.logical.join("../outside.rs")),
+                "outside repository").map_err(|error| io::Error::other(error.to_string()))?;
+            assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+            assert_eq!(fixture.authority.opened_reads.load(Ordering::SeqCst), before);
+            Ok(())
+        })?;
+        fixture.cleanup()
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[test]
+    fn staged_listing_rechecks_actual_membership_at_eof_and_refuses_replacement()
+    -> Result<(), Box<dyn Error>> {
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            let mut entries = fs::read_dir(&fixture.logical)?;
+            entries.next().ok_or_else(|| io::Error::other("actual staged entry missing"))??;
+            std::fs::write(fixture.physical.join("extra.rs"), b"extra")?;
+            let closeout = entries.next().ok_or_else(|| io::Error::other("EOF missed actual extra"))?;
+            let error = staged_error(closeout, "unadmitted entry")
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+            Ok(())
+        })?;
+        fixture.cleanup()?;
+
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        std::fs::rename(fixture.physical.join("a.rs"), fixture.physical.join("old"))?;
+        std::fs::write(fixture.physical.join("a.rs"), b"head")?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            staged_error(fs::read(fixture.logical.join("a.rs")), "identity or length changed")
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            Ok(())
+        })?;
+        fixture.cleanup()?;
+
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            let mut entries = fs::read_dir(&fixture.logical)?;
+            entries.next().ok_or_else(|| io::Error::other("actual staged entry missing"))??;
+            std::fs::remove_file(fixture.physical.join("a.rs"))?;
+            let closeout = entries.next().ok_or_else(|| io::Error::other("EOF missed actual missing file"))?;
+            staged_error(closeout, "missing an admitted child")
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            Ok(())
+        })?;
+        fixture.cleanup()
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[test]
+    fn staged_constructor_reconciles_inventory_and_refuses_unsealed_source()
+    -> Result<(), Box<dyn Error>> {
+        use super::super::staged::{DirectoryIdentity, RetainedDirectory, SourceAnchor, SourceBudget};
+        use std::os::unix::fs::MetadataExt;
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        let empty = FrozenInventory::new();
+        staged_error(FrozenSourceAuthority::new_staged(
+            &fixture.logical,
+            GitObjectId::parse("1111111111111111111111111111111111111111")
+                .map_err(|error| io::Error::other(error.to_string()))?,
+            super::super::super::git_candidate_execution::CapturedConfiguration::Absent,
+            Arc::new(empty),
+            fixture.anchor.clone(),
+        ), "unexpected staged snapshot entry")?;
+        fixture.cleanup()?;
+
+        let fixture = StagedFixture::new(&[])?;
+        let path = fixture.root.join("unsealed");
+        std::fs::create_dir(&path)?;
+        let metadata = std::fs::metadata(&path)?;
+        let identity = DirectoryIdentity {
+            path: path.to_str().ok_or("unsealed path invalid")?.into(),
+            dev: metadata.dev(),
+            ino: metadata.ino(),
+        };
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+        let unsealed = Arc::new(SourceAnchor::new(
+            RetainedDirectory::open_absolute(&identity, 4096, deadline)?,
+            SourceBudget::new(1024, 10, 1024, 1024)?,
+            deadline,
+        )?);
+        staged_error(FrozenSourceAuthority::new_staged(
+            &fixture.logical,
+            GitObjectId::parse("1111111111111111111111111111111111111111")
+                .map_err(|error| io::Error::other(error.to_string()))?,
+            super::super::super::git_candidate_execution::CapturedConfiguration::Absent,
+            Arc::new(FrozenInventory::new()),
+            unsealed.clone(),
+        ), "not sealed")?;
+        drop(unsealed);
+        fixture.cleanup()
+    }
+
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    #[test]
+    fn staged_finalize_refuses_detached_context_and_never_deletes_parent_stage()
+    -> Result<(), Box<dyn Error>> {
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        // The SourceAnchor Arc is intentionally still held, like NativeStartup.
+        let StagedFixture { root, logical: _, physical, anchor, authority } = fixture;
+        authority.finalize()?;
+        assert_eq!(std::fs::read(physical.join("a.rs"))?, b"head");
+        anchor.verify_materialized()?;
+        drop(anchor);
+        std::fs::remove_dir_all(root)?;
+
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        let detached = fixture.authority.clone();
+        staged_error(detached.finalize(), "outstanding source-context leases")?;
+        assert_eq!(std::fs::read(fixture.physical.join("a.rs"))?, b"head");
+        staged_error(fixture.authority.ensure_clean(), "outstanding source-context leases")?;
+        fixture.cleanup()?;
+
+        let fixture = StagedFixture::new(&[("a.rs".into(), b"head")])?;
+        std::fs::write(fixture.physical.join("a.rs"), b"evil")?;
+        with_context(Some(fixture.authority.clone()), || -> io::Result<()> {
+            staged_error(fs::read(fixture.logical.join("a.rs")), "source bytes differ")
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            Ok(())
+        })?;
+        let StagedFixture { root, logical: _, physical, anchor, authority } = fixture;
+        staged_error(authority.finalize(), "source bytes differ")?;
+        assert_eq!(std::fs::read(physical.join("a.rs"))?, b"evil");
+        drop(anchor);
+        std::fs::remove_dir_all(root)?;
+        Ok(())
+    }
+
 }

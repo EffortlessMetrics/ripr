@@ -22,7 +22,6 @@
 //! pipeline thread.
 
 pub(crate) mod frozen;
-#[cfg(test)]
 pub(crate) mod staged;
 
 use crate::core_error::CoreError;
