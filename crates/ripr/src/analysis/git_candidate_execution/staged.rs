@@ -134,8 +134,8 @@ fn records<'a>(
             .checked_add(path.len() as u64)
             .filter(|bytes| *bytes <= budget.max_path_bytes)
             .ok_or_else(|| failed("staged tree retained path admission exceeded".into()))?;
-        // The original path refusal is shared, including its existing rule
-        // for double dots and platform separators. No lossy inverse is used.
+        // Path refusal is shared for traversal components and platform
+        // separators. No lossy inverse is used.
         super::safe_join(Path::new(owner.path_identifier()), path)?;
         let mode = match (mode, kind) {
             ("040000", "tree") => None,
@@ -839,7 +839,7 @@ mod tests {
                 "path is malformed",
             ),
             (
-                format!("100644 blob {oid}\ta..b.rs\0").into_bytes(),
+                format!("100644 blob {oid}\ta/./b.rs\0").into_bytes(),
                 "escapes",
             ),
             (
@@ -1265,6 +1265,72 @@ mod tests {
     }
 
     #[test]
+    fn actual_plan_preserves_valid_double_dot_and_unix_backslash_names_without_source_writes()
+    -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        fixture.write("a..b.rs", b"pub fn dotted() {}\n")?;
+        fixture.write(r"literal\backslash.rs", b"pub fn backslash() {}\n")?;
+        let tree = fixture.tree()?;
+        let dotted = GitObjectId::parse(
+            &fixture.git(&["rev-parse", &format!("{}:a..b.rs", tree.as_str())])?,
+        )
+        .map_err(|error| error.to_string())?;
+        let backslash = GitObjectId::parse(
+            &fixture.git(&["rev-parse", &format!("{}:literal\\backslash.rs", tree.as_str())])?,
+        )
+        .map_err(|error| error.to_string())?;
+        let expected = crate::git::run_git_output_with_deadline_and_limit_isolated(
+            &fixture.repository,
+            &["ls-tree", "-r", "-t", "-z", "--full-tree", tree.as_str()],
+            Duration::from_secs(30),
+            budget().max_listing_bytes,
+        )
+        .map_err(|error| error.to_string())?;
+        if !expected.status.success() {
+            return Err(format!(
+                "valid filename fixture listing failed: {}",
+                String::from_utf8_lossy(&expected.stderr)
+            ));
+        }
+        let owner = fixture.anchor("valid-filename-plan")?;
+        let mut calls = 0;
+        with_staged_named_tree_plan(
+            &fixture.repository,
+            tree.clone(),
+            owner.clone(),
+            fixture.deadline,
+            budget(),
+            |plan| {
+                calls += 1;
+                assert_eq!(plan.tree(), &tree);
+                assert_eq!(plan.original_listing(), expected.stdout.as_slice());
+                assert_eq!(
+                    plan.observations().collect::<Vec<_>>(),
+                    vec![
+                        ("a..b.rs", Some(FrozenFileMode::Regular), dotted.as_str()),
+                        (
+                            r"literal\backslash.rs",
+                            Some(FrozenFileMode::Regular),
+                            backslash.as_str(),
+                        ),
+                    ]
+                );
+                Ok(())
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(calls, 1, "valid original names never reached the observer");
+        owner.verify_fresh()?;
+        assert_eq!(
+            fs::read_dir(owner.path_identifier())
+                .map_err(|error| error.to_string())?
+                .count(),
+            0
+        );
+        refused(owner.verify_materialized(), "not sealed")
+    }
+
+    #[test]
     fn full_plan_parser_rejects_corrupt_original_records_before_callback() -> Result<(), String> {
         let fixture = Fixture::new()?;
         fixture.write("src/lib.rs", b"pub fn entry() {}\n")?;
@@ -1321,7 +1387,7 @@ mod tests {
                     tree.as_str()
                 )
                 .into_bytes(),
-                "plan path is not canonical",
+                "escapes the materialization root",
             ),
             (
                 format!(
@@ -1330,7 +1396,7 @@ mod tests {
                     tree.as_str()
                 )
                 .into_bytes(),
-                "plan path is not canonical",
+                "escapes the materialization root",
             ),
             (
                 format!(
@@ -1339,7 +1405,7 @@ mod tests {
                     tree.as_str()
                 )
                 .into_bytes(),
-                "plan path is not canonical",
+                "escapes the materialization root",
             ),
             (
                 format!(
@@ -1348,11 +1414,11 @@ mod tests {
                     tree.as_str()
                 )
                 .into_bytes(),
-                "plan path is not canonical",
+                "escapes the materialization root",
             ),
             (
                 format!("100644 blob {object}\ttrailing.rs/\0").into_bytes(),
-                "plan path is not canonical",
+                "escapes the materialization root",
             ),
         ];
         for (index, (listing, category)) in cases.into_iter().enumerate() {
