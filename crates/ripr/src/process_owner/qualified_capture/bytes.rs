@@ -1550,7 +1550,7 @@ mod linux {
             if original_started > now
                 || execution_deadline <= original_started
                 || now >= execution_deadline
-                || !reserve_end.is_some_and(|end| held_deadline.is_some_and(|held| end <= held))
+                || reserve_end.is_none_or(|end| held_deadline.is_none_or(|held| end > held))
             {
                 return Err(failure_storage.failure(
                     "absolute execution window is invalid or lacks original settlement and drain reserve"
@@ -2360,18 +2360,15 @@ mod linux {
                     let _outcome = owner.with_inner(|inner| {
                         crate::process_owner::with_post_spawn_deadline_barrier(|| {
                             let args = shell("exec /usr/bin/sleep 30");
-                            match CompleteByteCapture::capture_with_terminal_custody(
+                            if let Err(report) = CompleteByteCapture::capture_with_terminal_custody(
                                 (Path::new("/bin/sh"), &args),
                                 (Path::new("/"), None),
                                 &[],
                                 (budget(0, 64), "enclosing real unwind"),
                                 inner,
                             ) {
-                                Err(report) => {
-                                    let _text = report.to_string();
-                                    std::panic::resume_unwind(panic_payload);
-                                }
-                                Ok(_) => {}
+                                let _text = report.to_string();
+                                std::panic::resume_unwind(panic_payload);
                             }
                         });
                     });

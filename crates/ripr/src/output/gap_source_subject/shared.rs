@@ -67,6 +67,7 @@ pub(crate) fn absolute_root(root: &Path) -> PathBuf {
 ///   `<relative root>/<file>` is recognized when `root` is itself relative;
 /// - traversal (`..`) is rejected;
 /// - whitespace in a filename or directory is identity, not padding (#5128).
+///
 /// Same path grammar with a caller-owned canonical path resolver.
 pub(crate) fn subject_relative_path_with(
     root: &Path,
