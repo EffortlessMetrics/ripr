@@ -51,7 +51,7 @@ fn require_limits(text: &str, address_space: u64, file: u64) -> Result<(), Strin
     Ok(())
 }
 
-fn verify_limits(address_space: u64, file: u64) -> Result<(), String> {
+pub(super) fn verify_limits(address_space: u64, file: u64) -> Result<(), String> {
     if address_space == 0 || address_space > ADDRESS_SPACE_MAX || file == 0 || file > FILE_MAX {
         return Err("experimental worker invalid finite resource profile".to_string());
     }

@@ -139,6 +139,101 @@ impl CompleteRequest {
         Ok(())
     }
 
+    /// Resolve all endpoints through this request's SAME aggregate preflight.
+    /// Large source, diff and configuration reads require later native startup.
+    pub(super) fn resolve_whole_subject(
+        &mut self,
+        options: &super::PrEvidenceOptions,
+    ) -> Result<CompleteSubject, String> {
+        if options.check
+            || !options.base_explicit
+            || options.head != self.requested_head
+            || options.base.is_empty()
+            || options.base.len() > POLICY_BYTES
+            || options.base.contains('\0')
+        {
+            return Err("complete whole-subject producer request is invalid".into());
+        }
+        let root_text = options.root.as_str();
+        if root_text.len() > POLICY_BYTES || root_text.contains('\0') {
+            return Err("complete whole-subject root literal admission exceeded".into());
+        }
+        let root = std::fs::canonicalize(super::command_root_path(
+            &self.invocation_repository,
+            root_text,
+        ))
+        .map_err(|error| format!("complete whole-subject root is unavailable: {error}"))?;
+        if root != self.work_tree {
+            return Err("complete whole-head-v1 requires the whole work-tree root".into());
+        }
+        // One canonical merge base is required. The literals only enter the
+        // rev-parse expression after --end-of-options; later argv use OIDs.
+        let base_expression = format!("{}^{{commit}}", options.base);
+        let base_commit = oid_output(&self.probe_subject(&[
+            "rev-parse", "--verify", "--end-of-options", &base_expression,
+        ])?)?;
+        let base_tree_expression = format!("{}^{{tree}}", base_commit.as_str());
+        let base_tree = oid_output(&self.probe_subject(&[
+            "rev-parse", "--verify", "--end-of-options", &base_tree_expression,
+        ])?)?;
+        let head = self.head_commit.as_str().to_string();
+        let origin_commit = oid_output(&self.probe_subject(&[
+            "merge-base", "--all", base_commit.as_str(), &head,
+        ])?)?;
+        let origin_tree_expression = format!("{}^{{tree}}", origin_commit.as_str());
+        let origin_tree = oid_output(&self.probe_subject(&[
+            "rev-parse", "--verify", "--end-of-options", &origin_tree_expression,
+        ])?)?;
+        Ok(CompleteSubject {
+            invocation_repository: self.invocation_repository.clone(),
+            root,
+            work_tree: self.work_tree.clone(),
+            base_commit,
+            head_commit: self.head_commit.clone(),
+            base_tree,
+            head_tree: self.head_tree.clone(),
+            origin_commit,
+            origin_tree,
+            requested: options.clone(),
+        })
+    }
+
+    /// Reobserve original literals once under the held worker deadline.
+    /// A missing policy cannot downgrade a previously selected route.
+    pub(super) fn validate_whole_current(
+        self,
+        subject: &CompleteSubject,
+        worker_deadline: Instant,
+    ) -> Result<(), String> {
+        let mut current = match select_request_with_deadline(
+            &self.invocation_repository,
+            &self.requested_head,
+            worker_deadline,
+        )? {
+            RequestedRoute::Complete(request) => request,
+            RequestedRoute::Ordinary => {
+                return Err("committed complete request disappeared after selection".into());
+            }
+        };
+        if current.invocation_repository != self.invocation_repository
+            || current.head_commit != self.head_commit
+            || current.head_tree != self.head_tree
+            || subject.head_commit != self.head_commit
+            || subject.head_tree != self.head_tree
+            || current.binding != self.binding
+            || current.work_tree != self.work_tree
+            || current.git_directory != self.git_directory
+            || current.common_directory != self.common_directory
+        {
+            return Err("committed complete request or repository identity changed".into());
+        }
+        let observed = current.resolve_whole_subject(subject.requested_options())?;
+        if &observed != subject {
+            return Err("complete whole-subject identities or original options changed".into());
+        }
+        Ok(())
+    }
+
     /// Full-subject identity probes consume the SAME remaining call/time/output
     /// budget as selection. Large raw/source capture is a later native-worker
     /// phase and cannot use this method's finite metadata admission.
@@ -149,6 +244,34 @@ impl CompleteRequest {
             POLICY_BYTES,
             CompleteGitEnvironment::WholeInput,
         )
+    }
+}
+
+/// Bound canonical subject DATA. It is never an analyzer or publication grant.
+#[derive(Debug, Eq, PartialEq)]
+pub(super) struct CompleteSubject {
+    pub(super) invocation_repository: PathBuf,
+    pub(super) root: PathBuf,
+    pub(super) work_tree: PathBuf,
+    pub(super) base_commit: GitObjectId,
+    pub(super) head_commit: GitObjectId,
+    pub(super) base_tree: GitObjectId,
+    pub(super) head_tree: GitObjectId,
+    pub(super) origin_commit: GitObjectId,
+    pub(super) origin_tree: GitObjectId,
+    requested: super::PrEvidenceOptions,
+}
+
+impl CompleteSubject {
+    pub(super) fn requested_options(&self) -> &super::PrEvidenceOptions {
+        &self.requested
+    }
+
+    pub(super) fn pinned_options(&self) -> super::PrEvidenceOptions {
+        let mut options = self.requested.clone();
+        options.base = self.base_commit.as_str().into();
+        options.head = self.head_commit.as_str().into();
+        options
     }
 }
 
@@ -701,4 +824,136 @@ mod tests {
             .validate_current(Instant::now() + PREFLIGHT_DURATION)?;
         Ok(())
     }
+    #[test]
+    fn whole_subject_uses_unique_actual_origin_and_preserves_requested_options() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let base = fixture.oid("HEAD")?;
+        fixture.git(&["branch", "complete-base", &base])?;
+        fixture.policy(VALID.as_bytes())?;
+        let head = fixture.oid("HEAD")?;
+        fixture.git(&["checkout", "--quiet", "complete-base"])?;
+        std::fs::write(fixture.0.join("source.rs"), "pub const VALUE: u8 = 3;\n")
+            .map_err(|error| error.to_string())?;
+        fixture.git(&["add", "--", "source.rs"])?;
+        fixture.git(&["commit", "--quiet", "-m", "divergent base"])?;
+        let divergent = fixture.oid("HEAD")?;
+        let divergent_tree = fixture.oid("HEAD^{tree}")?;
+        fixture.git(&["checkout", "--quiet", "request"])?;
+        let options = super::super::PrEvidenceOptions {
+            base: "refs/heads/complete-base".into(),
+            base_explicit: true,
+            ..super::super::PrEvidenceOptions::default()
+        };
+        let mut request = complete(select_request(&fixture.0, "HEAD")?)?;
+        let subject = request.resolve_whole_subject(&options)?;
+        assert_eq!(subject.base_commit.as_str(), divergent);
+        assert_eq!(subject.head_commit.as_str(), head);
+        assert_eq!(subject.origin_commit.as_str(), base);
+        assert_eq!(subject.base_tree.as_str(), divergent_tree);
+        assert_ne!(subject.origin_tree, subject.base_tree);
+        assert_eq!(subject.requested_options(), &options);
+        let pinned = subject.pinned_options();
+        assert_eq!(pinned.base, divergent);
+        assert_eq!(pinned.head, head);
+        assert_eq!(pinned.root, options.root);
+        assert_eq!(pinned.base_explicit, options.base_explicit);
+        request.validate_whole_current(&subject, Instant::now() + PREFLIGHT_DURATION)?;
+        Ok(())
+    }
+
+    #[test]
+    fn whole_subject_refuses_same_tree_base_movement_and_recovers() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let base = fixture.oid("HEAD")?;
+        fixture.git(&["branch", "complete-base", &base])?;
+        fixture.policy(VALID.as_bytes())?;
+        let options = super::super::PrEvidenceOptions {
+            base: "refs/heads/complete-base".into(),
+            base_explicit: true,
+            ..super::super::PrEvidenceOptions::default()
+        };
+        let mut request = complete(select_request(&fixture.0, "HEAD")?)?;
+        let subject = request.resolve_whole_subject(&options)?;
+        fixture.git(&["checkout", "--quiet", "complete-base"])?;
+        fixture.git(&["commit", "--quiet", "--allow-empty", "-m", "same tree moved base"])?;
+        assert_eq!(fixture.oid("HEAD^{tree}")?, subject.base_tree.as_str());
+        assert_ne!(fixture.oid("HEAD")?, subject.base_commit.as_str());
+        fixture.git(&["checkout", "--quiet", "request"])?;
+        let error = refusal(request.validate_whole_current(
+            &subject, Instant::now() + PREFLIGHT_DURATION,
+        ))?;
+        assert!(error.contains("whole-subject identities"), "{error}");
+        let mut recovered = complete(select_request(&fixture.0, "HEAD")?)?;
+        let current = recovered.resolve_whole_subject(&options)?;
+        assert_ne!(current.base_commit, subject.base_commit);
+        assert_eq!(current.base_tree, subject.base_tree);
+        recovered.validate_whole_current(&current, Instant::now() + PREFLIGHT_DURATION)?;
+        Ok(())
+    }
+
+    #[test]
+    fn whole_subject_refuses_invalid_requests_before_new_git_probes() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let base = fixture.oid("HEAD")?;
+        fixture.policy(VALID.as_bytes())?;
+        std::fs::create_dir_all(fixture.0.join("nested")).map_err(|error| error.to_string())?;
+        let valid = super::super::PrEvidenceOptions {
+            base,
+            base_explicit: true,
+            ..super::super::PrEvidenceOptions::default()
+        };
+        let mut request = complete(select_request(&fixture.0, "HEAD")?)?;
+        let before = request.preflight.calls;
+        let mut cases = Vec::new();
+        let mut wrong_head = valid.clone();
+        wrong_head.head = request.head_commit().as_str().into();
+        cases.push(wrong_head);
+        let mut implicit = valid.clone();
+        implicit.base_explicit = false;
+        cases.push(implicit);
+        let mut check = valid.clone();
+        check.check = true;
+        cases.push(check);
+        let mut bad_base = valid.clone();
+        bad_base.base.push('\0');
+        cases.push(bad_base);
+        let mut subroot = valid.clone();
+        subroot.root = "nested".into();
+        cases.push(subroot);
+        for options in cases {
+            let error = refusal(request.resolve_whole_subject(&options))?;
+            assert!(error.starts_with("complete whole-"), "{error}");
+            assert_eq!(request.preflight.calls, before);
+        }
+        let subject = request.resolve_whole_subject(&valid)?;
+        let error = refusal(request.validate_whole_current(&subject, Instant::now()))?;
+        assert!(error.contains("deadline"), "{error}");
+        Ok(())
+    }
+
+    #[test]
+    fn stale_request_cannot_accept_rebound_same_tree_head_subject_data() -> Result<(), String> {
+        let fixture = Fixture::new()?;
+        let base = fixture.oid("HEAD")?;
+        fixture.policy(VALID.as_bytes())?;
+        let options = super::super::PrEvidenceOptions {
+            base,
+            base_explicit: true,
+            ..super::super::PrEvidenceOptions::default()
+        };
+        let mut original = complete(select_request(&fixture.0, "HEAD")?)?;
+        let old_subject = original.resolve_whole_subject(&options)?;
+        fixture.git(&["commit", "--quiet", "--allow-empty", "-m", "same tree moved head"])?;
+        let mut fresh = complete(select_request(&fixture.0, "HEAD")?)?;
+        let rebound = fresh.resolve_whole_subject(&options)?;
+        assert_ne!(rebound.head_commit, old_subject.head_commit);
+        assert_eq!(rebound.head_tree, old_subject.head_tree);
+        let error = refusal(original.validate_whole_current(
+            &rebound, Instant::now() + PREFLIGHT_DURATION,
+        ))?;
+        assert!(error.contains("committed complete request or repository identity changed"), "{error}");
+        fresh.validate_whole_current(&rebound, Instant::now() + PREFLIGHT_DURATION)?;
+        Ok(())
+    }
+
 }
