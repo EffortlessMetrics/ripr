@@ -550,7 +550,7 @@ mod tests {
                 stamp_error(
                     stamp_source_subject(&fixture.root, &BTreeSet::new()), "src/lib.rs",
                 )?;
-                Ok(())
+                Ok::<_, String>(())
             })?;
         }
         let recovery = NamedStampFixture::new("snapshot-recovery")?;
