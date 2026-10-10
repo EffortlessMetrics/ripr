@@ -1960,6 +1960,19 @@ mod native {
                 refusal(fixture.claim(held(5)?), "fixed retained namespace occupied")?;
                 let after = io(fs::symlink_metadata(&root))?;
                 assert_eq!((before.dev(), before.ino()), (after.dev(), after.ino()));
+                if kind == "link" {
+                    let seeded = io(fs::symlink_metadata(&root))?;
+                    assert!(seeded.file_type().is_symlink());
+                    assert_eq!((before.dev(), before.ino()), (seeded.dev(), seeded.ino()));
+                    // This node was seeded by the test; the refused claim acquired no
+                    // stage or worker. Real retained stages and other seeds stay occupied.
+                    io(fs::remove_file(&root))?;
+                    match fs::symlink_metadata(&root) {
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(error) => return Err(error.to_string()),
+                        Ok(_) => return Err("seeded link remained after test teardown".to_string()),
+                    }
+                }
             }
             Ok(())
         }
