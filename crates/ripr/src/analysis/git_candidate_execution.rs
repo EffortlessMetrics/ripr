@@ -2764,6 +2764,354 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+    mod retained_snapshot_fixture {
+        use std::ffi::{OsStr, OsString};
+        use std::fs::{File, Metadata, OpenOptions};
+        use std::io::{Read, Seek, SeekFrom};
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        use std::path::{Component, Path, PathBuf};
+
+        #[cfg(target_arch = "x86_64")]
+        const NOFOLLOW: i32 = 0x20000;
+        #[cfg(target_arch = "aarch64")]
+        const NOFOLLOW: i32 = 0x8000;
+        #[cfg(target_arch = "x86_64")]
+        const DIRECTORY: i32 = 0x10000;
+        #[cfg(target_arch = "aarch64")]
+        const DIRECTORY: i32 = 0x4000;
+        const NONBLOCK: i32 = 0x800;
+
+        #[derive(Clone, Copy)]
+        struct Identity {
+            dev: u64,
+            ino: u64,
+            uid: u32,
+            mode: u32,
+            directory: bool,
+            nlink: u64,
+            len: u64,
+            mtime: i64,
+            mtime_nsec: i64,
+            ctime: i64,
+            ctime_nsec: i64,
+        }
+
+        impl Identity {
+            fn capture(metadata: &Metadata, directory: bool) -> Result<Self, String> {
+                if metadata.is_dir() != directory
+                    || (!directory && (!metadata.is_file() || metadata.nlink() != 1))
+                {
+                    return Err("fixture member type or link count differs".into());
+                }
+                Ok(Self {
+                    dev: metadata.dev(),
+                    ino: metadata.ino(),
+                    uid: metadata.uid(),
+                    mode: metadata.mode() & 0o7777,
+                    directory,
+                    nlink: metadata.nlink(),
+                    len: metadata.len(),
+                    mtime: metadata.mtime(),
+                    mtime_nsec: metadata.mtime_nsec(),
+                    ctime: metadata.ctime(),
+                    ctime_nsec: metadata.ctime_nsec(),
+                })
+            }
+
+            fn same_object(&self, metadata: &Metadata) -> bool {
+                metadata.dev() == self.dev
+                    && metadata.ino() == self.ino
+                    && metadata.uid() == self.uid
+                    && metadata.mode() & 0o7777 == self.mode
+                    && metadata.is_dir() == self.directory
+                    && (self.directory || (metadata.is_file() && metadata.nlink() == 1))
+            }
+
+            fn unchanged(&self, metadata: &Metadata) -> bool {
+                self.same_object(metadata)
+                    && metadata.nlink() == self.nlink
+                    && metadata.len() == self.len
+                    && metadata.mtime() == self.mtime
+                    && metadata.mtime_nsec() == self.mtime_nsec
+                    && metadata.ctime() == self.ctime
+                    && metadata.ctime_nsec() == self.ctime_nsec
+            }
+        }
+
+        struct Pinned {
+            file: File,
+            identity: Identity,
+        }
+
+        fn normal(name: &OsStr) -> Result<(), String> {
+            let mut parts = Path::new(name).components();
+            if !matches!(parts.next(), Some(Component::Normal(_))) || parts.next().is_some() {
+                return Err("fixture child is not one Normal component".into());
+            }
+            Ok(())
+        }
+
+        fn child(parent: &File, name: &OsStr) -> Result<PathBuf, String> {
+            normal(name)?;
+            Ok(PathBuf::from(format!("/proc/self/fd/{}", parent.as_raw_fd())).join(name))
+        }
+
+        fn open(path: &Path, directory: bool) -> Result<Pinned, String> {
+            let file = OpenOptions::new()
+                .read(true)
+                .custom_flags(NOFOLLOW | NONBLOCK | if directory { DIRECTORY } else { 0 })
+                .open(path)
+                .map_err(|error| error.to_string())?;
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            let identity = Identity::capture(&metadata, directory)?;
+            Ok(Pinned { file, identity })
+        }
+
+        fn pin(parent: &Pinned, name: &OsStr, directory: bool) -> Result<Pinned, String> {
+            let pinned = open(&child(&parent.file, name)?, directory)?;
+            if pinned.identity.uid != parent.identity.uid && !directory {
+                return Err("fixture file UID differs from its directory".into());
+            }
+            Ok(pinned)
+        }
+
+        fn current(parent: &Pinned, name: &OsStr, pinned: &Pinned, full: bool) -> Result<(), String> {
+            let held = pinned.file.metadata().map_err(|error| error.to_string())?;
+            let named = open(&child(&parent.file, name)?, pinned.identity.directory)?;
+            let named = named.file.metadata().map_err(|error| error.to_string())?;
+            let matches = |metadata: &Metadata| {
+                if full {
+                    pinned.identity.unchanged(metadata)
+                } else {
+                    pinned.identity.same_object(metadata)
+                }
+            };
+            if !matches(&held) || !matches(&named) {
+                return Err("fixture retained member identity or attributes changed".into());
+            }
+            Ok(())
+        }
+
+        fn members(directory: &Pinned, expected: &[&str]) -> Result<(), String> {
+            if expected.len() > 4 {
+                return Err("fixture membership admission differs".into());
+            }
+            let mut seen = [false; 4];
+            let mut count = 0_usize;
+            let path = PathBuf::from(format!("/proc/self/fd/{}", directory.file.as_raw_fd()));
+            for entry in std::fs::read_dir(path).map_err(|error| error.to_string())? {
+                count += 1;
+                if count > expected.len() {
+                    return Err("fixture directory contains excess membership".into());
+                }
+                let name = entry.map_err(|error| error.to_string())?.file_name();
+                normal(&name)?;
+                let index = expected.iter()
+                    .position(|expected| name == OsStr::new(expected))
+                    .ok_or("fixture directory contains unknown membership")?;
+                if seen[index] {
+                    return Err("fixture directory repeats a member".into());
+                }
+                seen[index] = true;
+            }
+            if count != expected.len() || seen[..expected.len()].iter().any(|seen| !seen) {
+                return Err("fixture directory lacks an expected member".into());
+            }
+            Ok(())
+        }
+
+        fn contents(file: &File, expected: &[u8]) -> Result<(), String> {
+            if expected.len() > 4096 {
+                return Err("fixture content admission exceeds its fixed bound".into());
+            }
+            let mut input = file.try_clone().map_err(|error| error.to_string())?;
+            input.seek(SeekFrom::Start(0)).map_err(|error| error.to_string())?;
+            let mut bytes = [0_u8; 4097];
+            let mut used = 0;
+            while used <= expected.len() {
+                let read = input.read(&mut bytes[used..expected.len() + 1])
+                    .map_err(|error| error.to_string())?;
+                if read == 0 {
+                    break;
+                }
+                used += read;
+            }
+            if used != expected.len() || &bytes[..used] != expected {
+                return Err("fixture changed file bytes differ".into());
+            }
+            Ok(())
+        }
+
+        /// Independent cooperating-fixture disposal, never Requested cleanup.
+        /// No Drop removes anything, and unknown or replaced entries refuse.
+        pub(super) struct Teardown {
+            temporary: Pinned,
+            shared: Pinned,
+            base: Pinned,
+            target: Pinned,
+            source: Pinned,
+            tests: Pinned,
+            files: [Pinned; 4],
+            base_name: OsString,
+            target_name: OsString,
+        }
+
+        impl Teardown {
+            pub(super) fn pin(target: &Path) -> Result<Self, String> {
+                let base = target.parent().ok_or("fixture target lacks a base")?;
+                let shared = base.parent().ok_or("fixture base lacks a shared parent")?;
+                let temporary = shared.parent().ok_or("fixture shared parent lacks a temp root")?;
+                if shared.file_name() != Some(OsStr::new("ripr-git-candidate")) {
+                    return Err("fixture shared parent differs".into());
+                }
+                let base_name = base.file_name().ok_or("fixture base name is missing")?.to_owned();
+                let target_name = target.file_name().ok_or("fixture target name is missing")?.to_owned();
+                normal(&base_name)?;
+                normal(&target_name)?;
+                let temporary = open(temporary, true)?;
+                let shared = pin(&temporary, OsStr::new("ripr-git-candidate"), true)?;
+                let base = pin(&shared, &base_name, true)?;
+                let target = pin(&base, &target_name, true)?;
+                let source = pin(&target, OsStr::new("src"), true)?;
+                let tests = pin(&target, OsStr::new("tests"), true)?;
+                let files = [
+                    pin(&target, OsStr::new("ripr.toml"), false)?,
+                    pin(&source, OsStr::new("lib.rs"), false)?,
+                    pin(&source, OsStr::new("renamed.rs"), false)?,
+                    pin(&tests, OsStr::new("it.rs"), false)?,
+                ];
+                if shared.identity.uid != base.identity.uid
+                    || base.identity.uid != target.identity.uid
+                    || target.identity.uid != source.identity.uid
+                    || target.identity.uid != tests.identity.uid
+                {
+                    return Err("fixture directory UIDs differ".into());
+                }
+                let fixture = Self {
+                    temporary, shared, base, target, source, tests, files,
+                    base_name, target_name,
+                };
+                fixture.audit()?;
+                Ok(fixture)
+            }
+
+            fn anchors(&self) -> Result<(), String> {
+                let temporary = self.temporary.file.metadata().map_err(|error| error.to_string())?;
+                if !self.temporary.identity.same_object(&temporary) {
+                    return Err("fixture temp directory identity changed".into());
+                }
+                current(&self.temporary, OsStr::new("ripr-git-candidate"), &self.shared, false)?;
+                current(&self.shared, &self.base_name, &self.base, false)?;
+                current(&self.base, &self.target_name, &self.target, false)
+            }
+
+            fn audit(&self) -> Result<(), String> {
+                self.anchors()?;
+                current(&self.shared, &self.base_name, &self.base, true)?;
+                current(&self.base, &self.target_name, &self.target, true)?;
+                current(&self.target, OsStr::new("src"), &self.source, true)?;
+                current(&self.target, OsStr::new("tests"), &self.tests, true)?;
+                for (parent, name, file) in [
+                    (&self.target, "ripr.toml", &self.files[0]),
+                    (&self.source, "lib.rs", &self.files[1]),
+                    (&self.source, "renamed.rs", &self.files[2]),
+                    (&self.tests, "it.rs", &self.files[3]),
+                ] {
+                    current(parent, OsStr::new(name), file, true)?;
+                }
+                members(&self.base, &[self.target_name.to_str().ok_or("fixture target is not UTF-8")?])?;
+                members(&self.target, &["ripr.toml", "src", "tests"])?;
+                members(&self.source, &["lib.rs", "renamed.rs"])?;
+                members(&self.tests, &["it.rs"])
+            }
+
+            pub(super) fn record_intentional_change(&mut self, expected: &[u8]) -> Result<(), String> {
+                let metadata = self.files[1].file.metadata().map_err(|error| error.to_string())?;
+                if !self.files[1].identity.same_object(&metadata)
+                    || metadata.len() != self.files[1].identity.len
+                {
+                    return Err("fixture corruption replaced the pinned file".into());
+                }
+                contents(&self.files[1].file, expected)?;
+                // Only the independent fixture observation changes. The actual
+                // Requested owner keeps its original sealed metadata and refusal.
+                self.files[1].identity = Identity::capture(&metadata, false)?;
+                self.audit()
+            }
+
+            pub(super) fn finish(self) -> Result<(), String> {
+                // Validate every known object and complete bounded membership
+                // before the first removal; never enumerate a recursive tree.
+                self.audit()?;
+                for (parent, parent_name, name, file) in [
+                    (&self.source, Some("src"), "lib.rs", &self.files[1]),
+                    (&self.source, Some("src"), "renamed.rs", &self.files[2]),
+                    (&self.tests, Some("tests"), "it.rs", &self.files[3]),
+                    (&self.target, None, "ripr.toml", &self.files[0]),
+                ] {
+                    self.anchors()?;
+                    if let Some(parent_name) = parent_name {
+                        current(&self.target, OsStr::new(parent_name), parent, false)?;
+                    }
+                    current(parent, OsStr::new(name), file, true)?;
+                    std::fs::remove_file(child(&parent.file, OsStr::new(name))?)
+                        .map_err(|error| error.to_string())?;
+                }
+                for (parent, name, directory) in [
+                    (&self.target, OsStr::new("src"), &self.source),
+                    (&self.target, OsStr::new("tests"), &self.tests),
+                    (&self.base, self.target_name.as_os_str(), &self.target),
+                ] {
+                    self.anchors()?;
+                    current(parent, name, directory, false)?;
+                    members(directory, &[])?;
+                    std::fs::remove_dir(child(&parent.file, name)?)
+                        .map_err(|error| error.to_string())?;
+                }
+                current(&self.temporary, OsStr::new("ripr-git-candidate"), &self.shared, false)?;
+                current(&self.shared, &self.base_name, &self.base, false)?;
+                members(&self.base, &[])?;
+                let base = child(&self.shared.file, &self.base_name)?;
+                std::fs::remove_dir(&base).map_err(|error| error.to_string())?;
+                match std::fs::symlink_metadata(base) {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(error) => Err(error.to_string()),
+                    Ok(_) => Err("fixture base remained after exact removal".into()),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn named_tree_authority_last_arc_removes_a_healthy_snapshot() -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        let (guard, _, candidate) = fixture_repo("healthy-frozen-source-authority")?;
+        let expected = candidate_blob(&guard.0, &candidate, "src/lib.rs")?;
+        let prepared =
+            prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
+        let physical = prepared.physical_root().to_path_buf();
+        let base = physical.parent().ok_or("healthy snapshot lacks a base")?.to_path_buf();
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        let retained = Arc::clone(&authority);
+        drop(authority);
+        assert!(physical.is_dir(), "a retained authority Arc must keep the healthy tree");
+        frozen::with_context(Some(Arc::clone(&retained)), || -> Result<(), String> {
+            assert_eq!(
+                frozen::fs::read(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?,
+                expected
+            );
+            retained.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        drop(retained);
+        assert!(!physical.exists(), "the last authority Arc must remove a healthy tree");
+        assert!(!base.exists(), "healthy cleanup must also remove its unique base");
+        Ok(())
+    }
+
     #[test]
     fn named_tree_authority_reads_bound_blobs_and_owns_snapshot_after_preparation_drop()
     -> Result<(), String> {
@@ -2773,6 +3121,8 @@ mod tests {
         let prepared =
             prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
         let physical = prepared.physical_root().to_path_buf();
+        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+        let mut fixture_teardown = retained_snapshot_fixture::Teardown::pin(&physical)?;
         let authority = prepared
             .frozen_source_authority(&guard.0)
             .map_err(|error| error.to_string())?;
@@ -2806,6 +3156,8 @@ mod tests {
             *first ^= 1;
             std::fs::write(physical.join("src/lib.rs"), &changed)
                 .map_err(|error| error.to_string())?;
+            #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+            fixture_teardown.record_intentional_change(&changed)?;
             let failure = frozen::fs::read(guard.0.join("src/lib.rs"))
                 .err()
                 .ok_or("a same-length snapshot replacement must fail")?;
@@ -2818,6 +3170,13 @@ mod tests {
             Ok(())
         })?;
         drop(authority);
+        #[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+        {
+            assert!(physical.is_dir(), "tampered Requested source must remain after cleanup refusal");
+            fixture_teardown.finish()?;
+            assert!(!physical.exists(), "independent fixture teardown must remove its exact tree");
+        }
+        #[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
         assert!(
             !physical.exists(),
             "the last authority Arc must remove the owned tree"
