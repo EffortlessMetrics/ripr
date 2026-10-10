@@ -1514,42 +1514,45 @@ mod linux {
                 let held = Instant::now() + Duration::from_millis(500);
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease)?;
-                let args = shell("exec /usr/bin/sleep 30");
-                let output = crate::process_owner::with_post_spawn_deadline_barrier(|| {
-                    CompleteByteCapture::capture_with_terminal_custody(
-                        (Path::new("/bin/sh"), &args),
-                        (Path::new("/"), None),
-                        &[],
-                        (budget(0, 64), "report unwind control"),
-                        &mut custodian,
-                    )
-                });
-                let checks = (|| match output {
-                    Ok(_) => Err("report unwind control admitted expired spawn".to_string()),
-                    Err(report) => {
-                        if !report.message().contains("spawn crossed its held deadline")
-                            || report.capture_error().is_none()
-                        {
-                            Err("borrowed report lost its actual primary failure".to_string())
-                        } else {
-                            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                                || {
-                                    let _reported = report.to_string();
-                                    std::panic::resume_unwind(Box::new("borrowed report control"));
-                                },
-                            ));
-                            match unwound {
-                                Ok(()) => Err("report control did not unwind".to_string()),
-                                Err(payload) => {
-                                    drop(payload);
-                                    require_retained_identity(
-                                        retained_child(&mut custodian)?,
-                                        held,
-                                    )
+                let report_checks = {
+                    let args = shell("exec /usr/bin/sleep 30");
+                    let output = crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                        CompleteByteCapture::capture_with_terminal_custody(
+                            (Path::new("/bin/sh"), &args),
+                            (Path::new("/"), None),
+                            &[],
+                            (budget(0, 64), "report unwind control"),
+                            &mut custodian,
+                        )
+                    });
+                    match output {
+                        Ok(_) => Err("report unwind control admitted expired spawn".to_string()),
+                        Err(report) => {
+                            if !report.message().contains("spawn crossed its held deadline")
+                                || report.capture_error().is_none()
+                            {
+                                Err("borrowed report lost its actual primary failure".to_string())
+                            } else {
+                                let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                                    move || {
+                                        let _reported = report.to_string();
+                                        std::panic::resume_unwind(Box::new("borrowed report control"));
+                                    },
+                                ));
+                                match unwound {
+                                    Ok(()) => Err("report control did not unwind".to_string()),
+                                    Err(payload) => {
+                                        drop(payload);
+                                        Ok(())
+                                    }
                                 }
                             }
                         }
                     }
+                };
+                let checks = (|| {
+                    report_checks?;
+                    require_retained_identity(retained_child(&mut custodian)?, held)
                 })();
                 fixture_closeout(&mut custodian, checks)
             }
