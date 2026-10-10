@@ -191,8 +191,6 @@ impl NativeStartup {
         &self.source
     }
 
-
-
     pub(super) fn verify_stage_current(&self) -> Result<(), String> {
         self.stage.verify_current(self.deadline)?;
         self.stage.require_role_entries(self.deadline)?;

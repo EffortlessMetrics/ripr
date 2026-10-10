@@ -257,7 +257,6 @@ impl ArtifactAttempt {
         }
     }
 
-
     // IO-only helper for its actual closure controls; not the stage admission.
     fn finish_work<T>(&self, work: Result<T, String>) -> Result<T, String> {
         self.finish_phase(work, false)
@@ -433,8 +432,6 @@ fn combined_verifier_bytes(
         ],
     )
 }
-
-
 
 /// Logical payload/representation reservation for the inspector's canonical
 /// replay, bounded numstat streams and bounded witness. This is not exact RSS
@@ -1460,7 +1457,8 @@ impl FreshWholeInput {
         self.startup.source().verify_materialized()?;
         self.startup.verify_stage_current()?;
         super::complete_execution::verify_limits(
-            self.profile.address_space_bytes, self.profile.file_size_bytes,
+            self.profile.address_space_bytes,
+            self.profile.file_size_bytes,
         )?;
         if capture_complete_rust_policy()? != self.whole.policy
             || crate::build_identity::cache_identity() != self.build_identity
@@ -1470,10 +1468,12 @@ impl FreshWholeInput {
         checkpoint(deadline)?;
         match result {
             Err(error) if error.contains("diff_scope_oversized:") => Ok(error),
-            Err(error) => Err(format!("native analysis control ordinary guard differed: {error}")),
-            Ok(_) => Err(
-                "native analysis control ordinary guard accepted the oversized subject".into(),
-            ),
+            Err(error) => Err(format!(
+                "native analysis control ordinary guard differed: {error}"
+            )),
+            Ok(_) => {
+                Err("native analysis control ordinary guard accepted the oversized subject".into())
+            }
         }
     }
 
@@ -1595,10 +1595,7 @@ fn closeout_analyzed_input(
     }
     checkpoint(startup.deadline())?;
     startup.verify_stage_current()?;
-    super::complete_execution::verify_limits(
-        profile.address_space_bytes,
-        profile.file_size_bytes,
-    )?;
+    super::complete_execution::verify_limits(profile.address_space_bytes, profile.file_size_bytes)?;
     if startup.profile() != &profile
         || capture_complete_rust_policy()? != whole.policy
         || crate::build_identity::cache_identity() != build_identity
@@ -1857,7 +1854,10 @@ mod tests {
         assert_eq!(admit_analysis_inspection(7, 11, &profile)?, reserved);
         profile.max_buffered_bytes -= 1;
         error(admit_analysis_inspection(7, 11, &profile), "buffer bound")?;
-        error(admit_analysis_inspection(u64::MAX, 11, &profile), "overflow")?;
+        error(
+            admit_analysis_inspection(u64::MAX, 11, &profile),
+            "overflow",
+        )?;
         profile.max_buffered_bytes = reserved;
         assert_eq!(admit_analysis_inspection(7, 11, &profile)?, reserved);
         Ok(())

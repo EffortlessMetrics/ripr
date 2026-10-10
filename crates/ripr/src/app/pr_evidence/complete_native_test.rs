@@ -272,11 +272,11 @@ fn native_analysis_worker() -> Result<(), String> {
             let parent = ProcessData::observed(invocation.observed_parent());
             let limit = capture_complete_rust_policy()?.changed_rust_line_limit();
             if limit >= OWNER_LINES {
-                return Err(
-                    "native analysis worker ordinary guard is not discriminated".into(),
-                );
+                return Err("native analysis worker ordinary guard is not discriminated".into());
             }
-            let fresh = prepare(invocation, startup, request, &options, surface, check, &profile)?;
+            let fresh = prepare(
+                invocation, startup, request, &options, surface, check, &profile,
+            )?;
             let guard = fresh.observe_ordinary_guard()?;
             if !guard.contains("diff_scope_oversized: 7038 changed Rust lines across 1 Rust files")
                 || !guard.contains(&format!("limit ({limit})"))
@@ -293,16 +293,15 @@ fn native_analysis_worker() -> Result<(), String> {
                     data.subject().base_commit.as_str(),
                     data.subject().head_commit.as_str(),
                 );
-                let numstat = crate::git::with_complete_capture_restriction(
-                    deadline,
-                    HEADER_CAP,
-                    || crate::git::run_git_output_with_deadline(
-                        &data.subject().root,
-                        &["diff", "--no-renames", "--numstat", &range],
-                        None,
-                    ),
-                )
-                .map_err(|error| format!("native analysis numstat oracle: {error}"))?;
+                let numstat =
+                    crate::git::with_complete_capture_restriction(deadline, HEADER_CAP, || {
+                        crate::git::run_git_output_with_deadline(
+                            &data.subject().root,
+                            &["diff", "--no-renames", "--numstat", &range],
+                            None,
+                        )
+                    })
+                    .map_err(|error| format!("native analysis numstat oracle: {error}"))?;
                 if !numstat.status.success() || numstat.stdout != b"7038\t0\tsrc/lib.rs\n" {
                     return Err("native analysis actual whole-subject numstat differs".into());
                 }
@@ -341,14 +340,16 @@ fn native_analysis_worker() -> Result<(), String> {
                 {
                     return Err("native analysis actual outcome is incomplete".into());
                 }
-                if !output.findings.iter().any(|finding|
+                if !output.findings.iter().any(|finding| {
                     finding.probe.location.line == PREDICATE_LINE
-                    && finding.probe.location.file == data.authority_root().join("src/lib.rs")
-                    && finding.probe.owner.as_ref()
-                        .is_some_and(|owner| owner.0.ends_with("::beyond_boundary"))
-                    && finding.probe.expression.contains("value > 5400")
-                )
-                {
+                        && finding.probe.location.file == data.authority_root().join("src/lib.rs")
+                        && finding
+                            .probe
+                            .owner
+                            .as_ref()
+                            .is_some_and(|owner| owner.0.ends_with("::beyond_boundary"))
+                        && finding.probe.expression.contains("value > 5400")
+                }) {
                     return Err(
                         "native analysis actual predicate finding at line 7034 missing".into(),
                     );
@@ -377,9 +378,9 @@ fn native_analysis_worker() -> Result<(), String> {
             match refusal {
                 Err(error) if error == NATIVE_ANALYSIS_PUBLICATION_REFUSAL => {}
                 Err(error) => return Err(format!("native analysis postflight failed: {error}")),
-                Ok(()) => return Err(
-                    "native analysis control unexpectedly granted publication".into(),
-                ),
+                Ok(()) => {
+                    return Err("native analysis control unexpectedly granted publication".into());
+                }
             }
             // A DATA witness is emitted only after the inspector AND genuine
             // consuming postflight/source finalization reached the exact refusal.
@@ -402,7 +403,9 @@ fn native_analysis_scalar_grammar_refuses_aliases_and_missing_witness() -> Resul
     assert_eq!(decimal("65536")?, HEADER_CAP as u64);
     match witness(b"running 0 tests\ntest result: ok\n", "worker") {
         Err(error) if error.contains("callback/postflight witness missing") => Ok(()),
-        Err(error) => Err(format!("native analysis zero-test oracle differed: {error}")),
+        Err(error) => Err(format!(
+            "native analysis zero-test oracle differed: {error}"
+        )),
         Ok(_) => Err("native analysis zero-test success was accepted".into()),
     }
 }

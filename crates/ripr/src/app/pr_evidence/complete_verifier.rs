@@ -2333,7 +2333,10 @@ mod tests {
             let formatted = verify_staged_generation(&stage.0, &binding, &binding.profile)
                 .map_err(|error| error.to_string())?;
             assert_eq!(formatted.generation_id(), observed.generation_id());
-            assert_eq!(formatted.manifest_sha256(), sha256_bytes(&formatted_manifest));
+            assert_eq!(
+                formatted.manifest_sha256(),
+                sha256_bytes(&formatted_manifest)
+            );
             assert_ne!(formatted.manifest_sha256(), observed.manifest_sha256());
             std::fs::write(stage.0.join(MANIFEST_FILE), &manifest_wire)
                 .map_err(|error| format!("manifest wire restoration fixture: {error}"))?;

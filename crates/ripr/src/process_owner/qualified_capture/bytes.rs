@@ -312,12 +312,10 @@ pub(crate) struct CompleteTerminalFailure<'a> {
 impl CompleteTerminalFailure<'_> {
     pub(crate) fn message(&self) -> &str {
         self.reason.unwrap_or_else(|| {
-            self.capture
-                .as_deref()
-                .map_or(
-                    "terminal capture failure unavailable; custody unconfirmed",
-                    CompleteCaptureError::message,
-                )
+            self.capture.as_deref().map_or(
+                "terminal capture failure unavailable; custody unconfirmed",
+                CompleteCaptureError::message,
+            )
         })
     }
 
@@ -1316,7 +1314,6 @@ mod linux {
             }
         }
 
-
         #[cfg(feature = "lang-rust")]
         mod terminal {
             use super::*;
@@ -1338,8 +1335,7 @@ mod linux {
             fn lease() -> Result<(Arc<Lease>, Arc<AtomicBool>), String> {
                 let fixture = Fixture::new()?;
                 let path = fixture.0.join("held-image");
-                std::fs::write(&path, b"owned image bytes")
-                    .map_err(|error| error.to_string())?;
+                std::fs::write(&path, b"owned image bytes").map_err(|error| error.to_string())?;
                 let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
                 let dropped = Arc::new(AtomicBool::new(false));
                 Ok((
@@ -1419,8 +1415,8 @@ mod linux {
             }
 
             #[test]
-            fn dropped_string_report_keeps_post_spawn_child_and_owned_lease()
-            -> Result<(), String> {
+            fn dropped_string_report_keeps_post_spawn_child_and_owned_lease() -> Result<(), String>
+            {
                 let admitted = Instant::now();
                 let held = admitted + Duration::from_millis(500);
                 let (lease, dropped) = lease()?;
@@ -1429,7 +1425,7 @@ mod linux {
                 std::thread::sleep(Duration::from_millis(25));
                 if Instant::now() >= held || admitted.elapsed() < Duration::from_millis(25) {
                     return Err(
-                        "elapsed original admission was not still live before spawn".to_string(),
+                        "elapsed original admission was not still live before spawn".to_string()
                     );
                 }
                 let report = crate::process_owner::with_post_spawn_deadline_barrier(|| {
@@ -1463,15 +1459,14 @@ mod linux {
                 drop(custodian);
                 if !dropped.load(Ordering::SeqCst) || weak.upgrade().is_some() {
                     return Err(
-                        "observed fixture closeout failed to release owned lease".to_string(),
+                        "observed fixture closeout failed to release owned lease".to_string()
                     );
                 }
                 Ok(())
             }
 
             #[test]
-            fn dropped_report_keeps_constructed_group_under_original_clock()
-            -> Result<(), String> {
+            fn dropped_report_keeps_constructed_group_under_original_clock() -> Result<(), String> {
                 let held = Instant::now() + Duration::from_millis(500);
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
@@ -1509,8 +1504,8 @@ mod linux {
             }
 
             #[test]
-            fn report_unwind_keeps_outside_custodian_until_fixture_closeout()
-            -> Result<(), String> {
+            fn report_unwind_keeps_outside_custodian_until_fixture_closeout() -> Result<(), String>
+            {
                 let held = Instant::now() + Duration::from_millis(500);
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease)?;
@@ -1533,12 +1528,14 @@ mod linux {
                             {
                                 Err("borrowed report lost its actual primary failure".to_string())
                             } else {
-                                let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                                    move || {
+                                let unwound = std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(move || {
                                         let _reported = report.to_string();
-                                        std::panic::resume_unwind(Box::new("borrowed report control"));
-                                    },
-                                ));
+                                        std::panic::resume_unwind(Box::new(
+                                            "borrowed report control",
+                                        ));
+                                    }),
+                                );
                                 match unwound {
                                     Ok(()) => Err("report control did not unwind".to_string()),
                                     Err(payload) => {
@@ -1558,8 +1555,7 @@ mod linux {
             }
 
             #[test]
-            fn terminal_reuse_preserves_first_error_child_clock_and_lease()
-            -> Result<(), String> {
+            fn terminal_reuse_preserves_first_error_child_clock_and_lease() -> Result<(), String> {
                 let held = Instant::now() + Duration::from_millis(500);
                 let lease = Arc::new(());
                 let foreign = Arc::new(());
@@ -1596,8 +1592,7 @@ mod linux {
                         || !custodian.matches_lease(&lease)
                         || custodian.matches_lease(&foreign)
                         || custodian.original_deadline() != held
-                        || super::super::super::super::linux::spawn_attempts()
-                            != attempts
+                        || super::super::super::super::linux::spawn_attempts() != attempts
                     {
                         return Err("retry replaced the actual terminal custody".to_string());
                     }
@@ -1607,8 +1602,7 @@ mod linux {
             }
 
             #[test]
-            fn expiry_before_dispatch_has_no_child_or_cleanup_receipt()
-            -> Result<(), String> {
+            fn expiry_before_dispatch_has_no_child_or_cleanup_receipt() -> Result<(), String> {
                 let held = Instant::now() + Duration::from_millis(20);
                 let mut custodian = CompleteTerminalCustodian::new(held, Arc::new(()))?;
                 while Instant::now() < held {
@@ -1628,8 +1622,7 @@ mod linux {
                 if custodian.retained_process_count() != 0
                     || custodian.take_cleanup_receipt().is_some()
                     || custodian.take_failed_observation().is_some()
-                    || super::super::super::super::linux::spawn_attempts()
-                        != attempts
+                    || super::super::super::super::linux::spawn_attempts() != attempts
                 {
                     return Err("pre-dispatch refusal acquired a child or authority".to_string());
                 }
@@ -1672,8 +1665,8 @@ mod linux {
             }
 
             #[test]
-            fn terminal_failure_keeps_real_settled_negative_without_success()
-            -> Result<(), String> {
+            fn terminal_failure_keeps_real_settled_negative_without_success() -> Result<(), String>
+            {
                 let held = Instant::now() + Duration::from_secs(5);
                 let lease = Arc::new(());
                 let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
@@ -1689,7 +1682,10 @@ mod linux {
                         Err(report) => report,
                         Ok(_) => return Err("terminal overflow became success".to_string()),
                     };
-                    if !report.message().contains("stdout exceeds its 3-byte output budget") {
+                    if !report
+                        .message()
+                        .contains("stdout exceeds its 3-byte output budget")
+                    {
                         return Err(format!("unexpected terminal failure: {report}"));
                     }
                     let error = report
@@ -1711,7 +1707,9 @@ mod linux {
                         || report.take_cleanup_receipt().is_some()
                         || Instant::now() >= held
                     {
-                        return Err("settled terminal negative changed receipt or clock".to_string());
+                        return Err(
+                            "settled terminal negative changed receipt or clock".to_string()
+                        );
                     }
                 }
                 let (_, stdout, stderr, _, timed_out) = custodian

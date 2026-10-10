@@ -543,7 +543,8 @@ mod whole_worker {
     fn actual_libtest_argv(args: &[String], deadline: Instant) -> Result<(), String> {
         checkpoint(deadline)?;
         super::super::complete_native_test::authenticate_actual_libtest_argv(
-            super::super::complete_native_test::WORKER_TEST_NAME, args,
+            super::super::complete_native_test::WORKER_TEST_NAME,
+            args,
         )?;
         checkpoint(deadline)
     }
@@ -1939,6 +1940,4 @@ mod whole_worker {
 }
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-pub(super) use whole_worker::{
-    CaptureBudget, QualifiedWholeInvocation, with_libtest_worker,
-};
+pub(super) use whole_worker::{CaptureBudget, QualifiedWholeInvocation, with_libtest_worker};
