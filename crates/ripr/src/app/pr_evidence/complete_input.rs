@@ -1574,9 +1574,11 @@ impl AnalyzedWholeInput {
 pub(super) const NATIVE_ANALYSIS_PUBLICATION_REFUSAL: &str =
     "native analysis control intentionally refuses publication";
 
+type NativeObserver = fn(&QualifiedWholeInvocation) -> Result<(), String>;
+
 fn closeout_analyzed_input(
     input: FreshWholeInput,
-    native_observer: Option<fn(&QualifiedWholeInvocation) -> Result<(), String>>,
+    native_observer: Option<NativeObserver>,
 ) -> Result<(), String> {
     let FreshWholeInput {
         whole,

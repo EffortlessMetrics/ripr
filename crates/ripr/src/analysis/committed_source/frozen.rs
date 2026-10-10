@@ -297,6 +297,9 @@ impl FrozenSourceAuthority {
             }
         };
         let primary = authority.ensure_clean().err();
+        #[cfg(not(test))]
+        let FrozenOwner::Temporary(owner) = authority._owner;
+        #[cfg(test)]
         let owner = match authority._owner {
             FrozenOwner::Temporary(owner) => owner,
             #[cfg(test)]
