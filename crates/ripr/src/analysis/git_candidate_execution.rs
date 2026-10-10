@@ -1209,7 +1209,13 @@ fn materialize_requested_configuration(
 /// Join a tree entry path under the target, rejecting traversal.
 fn safe_join(target: &Path, name: &str) -> Result<PathBuf, SubjectError> {
     let relative = Path::new(name);
-    if relative.is_absolute() || name.contains("..") || name.contains('\\') || name.starts_with('/')
+    if name
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == "..")
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        || (cfg!(windows) && name.contains('\\'))
     {
         return Err(failed(format!(
             "candidate tree entry `{name}` escapes the materialization root"
@@ -1837,6 +1843,133 @@ mod tests {
             prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
         assert!(prepared._root.join("empty").is_dir());
         Ok(())
+    }
+
+    fn named_filename_round_trip(fixture_name: &str, name: &str) -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        let (guard, _, _) = fixture_repo(fixture_name)?;
+        let bytes = b"pub fn literal_filename() -> u8 { 7 }\n";
+        std::fs::write(guard.0.join(name), bytes).map_err(|error| error.to_string())?;
+        fixture_git_ok(&guard.0, &["add", "--all"])?;
+        fixture_git_ok(&guard.0, &["commit", "-m", "literal filename"])?;
+        let tree = git(&guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let oid = git(
+            &guard.0,
+            &["rev-parse", &format!("HEAD:{name}")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(candidate_blob(&guard.0, "HEAD", name)?, bytes);
+
+        let (ordinary, _ordinary_cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert_eq!(
+            std::fs::read(ordinary.join(name)).map_err(|error| error.to_string())?,
+            bytes
+        );
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        let (_, file) = prepared
+            .inventory
+            .files()
+            .find(|(path, _)| *path == Path::new(name))
+            .ok_or_else(|| format!("named inventory lost literal path {name}"))?;
+        assert_eq!(file.mode, frozen::FrozenFileMode::Regular);
+        assert_eq!(file.blob_oid.as_str(), oid);
+        assert_eq!(file.size, bytes.len() as u64);
+        let digest: [u8; 32] = sha2::Sha256::digest(bytes).into();
+        assert_eq!(file.sha256, digest);
+        assert_eq!(
+            std::fs::read(prepared.physical_root().join(name))
+                .map_err(|error| error.to_string())?,
+            bytes
+        );
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(guard.0.join(name)).map_err(|error| error.to_string())?;
+        let missing = std::fs::read(guard.0.join(name))
+            .err()
+            .ok_or("deleted live literal filename was still readable")?;
+        assert_eq!(missing.kind(), std::io::ErrorKind::NotFound);
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            assert_eq!(
+                frozen::fs::read(guard.0.join(name)).map_err(|error| error.to_string())?,
+                bytes
+            );
+            authority.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        authority.finalize().map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn safe_join_refuses_raw_aliases_and_platform_escape_components() -> Result<(), String> {
+        let target = Path::new("literal-path-target");
+        for name in [
+            "",
+            "/outside.rs",
+            "../outside.rs",
+            "src/../outside.rs",
+            ".",
+            "..",
+            "./file.rs",
+            "src/./file.rs",
+            "src/.",
+            "src/",
+            "src//file.rs",
+        ] {
+            let failure = safe_join(target, name)
+                .err()
+                .ok_or_else(|| format!("safe_join admitted raw alias {name:?}"))?;
+            assert!(
+                failure.to_string().contains("escapes the materialization root"),
+                "{failure}"
+            );
+        }
+        #[cfg(windows)]
+        for name in [
+            "C:relative.rs",
+            "C:/absolute.rs",
+            r"\\server\share\file.rs",
+            r"src\file.rs",
+            r"src\..\outside.rs",
+        ] {
+            let failure = safe_join(target, name)
+                .err()
+                .ok_or_else(|| format!("safe_join admitted Windows escape {name:?}"))?;
+            assert!(
+                failure.to_string().contains("escapes the materialization root"),
+                "{failure}"
+            );
+        }
+        for name in ["foo..rs", "src/foo..rs"] {
+            assert_eq!(
+                safe_join(target, name).map_err(|error| error.to_string())?,
+                target.join(name)
+            );
+        }
+        #[cfg(unix)]
+        assert_eq!(
+            safe_join(target, r"src/back\slash.rs").map_err(|error| error.to_string())?,
+            target.join(r"src/back\slash.rs")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn named_dot_substring_filename_preserves_ordinary_and_frozen_blob_identity()
+    -> Result<(), String> {
+        named_filename_round_trip("literal-dot-substring", "src/foo..rs")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn named_unix_backslash_filename_preserves_ordinary_and_frozen_blob_identity()
+    -> Result<(), String> {
+        named_filename_round_trip("literal-unix-backslash", r"src/back\slash.rs")
     }
 
     #[test]
