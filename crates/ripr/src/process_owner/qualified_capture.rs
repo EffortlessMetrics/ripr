@@ -8,7 +8,7 @@ pub use bytes::{
 };
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-pub(crate) use bytes::{CompleteTerminalCustodian, CompleteTerminalFailure};
+pub(crate) use bytes::{CompleteFailedClosed, CompleteTerminalCustodian, CompleteTerminalFailure};
 
 #[cfg(target_os = "linux")]
 mod linux {
@@ -21,6 +21,21 @@ mod linux {
     use std::time::{Duration, Instant};
 
     const POST_KILL_GROUP_CONFIRM_GRACE: Duration = Duration::from_secs(2);
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    pub(super) fn terminal_settlement_grace() -> Duration {
+        POST_KILL_GROUP_CONFIRM_GRACE
+    }
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    thread_local! {
+        static LAST_WAIT_WINDOW: std::cell::Cell<Option<(Instant, Duration)>> = const { std::cell::Cell::new(None) };
+    }
+
+    #[cfg(all(test, feature = "lang-rust"))]
+    pub(super) fn last_wait_window() -> Option<(Instant, Duration)> {
+        LAST_WAIT_WINDOW.with(std::cell::Cell::get)
+    }
 
     #[cfg(test)]
     thread_local! {
@@ -627,6 +642,8 @@ mod linux {
             timeout: Duration,
             mut monitor: impl FnMut() -> Result<(), String>,
         ) -> Result<QualifiedGroupWait, String> {
+            #[cfg(all(test, feature = "lang-rust"))]
+            LAST_WAIT_WINDOW.with(|window| window.set(Some((started, timeout))));
             loop {
                 self.check_held()?;
                 let monitored = monitor();

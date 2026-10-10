@@ -42,7 +42,9 @@ pub use qualified_capture::{
     CompleteCapturedBytes,
 };
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-pub(crate) use qualified_capture::{CompleteTerminalCustodian, CompleteTerminalFailure};
+pub(crate) use qualified_capture::{
+    CompleteFailedClosed, CompleteTerminalCustodian, CompleteTerminalFailure,
+};
 
 #[cfg(target_os = "linux")]
 #[doc(hidden)]

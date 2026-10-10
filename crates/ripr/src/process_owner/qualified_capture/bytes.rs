@@ -115,6 +115,8 @@ struct CaptureFailureState {
     receipt: Option<CompleteCaptureReceipt>,
     observation: Option<FailedCaptureObservation>,
     timeout_only: bool,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    terminal: Option<TerminalFailureEvidence>,
 }
 
 #[cfg(target_os = "linux")]
@@ -221,6 +223,133 @@ impl std::fmt::Display for CompleteCaptureError {
 }
 impl std::error::Error for CompleteCaptureError {}
 
+/// A checked negative disposition; it never admits output or successful analysis.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteFailedClosed {
+    group: super::QualifiedGroupSettlement,
+    lease: Arc<dyn Any + Send + Sync>,
+    release: TerminalReleaseObservation,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl CompleteFailedClosed {
+    pub(crate) fn original_deadline(&self) -> Instant {
+        self.release.original_deadline
+    }
+
+    pub(crate) fn settled_status(&self) -> ExitStatus {
+        self.group.status()
+    }
+
+    pub(crate) fn observed_worker(&self) -> super::ObservedProcessIdentity {
+        self.group.observed_worker()
+    }
+
+    pub(crate) fn observed_parent(&self) -> super::ObservedProcessIdentity {
+        self.group.observed_parent()
+    }
+
+    pub(crate) fn matches_lease<L: Any + Send + Sync>(&self, lease: &Arc<L>) -> bool {
+        let erased: Arc<dyn Any + Send + Sync> = lease.clone();
+        Arc::ptr_eq(&self.lease, &erased)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+#[derive(Clone, Copy)]
+struct TerminalReleaseObservation {
+    original_deadline: Instant,
+    before: Instant,
+    after: Instant,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl TerminalReleaseObservation {
+    fn valid_for(self, original_deadline: Instant) -> bool {
+        self.original_deadline == original_deadline
+            && self.before <= self.after
+            && self.before < original_deadline
+            && self.after < original_deadline
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+struct TerminalFailureEvidence {
+    group_only: Option<super::QualifiedGroupSettlement>,
+    release: Option<TerminalReleaseObservation>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+enum TakenTerminalEvidence {
+    Combined(CompleteCaptureReceipt),
+    GroupOnly(super::QualifiedGroupSettlement),
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+thread_local! {
+    static TERMINAL_TAKE_DEADLINE_BARRIER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn with_terminal_take_deadline_barrier<T>(work: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TERMINAL_TAKE_DEADLINE_BARRIER.with(|barrier| barrier.set(self.0));
+        }
+    }
+    let previous = TERMINAL_TAKE_DEADLINE_BARRIER.with(|barrier| barrier.replace(true));
+    let _restore = Restore(previous);
+    work()
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn take_closed_failure(
+    failure: &mut CompleteCaptureError,
+    original_deadline: Instant,
+) -> Option<CompleteFailedClosed> {
+    if Instant::now() >= original_deadline {
+        return None;
+    }
+    let lease = failure.lease.clone();
+    let state = failure.state_mut()?;
+    let release = state.terminal.as_ref()?.release?;
+    if !release.valid_for(original_deadline) {
+        return None;
+    }
+    let taken = match state.receipt.take() {
+        Some(receipt) => TakenTerminalEvidence::Combined(receipt),
+        None => TakenTerminalEvidence::GroupOnly(state.terminal.as_mut()?.group_only.take()?),
+    };
+    if TERMINAL_TAKE_DEADLINE_BARRIER.with(|barrier| barrier.replace(false)) {
+        while Instant::now() < original_deadline {
+            std::thread::yield_now();
+        }
+    }
+    let belongs = match &taken {
+        TakenTerminalEvidence::Combined(receipt) => receipt.group.belongs_to_current_parent(),
+        TakenTerminalEvidence::GroupOnly(group) => group.belongs_to_current_parent(),
+    };
+    if Instant::now() >= original_deadline || !belongs {
+        match taken {
+            TakenTerminalEvidence::Combined(receipt) => state.receipt = Some(receipt),
+            TakenTerminalEvidence::GroupOnly(group) => {
+                state.terminal.as_mut()?.group_only = Some(group);
+            }
+        }
+        return None;
+    }
+    let (group, lease) = match taken {
+        TakenTerminalEvidence::Combined(receipt) => (receipt.group, receipt.lease),
+        TakenTerminalEvidence::GroupOnly(group) => (group, lease),
+    };
+    Some(CompleteFailedClosed {
+        group,
+        lease,
+        release,
+    })
+}
+
 /// One pre-existing, invocation-local owner for a capture's terminal failure.
 ///
 /// Reports borrow this owner. A discarded report therefore cannot discard the
@@ -274,6 +403,27 @@ impl<L: Any + Send + Sync> CompleteTerminalCustodian<L> {
         self.failure
             .as_mut()
             .and_then(|failure| take_timely_terminal_receipt(failure, self.held_deadline))
+    }
+
+    /// Consume only a genuine timely negative disposition, retaining the first error.
+    pub(crate) fn try_closeout_failure(
+        &mut self,
+    ) -> Result<CompleteFailedClosed, CompleteTerminalFailure<'_>> {
+        if let Some(closed) = self
+            .failure
+            .as_mut()
+            .and_then(|failure| take_closed_failure(failure, self.held_deadline))
+        {
+            return Ok(closed);
+        }
+        let reason = self.failure.is_none().then_some(
+            "no failed capture has a checked terminal disposition; custody unconfirmed",
+        );
+        Err(CompleteTerminalFailure {
+            reason,
+            capture: self.failure.as_mut(),
+            original_deadline: self.held_deadline,
+        })
     }
 
     pub(crate) fn take_failed_observation(&mut self) -> Option<FailedCaptureObservation> {
@@ -394,6 +544,48 @@ impl CompleteByteCapture {
             Err(error) => {
                 // A by-value slot: this transfer allocates nothing and never
                 // reconstructs an owner from a PID, receipt, path or saved data.
+                custodian.failure = Some(error);
+                Err(CompleteTerminalFailure {
+                    reason: None,
+                    capture: custodian.failure.as_mut(),
+                    original_deadline: custodian.held_deadline,
+                })
+            }
+        }
+    }
+
+    /// Use the caller's already-held execution start and absolute cutoff.
+    ///
+    /// This tighter test-only boundary cannot reset the original custody clock.
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    pub(crate) fn capture_with_terminal_custody_until<'a, L: Any + Send + Sync>(
+        command: (&Path, &[String]),
+        source: (&Path, Option<&[u8]>),
+        env_remove: &[&str],
+        execution: (CompleteCaptureBudget, &str),
+        started: Instant,
+        execution_deadline: Instant,
+        custodian: &'a mut CompleteTerminalCustodian<L>,
+    ) -> Result<CompleteCapturedBytes, CompleteTerminalFailure<'a>> {
+        if custodian.attempted {
+            return Err(CompleteTerminalFailure {
+                reason: Some("terminal capture was already attempted; custody retained"),
+                capture: custodian.failure.as_mut(),
+                original_deadline: custodian.held_deadline,
+            });
+        }
+        custodian.attempted = true;
+        let lease: Arc<dyn Any + Send + Sync> = custodian.lease.clone();
+        match linux::capture_with_execution_window(
+            command,
+            source,
+            env_remove,
+            execution,
+            (custodian.held_deadline, started, execution_deadline),
+            lease,
+        ) {
+            Ok(output) => Ok(output),
+            Err(error) => {
                 custodian.failure = Some(error);
                 Err(CompleteTerminalFailure {
                     reason: None,
@@ -797,6 +989,8 @@ mod linux {
                 receipt: None,
                 observation: None,
                 timeout_only: false,
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                terminal: None,
             });
             self.state = Some(entries.into_boxed_slice());
             if strict {
@@ -828,6 +1022,12 @@ mod linux {
         }
     }
 
+    struct CaptureClocks {
+        held_deadline: Option<Instant>,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        execution_window: Option<(Instant, Instant)>,
+    }
+
     pub(super) fn capture_with_held(
         command: (&Path, &[String]),
         source: (&Path, Option<&[u8]>),
@@ -835,11 +1035,64 @@ mod linux {
         execution: (CompleteCaptureBudget, &str),
         held_deadline: Option<Instant>,
         lease: Arc<dyn Any + Send + Sync>,
+        settled: impl FnMut(ExitStatus),
+    ) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
+        capture_with_clocks(
+            command,
+            source,
+            env_remove,
+            execution,
+            CaptureClocks {
+                held_deadline,
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                execution_window: None,
+            },
+            lease,
+            settled,
+        )
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    pub(super) fn capture_with_execution_window(
+        command: (&Path, &[String]),
+        source: (&Path, Option<&[u8]>),
+        env_remove: &[&str],
+        execution: (CompleteCaptureBudget, &str),
+        clocks: (Instant, Instant, Instant),
+        lease: Arc<dyn Any + Send + Sync>,
+    ) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
+        capture_with_clocks(
+            command,
+            source,
+            env_remove,
+            execution,
+            CaptureClocks {
+                held_deadline: Some(clocks.0),
+                execution_window: Some((clocks.1, clocks.2)),
+            },
+            lease,
+            |_| {},
+        )
+    }
+
+    fn capture_with_clocks(
+        command: (&Path, &[String]),
+        source: (&Path, Option<&[u8]>),
+        env_remove: &[&str],
+        execution: (CompleteCaptureBudget, &str),
+        clocks: CaptureClocks,
+        lease: Arc<dyn Any + Send + Sync>,
         mut settled: impl FnMut(ExitStatus),
     ) -> Result<CompleteCapturedBytes, CompleteCaptureError> {
+        let held_deadline = clocks.held_deadline;
         let mut failure_storage = FailureStorage::new();
         // None preserves ordinary validation-before-clock ordering.
         let strict_started = held_deadline.map(|_| Instant::now());
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let strict_started = clocks
+            .execution_window
+            .map(|window| window.0)
+            .or(strict_started);
         strict_time(held_deadline)
             .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
         let (program, args) = command;
@@ -882,6 +1135,27 @@ mod linux {
             }
         }
         let started = strict_started.unwrap_or_else(Instant::now);
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some((original_started, execution_deadline)) = clocks.execution_window {
+            let now = Instant::now();
+            let reserve_end = execution_deadline
+                .checked_add(super::super::linux::terminal_settlement_grace())
+                .and_then(|end| end.checked_add(POST_KILL_DRAIN_GRACE));
+            if original_started > now
+                || execution_deadline <= original_started
+                || now >= execution_deadline
+                || !reserve_end.is_some_and(|end| {
+                    held_deadline.is_some_and(|held| end <= held)
+                })
+            {
+                return Err(failure_storage.failure(
+                    "absolute execution window is invalid or lacks original settlement and drain reserve"
+                        .to_string(),
+                    None,
+                    lease,
+                ));
+            }
+        }
         let worker_deadline = started.checked_add(budget.timeout).ok_or_else(|| {
             failure_storage.failure(
                 format!("complete byte capture for {error_context} deadline overflow"),
@@ -891,6 +1165,15 @@ mod linux {
         })?;
         let worker_deadline =
             held_deadline.map_or(worker_deadline, |held| worker_deadline.min(held));
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let worker_deadline = clocks
+            .execution_window
+            .map_or(worker_deadline, |window| worker_deadline.min(window.1));
+        let wait_timeout = budget.timeout;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let wait_timeout = clocks.execution_window.map_or(wait_timeout, |_| {
+            worker_deadline.saturating_duration_since(started)
+        });
         strict_time(held_deadline)
             .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
         let input = input
@@ -1056,7 +1339,7 @@ mod linux {
             }
             thread::sleep(delay);
         }
-        let outcome = owner.wait_supervised(started, budget.timeout, || {
+        let outcome = owner.wait_supervised(started, wait_timeout, || {
             if Instant::now() < worker_deadline {
                 transport.pump(worker_deadline);
             }
@@ -1077,7 +1360,7 @@ mod linux {
                     }
                     Err(clock) => errors.push(clock),
                 }
-                if parts.1 >= budget.timeout && !parts.2 {
+                if parts.1 >= wait_timeout && !parts.2 {
                     errors.push(
                         "primary observation exceeded its held execution deadline".to_string(),
                     );
@@ -1152,6 +1435,8 @@ mod linux {
             errors.push("complete endpoint action exceeded its held clock boundary".to_string());
         }
         let before_release = Instant::now() < deadline;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let terminal_release_before = Instant::now();
         let late_action = transport.late_action;
         let Transport {
             stdout,
@@ -1167,8 +1452,37 @@ mod linux {
         drop(stdout);
         drop(stderr);
         drop(input);
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let terminal_release_after = Instant::now();
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let terminal_release = held_deadline.and_then(|original_deadline| {
+            let release = TerminalReleaseObservation {
+                original_deadline,
+                before: terminal_release_before,
+                after: terminal_release_after,
+            };
+            release.valid_for(original_deadline).then_some(release)
+        });
         let released_in_time = before_release && Instant::now() < deadline && !late_action;
         let group = owner.take_settlement();
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let mut group_only = group;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let mut receipt = if stdout_eof
+            && stderr_eof
+            && released_in_time
+            && group_only
+                .as_ref()
+                .is_some_and(|group| group.belongs_to_current_parent())
+        {
+            group_only.take().map(|group| CompleteCaptureReceipt {
+                group,
+                lease: lease.clone(),
+            })
+        } else {
+            None
+        };
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         let mut receipt = if stdout_eof && stderr_eof && released_in_time {
             group
                 .filter(|group| group.belongs_to_current_parent())
@@ -1180,6 +1494,10 @@ mod linux {
             None
         };
         if let Err(clock) = strict_time(held_deadline) {
+            #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+            if let Some(actual) = receipt.take() {
+                group_only = Some(actual.group);
+            }
             receipt = None;
             errors.push(clock);
         }
@@ -1198,6 +1516,10 @@ mod linux {
             )
         });
         if let Err(clock) = strict_time(held_deadline) {
+            #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+            if let Some(actual) = receipt.take() {
+                group_only = Some(actual.group);
+            }
             receipt = None;
             timeout_only = false;
             errors.push(clock);
@@ -1214,6 +1536,13 @@ mod linux {
             if let Some(state) = error.state_mut() {
                 state.observation = observation;
                 state.timeout_only = timeout_only;
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                {
+                    state.terminal = Some(TerminalFailureEvidence {
+                        group_only,
+                        release: terminal_release,
+                    });
+                }
             }
             return Err(error);
         }
@@ -1231,6 +1560,13 @@ mod linux {
                     lease);
                 if let Some(state) = error.state_mut() {
                     state.observation = observation;
+                    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                    {
+                        state.terminal = Some(TerminalFailureEvidence {
+                            group_only,
+                            release: terminal_release,
+                        });
+                    }
                 }
                 return Err(error);
             }
@@ -1241,6 +1577,22 @@ mod linux {
                 if held_deadline.is_some() && owner.retained_process_count() != 0 {
                     failure_storage.custody.push(CaptureCustody::group(owner));
                 }
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                {
+                    let mut error = failure_storage.failure(
+                        format!("{error_context}: primary observation is unavailable"),
+                        held_deadline.map(|_| receipt),
+                        lease,
+                    );
+                    if let Some(state) = error.state_mut() {
+                        state.terminal = Some(TerminalFailureEvidence {
+                            group_only,
+                            release: terminal_release,
+                        });
+                    }
+                    return Err(error);
+                }
+                #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
                 return Err(failure_storage.failure(
                     format!("{error_context}: primary observation is unavailable"),
                     None,
@@ -1317,7 +1669,9 @@ mod linux {
         #[cfg(feature = "lang-rust")]
         mod terminal {
             use super::*;
-            use crate::process_owner::{CompleteTerminalCustodian, CompleteTerminalFailure};
+            use crate::process_owner::{
+                CompleteFailedClosed, CompleteTerminalCustodian, CompleteTerminalFailure,
+            };
             use std::sync::atomic::{AtomicBool, Ordering};
 
             struct Lease {
@@ -1721,6 +2075,366 @@ mod linux {
                     return Err("settled negative was fabricated or replayed".to_string());
                 }
                 Ok(())
+            }
+
+            fn capture_until<L: Any + Send + Sync>(
+                script: &str,
+                limits: CompleteCaptureBudget,
+                started: Instant,
+                execution_deadline: Instant,
+                custodian: &mut CompleteTerminalCustodian<L>,
+            ) -> Result<CompleteCapturedBytes, String> {
+                let args = shell(script);
+                CompleteByteCapture::capture_with_terminal_custody_until(
+                    (Path::new("/bin/sh"), &args),
+                    (Path::new("/"), None),
+                    &[],
+                    (limits, "absolute terminal custody control"),
+                    started,
+                    execution_deadline,
+                    custodian,
+                )
+                .map_err(report_to_string)
+            }
+
+            fn require_closed<L: Any + Send + Sync>(
+                closed: &CompleteFailedClosed,
+                lease: &Arc<L>,
+                held: Instant,
+            ) -> Result<(), String> {
+                let worker = closed.observed_worker();
+                let parent = closed.observed_parent();
+                if closed.original_deadline() != held
+                    || !closed.matches_lease(lease)
+                    || worker.pid() == 0
+                    || worker.start() == 0
+                    || worker.group() != worker.pid()
+                    || worker.parent() != parent.pid()
+                    || parent.pid() != std::process::id()
+                    || parent.start() == 0
+                    || Instant::now() >= held
+                {
+                    return Err("negative disposition changed actual identity, lease or clock".to_string());
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn missing_eof_retains_real_group_only_negative_and_refuses_replay() -> Result<(), String> {
+                let started = Instant::now();
+                let held = started + Duration::from_secs(12);
+                let execution_deadline = started + Duration::from_secs(4);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                HOOKS.with(|hooks| hooks.borrow_mut().hold_writer = Some("stdout"));
+                let result = capture_until(
+                    "printf missing-eof",
+                    budget(0, 64),
+                    started,
+                    execution_deadline,
+                    &mut custodian,
+                );
+                // The discriminator owns an extra real writer, outside transport.
+                // Close it before asking to dispose this fixture's failed capture.
+                HOOKS.with(|hooks| drop(hooks.borrow_mut().held_writer.take()));
+                let checks = (|| {
+                    let message = match result {
+                        Err(message) if message.contains("stdout actual EOF is unconfirmed") => message,
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("missing actual EOF became captured success".to_string()),
+                    };
+                    if started.elapsed() < POST_KILL_DRAIN_GRACE
+                        || custodian.take_cleanup_receipt().is_some()
+                    {
+                        return Err("missing EOF fabricated a combined receipt or reset drain".to_string());
+                    }
+                    let expected = custodian
+                        .failure()
+                        .and_then(CompleteCaptureError::state)
+                        .and_then(|state| state.terminal.as_ref())
+                        .and_then(|terminal| terminal.group_only.as_ref())
+                        .ok_or("actual settled group was lost at missing EOF")?
+                        .observed_worker();
+                    let closed = custodian.try_closeout_failure().map_err(report_to_string)?;
+                    require_closed(&closed, &lease, held)?;
+                    if !closed.settled_status().success()
+                        || closed.observed_worker().pid() != expected.pid()
+                        || closed.observed_worker().start() != expected.start()
+                        || custodian.failure().map(CompleteCaptureError::message) != Some(message.as_str())
+                        || custodian.take_cleanup_receipt().is_some()
+                    {
+                        return Err("negative closeout changed group proof or first refusal".to_string());
+                    }
+                    match custodian.try_closeout_failure() {
+                        Err(report) if report.message() == message => Ok(()),
+                        Err(report) => Err(format!("negative replay changed the first error: {report}")),
+                        Ok(_) => Err("group-only negative disposition replayed".to_string()),
+                    }
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn combined_negative_consumes_real_receipt_without_output_success_and_recovers()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_secs(5);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let message = match capture("printf overflow", None, budget(0, 3), &mut custodian) {
+                    Err(message) if message.contains("stdout exceeds its 3-byte output budget") => message,
+                    Err(message) => return fixture_closeout(&mut custodian, Err(message)),
+                    Ok(_) => return Err("overflow became successful captured output".to_string()),
+                };
+                let checks = (|| {
+                    let expected = custodian
+                        .failure()
+                        .and_then(CompleteCaptureError::state)
+                        .and_then(|state| state.receipt.as_ref())
+                        .ok_or("overflow lost actual combined EOF receipt")?
+                        .observed_worker();
+                    let closed = custodian.try_closeout_failure().map_err(report_to_string)?;
+                    require_closed(&closed, &lease, held)?;
+                    if !closed.settled_status().success()
+                        || closed.observed_worker().pid() != expected.pid()
+                        || closed.observed_worker().start() != expected.start()
+                        || custodian.take_cleanup_receipt().is_some()
+                        || custodian.failure().map(CompleteCaptureError::message) != Some(message.as_str())
+                    {
+                        return Err("combined negative changed actual observation or first error".to_string());
+                    }
+                    let (_, stdout, stderr, _, timed_out) = custodian
+                        .take_failed_observation()
+                        .ok_or("combined negative lost rejected byte observations")?;
+                    assert_eq!(stdout, b"over");
+                    assert_eq!(stderr, Vec::<u8>::new());
+                    if timed_out {
+                        return Err("overflow was recategorized as timeout".to_string());
+                    }
+                    match custodian.try_closeout_failure() {
+                        Err(report) if report.message() == message => {}
+                        Err(report) => return Err(report.to_string()),
+                        Ok(_) => return Err("combined negative disposition replayed".to_string()),
+                    }
+                    let recovery_lease = Arc::new(());
+                    let mut recovery = CompleteTerminalCustodian::new(held, recovery_lease.clone())?;
+                    let output = capture("printf recovered", None, budget(0, 64), &mut recovery)?;
+                    let (status, stdout, stderr, _, timed_out, receipt) = output.into_parts();
+                    if !status.success() || timed_out || !receipt.matches_lease(&recovery_lease) {
+                        return Err("independent recovery lost genuine capture semantics".to_string());
+                    }
+                    assert_eq!(stdout, b"recovered");
+                    assert_eq!(stderr, Vec::<u8>::new());
+                    Ok(())
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn negative_extraction_crossing_original_clock_restores_same_real_receipt()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_secs(1);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let message = match capture("printf overflow", None, budget(0, 3), &mut custodian) {
+                    Err(message) if message.contains("stdout exceeds its 3-byte output budget") => message,
+                    Err(message) => return fixture_closeout(&mut custodian, Err(message)),
+                    Ok(_) => return Err("late extraction control admitted overflow".to_string()),
+                };
+                let checks = (|| {
+                    let expected = custodian
+                        .failure()
+                        .and_then(CompleteCaptureError::state)
+                        .and_then(|state| state.receipt.as_ref())
+                        .ok_or("late extraction control lacks actual combined receipt")?
+                        .observed_worker();
+                    with_terminal_take_deadline_barrier(|| {
+                        match custodian.try_closeout_failure() {
+                            Err(report) if report.message() == message => Ok(()),
+                            Err(report) => Err(report.to_string()),
+                            Ok(_) => Err("late extraction minted a negative disposition".to_string()),
+                        }
+                    })?;
+                    let restored = custodian
+                        .failure()
+                        .and_then(CompleteCaptureError::state)
+                        .and_then(|state| state.receipt.as_ref())
+                        .ok_or("late extraction lost the taken real receipt")?;
+                    if Instant::now() < held
+                        || restored.observed_worker().pid() != expected.pid()
+                        || restored.observed_worker().start() != expected.start()
+                        || !restored.matches_lease(&lease)
+                        || custodian.original_deadline() != held
+                        || custodian.failure().map(CompleteCaptureError::message) != Some(message.as_str())
+                    {
+                        return Err("late extraction restored a different receipt, clock or lease".to_string());
+                    }
+                    if custodian.take_cleanup_receipt().is_some() {
+                        return Err("expired custody transferred cleanup authority".to_string());
+                    }
+                    Ok(())
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn elapsed_live_absolute_execution_cutoff_reaches_actual_wait_without_rebase()
+            -> Result<(), String> {
+                let started = Instant::now();
+                let execution_deadline = started + Duration::from_millis(700);
+                let held = started + Duration::from_secs(10);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                thread::sleep(Duration::from_millis(100));
+                if Instant::now() >= execution_deadline {
+                    return Err("elapsed execution control did not retain a live cutoff".to_string());
+                }
+                let result = capture_until(
+                    "printf actual-progress; exec /usr/bin/sleep 30",
+                    budget(0, 64),
+                    started,
+                    execution_deadline,
+                    &mut custodian,
+                );
+                let checks = (|| {
+                    match result {
+                        Err(message) if message.contains("complete worker timed out") => {}
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("absolute execution timeout became capture success".to_string()),
+                    }
+                    let observed = super::super::super::super::linux::last_wait_window()
+                        .ok_or("actual group wait did not record its supplied window")?;
+                    assert_eq!(observed.0, started);
+                    assert_eq!(observed.1, execution_deadline.duration_since(started));
+                    let closed = custodian.try_closeout_failure().map_err(report_to_string)?;
+                    require_closed(&closed, &lease, held)?;
+                    let (_, stdout, stderr, _, timed_out) = custodian
+                        .take_failed_observation()
+                        .ok_or("actual timeout lost failed byte observations")?;
+                    assert_eq!(stdout, b"actual-progress");
+                    assert_eq!(stderr, Vec::<u8>::new());
+                    if !timed_out || Instant::now() < execution_deadline
+                        || custodian.original_deadline() != held
+                    {
+                        return Err("actual wait rebased the admitted absolute window".to_string());
+                    }
+                    Ok(())
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn absolute_execution_keeps_tighter_existing_relative_budget() -> Result<(), String> {
+                let started = Instant::now();
+                let execution_deadline = started + Duration::from_secs(2);
+                let held = started + Duration::from_secs(10);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let timeout = Duration::from_millis(300);
+                thread::sleep(Duration::from_millis(50));
+                let result = capture_until(
+                    "printf relative-progress; exec /usr/bin/sleep 30",
+                    CompleteCaptureBudget::new(timeout, 0, 64, 64),
+                    started,
+                    execution_deadline,
+                    &mut custodian,
+                );
+                let checks = (|| {
+                    match result {
+                        Err(message) if message.contains("complete worker timed out") => {}
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("tighter relative timeout became success".to_string()),
+                    }
+                    let observed = super::super::super::super::linux::last_wait_window()
+                        .ok_or("actual tighter wait did not record its supplied window")?;
+                    assert_eq!(observed.0, started);
+                    assert_eq!(observed.1, timeout);
+                    let closed = custodian.try_closeout_failure().map_err(report_to_string)?;
+                    require_closed(&closed, &lease, held)
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn invalid_absolute_windows_refuse_before_pairs_or_spawn_without_negative_grant()
+            -> Result<(), String> {
+                for variant in 0..4 {
+                    let started = Instant::now();
+                    let held = started + Duration::from_secs(10);
+                    let (admitted_started, execution_deadline) = match variant {
+                        0 => (started, held - Duration::from_secs(6)),
+                        1 => (started + Duration::from_secs(1), started + Duration::from_secs(2)),
+                        2 => (started, started),
+                        _ => (started - Duration::from_secs(1), started - Duration::from_millis(1)),
+                    };
+                    let lease = Arc::new(());
+                    let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                    let pairs = HOOKS.with(|hooks| hooks.borrow().pair_attempts);
+                    let spawns = super::super::super::super::linux::spawn_attempts();
+                    match capture_until(
+                        "exec /missing/absolute-worker",
+                        budget(0, 64),
+                        admitted_started,
+                        execution_deadline,
+                        &mut custodian,
+                    ) {
+                        Err(message) if message.contains("absolute execution window") => {}
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("invalid absolute window reached capture".to_string()),
+                    }
+                    if HOOKS.with(|hooks| hooks.borrow().pair_attempts) != pairs
+                        || super::super::super::super::linux::spawn_attempts() != spawns
+                        || custodian.take_cleanup_receipt().is_some()
+                        || !custodian.matches_lease(&lease)
+                        || custodian.original_deadline() != held
+                    {
+                        return Err("invalid window allocated endpoints, spawned or changed custody".to_string());
+                    }
+                    match custodian.try_closeout_failure() {
+                        Err(report) if report.capture_error().is_some() => {}
+                        Err(report) => return Err(report.to_string()),
+                        Ok(_) => return Err("count-free preflight minted negative disposition".to_string()),
+                    }
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn unqualified_post_spawn_owner_never_gets_checked_negative_disposition()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_millis(500);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let result = crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                    capture("exec /usr/bin/sleep 30", None, budget(0, 64), &mut custodian)
+                });
+                let checks = (|| {
+                    match result {
+                        Err(message) if message.contains("spawn crossed its held deadline") => {}
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("post-spawn uncertainty became success".to_string()),
+                    }
+                    let expected = super::super::super::super::ObservedProcessIdentity::read(
+                        retained_child(&mut custodian)?.id(),
+                    )?;
+                    match custodian.try_closeout_failure() {
+                        Err(report) if report.capture_error().is_some() => {}
+                        Err(report) => return Err(report.to_string()),
+                        Ok(_) => return Err("unqualified direct custody became checked negative".to_string()),
+                    }
+                    let retained = super::super::super::super::ObservedProcessIdentity::read(
+                        retained_child(&mut custodian)?.id(),
+                    )?;
+                    if retained.pid() != expected.pid()
+                        || retained.start() != expected.start()
+                        || !custodian.matches_lease(&lease)
+                        || custodian.original_deadline() != held
+                        || custodian.take_cleanup_receipt().is_some()
+                    {
+                        return Err("negative refusal lost real unqualified child or original ceiling".to_string());
+                    }
+                    require_retained_identity(retained_child(&mut custodian)?, held)
+                })();
+                fixture_closeout(&mut custodian, checks)
             }
         }
 

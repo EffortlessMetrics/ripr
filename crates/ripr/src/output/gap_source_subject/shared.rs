@@ -67,10 +67,6 @@ pub(crate) fn absolute_root(root: &Path) -> PathBuf {
 ///   `<relative root>/<file>` is recognized when `root` is itself relative;
 /// - traversal (`..`) is rejected;
 /// - whitespace in a filename or directory is identity, not padding (#5128).
-pub(crate) fn subject_relative_path(root: &Path, raw: &str) -> Option<String> {
-    subject_relative_path_with(root, raw, &mut |path| std::fs::canonicalize(path))
-}
-
 /// Same path grammar with a caller-owned canonical path resolver.
 pub(crate) fn subject_relative_path_with(
     root: &Path,
@@ -207,10 +203,7 @@ fn push_string(value: Option<&Value>, paths: &mut Vec<String>) {
 
 /// Repo-relative files an actionable-gaps packet makes claims about.
 pub(crate) fn actionable_packet_subject_paths(root: &Path, packet: &Value) -> BTreeSet<String> {
-    actionable_packet_named_paths(packet)
-        .iter()
-        .filter_map(|raw| subject_relative_path(root, raw))
-        .collect()
+    actionable_packet_subject_paths_with(root, packet, &mut |path| std::fs::canonicalize(path))
 }
 
 /// Same packet path projection with a caller-owned canonical path resolver.

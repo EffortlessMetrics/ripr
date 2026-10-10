@@ -71,7 +71,9 @@ pub(crate) fn require_frozen_stamp_context(
 
 pub(crate) fn subject_relative_path(root: &Path, raw: &str) -> Option<String> {
     if frozen::current().is_none() {
-        return shared::subject_relative_path(root, raw);
+        return shared::subject_relative_path_with(root, raw, &mut |path| {
+            std::fs::canonicalize(path)
+        });
     }
     let authority = frozen_stamp_context(root).ok()??;
     let result =
