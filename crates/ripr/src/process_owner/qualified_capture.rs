@@ -7,6 +7,9 @@ pub use bytes::{
     CompleteCapturedBytes,
 };
 
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) use bytes::{CompleteTerminalCustodian, CompleteTerminalFailure};
+
 #[cfg(target_os = "linux")]
 mod linux {
     use super::super::OwnedProcess;

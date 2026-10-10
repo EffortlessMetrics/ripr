@@ -221,9 +221,191 @@ impl std::fmt::Display for CompleteCaptureError {
 }
 impl std::error::Error for CompleteCaptureError {}
 
+/// One pre-existing, invocation-local owner for a capture's terminal failure.
+///
+/// Reports borrow this owner. A discarded report therefore cannot discard the
+/// actual child, group, signal helper or caller lease. The final owner still
+/// requires a genuine terminal endpoint; dropping it is not confirmed cleanup.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteTerminalCustodian<L: Any + Send + Sync> {
+    held_deadline: Instant,
+    lease: Arc<L>,
+    attempted: bool,
+    failure: Option<CompleteCaptureError>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl<L: Any + Send + Sync> CompleteTerminalCustodian<L> {
+    pub(crate) fn new(held_deadline: Instant, lease: Arc<L>) -> Result<Self, String> {
+        if Instant::now() >= held_deadline {
+            return Err("terminal custody admission reached its original deadline".to_string());
+        }
+        Ok(Self {
+            held_deadline,
+            lease,
+            attempted: false,
+            failure: None,
+        })
+    }
+
+    pub(crate) fn original_deadline(&self) -> Instant {
+        self.held_deadline
+    }
+
+    pub(crate) fn failure(&self) -> Option<&CompleteCaptureError> {
+        self.failure.as_ref()
+    }
+
+    pub(crate) fn matches_lease(&self, lease: &Arc<L>) -> bool {
+        Arc::ptr_eq(&self.lease, lease)
+    }
+
+    pub(crate) fn retained_process_count(&self) -> usize {
+        self.failure.as_ref().map_or(0, |failure| {
+            failure
+                .custody
+                .iter()
+                .map(CaptureCustody::retained_process_count)
+                .sum()
+        })
+    }
+
+    pub(crate) fn take_cleanup_receipt(&mut self) -> Option<CompleteCaptureReceipt> {
+        self.failure
+            .as_mut()
+            .and_then(|failure| take_timely_terminal_receipt(failure, self.held_deadline))
+    }
+
+    pub(crate) fn take_failed_observation(&mut self) -> Option<FailedCaptureObservation> {
+        self.failure
+            .as_mut()
+            .and_then(CompleteCaptureError::take_failed_observation)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn take_timely_terminal_receipt(
+    failure: &mut CompleteCaptureError,
+    original_deadline: Instant,
+) -> Option<CompleteCaptureReceipt> {
+    if Instant::now() >= original_deadline {
+        return None;
+    }
+    let state = failure.state_mut()?;
+    let receipt = state.receipt.take()?;
+    if Instant::now() >= original_deadline {
+        state.receipt = Some(receipt);
+        return None;
+    }
+    Some(receipt)
+}
+
+/// Borrowed reporting only; this value contains no owned process custody.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct CompleteTerminalFailure<'a> {
+    reason: Option<&'static str>,
+    capture: Option<&'a mut CompleteCaptureError>,
+    original_deadline: Instant,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl CompleteTerminalFailure<'_> {
+    pub(crate) fn message(&self) -> &str {
+        self.reason.unwrap_or_else(|| {
+            self.capture
+                .as_deref()
+                .map_or(
+                    "terminal capture failure unavailable; custody unconfirmed",
+                    CompleteCaptureError::message,
+                )
+        })
+    }
+
+    pub(crate) fn capture_error(&self) -> Option<&CompleteCaptureError> {
+        self.capture.as_deref()
+    }
+
+    pub(crate) fn observed_outcome(&self) -> Option<(ExitStatus, Duration, bool)> {
+        self.capture
+            .as_deref()
+            .and_then(CompleteCaptureError::observed_outcome)
+    }
+
+    pub(crate) fn take_cleanup_receipt(&mut self) -> Option<CompleteCaptureReceipt> {
+        self.capture
+            .as_deref_mut()
+            .and_then(|failure| take_timely_terminal_receipt(failure, self.original_deadline))
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl std::fmt::Debug for CompleteTerminalFailure<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CompleteTerminalFailure")
+            .field("message", &self.message())
+            .field("capture", &self.capture)
+            .finish()
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl std::fmt::Display for CompleteTerminalFailure<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl std::error::Error for CompleteTerminalFailure<'_> {}
+
 /// Source-single complete capture adapter; ordinary capture helpers are unchanged.
 pub struct CompleteByteCapture;
 impl CompleteByteCapture {
+    /// Run once, retaining any actual refusal in an owner outside the failing call.
+    ///
+    /// The fixed internal callback cannot unwind caller code before the transfer.
+    /// Neither the report nor this test-only boundary grants execution or cleanup.
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    pub(crate) fn capture_with_terminal_custody<'a, L: Any + Send + Sync>(
+        command: (&Path, &[String]),
+        source: (&Path, Option<&[u8]>),
+        env_remove: &[&str],
+        execution: (CompleteCaptureBudget, &str),
+        custodian: &'a mut CompleteTerminalCustodian<L>,
+    ) -> Result<CompleteCapturedBytes, CompleteTerminalFailure<'a>> {
+        if custodian.attempted {
+            return Err(CompleteTerminalFailure {
+                reason: Some("terminal capture was already attempted; custody retained"),
+                capture: custodian.failure.as_mut(),
+                original_deadline: custodian.held_deadline,
+            });
+        }
+        // Claim the sole slot before any fallible capture admission or spawn.
+        custodian.attempted = true;
+        match Self::capture_with_deadline(
+            command,
+            source,
+            env_remove,
+            execution,
+            custodian.held_deadline,
+            custodian.lease.clone(),
+            |_| {},
+        ) {
+            Ok(output) => Ok(output),
+            Err(error) => {
+                // A by-value slot: this transfer allocates nothing and never
+                // reconstructs an owner from a PID, receipt, path or saved data.
+                custodian.failure = Some(error);
+                Err(CompleteTerminalFailure {
+                    reason: None,
+                    capture: custodian.failure.as_mut(),
+                    original_deadline: custodian.held_deadline,
+                })
+            }
+        }
+    }
+
     /// Run a qualified capture while its owner retains the supplied custody lease.
     /// The caller authenticates that lease and binds the worker invocation.
     pub fn capture<L: Any + Send + Sync>(
@@ -1131,6 +1313,412 @@ mod linux {
                 Err(error) if error.message().contains(expected) => Ok(error),
                 Err(error) => Err(format!("expected {expected:?}, observed {error}")),
                 Ok(_) => Err(format!("capture admitted expected refusal {expected:?}")),
+            }
+        }
+
+
+        #[cfg(feature = "lang-rust")]
+        mod terminal {
+            use super::*;
+            use crate::process_owner::{CompleteTerminalCustodian, CompleteTerminalFailure};
+            use std::sync::atomic::{AtomicBool, Ordering};
+
+            struct Lease {
+                _file: std::fs::File,
+                _fixture: Fixture,
+                dropped: Arc<AtomicBool>,
+            }
+
+            impl Drop for Lease {
+                fn drop(&mut self) {
+                    self.dropped.store(true, Ordering::SeqCst);
+                }
+            }
+
+            fn lease() -> Result<(Arc<Lease>, Arc<AtomicBool>), String> {
+                let fixture = Fixture::new()?;
+                let path = fixture.0.join("held-image");
+                std::fs::write(&path, b"owned image bytes")
+                    .map_err(|error| error.to_string())?;
+                let file = std::fs::File::open(path).map_err(|error| error.to_string())?;
+                let dropped = Arc::new(AtomicBool::new(false));
+                Ok((
+                    Arc::new(Lease {
+                        _file: file,
+                        _fixture: fixture,
+                        dropped: dropped.clone(),
+                    }),
+                    dropped,
+                ))
+            }
+
+            fn report_to_string(report: CompleteTerminalFailure<'_>) -> String {
+                report.to_string()
+            }
+
+            fn capture<L: Any + Send + Sync>(
+                script: &str,
+                input: Option<&[u8]>,
+                limits: CompleteCaptureBudget,
+                custodian: &mut CompleteTerminalCustodian<L>,
+            ) -> Result<CompleteCapturedBytes, String> {
+                let args = shell(script);
+                CompleteByteCapture::capture_with_terminal_custody(
+                    (Path::new("/bin/sh"), &args),
+                    (Path::new("/"), input),
+                    &[],
+                    (limits, "terminal custody control"),
+                    custodian,
+                )
+                .map_err(report_to_string)
+            }
+
+            fn retained_child<L: Any + Send + Sync>(
+                custodian: &mut CompleteTerminalCustodian<L>,
+            ) -> Result<&mut crate::process_owner::OwnedProcess, String> {
+                let error = custodian
+                    .failure
+                    .as_mut()
+                    .ok_or("outside custodian lost the actual capture error")?;
+                let custody = error
+                    .custody
+                    .first_mut()
+                    .ok_or("outside custodian lost the actual process slot")?;
+                if let Some(failure) = custody.setup.as_mut() {
+                    return failure
+                        .fixture_child()
+                        .ok_or_else(|| "setup custody lost the actual child".to_string());
+                }
+                custody
+                    .group
+                    .as_mut()
+                    .map(super::super::super::super::QualifiedGroupOwner::fixture_child)
+                    .ok_or_else(|| "outside custodian lost the actual group owner".to_string())
+            }
+
+            fn fixture_closeout<L: Any + Send + Sync>(
+                custodian: &mut CompleteTerminalCustodian<L>,
+                checks: Result<(), String>,
+            ) -> Result<(), String> {
+                // Dispose only the controlled fixtures. This independent fixture
+                // clock is never capture settlement or native caller qualification.
+                let closeout = match custodian.failure.as_mut() {
+                    Some(error) => close_retained_fixture(error),
+                    None => Ok(()),
+                };
+                match (checks, closeout) {
+                    (Ok(()), Ok(())) => Ok(()),
+                    (Err(primary), Ok(())) => Err(primary),
+                    (Ok(()), Err(closeout)) => Err(format!(
+                        "fixture-only closeout unconfirmed; custody remains in caller: {closeout}"
+                    )),
+                    (Err(primary), Err(closeout)) => Err(format!(
+                        "{primary}; fixture-only closeout unconfirmed; custody remains in caller: {closeout}"
+                    )),
+                }
+            }
+
+            #[test]
+            fn dropped_string_report_keeps_post_spawn_child_and_owned_lease()
+            -> Result<(), String> {
+                let admitted = Instant::now();
+                let held = admitted + Duration::from_millis(500);
+                let (lease, dropped) = lease()?;
+                let weak = Arc::downgrade(&lease);
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                std::thread::sleep(Duration::from_millis(25));
+                if Instant::now() >= held || admitted.elapsed() < Duration::from_millis(25) {
+                    return Err(
+                        "elapsed original admission was not still live before spawn".to_string(),
+                    );
+                }
+                let report = crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                    capture(
+                        "exec /usr/bin/sleep 30",
+                        None,
+                        budget(0, 64),
+                        &mut custodian,
+                    )
+                });
+                drop(lease);
+                let checks = (|| {
+                    let message = match report {
+                        Err(message) => message,
+                        Ok(_) => return Err("terminal control admitted expired spawn".to_string()),
+                    };
+                    if !message.contains("spawn crossed its held deadline")
+                        || dropped.load(Ordering::SeqCst)
+                        || weak.upgrade().is_none()
+                        || custodian.original_deadline() != held
+                        || custodian.retained_process_count() != 1
+                        || custodian.take_cleanup_receipt().is_some()
+                        || custodian.take_failed_observation().is_some()
+                    {
+                        return Err("report disposal lost custody or minted evidence".to_string());
+                    }
+                    drop(message);
+                    require_retained_identity(retained_child(&mut custodian)?, held)
+                })();
+                fixture_closeout(&mut custodian, checks)?;
+                drop(custodian);
+                if !dropped.load(Ordering::SeqCst) || weak.upgrade().is_some() {
+                    return Err(
+                        "observed fixture closeout failed to release owned lease".to_string(),
+                    );
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn dropped_report_keeps_constructed_group_under_original_clock()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_millis(500);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                HOOKS.with(|hooks| {
+                    hooks.borrow_mut().delay_endpoint_once = Some(Duration::from_millis(600));
+                });
+                let report = capture(
+                    "printf owned; exec /usr/bin/sleep 30",
+                    None,
+                    budget(0, 64),
+                    &mut custodian,
+                );
+                HOOKS.with(|hooks| hooks.borrow_mut().delay_endpoint_once = None);
+                let checks = (|| {
+                    let message = match report {
+                        Err(message) => message,
+                        Ok(_) => return Err("terminal group expiry was admitted".to_string()),
+                    };
+                    if !message.contains("held custody deadline")
+                        || !custodian.matches_lease(&lease)
+                        || custodian.retained_process_count() != 1
+                        || custodian.take_cleanup_receipt().is_some()
+                    {
+                        return Err("group report disposal discarded real custody".to_string());
+                    }
+                    let error = custodian
+                        .failure()
+                        .ok_or("group failure is absent from its outside owner")?;
+                    if !error.matches_lease(&lease) || error.is_timeout_only() {
+                        return Err("terminal group failure changed lease or meaning".to_string());
+                    }
+                    require_retained_identity(retained_child(&mut custodian)?, held)
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn report_unwind_keeps_outside_custodian_until_fixture_closeout()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_millis(500);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease)?;
+                let args = shell("exec /usr/bin/sleep 30");
+                let output = crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                    CompleteByteCapture::capture_with_terminal_custody(
+                        (Path::new("/bin/sh"), &args),
+                        (Path::new("/"), None),
+                        &[],
+                        (budget(0, 64), "report unwind control"),
+                        &mut custodian,
+                    )
+                });
+                let checks = (|| match output {
+                    Ok(_) => Err("report unwind control admitted expired spawn".to_string()),
+                    Err(report) => {
+                        if !report.message().contains("spawn crossed its held deadline")
+                            || report.capture_error().is_none()
+                        {
+                            Err("borrowed report lost its actual primary failure".to_string())
+                        } else {
+                            let unwound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                                || {
+                                    let _reported = report.to_string();
+                                    std::panic::resume_unwind(Box::new("borrowed report control"));
+                                },
+                            ));
+                            match unwound {
+                                Ok(()) => Err("report control did not unwind".to_string()),
+                                Err(payload) => {
+                                    drop(payload);
+                                    require_retained_identity(
+                                        retained_child(&mut custodian)?,
+                                        held,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn terminal_reuse_preserves_first_error_child_clock_and_lease()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_millis(500);
+                let lease = Arc::new(());
+                let foreign = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let first = crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                    capture(
+                        "exec /usr/bin/sleep 30",
+                        None,
+                        budget(0, 64),
+                        &mut custodian,
+                    )
+                });
+                let checks = (|| {
+                    match first {
+                        Err(message) if message.contains("spawn crossed its held deadline") => {}
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("first terminal capture was admitted".to_string()),
+                    }
+                    let before = super::super::super::super::ObservedProcessIdentity::read(
+                        retained_child(&mut custodian)?.id(),
+                    )?;
+                    let attempts = super::super::super::super::linux::spawn_attempts();
+                    let refusal = capture("exit 0", None, budget(0, 64), &mut custodian);
+                    match refusal {
+                        Err(message) if message.contains("already attempted") => {}
+                        Err(message) => return Err(message),
+                        Ok(_) => return Err("terminal owner was reused".to_string()),
+                    }
+                    let after = super::super::super::super::ObservedProcessIdentity::read(
+                        retained_child(&mut custodian)?.id(),
+                    )?;
+                    if before.pid() != after.pid()
+                        || before.start() != after.start()
+                        || !custodian.matches_lease(&lease)
+                        || custodian.matches_lease(&foreign)
+                        || custodian.original_deadline() != held
+                        || super::super::super::super::linux::spawn_attempts()
+                            != attempts
+                    {
+                        return Err("retry replaced the actual terminal custody".to_string());
+                    }
+                    require_retained_identity(retained_child(&mut custodian)?, held)
+                })();
+                fixture_closeout(&mut custodian, checks)
+            }
+
+            #[test]
+            fn expiry_before_dispatch_has_no_child_or_cleanup_receipt()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_millis(20);
+                let mut custodian = CompleteTerminalCustodian::new(held, Arc::new(()))?;
+                while Instant::now() < held {
+                    std::thread::yield_now();
+                }
+                let attempts = super::super::super::super::linux::spawn_attempts();
+                match capture(
+                    "exec /missing/terminal-worker",
+                    None,
+                    budget(0, 64),
+                    &mut custodian,
+                ) {
+                    Err(message) if message.contains("held custody deadline expired") => {}
+                    Err(message) => return Err(message),
+                    Ok(_) => return Err("expired terminal dispatch was admitted".to_string()),
+                }
+                if custodian.retained_process_count() != 0
+                    || custodian.take_cleanup_receipt().is_some()
+                    || custodian.take_failed_observation().is_some()
+                    || super::super::super::super::linux::spawn_attempts()
+                        != attempts
+                {
+                    return Err("pre-dispatch refusal acquired a child or authority".to_string());
+                }
+                Ok(())
+            }
+
+            #[test]
+            fn timely_terminal_capture_returns_unchanged_real_receipt_and_bytes()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_secs(5);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let input = b"terminal-input\0\xff";
+                let output = capture(
+                    "printf prefix; printf stderr >&2; cat",
+                    Some(input),
+                    budget(input.len(), 64),
+                    &mut custodian,
+                )?;
+                let (status, stdout, stderr, _, timed_out, receipt) = output.into_parts();
+                let mut expected = b"prefix".to_vec();
+                expected.extend_from_slice(input);
+                if !status.success()
+                    || timed_out
+                    || !receipt.matches_lease(&lease)
+                    || custodian.failure().is_some()
+                    || custodian.take_cleanup_receipt().is_some()
+                    || custodian.retained_process_count() != 0
+                    || custodian.original_deadline() != held
+                {
+                    return Err("terminal success changed actual capture semantics".to_string());
+                }
+                assert_eq!(stdout, expected);
+                assert_eq!(stderr, b"stderr");
+                match capture("exit 0", None, budget(0, 64), &mut custodian) {
+                    Err(message) if message.contains("already attempted") => Ok(()),
+                    Err(message) => Err(message),
+                    Ok(_) => Err("successful terminal owner was reused".to_string()),
+                }
+            }
+
+            #[test]
+            fn terminal_failure_keeps_real_settled_negative_without_success()
+            -> Result<(), String> {
+                let held = Instant::now() + Duration::from_secs(5);
+                let lease = Arc::new(());
+                let mut custodian = CompleteTerminalCustodian::new(held, lease.clone())?;
+                let args = shell("printf overflow");
+                let mut report = match CompleteByteCapture::capture_with_terminal_custody(
+                    (Path::new("/bin/sh"), &args),
+                    (Path::new("/"), None),
+                    &[],
+                    (budget(0, 3), "terminal settled negative"),
+                    &mut custodian,
+                ) {
+                    Err(report) => report,
+                    Ok(_) => return Err("terminal overflow became success".to_string()),
+                };
+                if !report.message().contains("stdout exceeds its 3-byte output budget") {
+                    return Err(format!("unexpected terminal failure: {report}"));
+                }
+                let error = report
+                    .capture_error()
+                    .ok_or("terminal overflow lost actual capture error")?;
+                if error.is_timeout_only() || !error.matches_lease(&lease) {
+                    return Err("terminal overflow changed failure or lease".to_string());
+                }
+                let (status, _, timed_out) = report
+                    .observed_outcome()
+                    .ok_or("settled terminal negative lost its native observation")?;
+                if !status.success() || timed_out {
+                    return Err("controlled negative changed its actual exit data".to_string());
+                }
+                let receipt = report
+                    .take_cleanup_receipt()
+                    .ok_or("settled terminal negative lost actual combined receipt")?;
+                if !receipt.matches_lease(&lease)
+                    || report.take_cleanup_receipt().is_some()
+                    || Instant::now() >= held
+                {
+                    return Err("settled terminal negative changed receipt or clock".to_string());
+                }
+                drop(report);
+                let (_, stdout, stderr, _, timed_out) = custodian
+                    .take_failed_observation()
+                    .ok_or("terminal failure lost actual rejected output bytes")?;
+                assert_eq!(stdout, b"over");
+                assert_eq!(stderr, Vec::<u8>::new());
+                if timed_out || custodian.take_failed_observation().is_some() {
+                    return Err("settled negative was fabricated or replayed".to_string());
+                }
+                Ok(())
             }
         }
 
