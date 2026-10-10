@@ -8273,7 +8273,9 @@ fn absent_delimiter_boundary_returns_head() {
             mode: AnalysisMode,
         ) -> Result<Vec<Finding>, String> {
             let authority = frozen::current().ok_or("consumer fixture lacks frozen context")?;
-            authority.ensure_clean().map_err(|error| error.to_string())?;
+            authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
             let result = RustAdapter.analyze_diff(
                 &diff_options(root.to_path_buf(), mode),
                 &OraclePolicy::default(),
@@ -8322,11 +8324,7 @@ fn absent_delimiter_boundary_returns_head() {
             commit_fixture(&root)?;
             let (_, authority) = capture(&root)?;
             frozen::with_context(Some(authority.clone()), || -> TestResult {
-                let findings = checked_analysis(
-                    &root,
-                    &changed_a_lib_diff(),
-                    AnalysisMode::Draft,
-                )?;
+                let findings = checked_analysis(&root, &changed_a_lib_diff(), AnalysisMode::Draft)?;
                 assert!(!findings.is_empty());
                 assert!(has_related_test_in_b(&findings));
                 let baseline = graph_observation(&root)?;
@@ -8362,11 +8360,7 @@ fn absent_delimiter_boundary_returns_head() {
             commit_fixture(&root)?;
             let (_, authority) = capture(&root)?;
             frozen::with_context(Some(authority.clone()), || -> TestResult {
-                let findings = checked_analysis(
-                    &root,
-                    &changed_a_lib_diff(),
-                    AnalysisMode::Draft,
-                )?;
+                let findings = checked_analysis(&root, &changed_a_lib_diff(), AnalysisMode::Draft)?;
                 assert!(!findings.is_empty());
                 assert!(!has_related_test_in_b(&findings));
                 let baseline = graph_observation(&root)?;
@@ -8428,16 +8422,17 @@ fn absent_delimiter_boundary_returns_head() {
                     assert!(workspace_manifest_dir_prefixes(&root).is_empty());
                     fs::write(&manifest, &original)?;
                     assert_eq!(
-                        authority.ensure_clean().err().ok_or("graph fault reset")?.to_string(),
+                        authority
+                            .ensure_clean()
+                            .err()
+                            .ok_or("graph fault reset")?
+                            .to_string(),
                         first.to_string()
                     );
-                    let refused = checked_analysis(
-                        &root,
-                        &changed_a_lib_diff(),
-                        AnalysisMode::Draft,
-                    )
-                    .err()
-                    .ok_or("sticky graph fault admitted analysis")?;
+                    let refused =
+                        checked_analysis(&root, &changed_a_lib_diff(), AnalysisMode::Draft)
+                            .err()
+                            .ok_or("sticky graph fault admitted analysis")?;
                     assert!(refused.contains("frozen source"));
                     Ok(())
                 })?;
@@ -8593,7 +8588,11 @@ fn request_only_projection_observes_join() {
             )?;
             write(
                 &root.join("src/lib.rs"),
-                if derived { DERIVED_SOURCE } else { DIRECT_SOURCE },
+                if derived {
+                    DERIVED_SOURCE
+                } else {
+                    DIRECT_SOURCE
+                },
             )?;
             write(
                 &root.join("tests/tuple.rs"),
@@ -8612,15 +8611,18 @@ fn request_only_projection_observes_join() {
                 .chars()
                 .filter(|character| !character.is_whitespace())
                 .collect();
-            compact == "(true,false)=>\"request_identity_v2\""
-                || compact == "(true,false)=>"
+            compact == "(true,false)=>\"request_identity_v2\"" || compact == "(true,false)=>"
         }
 
         fn tuple_observation(
             root: &Path,
             derived: bool,
         ) -> Result<serde_json::Value, Box<dyn Error>> {
-            let source = if derived { DERIVED_SOURCE } else { DIRECT_SOURCE };
+            let source = if derived {
+                DERIVED_SOURCE
+            } else {
+                DIRECT_SOURCE
+            };
             let paths = [PathBuf::from("src/lib.rs"), PathBuf::from("tests/tuple.rs")];
             let index = crate::analysis::rust_index::build_index(root, &paths)?;
             assert!(crate::analysis::rust_index::find_file_facts(&index, &paths[0]).is_some());
@@ -8639,15 +8641,17 @@ fn request_only_projection_observes_join() {
                 .filter(|finding| {
                     finding.probe.family == ProbeFamily::MatchArm
                         && current_tuple_arm(&finding.probe.expression)
-                        && finding.probe.after.as_deref().is_some_and(current_tuple_arm)
+                        && finding
+                            .probe
+                            .after
+                            .as_deref()
+                            .is_some_and(current_tuple_arm)
                 })
                 .collect();
             let [finding] = current.as_slice() else {
-                return Err(format!(
-                    "expected one current tuple arm, found {}",
-                    current.len()
-                )
-                .into());
+                return Err(
+                    format!("expected one current tuple arm, found {}", current.len()).into(),
+                );
             };
             assert_eq!(finding.probe.location.file, root.join(&paths[0]));
             let discriminator = &finding.ripr.reveal.discriminate;
@@ -8664,7 +8668,12 @@ fn request_only_projection_observes_join() {
             } else {
                 "exact_request_only_tuple_is_observed"
             };
-            assert!(finding.related_tests.iter().any(|test| test.name == test_name));
+            assert!(
+                finding
+                    .related_tests
+                    .iter()
+                    .any(|test| test.name == test_name)
+            );
             Ok(serde_json::to_value(findings)?)
         }
 
@@ -8692,14 +8701,14 @@ fn request_only_projection_observes_join() {
         }
 
         #[test]
-        fn named_tree_direct_tuple_fallback_survives_deleted_and_renamed_live_paths()
-        -> TestResult {
+        fn named_tree_direct_tuple_fallback_survives_deleted_and_renamed_live_paths() -> TestResult
+        {
             assert_tuple_live_drift(false)
         }
 
         #[test]
-        fn named_tree_derived_tuple_fallback_survives_deleted_and_renamed_live_paths()
-        -> TestResult {
+        fn named_tree_derived_tuple_fallback_survives_deleted_and_renamed_live_paths() -> TestResult
+        {
             assert_tuple_live_drift(true)
         }
 
@@ -8736,14 +8745,21 @@ fn request_only_projection_observes_join() {
                             .err()
                             .ok_or("faulted tuple snapshot was accepted")?;
                         assert!(refused.to_string().contains("frozen source"));
-                        let first = authority.ensure_clean().err().ok_or("tuple fault was clean")?;
+                        let first = authority
+                            .ensure_clean()
+                            .err()
+                            .ok_or("tuple fault was clean")?;
                         fs::write(&source, &original)?;
                         let refused = tuple_observation(&root, derived)
                             .err()
                             .ok_or("restored tuple reset the sticky fault")?;
                         assert!(refused.to_string().contains("frozen source"));
                         assert_eq!(
-                            authority.ensure_clean().err().ok_or("tuple fault reset")?.to_string(),
+                            authority
+                                .ensure_clean()
+                                .err()
+                                .ok_or("tuple fault reset")?
+                                .to_string(),
                             first.to_string()
                         );
                         Ok(())
@@ -8765,7 +8781,6 @@ fn request_only_projection_observes_join() {
             Ok(())
         }
     }
-
 }
 
 #[cfg(test)]

@@ -2981,7 +2981,9 @@ fn frozen_graph_context(root: &Path) -> std::io::Result<Option<Arc<FrozenSourceA
         authority.refuse_external_effect(&format!("workspace graph root did not resolve: {error}"))
     })?;
     if canonical != authority.logical_root() {
-        return Err(authority.refuse_external_effect("workspace graph root differs from frozen root"));
+        return Err(
+            authority.refuse_external_effect("workspace graph root differs from frozen root")
+        );
     }
     frozen_graph_context_clean(&Some(authority.clone()))?;
     Ok(Some(authority))
@@ -3255,9 +3257,7 @@ fn is_absolute_declared_path(declared: &str) -> bool {
 /// manifest node downstream (#3613 review).
 fn classify_repo_relative_target(root: &Path, resolved: &str) -> PathDependencyResolution {
     let target = root.join(resolved);
-    if frozen_fs::is_dir(&target)
-        && frozen_fs::is_file(target.join("Cargo.toml"))
-    {
+    if frozen_fs::is_dir(&target) && frozen_fs::is_file(target.join("Cargo.toml")) {
         PathDependencyResolution::Resolved
     } else {
         PathDependencyResolution::TargetMissing

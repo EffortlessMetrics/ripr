@@ -493,9 +493,9 @@ fn same_current_file(
     if !authority.validates_target(owner_file, owner_file, source) {
         return false;
     }
-    let Ok(owner_path) =
-        crate::analysis::committed_source::frozen::fs::canonicalize(authority.root.join(owner_file))
-    else {
+    let Ok(owner_path) = crate::analysis::committed_source::frozen::fs::canonicalize(
+        authority.root.join(owner_file),
+    ) else {
         return false;
     };
     // Probe locations are `--root` as given joined with the changed path, so

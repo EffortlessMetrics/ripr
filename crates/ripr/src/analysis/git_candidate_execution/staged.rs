@@ -1275,9 +1275,10 @@ mod tests {
             &fixture.git(&["rev-parse", &format!("{}:a..b.rs", tree.as_str())])?,
         )
         .map_err(|error| error.to_string())?;
-        let backslash = GitObjectId::parse(
-            &fixture.git(&["rev-parse", &format!("{}:literal\\backslash.rs", tree.as_str())])?,
-        )
+        let backslash = GitObjectId::parse(&fixture.git(&[
+            "rev-parse",
+            &format!("{}:literal\\backslash.rs", tree.as_str()),
+        ])?)
         .map_err(|error| error.to_string())?;
         let expected = crate::git::run_git_output_with_deadline_and_limit_isolated(
             &fixture.repository,

@@ -1865,9 +1865,7 @@ mod whole_worker {
                 )?;
                 let ordinary_raw =
                     crate::analysis::diff::load::load_canonical_pr_evidence_diff_bytes(
-                        &fixture.0,
-                        &base,
-                        &head,
+                        &fixture.0, &base, &head,
                     )?;
                 let ordinary_presentation =
                     crate::analysis::load_pr_evidence_diff_range(&fixture.0, &base, &head)?;
@@ -1950,7 +1948,10 @@ mod whole_worker {
                             .ok_or("deleted body end is not a byte offset")?,
                     )?;
                     assert_eq!(
-                        captured.raw.get(start..end).ok_or("deleted body span escaped raw input")?,
+                        captured
+                            .raw
+                            .get(start..end)
+                            .ok_or("deleted body span escaped raw input")?,
                         b"-pub const B: u8 = 2;\n"
                     );
                     assert_eq!(body["remaining_before"], json!([1, 0]));
@@ -1965,7 +1966,9 @@ mod whole_worker {
                 }
                 observations.push((captured, coverage));
             }
-            let (rename, rest) = observations.split_first().ok_or("rename capture is missing")?;
+            let (rename, rest) = observations
+                .split_first()
+                .ok_or("rename capture is missing")?;
             let delete_add = rest.first().ok_or("delete/add capture is missing")?;
             assert_ne!(
                 rename.1.summary().raw_sha256,
@@ -2020,16 +2023,14 @@ mod whole_worker {
                 "{failure}"
             );
             assert_eq!(
-                fs::read(fixture.0.join(PR_CANONICAL_DIFF))
-                    .map_err(|error| error.to_string())?,
+                fs::read(fixture.0.join(PR_CANONICAL_DIFF)).map_err(|error| error.to_string())?,
                 saved,
                 "refusal must not rewrite the saved canonical input"
             );
             fixture_git_ok(&fixture.0, &["config", "--local", "diff.renames", "true"])?;
             check_pr_evidence(&fixture.0, &options)?;
             assert_eq!(
-                fs::read(fixture.0.join(PR_CANONICAL_DIFF))
-                    .map_err(|error| error.to_string())?,
+                fs::read(fixture.0.join(PR_CANONICAL_DIFF)).map_err(|error| error.to_string())?,
                 saved,
                 "recovery must reuse the original ordinary artifacts"
             );

@@ -1776,13 +1776,21 @@ mod tests {
             },
         )
         .map_err(|error| error.to_string())?;
-        assert!(postcreation, "actual exclusive base creation was not reached");
+        assert!(
+            postcreation,
+            "actual exclusive base creation was not reached"
+        );
         assert_eq!(cleanup.0, base);
         assert!(report.is_empty(), "successful handoff reported retention");
         std::fs::write(base.join("sentinel"), b"owned successful base")
             .map_err(|error| error.to_string())?;
-        cleanup.checked_cleanup().map_err(|error| error.to_string())?;
-        assert!(!base.exists(), "existing checked cleanup did not remove base");
+        cleanup
+            .checked_cleanup()
+            .map_err(|error| error.to_string())?;
+        assert!(
+            !base.exists(),
+            "existing checked cleanup did not remove base"
+        );
         drop(cleanup);
         assert!(!base.exists(), "existing Drop recreated a removed base");
         Ok(())
@@ -2259,8 +2267,7 @@ mod tests {
         let digest: [u8; 32] = sha2::Sha256::digest(bytes).into();
         assert_eq!(file.sha256, digest);
         assert_eq!(
-            std::fs::read(prepared.physical_root().join(name))
-                .map_err(|error| error.to_string())?,
+            std::fs::read(prepared.physical_root().join(name)).map_err(|error| error.to_string())?,
             bytes
         );
         let authority = prepared
@@ -2301,7 +2308,9 @@ mod tests {
                 .err()
                 .ok_or_else(|| format!("safe_join admitted raw alias {name:?}"))?;
             assert!(
-                failure.to_string().contains("escapes the materialization root"),
+                failure
+                    .to_string()
+                    .contains("escapes the materialization root"),
                 "{failure}"
             );
         }
@@ -2317,7 +2326,9 @@ mod tests {
                 .err()
                 .ok_or_else(|| format!("safe_join admitted Windows escape {name:?}"))?;
             assert!(
-                failure.to_string().contains("escapes the materialization root"),
+                failure
+                    .to_string()
+                    .contains("escapes the materialization root"),
                 "{failure}"
             );
         }
