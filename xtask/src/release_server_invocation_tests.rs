@@ -1,4 +1,4 @@
-use super::{ServerIdentity, producer_args};
+use super::{ServerIdentity, producer_args, upload_with};
 use crate::command::XtaskCommand;
 use crate::dispatch::execute;
 use std::fs;
@@ -97,17 +97,27 @@ fn given_source_when_placement_args_are_adapted_then_product_is_source_bound() -
 fn given_rc_input_when_legacy_upload_is_requested_then_it_stops_before_transport()
 -> Result<(), String> {
     for version in ["v0.11.0-rc.2", "0.11.0-rc.2", "0.11.0-alpha.2"] {
-        let error = execute(XtaskCommand::ReleaseUploadAssets(arguments(&[
-            "--version",
-            version,
-        ])))
+        let mut attempted = false;
+        let error = upload_with(&arguments(&["--version", version]), |_| {
+            attempted = true;
+            Ok(())
+        })
         .err()
         .ok_or_else(|| format!("legacy upload accepted {version}"))?;
         assert!(
             error.contains("exact RC authorization/transport is required"),
             "{error}"
         );
+        assert!(!attempted, "RC reached fake transport: {version}");
     }
+    let stable_args = arguments(&["--version", "v0.11.0"]);
+    let mut attempted = false;
+    upload_with(&stable_args, |received| {
+        assert_eq!(received, stable_args);
+        attempted = true;
+        Ok(())
+    })?;
+    assert!(attempted, "stable invocation did not reach fake transport");
     Ok(())
 }
 

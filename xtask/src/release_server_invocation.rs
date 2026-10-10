@@ -98,6 +98,13 @@ pub(super) fn manifest(args: &[String]) -> Result<(), String> {
 }
 
 pub(super) fn upload(args: &[String]) -> Result<(), String> {
+    upload_with(args, release_server::release_upload_assets)
+}
+
+fn upload_with(
+    args: &[String],
+    transport: impl FnOnce(&[String]) -> Result<(), String>,
+) -> Result<(), String> {
     let placement = release_server::required_release_arg(args, "version", "RAW_VERSION")?;
     // Do not make the legacy opportunistic create/clobber uploader reachable
     // for RCs as a side effect of repairing the nonpublishing producers.
@@ -105,7 +112,7 @@ pub(super) fn upload(args: &[String]) -> Result<(), String> {
     release_server::normalize_product_version(&placement).map_err(|error| {
         format!("legacy server upload cannot publish RC placement; exact RC authorization/transport is required: {error}")
     })?;
-    release_server::release_upload_assets(args)
+    transport(args)
 }
 
 #[cfg(test)]
