@@ -45,7 +45,8 @@ pub use qualified_capture::{
 pub(crate) use qualified_capture::{
     CompleteEnclosingCustodian, CompleteEnclosingDisposed, CompleteEnclosingFailure,
     CompleteEnclosingPhysicalClosure, CompleteFailedClosed, CompleteTerminalCustodian,
-    CompleteTerminalFailure,
+    CompleteTerminalFailure, CompleteControllerTransport, CompleteControllerTerminal,
+    CompleteControllerFailure, PhysicalStep,
 };
 
 #[cfg(target_os = "linux")]
@@ -443,6 +444,30 @@ impl OwnedProcess {
             }
             Err(error) => Err(format!("enclosing helper probe: {error}")),
         }
+    }
+
+    // Physical closeout is mandatory owned-handle work. It makes no timely
+    // observation and never changes the failed capture's original ceilings.
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn physical_poll_reap(&mut self) -> std::io::Result<Option<ExitStatus>> {
+        let observed = self.child.try_wait();
+        if let Ok(Some(status)) = observed.as_ref() {
+            self.enclosing_observed_reap
+                .get_or_insert((*status, Instant::now()));
+        }
+        observed
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn physical_request_kill(&mut self) -> std::io::Result<()> {
+        self.request_kill()
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn physical_spawn_prepared(command: Command, original_deadline: Instant) -> std::io::Result<Self> {
+        let mut child = Self::spawn_with_bounded_drop(command)?;
+        child.bounded_drop_until = Some(original_deadline);
+        Ok(child)
     }
 
     /// The child's process id.
