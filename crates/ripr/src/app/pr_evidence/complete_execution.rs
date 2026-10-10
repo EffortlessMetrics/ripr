@@ -1890,7 +1890,7 @@ mod whole_worker {
                 assert_eq!(captured.changed_paths, ordinary_paths, "{setting}");
                 let raw_text = std::str::from_utf8(&captured.raw)
                     .map_err(|error| format!("rename fixture raw UTF-8: {error}"))?;
-                let (_, coverage) = build_raw_coverage(&captured.raw, limits)?;
+                let (parsed, coverage) = build_raw_coverage(&captured.raw, limits)?;
                 let summary = coverage.summary();
                 if setting == "true" {
                     assert!(raw_text.contains("similarity index 100%"), "{raw_text}");
@@ -1902,8 +1902,65 @@ mod whole_worker {
                 } else {
                     assert!(raw_text.contains("deleted file mode"), "{raw_text}");
                     assert!(raw_text.contains("new file mode"), "{raw_text}");
-                    assert!(summary.added_lines > 0, "missing real added source");
-                    assert!(summary.removed_lines > 0, "missing real removed source");
+                    assert!(raw_text.contains("-pub const B: u8 = 2;\n"), "{raw_text}");
+                    // Deleted /dev/null bodies are consumed original records,
+                    // not lines retained in the semantic source projection.
+                    assert_eq!(summary.added_lines, 1);
+                    assert_eq!(summary.removed_lines, 0);
+                    assert_eq!(parsed.deleted_file_count, 1);
+                    assert_eq!(parsed.changed_files.len(), 1);
+                    let file = parsed
+                        .changed_files
+                        .first()
+                        .ok_or("delete/add projection lost the new file")?;
+                    assert_eq!(file.path, Path::new("renamed.rs"));
+                    assert_eq!(file.added_lines.len(), 1);
+                    assert!(file.removed_lines.is_empty());
+                    let added = file
+                        .added_lines
+                        .first()
+                        .ok_or("delete/add projection lost the new source line")?;
+                    assert_eq!(added.line, 1);
+                    assert_eq!(added.new_side_line, 1);
+                    assert_eq!(added.text, "pub const B: u8 = 2;");
+
+                    let mut deleted_body = None;
+                    for row in coverage
+                        .ledger_bytes()
+                        .split_inclusive(|byte| *byte == b'\n')
+                    {
+                        let fact: Value = serde_json::from_slice(row)
+                            .map_err(|error| format!("rename fixture ledger JSON: {error}"))?;
+                        if fact["tag"] == "record"
+                            && fact["kind"] == "body_no_path"
+                            && deleted_body.replace(fact).is_some()
+                        {
+                            return Err("deleted body was recorded more than once".into());
+                        }
+                    }
+                    let body = deleted_body.ok_or("ledger lost the actual deleted body")?;
+                    let start = native(
+                        body["start"]
+                            .as_u64()
+                            .ok_or("deleted body start is not a byte offset")?,
+                    )?;
+                    let end = native(
+                        body["end"]
+                            .as_u64()
+                            .ok_or("deleted body end is not a byte offset")?,
+                    )?;
+                    assert_eq!(
+                        captured.raw.get(start..end).ok_or("deleted body span escaped raw input")?,
+                        b"-pub const B: u8 = 2;\n"
+                    );
+                    assert_eq!(body["remaining_before"], json!([1, 0]));
+                    assert_eq!(body["remaining_after"], json!([0, 0]));
+                    assert_eq!(body["consumed"], json!([1, 0]));
+                    assert!(
+                        body.get("projection")
+                            .ok_or("deleted body lacks its projection field")?
+                            .is_null()
+                    );
                     assert_eq!(captured.changed_paths, ["outside.rs", "renamed.rs"]);
                 }
                 observations.push((captured, coverage));
