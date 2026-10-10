@@ -8,9 +8,12 @@
 
 use super::{RetainedDirectory, check_deadline, descriptor_path, file_metadata, object_identity};
 use sha2::{Digest, Sha256};
-use std::fs::{self, File, Metadata};
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 use std::fs::OpenOptions;
+use std::fs::{self, File, Metadata};
 use std::io::{Read, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -218,7 +221,10 @@ pub(crate) struct FinishedPayloads<'d, 'p> {
     data: ArtifactPayloadData,
 }
 
-#[cfg(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 fn create_private(path: &Path) -> Result<File, String> {
     use std::os::unix::fs::OpenOptionsExt;
     OpenOptions::new()
@@ -230,7 +236,10 @@ fn create_private(path: &Path) -> Result<File, String> {
         .map_err(|error| format!("artifact create-new failed: {error}"))
 }
 
-#[cfg(not(all(target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64"))))]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 fn create_private(_: &Path) -> Result<File, String> {
     Err("artifact descriptor I/O requires qualified Linux".into())
 }
@@ -243,7 +252,13 @@ fn properties(metadata: &Metadata) -> Result<(u64, u64, u64, u32, u64), String> 
         .blocks()
         .checked_mul(512)
         .ok_or("artifact allocated-byte observation overflow")?;
-    Ok((dev, ino, metadata.nlink(), metadata.mode() & 0o7777, allocated))
+    Ok((
+        dev,
+        ino,
+        metadata.nlink(),
+        metadata.mode() & 0o7777,
+        allocated,
+    ))
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -439,7 +454,9 @@ impl<'d, 'p> ArtifactDirectory<'d, 'p> {
                 if count > chunk.len() - offset {
                     return Err("artifact chunk write returned an invalid count".into());
                 }
-                let end = offset.checked_add(count).ok_or("artifact chunk offset overflow")?;
+                let end = offset
+                    .checked_add(count)
+                    .ok_or("artifact chunk offset overflow")?;
                 written = written
                     .checked_add(
                         u64::try_from(count)
@@ -480,7 +497,8 @@ impl<'d, 'p> ArtifactDirectory<'d, 'p> {
             if count > expected_count {
                 return Err("artifact closure has an extra entry".into());
             }
-            let entry = entry.map_err(|error| format!("artifact directory entry failed: {error}"))?;
+            let entry =
+                entry.map_err(|error| format!("artifact directory entry failed: {error}"))?;
             let native = entry.file_name();
             let index = (0..expected_count)
                 .find(|index| native == std::ffi::OsStr::new(name(*index)))
@@ -524,8 +542,18 @@ impl<'d, 'p> ArtifactDirectory<'d, 'p> {
     pub(crate) fn finish_payloads(mut self) -> Result<FinishedPayloads<'d, 'p>, String> {
         let result = (|| {
             self.ready()?;
-            let [Some(a), Some(b), Some(c), Some(d), Some(e), Some(f), Some(g), Some(h), Some(i), None] =
-                self.records
+            let [
+                Some(a),
+                Some(b),
+                Some(c),
+                Some(d),
+                Some(e),
+                Some(f),
+                Some(g),
+                Some(h),
+                Some(i),
+                None,
+            ] = self.records
             else {
                 return Err("artifact nine payloads are not all finished".into());
             };
@@ -578,10 +606,14 @@ impl FinishedPayloads<'_, '_> {
     }
 }
 
-#[cfg(all(test, target_os = "linux", any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(all(
+    test,
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 mod tests {
-    use super::*;
     use super::super::DirectoryIdentity;
+    use super::*;
     use std::os::unix::fs::{MetadataExt, symlink};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -604,13 +636,17 @@ mod tests {
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));
-            fs::create_dir(&root).map_err(|error| format!("artifact fixture directory: {error}"))?;
+            fs::create_dir(&root)
+                .map_err(|error| format!("artifact fixture directory: {error}"))?;
             let path = root.join("artifacts");
             fs::create_dir(&path).map_err(|error| format!("artifact fixture role: {error}"))?;
-            let metadata = fs::metadata(&path)
-                .map_err(|error| format!("artifact fixture stat: {error}"))?;
+            let metadata =
+                fs::metadata(&path).map_err(|error| format!("artifact fixture stat: {error}"))?;
             let identity = DirectoryIdentity {
-                path: path.to_str().ok_or("artifact fixture path UTF-8")?.to_string(),
+                path: path
+                    .to_str()
+                    .ok_or("artifact fixture path UTF-8")?
+                    .to_string(),
                 dev: metadata.dev(),
                 ino: metadata.ino(),
             };
@@ -648,7 +684,9 @@ mod tests {
     fn error<T>(result: Result<T, String>, category: &str) -> Result<String, String> {
         match result {
             Err(error) if error.contains(category) => Ok(error),
-            Err(error) => Err(format!("wrong artifact refusal: {error}; expected {category}")),
+            Err(error) => Err(format!(
+                "wrong artifact refusal: {error}; expected {category}"
+            )),
             Ok(_) => Err(format!("unexpected artifact success; expected {category}")),
         }
     }
@@ -660,8 +698,8 @@ mod tests {
     }
 
     #[test]
-    fn real_nine_payloads_and_last_manifest_have_full_bytes_identity_and_sync(
-    ) -> Result<(), String> {
+    fn real_nine_payloads_and_last_manifest_have_full_bytes_identity_and_sync() -> Result<(), String>
+    {
         let fixture = Fixture::new()?;
         let large = vec![0xa5_u8; CHUNK + 7];
         let mut payloads = [b"payload".as_slice(); 9];
@@ -673,7 +711,10 @@ mod tests {
         let receipts: &super::super::ArtifactPayloadData = finished.receipts();
         assert_eq!(receipts.files().len(), 9);
         assert_eq!(receipts.payload_bytes(), (large.len() + 7 * 7) as u64);
-        assert_eq!(receipts.reserved_composite_bytes(), receipts.payload_bytes() + 64);
+        assert_eq!(
+            receipts.reserved_composite_bytes(),
+            receipts.payload_bytes() + 64
+        );
         for (slot, data) in ArtifactSlot::ALL.into_iter().zip(receipts.files()) {
             let data: &super::super::ArtifactFileData = data;
             assert_eq!(data.name(), slot.path());
@@ -694,23 +735,44 @@ mod tests {
         assert_eq!(data.manifest().bytes(), 8);
         assert_eq!(data.composite_bytes(), data.payloads().payload_bytes() + 8);
         assert!(data.allocated_bytes() >= data.manifest().allocated_bytes());
-        assert_eq!(fs::read(fixture.root.join("artifacts").join(MANIFEST))
-            .map_err(|error| format!("manifest fixture read: {error}"))?, b"manifest");
+        assert_eq!(
+            fs::read(fixture.root.join("artifacts").join(MANIFEST))
+                .map_err(|error| format!("manifest fixture read: {error}"))?,
+            b"manifest"
+        );
         fixture.cleanup()
     }
 
     #[test]
-    fn admission_refuses_before_creation_and_manifest_is_outside_nine_aggregate(
-    ) -> Result<(), String> {
+    fn admission_refuses_before_creation_and_manifest_is_outside_nine_aggregate()
+    -> Result<(), String> {
         let fixture = Fixture::new()?;
-        error(ArtifactDirectory::new(&fixture.directory, [b"xx"; 9],
-            ArtifactBudget::new([1; 9], 9, 2, 2)?, fixture.deadline), "payload exceeds")?;
+        error(
+            ArtifactDirectory::new(
+                &fixture.directory,
+                [b"xx"; 9],
+                ArtifactBudget::new([1; 9], 9, 2, 2)?,
+                fixture.deadline,
+            ),
+            "payload exceeds",
+        )?;
         fixture.directory.require_empty(fixture.deadline)?;
-        error(ArtifactDirectory::new(&fixture.directory, [b"x"; 9],
-            ArtifactBudget::new([1; 9], 8, 2, 2)?, fixture.deadline), "nine-payload aggregate")?;
+        error(
+            ArtifactDirectory::new(
+                &fixture.directory,
+                [b"x"; 9],
+                ArtifactBudget::new([1; 9], 8, 2, 2)?,
+                fixture.deadline,
+            ),
+            "nine-payload aggregate",
+        )?;
         fixture.directory.require_empty(fixture.deadline)?;
-        let mut writer = ArtifactDirectory::new(&fixture.directory, [b"x"; 9],
-            ArtifactBudget::new([1; 9], 9, 2, 2)?, fixture.deadline)?;
+        let mut writer = ArtifactDirectory::new(
+            &fixture.directory,
+            [b"x"; 9],
+            ArtifactBudget::new([1; 9], 9, 2, 2)?,
+            fixture.deadline,
+        )?;
         write_all(&mut writer)?;
         let finished = writer.finish_payloads()?;
         assert_eq!(finished.receipts().reserved_composite_bytes(), 11);
@@ -724,8 +786,17 @@ mod tests {
         let fixture = Fixture::new()?;
         let mut writer = fixture.writer([b"payload"; 9])?;
         writer.write_slot(ArtifactSlot::OriginalRaw)?;
-        let first = error(writer.write_slot(ArtifactSlot::OriginalRaw), "duplicate/reuse")?;
-        assert_eq!(error(writer.write_slot(ArtifactSlot::CheckDiff), "duplicate/reuse")?, first);
+        let first = error(
+            writer.write_slot(ArtifactSlot::OriginalRaw),
+            "duplicate/reuse",
+        )?;
+        assert_eq!(
+            error(
+                writer.write_slot(ArtifactSlot::CheckDiff),
+                "duplicate/reuse"
+            )?,
+            first
+        );
         assert!(!fixture.path(ArtifactSlot::CheckDiff).exists());
         assert_eq!(error(writer.finish_payloads(), "duplicate/reuse")?, first);
         assert!(fixture.path(ArtifactSlot::OriginalRaw).is_file());
@@ -733,8 +804,8 @@ mod tests {
     }
 
     #[test]
-    fn missing_and_extra_names_cannot_close_payloads_and_new_stage_recovers(
-    ) -> Result<(), String> {
+    fn missing_and_extra_names_cannot_close_payloads_and_new_stage_recovers() -> Result<(), String>
+    {
         for missing in [true, false] {
             let fixture = Fixture::new()?;
             let mut writer = fixture.writer([b"payload"; 9])?;
@@ -781,7 +852,8 @@ mod tests {
                 fs::rename(&path, fixture.root.join("old-inode"))
                     .map_err(|error| format!("artifact replacement fixture: {error}"))?;
                 let mut replacement = create_private(&path)?;
-                replacement.write_all(b"payload")
+                replacement
+                    .write_all(b"payload")
                     .map_err(|error| format!("artifact replacement bytes: {error}"))?;
                 drop(replacement);
                 error(writer.finish_payloads(), "identity/link/mode/length")?;
@@ -797,26 +869,41 @@ mod tests {
             let fixture = Fixture::new()?;
             let mut writer = fixture.writer([b"payload"; 9])?;
             write_all(&mut writer)?;
-            fs::write(fixture.path(ArtifactSlot::OriginalRaw),
-                if truncate { b"".as_slice() } else { b"changed".as_slice() })
-                .map_err(|error| format!("artifact changed-body fixture: {error}"))?;
-            error(writer.finish_payloads(),
-                if truncate { "identity/link/mode/length" } else { "bytes/hash" })?;
+            fs::write(
+                fixture.path(ArtifactSlot::OriginalRaw),
+                if truncate {
+                    b"".as_slice()
+                } else {
+                    b"changed".as_slice()
+                },
+            )
+            .map_err(|error| format!("artifact changed-body fixture: {error}"))?;
+            error(
+                writer.finish_payloads(),
+                if truncate {
+                    "identity/link/mode/length"
+                } else {
+                    "bytes/hash"
+                },
+            )?;
             fixture.cleanup()?;
         }
         Ok(())
     }
 
     #[test]
-    fn manifest_oversize_and_post_receipt_drift_refuse_before_final_authority(
-    ) -> Result<(), String> {
+    fn manifest_oversize_and_post_receipt_drift_refuse_before_final_authority() -> Result<(), String>
+    {
         for oversize in [true, false] {
             let fixture = Fixture::new()?;
             let mut writer = fixture.writer([b"payload"; 9])?;
             write_all(&mut writer)?;
             let finished = writer.finish_payloads()?;
             if oversize {
-                error(finished.write_manifest(&[0_u8; 65]), "separate admitted cap")?;
+                error(
+                    finished.write_manifest(&[0_u8; 65]),
+                    "separate admitted cap",
+                )?;
             } else {
                 fs::write(fixture.path(ArtifactSlot::ReviewInput), b"changed")
                     .map_err(|error| format!("post-receipt artifact fixture: {error}"))?;
@@ -829,16 +916,30 @@ mod tests {
     }
 
     #[test]
-    fn original_deadline_failure_is_sticky_and_recovery_uses_new_owned_directory(
-    ) -> Result<(), String> {
+    fn original_deadline_failure_is_sticky_and_recovery_uses_new_owned_directory()
+    -> Result<(), String> {
         let fixture = Fixture::new()?;
-        let held = Instant::now().checked_add(Duration::from_millis(200))
+        let held = Instant::now()
+            .checked_add(Duration::from_millis(200))
             .ok_or("artifact short clock overflow")?;
-        let mut writer = ArtifactDirectory::new(&fixture.directory, [b"payload"; 9],
-            ArtifactBudget::new([64; 9], 576, 64, 64)?, held)?;
+        let mut writer = ArtifactDirectory::new(
+            &fixture.directory,
+            [b"payload"; 9],
+            ArtifactBudget::new([64; 9], 576, 64, 64)?,
+            held,
+        )?;
         std::thread::sleep(Duration::from_millis(250));
-        let first = error(writer.write_slot(ArtifactSlot::OriginalRaw), "deadline expired")?;
-        assert_eq!(error(writer.write_slot(ArtifactSlot::CheckDiff), "deadline expired")?, first);
+        let first = error(
+            writer.write_slot(ArtifactSlot::OriginalRaw),
+            "deadline expired",
+        )?;
+        assert_eq!(
+            error(
+                writer.write_slot(ArtifactSlot::CheckDiff),
+                "deadline expired"
+            )?,
+            first
+        );
         assert!(!fixture.path(ArtifactSlot::OriginalRaw).exists());
         error(writer.finish_payloads(), "deadline expired")?;
         fixture.directory.require_empty(fixture.deadline)?;
@@ -851,12 +952,15 @@ mod tests {
     }
 
     #[test]
-    fn incomplete_payloads_and_existing_directory_cannot_start_final_manifest(
-    ) -> Result<(), String> {
+    fn incomplete_payloads_and_existing_directory_cannot_start_final_manifest() -> Result<(), String>
+    {
         let fixture = Fixture::new()?;
         let mut writer = fixture.writer([b"payload"; 9])?;
         writer.write_slot(ArtifactSlot::OriginalRaw)?;
-        error(writer.finish_payloads(), "nine payloads are not all finished")?;
+        error(
+            writer.finish_payloads(),
+            "nine payloads are not all finished",
+        )?;
         assert!(!fixture.root.join("artifacts").join(MANIFEST).exists());
         error(fixture.writer([b"payload"; 9]), "not empty")?;
         fixture.cleanup()

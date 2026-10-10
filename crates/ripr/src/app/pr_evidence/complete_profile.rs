@@ -80,10 +80,7 @@ pub(super) fn artifact_storage_reservation(
     profile: &CompleteVerificationLimits,
 ) -> Result<u64, String> {
     profile.validate()?;
-    checked_sum(&[
-        profile.max_total_artifact_bytes,
-        profile.max_manifest_bytes,
-    ])
+    checked_sum(&[profile.max_total_artifact_bytes, profile.max_manifest_bytes])
 }
 
 #[cfg(test)]
@@ -94,7 +91,9 @@ mod tests {
     fn refuses<T>(result: Result<T, String>, category: &str) -> Result<(), String> {
         match result {
             Err(error) if error.contains(category) => Ok(()),
-            Err(error) => Err(format!("wrong refusal category: {error}; expected {category}")),
+            Err(error) => Err(format!(
+                "wrong refusal category: {error}; expected {category}"
+            )),
             Ok(_) => Err(format!("unexpected success; expected {category}")),
         }
     }
@@ -151,8 +150,8 @@ mod tests {
     }
 
     #[test]
-    fn individually_valid_larger_deadline_or_storage_cannot_forge_named_profile() -> Result<(), String>
-    {
+    fn individually_valid_larger_deadline_or_storage_cannot_forge_named_profile()
+    -> Result<(), String> {
         let observed = capture_complete_rust_policy()?;
         let mut offered = profile_for_request(PROFILE_NAME, &observed)?;
         offered.deadline_ms += 1;
@@ -177,6 +176,9 @@ mod tests {
         let profile = profile_for_request(PROFILE_NAME, &observed)?;
         assert_eq!(artifact_storage_reservation(&profile)?, 528 * MIB);
         assert_eq!(checked_sum(&[0, 1, u64::MAX - 1])?, u64::MAX);
-        refuses(checked_sum(&[u64::MAX, 1]), "composite reservation overflow")
+        refuses(
+            checked_sum(&[u64::MAX, 1]),
+            "composite reservation overflow",
+        )
     }
 }

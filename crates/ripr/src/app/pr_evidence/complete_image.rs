@@ -90,7 +90,9 @@ fn observe_native(
     if actual.address_space_bytes() != expected_address_space
         || actual.file_size_bytes() != expected_file_size
     {
-        return Err("complete self image actual native limits differ from the expected tuple".into());
+        return Err(
+            "complete self image actual native limits differ from the expected tuple".into(),
+        );
     }
     Ok(actual)
 }
@@ -108,10 +110,7 @@ fn observe_owner(held_deadline: Instant) -> Result<ObservedProcessIdentity, Stri
     Ok(actual)
 }
 
-fn verify_owner(
-    expected: &ObservedProcessIdentity,
-    held_deadline: Instant,
-) -> Result<(), String> {
+fn verify_owner(expected: &ObservedProcessIdentity, held_deadline: Instant) -> Result<(), String> {
     let actual = observe_owner(held_deadline)?;
     if actual.pid() != expected.pid()
         || actual.start() != expected.start()
@@ -160,10 +159,7 @@ fn verify_kernel_image(
     verify_kernel_metadata(metadata, expected)
 }
 
-fn verify_kernel_metadata(
-    metadata: Metadata,
-    expected: &ExecutableMetadata,
-) -> Result<(), String> {
+fn verify_kernel_metadata(metadata: Metadata, expected: &ExecutableMetadata) -> Result<(), String> {
     if ExecutableMetadata::observe(metadata, IMAGE_BYTES_MAX)? != *expected {
         return Err("complete self image differs from the current kernel executable".into());
     }
@@ -201,9 +197,10 @@ fn hash_exact(
             return Ok(format!("sha256:{:x}", hash.finalize()));
         }
         consumed = consumed
-            .checked_add(u64::try_from(read).map_err(|error| {
-                format!("complete self image native read length: {error}")
-            })?)
+            .checked_add(
+                u64::try_from(read)
+                    .map_err(|error| format!("complete self image native read length: {error}"))?,
+            )
             .filter(|count| *count <= expected_bytes && *count <= IMAGE_BYTES_MAX)
             .ok_or("complete self image bytes exceed its admitted size")?;
         hash.update(&scratch[..read]);
@@ -219,11 +216,7 @@ impl ObservedSelfImage {
     ) -> Result<Self, String> {
         // Actual native admission precedes executable open/hash. This does not
         // impose limits or replace an unlimited parent with a selected profile.
-        let native = observe_native(
-            expected_address_space,
-            expected_file_size,
-            held_deadline,
-        )?;
+        let native = observe_native(expected_address_space, expected_file_size, held_deadline)?;
         let owner = observe_owner(held_deadline)?;
         checkpoint(held_deadline)?;
         #[cfg(test)]
@@ -432,11 +425,7 @@ mod tests {
                 // This is an actual negative observation, not finite-positive
                 // evidence. A bounded native harness owns the positive proof.
                 return refusal(
-                    ObservedSelfImage::observe(
-                        2 * 1024 * 1024 * 1024,
-                        IMAGE_BYTES_MAX,
-                        deadline,
-                    ),
+                    ObservedSelfImage::observe(2 * 1024 * 1024 * 1024, IMAGE_BYTES_MAX, deadline),
                     &error,
                 );
             }
@@ -523,13 +512,21 @@ mod tests {
     fn actual_eof_shortfall_and_extra_bytes_refuse_without_truncation() -> Result<(), String> {
         let fixture = Fixture::new(b"abc")?;
         let mut file = fixture.open()?;
-        refusal(hash_exact(&mut file, 4, held()), "EOF before its admitted size")?;
-        file.seek(SeekFrom::Start(0)).map_err(|error| error.to_string())?;
-        refusal(hash_exact(&mut file, 2, held()), "bytes exceed its admitted size")
+        refusal(
+            hash_exact(&mut file, 4, held()),
+            "EOF before its admitted size",
+        )?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|error| error.to_string())?;
+        refusal(
+            hash_exact(&mut file, 2, held()),
+            "bytes exceed its admitted size",
+        )
     }
 
     #[test]
-    fn executable_path_swap_keeps_held_bytes_and_rejects_replacement_identity() -> Result<(), String> {
+    fn executable_path_swap_keeps_held_bytes_and_rejects_replacement_identity() -> Result<(), String>
+    {
         let fixture = Fixture::new(b"held-original")?;
         let mut file = fixture.open()?;
         let original = held_metadata(&file, IMAGE_BYTES_MAX, held())?;
@@ -541,7 +538,10 @@ mod tests {
             .map_err(|error| error.to_string())?;
         fs::write(&fixture.file, b"replaced-path").map_err(|error| error.to_string())?;
         let retained = held_metadata(&file, IMAGE_BYTES_MAX, held())?;
-        assert_eq!((retained.device, retained.inode), (original.device, original.inode));
+        assert_eq!(
+            (retained.device, retained.inode),
+            (original.device, original.inode)
+        );
         // Rename may update ctime. The held descriptor still selects the old
         // inode/bytes; a real owner's full metadata recheck would refuse drift.
         assert_eq!(
@@ -577,7 +577,9 @@ mod tests {
             .write(true)
             .open(&fixture.file)
             .map_err(|error| error.to_string())?;
-        writer.write_all(b"defg").map_err(|error| error.to_string())?;
+        writer
+            .write_all(b"defg")
+            .map_err(|error| error.to_string())?;
         refusal(
             verify_held_metadata(&file, &original, held()),
             "identity or immutable metadata changed",
@@ -617,7 +619,10 @@ mod tests {
         let deadline = Instant::now() + Duration::from_millis(10);
         refusal(
             hash_exact(
-                &mut DelayedRead { file: &mut file, delayed: false },
+                &mut DelayedRead {
+                    file: &mut file,
+                    delayed: false,
+                },
                 8,
                 deadline,
             ),

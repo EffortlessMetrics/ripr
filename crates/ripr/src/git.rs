@@ -25,6 +25,11 @@ use std::time::{Duration, Instant};
 use crate::core_error::CoreError;
 use crate::process_owner::OwnedProcess;
 
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod complete_capture_restriction;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) use complete_capture_restriction::with_restriction as with_complete_capture_restriction;
+
 /// Grace period for draining stdout/stderr after owned process-tree cleanup.
 ///
 /// A descendant can briefly retain an inherited pipe handle after the parent
@@ -680,6 +685,35 @@ fn collect_output_with_reader_policy(
 }
 
 fn collect_output_with_reader_policy_and_held_deadline(
+    command: Command,
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+    describe: &str,
+    require_piped_readers: bool,
+    held_deadlines: Option<(Instant, Instant)>,
+) -> Result<Output, CoreError> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(restriction) = complete_capture_restriction::current() {
+        return complete_capture_restriction::collect(
+            &restriction,
+            command,
+            timeout,
+            Some(max_output_bytes),
+            describe,
+            held_deadlines,
+        );
+    }
+    collect_output_with_reader_policy_and_held_deadline_direct(
+        command,
+        timeout,
+        max_output_bytes,
+        describe,
+        require_piped_readers,
+        held_deadlines,
+    )
+}
+
+fn collect_output_with_reader_policy_and_held_deadline_direct(
     mut command: Command,
     timeout: Option<Duration>,
     max_output_bytes: usize,
@@ -1733,6 +1767,17 @@ fn collect_output_with_deadline(
     timeout: Option<Duration>,
     describe: &str,
 ) -> Result<Output, CoreError> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(restriction) = complete_capture_restriction::current() {
+        return complete_capture_restriction::collect(
+            &restriction,
+            command,
+            timeout,
+            None,
+            describe,
+            None,
+        );
+    }
     if let Some(deadline) = timeout
         && deadline.is_zero()
     {
