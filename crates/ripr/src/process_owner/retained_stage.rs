@@ -1316,7 +1316,7 @@ mod native {
         use crate::process_owner::{CompleteByteCapture, CompleteCaptureBudget};
         use std::ffi::OsString;
         use std::os::unix::ffi::OsStringExt;
-        use std::os::unix::fs::{PermissionsExt, symlink};
+        use std::os::unix::fs::{FileTypeExt, PermissionsExt, symlink};
         use std::os::unix::net::UnixListener;
         use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1470,7 +1470,12 @@ mod native {
             refusal(stage.audit_closed_inventory(), "link or unsupported")?;
             io(fs::remove_file(&link))?;
             let socket = stage.source_root().join("special");
-            let listener = io(UnixListener::bind(&socket))?;
+            let socket_at = stage.owned.roles[0].child(OsStr::new("special"))?;
+            let listener = io(UnixListener::bind(&socket_at))?;
+            let observed = metadata(&socket)?;
+            let held = metadata(&socket_at)?;
+            assert!(observed.file_type().is_socket());
+            assert_eq!((observed.dev(), observed.ino()), (held.dev(), held.ino()));
             refusal(stage.audit_closed_inventory(), "link or unsupported")?;
             drop(listener);
             io(fs::remove_file(&socket))?;
