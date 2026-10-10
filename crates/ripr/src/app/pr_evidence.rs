@@ -11,6 +11,8 @@
 //! This avoids recompilation and keeps the analysis in-process.
 
 mod complete_execution;
+#[cfg(test)]
+mod complete_native;
 mod generation;
 
 #[cfg(test)]
