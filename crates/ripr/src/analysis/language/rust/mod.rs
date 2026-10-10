@@ -1845,8 +1845,9 @@ impl RustAdapter {
         changed_files: &[ChangedFile],
         enabled_languages: &[LanguageId],
         rust_config: &crate::config::RustLanguageConfig,
-        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-        whole: Option<&VerifiedWholeInput>,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+            &VerifiedWholeInput,
+        >,
     ) -> Result<LanguageDiffResult, String> {
         #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
         if let Some(whole) = whole {

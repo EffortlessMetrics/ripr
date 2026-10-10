@@ -273,12 +273,17 @@ fn verify_inner(
         artifact_sha256: std::array::from_fn(|i| manifest.artifacts[i].sha256.clone()),
         total_finding_count: total,
         manifest_identity: (
-            manifest_file.identity.device, manifest_file.identity.inode,
+            manifest_file.identity.device,
+            manifest_file.identity.inode,
             manifest_file.identity.bytes,
         ),
-        artifact_identity: std::array::from_fn(|i| (
-            files[i].identity.device, files[i].identity.inode, files[i].identity.bytes,
-        )),
+        artifact_identity: std::array::from_fn(|i| {
+            (
+                files[i].identity.device,
+                files[i].identity.inode,
+                files[i].identity.bytes,
+            )
+        }),
     })
 }
 
@@ -2269,7 +2274,6 @@ mod tests {
         Ok(())
     }
 
-
     #[cfg(target_os = "linux")]
     #[test]
     fn verified_descriptor_data_observes_actual_files_and_equal_byte_replacement()
@@ -2285,15 +2289,21 @@ mod tests {
             for role in ArtifactRole::ALL {
                 let metadata = std::fs::symlink_metadata(stage.0.join(role.path()))
                     .map_err(|error| format!("actual proof identity fixture: {error}"))?;
-                assert_eq!(observed.artifact_identity(role),
-                    (metadata.dev(), metadata.ino(), metadata.len()));
-                assert_eq!(observed.artifact_sha256(role),
-                    sha256_bytes(&original[role.ordinal()]));
+                assert_eq!(
+                    observed.artifact_identity(role),
+                    (metadata.dev(), metadata.ino(), metadata.len())
+                );
+                assert_eq!(
+                    observed.artifact_sha256(role),
+                    sha256_bytes(&original[role.ordinal()])
+                );
             }
             let metadata = std::fs::symlink_metadata(stage.0.join(MANIFEST_FILE))
                 .map_err(|error| format!("actual manifest identity fixture: {error}"))?;
-            assert_eq!(observed.manifest_identity(),
-                (metadata.dev(), metadata.ino(), metadata.len()));
+            assert_eq!(
+                observed.manifest_identity(),
+                (metadata.dev(), metadata.ino(), metadata.len())
+            );
             // Equal bytes can form a fresh saved proof, but its observed file
             // identity cannot reconcile an earlier IO closure's actual inode.
             let role = ArtifactRole::FullCheck;
@@ -2305,9 +2315,11 @@ mod tests {
             let fresh = verify_staged_generation(&stage.0, &binding, &binding.profile)
                 .map_err(|error| error.to_string())?;
             assert_eq!(fresh.artifact_sha256(role), observed.artifact_sha256(role));
-            assert_ne!(fresh.artifact_identity(role), observed.artifact_identity(role));
+            assert_ne!(
+                fresh.artifact_identity(role),
+                observed.artifact_identity(role)
+            );
             Ok(())
         })
     }
-
 }

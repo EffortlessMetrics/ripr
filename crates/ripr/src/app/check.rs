@@ -54,15 +54,17 @@ pub(crate) fn check_workspace_with_verified_whole(
     config: &RiprConfig,
     whole: &VerifiedWholeInput,
 ) -> Result<CheckOutput, String> {
-    Ok(check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
-        input,
-        config,
-        AnalysisProgressScope::Diff,
-        None,
-        &Default::default(),
-        Some(whole),
-    )?
-    .0)
+    Ok(
+        check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
+            input,
+            config,
+            AnalysisProgressScope::Diff,
+            None,
+            &Default::default(),
+            Some(whole),
+        )?
+        .0,
+    )
 }
 
 pub fn check_workspace_worktree_with_config(
@@ -222,8 +224,9 @@ fn check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
     scope: AnalysisProgressScope,
     sink: Option<&dyn AnalysisProgressSink>,
     open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
-    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-    whole: Option<&VerifiedWholeInput>,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+        &VerifiedWholeInput,
+    >,
 ) -> Result<
     (
         CheckOutput,

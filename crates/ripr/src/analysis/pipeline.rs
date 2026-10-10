@@ -92,8 +92,9 @@ fn run_diff_pipeline_with_optional_verified_whole(
     oracle_policy: &OraclePolicy,
     languages: &[LanguageId],
     rust_config: &crate::config::RustLanguageConfig,
-    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-    whole: Option<&VerifiedWholeInput>,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+        &VerifiedWholeInput,
+    >,
 ) -> Result<AnalysisResult, CoreError> {
     #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
     if let Some(whole) = whole {
@@ -735,8 +736,9 @@ fn run_pipeline_for_diff_text_with_verified_whole(
     languages: &[LanguageId],
     rust_config: &crate::config::RustLanguageConfig,
     diff_text: &str,
-    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-    whole: Option<&VerifiedWholeInput>,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+        &VerifiedWholeInput,
+    >,
 ) -> Result<AnalysisResult, String> {
     #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
     if let Some(whole) = whole {

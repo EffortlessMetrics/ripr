@@ -266,11 +266,15 @@ pub(crate) fn derive_source_subject_with(
     let input_absolute = absolute_root(input_root);
     let mut digests = BTreeMap::new();
     for file in subject.files {
-        if subject_relative_path_with(input_root, &file.path, canonicalize).as_deref() != Some(file.path.as_str()) {
+        if subject_relative_path_with(input_root, &file.path, canonicalize).as_deref()
+            != Some(file.path.as_str())
+        {
             return Err("input_source_subject_malformed");
         }
         let absolute = input_absolute.join(&file.path);
-        if let Some(path) = subject_relative_path_with(output_root, &absolute.to_string_lossy(), canonicalize) {
+        if let Some(path) =
+            subject_relative_path_with(output_root, &absolute.to_string_lossy(), canonicalize)
+        {
             digests.insert(path, file.digest);
         }
     }

@@ -46,14 +46,18 @@ pub(crate) fn require_frozen_stamp_context(
     root: &Path,
     authority: &Arc<FrozenSourceAuthority>,
 ) -> Result<(), String> {
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     if !frozen::current().is_some_and(|current| Arc::ptr_eq(&current, authority)) {
         return Err(authority
             .refuse_external_effect("source subject context changed during projection")
             .to_string());
     }
     let canonical = frozen_fs::canonicalize(root).map_err(|error| error.to_string())?;
-    authority.ensure_clean().map_err(|error| error.to_string())?;
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
     // The frozen canonicalizer joins the empty relative root, which can
     // retain a trailing separator. Compare native path components while
     // keeping the real canonicalization, context, and subroot checks.
@@ -83,10 +87,9 @@ pub(crate) fn actionable_packet_subject_paths(root: &Path, packet: &Value) -> BT
     let Ok(Some(authority)) = frozen_stamp_context(root) else {
         return BTreeSet::new();
     };
-    let paths =
-        shared::actionable_packet_subject_paths_with(root, packet, &mut |path| {
-            frozen_fs::canonicalize(path)
-        });
+    let paths = shared::actionable_packet_subject_paths_with(root, packet, &mut |path| {
+        frozen_fs::canonicalize(path)
+    });
     if require_frozen_stamp_context(root, &authority).is_err() {
         return BTreeSet::new();
     }
@@ -171,7 +174,9 @@ pub(crate) fn source_file_digest(root: &Path, relative: &str) -> Result<Option<S
                 Ok(Some(digest))
             }
             Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(format!("read source subject file {relative} failed: {error}")),
+            Err(error) => Err(format!(
+                "read source subject file {relative} failed: {error}"
+            )),
         };
     }
     match std::fs::read(root.join(relative)) {
@@ -460,13 +465,18 @@ mod tests {
             ] {
                 crate::testing::fixture_git::fixture_git_ok(&root, args)?;
             }
-            let prepared = crate::analysis::git_candidate_execution::prepare_named_tree(
-                &root, "HEAD", None,
-            ).map_err(|error| error.to_string())?;
+            let prepared =
+                crate::analysis::git_candidate_execution::prepare_named_tree(&root, "HEAD", None)
+                    .map_err(|error| error.to_string())?;
             let physical = prepared.physical_root().to_path_buf();
-            let authority = prepared.frozen_source_authority(&root)
+            let authority = prepared
+                .frozen_source_authority(&root)
                 .map_err(|error| error.to_string())?;
-            Ok(Self { root, physical, authority })
+            Ok(Self {
+                root,
+                physical,
+                authority,
+            })
         }
     }
 
@@ -488,18 +498,22 @@ mod tests {
 
     #[cfg(all(target_os = "linux", feature = "lang-rust"))]
     #[test]
-    fn frozen_stamp_accepts_exact_root_with_canonical_trailing_separator()
-    -> Result<(), String> {
+    fn frozen_stamp_accepts_exact_root_with_canonical_trailing_separator() -> Result<(), String> {
         let fixture = NamedStampFixture::new("canonical-root-separator")?;
         frozen::with_context(Some(fixture.authority.clone()), || {
-            let canonical = frozen_fs::canonicalize(&fixture.root)
-                .map_err(|error| error.to_string())?;
+            let canonical =
+                frozen_fs::canonicalize(&fixture.root).map_err(|error| error.to_string())?;
             assert_eq!(canonical, fixture.authority.logical_root());
             assert_ne!(
-                canonical.as_os_str(), fixture.authority.logical_root().as_os_str(),
+                canonical.as_os_str(),
+                fixture.authority.logical_root().as_os_str(),
                 "actual frozen canonical root must reach the trailing-separator discriminator",
             );
-            for root in [fixture.root.clone(), fixture.root.join(""), fixture.root.join(".")] {
+            for root in [
+                fixture.root.clone(),
+                fixture.root.join(""),
+                fixture.root.join("."),
+            ] {
                 let bound = frozen_stamp_context(&root)?.ok_or("missing active stamp authority")?;
                 assert!(Arc::ptr_eq(&bound, &fixture.authority));
                 let empty = stamp_source_subject(&root, &BTreeSet::new())?;
@@ -508,7 +522,10 @@ mod tests {
                     .ok_or("named source digest is absent")?;
                 assert!(digest.starts_with("sha256:"));
             }
-            fixture.authority.ensure_clean().map_err(|error| error.to_string())
+            fixture
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())
         })
     }
 
@@ -522,7 +539,8 @@ mod tests {
             "tests/check.rs".to_string(),
             "folder.rs/inside.rs".to_string(),
         ]);
-        let ordinary = append_source_subject_member("{\"findings\": []}\n".into(), &fixture.root, &paths);
+        let ordinary =
+            append_source_subject_member("{\"findings\": []}\n".into(), &fixture.root, &paths);
         std::fs::write(fixture.root.join("src/lib.rs"), "dirty head replacement\n")
             .map_err(|error| error.to_string())?;
         std::fs::write(fixture.root.join("tests/check.rs"), "staged replacement\n")
@@ -532,24 +550,47 @@ mod tests {
             .map_err(|error| error.to_string())?;
         frozen::with_context(Some(fixture.authority.clone()), || {
             let frozen = append_source_subject_member_checked(
-                "{\"findings\": []}\n".into(), &fixture.root.join("."), &paths,
+                "{\"findings\": []}\n".into(),
+                &fixture.root.join("."),
+                &paths,
             )?;
             assert_eq!(frozen, ordinary);
             assert_eq!(source_file_digest(&fixture.root, "absent.rs")?, None);
-            fixture.authority.ensure_clean().map_err(|error| error.to_string())?;
-            let named = fixture.root.join("src/lib.rs").to_string_lossy().into_owned();
-            assert_eq!(subject_relative_path(&fixture.root, &named), Some("src/lib.rs".into()));
-            let packet = json!({"source_file": named, "related_test_or_observer": "tests/check.rs::head"});
+            fixture
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
+            let named = fixture
+                .root
+                .join("src/lib.rs")
+                .to_string_lossy()
+                .into_owned();
+            assert_eq!(
+                subject_relative_path(&fixture.root, &named),
+                Some("src/lib.rs".into())
+            );
+            let packet =
+                json!({"source_file": named, "related_test_or_observer": "tests/check.rs::head"});
             assert_eq!(
                 actionable_packet_subject_paths(&fixture.root, &packet),
                 BTreeSet::from(["src/lib.rs".to_string(), "tests/check.rs".to_string()]),
             );
             let value: Value = serde_json::from_str(&frozen).map_err(|error| error.to_string())?;
             let copied = derive_source_subject(
-                value.get("source_subject"), &fixture.root, &fixture.root, &paths,
-            ).map_err(str::to_string)?;
-            assert_eq!(serde_json::to_value(copied).map_err(|error| error.to_string())?, value["source_subject"]);
-            fixture.authority.ensure_clean().map_err(|error| error.to_string())
+                value.get("source_subject"),
+                &fixture.root,
+                &fixture.root,
+                &paths,
+            )
+            .map_err(str::to_string)?;
+            assert_eq!(
+                serde_json::to_value(copied).map_err(|error| error.to_string())?,
+                value["source_subject"]
+            );
+            fixture
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())
         })
     }
 
@@ -561,7 +602,10 @@ mod tests {
             let fixture = NamedStampFixture::new(label)?;
             frozen::with_context(Some(fixture.authority.clone()), || {
                 assert_eq!(source_file_digest(&fixture.root, "never.rs")?, None);
-                fixture.authority.ensure_clean().map_err(|error| error.to_string())?;
+                fixture
+                    .authority
+                    .ensure_clean()
+                    .map_err(|error| error.to_string())?;
                 if mutation == 0 {
                     std::fs::remove_file(fixture.physical.join("src/lib.rs"))
                         .map_err(|error| error.to_string())?;
@@ -572,12 +616,18 @@ mod tests {
                     std::fs::write(fixture.physical.join("src/lib.rs"), bytes)
                         .map_err(|error| error.to_string())?;
                 }
-                let failure = stamp_error(source_file_digest(&fixture.root, "src/lib.rs"), "src/lib.rs")?;
-                let retained = fixture.authority.ensure_clean()
+                let failure = stamp_error(
+                    source_file_digest(&fixture.root, "src/lib.rs"),
+                    "src/lib.rs",
+                )?;
+                let retained = fixture
+                    .authority
+                    .ensure_clean()
                     .map_err(|error| error.to_string());
                 assert_eq!(stamp_error(retained, "src/lib.rs")?, failure);
                 stamp_error(
-                    stamp_source_subject(&fixture.root, &BTreeSet::new()), "src/lib.rs",
+                    stamp_source_subject(&fixture.root, &BTreeSet::new()),
+                    "src/lib.rs",
                 )?;
                 Ok::<_, String>(())
             })?;
@@ -587,7 +637,10 @@ mod tests {
             let digest = source_file_digest(&recovery.root, "src/lib.rs")?
                 .ok_or("fresh named source lacks digest")?;
             assert!(digest.starts_with("sha256:"));
-            recovery.authority.ensure_clean().map_err(|error| error.to_string())
+            recovery
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())
         })
     }
 
@@ -596,10 +649,13 @@ mod tests {
     fn frozen_stamp_refuses_link_and_directory_reads_without_successful_fallback()
     -> Result<(), String> {
         let link = NamedStampFixture::new("snapshot-link")?;
-        std::fs::remove_file(link.physical.join("src/lib.rs")).map_err(|error| error.to_string())?;
+        std::fs::remove_file(link.physical.join("src/lib.rs"))
+            .map_err(|error| error.to_string())?;
         std::os::unix::fs::symlink(
-            link.root.join("src/lib.rs"), link.physical.join("src/lib.rs"),
-        ).map_err(|error| error.to_string())?;
+            link.root.join("src/lib.rs"),
+            link.physical.join("src/lib.rs"),
+        )
+        .map_err(|error| error.to_string())?;
         frozen::with_context(Some(link.authority.clone()), || {
             stamp_error(source_file_digest(&link.root, "src/lib.rs"), "symlink")?;
             Ok::<_, String>(())
@@ -613,7 +669,10 @@ mod tests {
             )?;
             // The underlying directory error is nonsticky; the actual fallible
             // return, rather than only the authority latch, must carry refusal.
-            directory.authority.ensure_clean().map_err(|error| error.to_string())?;
+            directory
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
             Ok::<_, String>(())
         })
     }
@@ -628,13 +687,21 @@ mod tests {
             .map_err(|error| error.to_string())?;
         // The actual OS must establish this premise; an elevated process does
         // not supply an unreadable-file counterexample.
-        let denied = std::fs::File::open(&physical).err()
+        let denied = std::fs::File::open(&physical)
+            .err()
             .ok_or("host did not establish the unreadable snapshot premise")?;
         assert_eq!(denied.kind(), ErrorKind::PermissionDenied);
         let refused = frozen::with_context(Some(fixture.authority.clone()), || {
-            let failure = stamp_error(source_file_digest(&fixture.root, "src/lib.rs"), "src/lib.rs")?;
+            let failure = stamp_error(
+                source_file_digest(&fixture.root, "src/lib.rs"),
+                "src/lib.rs",
+            )?;
             let retained = stamp_error(
-                fixture.authority.ensure_clean().map_err(|error| error.to_string()), "src/lib.rs",
+                fixture
+                    .authority
+                    .ensure_clean()
+                    .map_err(|error| error.to_string()),
+                "src/lib.rs",
             )?;
             assert_eq!(failure, retained);
             Ok::<_, String>(())
@@ -646,18 +713,23 @@ mod tests {
 
     #[cfg(all(target_os = "linux", feature = "lang-rust"))]
     #[test]
-    fn frozen_stamp_binds_root_before_empty_or_lexical_path_projection()
-    -> Result<(), String> {
+    fn frozen_stamp_binds_root_before_empty_or_lexical_path_projection() -> Result<(), String> {
         for (label, subroot) in [("wrong-root", false), ("subroot", true)] {
             let fixture = NamedStampFixture::new(label)?;
-            let wrong = if subroot { fixture.root.join("src") } else { fixture.root.join("../foreign") };
+            let wrong = if subroot {
+                fixture.root.join("src")
+            } else {
+                fixture.root.join("../foreign")
+            };
             frozen::with_context(Some(fixture.authority.clone()), || {
                 assert_eq!(subject_relative_path(&wrong, "src/lib.rs"), None);
+                stamp_error(stamp_source_subject(&wrong, &BTreeSet::new()), "frozen")?;
                 stamp_error(
-                    stamp_source_subject(&wrong, &BTreeSet::new()), "frozen",
-                )?;
-                stamp_error(
-                    fixture.authority.ensure_clean().map_err(|error| error.to_string()), "frozen",
+                    fixture
+                        .authority
+                        .ensure_clean()
+                        .map_err(|error| error.to_string()),
+                    "frozen",
                 )?;
                 Ok::<_, String>(())
             })?;
@@ -665,7 +737,9 @@ mod tests {
         let outside = NamedStampFixture::new("outside-before-io")?;
         let foreign = outside.root.with_extension("outside.rs");
         std::fs::create_dir(&foreign).map_err(|error| error.to_string())?;
-        let name = foreign.file_name().and_then(|name| name.to_str())
+        let name = foreign
+            .file_name()
+            .and_then(|name| name.to_str())
             .ok_or("foreign fixture directory lacks UTF-8 identity")?;
         let relative = format!("../{name}");
         // The ordinary reader reaches the actual directory and reports its
@@ -673,11 +747,15 @@ mod tests {
         let ordinary = stamp_error(source_file_digest(&outside.root, &relative), &relative)?;
         let refused = frozen::with_context(Some(outside.authority.clone()), || {
             let failure = stamp_error(
-                source_file_digest(&outside.root, &relative), "outside repository",
+                source_file_digest(&outside.root, &relative),
+                "outside repository",
             )?;
             assert_ne!(failure, ordinary);
             stamp_error(
-                outside.authority.ensure_clean().map_err(|error| error.to_string()),
+                outside
+                    .authority
+                    .ensure_clean()
+                    .map_err(|error| error.to_string()),
                 "outside repository",
             )?;
             Ok::<_, String>(())
@@ -688,8 +766,7 @@ mod tests {
 
     #[cfg(all(target_os = "linux", feature = "lang-rust"))]
     #[test]
-    fn frozen_stamp_propagates_parse_nonobject_and_keeps_ordinary_fallback()
-    -> Result<(), String> {
+    fn frozen_stamp_propagates_parse_nonobject_and_keeps_ordinary_fallback() -> Result<(), String> {
         let fixture = NamedStampFixture::new("checked-append")?;
         for rendered in ["not-json", "[]"] {
             assert_eq!(
@@ -699,7 +776,11 @@ mod tests {
         }
         frozen::with_context(Some(fixture.authority.clone()), || {
             stamp_error(
-                append_source_subject_member_checked("not-json".into(), &fixture.root, &BTreeSet::new()),
+                append_source_subject_member_checked(
+                    "not-json".into(),
+                    &fixture.root,
+                    &BTreeSet::new(),
+                ),
                 "parse source subject JSON",
             )?;
             stamp_error(
@@ -707,15 +788,27 @@ mod tests {
                 "must be an object",
             )?;
             // Nonsticky parser errors still refuse through the checked API.
-            fixture.authority.ensure_clean().map_err(|error| error.to_string())?;
+            fixture
+                .authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
             assert_eq!(
-                append_source_subject_member_checked("{}\n".into(), &fixture.root, &BTreeSet::new())?,
+                append_source_subject_member_checked(
+                    "{}\n".into(),
+                    &fixture.root,
+                    &BTreeSet::new()
+                )?,
                 "{}\n",
             );
-            let fallback = append_source_subject_member("[]".into(), &fixture.root, &BTreeSet::new());
+            let fallback =
+                append_source_subject_member("[]".into(), &fixture.root, &BTreeSet::new());
             assert_eq!(fallback, "[]");
             stamp_error(
-                fixture.authority.ensure_clean().map_err(|error| error.to_string()), "must be an object",
+                fixture
+                    .authority
+                    .ensure_clean()
+                    .map_err(|error| error.to_string()),
+                "must be an object",
             )?;
             Ok::<_, String>(())
         })
@@ -732,11 +825,17 @@ mod tests {
             if path == root {
                 Ok(root.to_path_buf())
             } else {
-                Err(std::io::Error::new(ErrorKind::PermissionDenied, "resolver refuses outside"))
+                Err(std::io::Error::new(
+                    ErrorKind::PermissionDenied,
+                    "resolver refuses outside",
+                ))
             }
         });
         assert_eq!(path, None);
-        assert_eq!(calls, vec![root.to_path_buf(), std::path::PathBuf::from("/outside.rs")]);
+        assert_eq!(
+            calls,
+            vec![root.to_path_buf(), std::path::PathBuf::from("/outside.rs")]
+        );
         let mut calls = Vec::new();
         let packet = json!({"source_file": "/outside.rs"});
         let paths = shared::actionable_packet_subject_paths_with(root, &packet, &mut |path| {
@@ -744,11 +843,17 @@ mod tests {
             if path == root {
                 Ok(root.to_path_buf())
             } else {
-                Err(std::io::Error::new(ErrorKind::PermissionDenied, "resolver refuses outside"))
+                Err(std::io::Error::new(
+                    ErrorKind::PermissionDenied,
+                    "resolver refuses outside",
+                ))
             }
         });
         assert!(paths.is_empty());
-        assert_eq!(calls, vec![root.to_path_buf(), std::path::PathBuf::from("/outside.rs")]);
+        assert_eq!(
+            calls,
+            vec![root.to_path_buf(), std::path::PathBuf::from("/outside.rs")]
+        );
         Ok(())
     }
 

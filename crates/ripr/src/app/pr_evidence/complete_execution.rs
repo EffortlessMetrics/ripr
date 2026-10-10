@@ -171,7 +171,6 @@ mod tests {
     }
 }
 
-
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 mod whole_worker {
     use super::super::complete_contract::{CompleteVerificationLimits, ProducerSurface};
@@ -182,12 +181,12 @@ mod whole_worker {
     };
     use super::*;
     use crate::analysis::committed_source::staged::{RetainedDirectory, SourceAnchor};
-    use crate::domain::GitObjectId;
     use crate::core_error::CoreError;
-    use crate::process_owner::native_limits::limits;
-    use std::os::unix::ffi::OsStrExt;
+    use crate::domain::GitObjectId;
     use crate::process_owner::ObservedProcessIdentity;
+    use crate::process_owner::native_limits::limits;
     use serde::Deserialize;
+    use std::os::unix::ffi::OsStrExt;
     use std::sync::Arc;
     use std::time::Instant;
 
@@ -240,7 +239,8 @@ mod whole_worker {
                 if text.is_empty() || text.len() > 20 || !text.bytes().all(|b| b.is_ascii_digit()) {
                     return Err("whole worker scalar is not a bounded decimal integer".into());
                 }
-                text.parse::<u64>().map_err(|error| format!("whole worker scalar: {error}"))
+                text.parse::<u64>()
+                    .map_err(|error| format!("whole worker scalar: {error}"))
             };
             let address_space_bytes = number(0)?;
             let file_bytes = number(1)?;
@@ -322,7 +322,9 @@ mod whole_worker {
                         .split('/')
                         .any(|part| part.is_empty() || part == "." || part == "..")
                 {
-                    return Err("whole worker root commitment is not canonical absolute UTF-8".into());
+                    return Err(
+                        "whole worker root commitment is not canonical absolute UTF-8".into(),
+                    );
                 }
             }
             if self.invocation_repository != self.logical_root
@@ -411,7 +413,9 @@ mod whole_worker {
         header.subject_commitment.validate()?;
         header.committed_request.validate()?;
         if !lower_hex(&header.generation_nonce, 32) {
-            return Err("whole worker generation nonce is not 32 lowercase hexadecimal bytes".into());
+            return Err(
+                "whole worker generation nonce is not 32 lowercase hexadecimal bytes".into(),
+            );
         }
         if header.producer_args.is_empty() || header.producer_args.len() > ARGS_MAX {
             return Err("whole worker producer argument count admission exceeded".into());
@@ -465,9 +469,7 @@ mod whole_worker {
 
     fn stable_build() -> Result<&'static str, String> {
         let identity = crate::build_identity::cache_identity();
-        if identity.contains("+process:")
-            || identity.len() > LITERAL_MAX
-            || identity.contains('\0')
+        if identity.contains("+process:") || identity.len() > LITERAL_MAX || identity.contains('\0')
         {
             return Err("whole worker requires a stable compiled build identity".into());
         }
@@ -527,7 +529,9 @@ mod whole_worker {
         }
         for argument in args {
             if actual.next().as_deref() != Some(std::ffi::OsStr::new(argument)) {
-                return Err("whole worker scalar arguments differ from its actual invocation".into());
+                return Err(
+                    "whole worker scalar arguments differ from its actual invocation".into(),
+                );
             }
         }
         if actual.next().is_some() {
@@ -580,7 +584,8 @@ mod whole_worker {
             ProducerSurface::Xtask => crate::cli::commands::git_timeout_from_env(
                 false,
                 std::env::var("RIPR_GIT_TIMEOUT"),
-            )?.unwrap_or(Some(crate::app::default_cli_git_timeout())),
+            )?
+            .unwrap_or(Some(crate::app::default_cli_git_timeout())),
         };
         Ok(CheckInput {
             root: command_root_path(repo, &options.root),
@@ -673,7 +678,9 @@ mod whole_worker {
             fixed: u64,
         ) -> Result<Self, String> {
             profile.validate()?;
-            let remaining = profile.max_buffered_bytes.checked_sub(fixed)
+            let remaining = profile
+                .max_buffered_bytes
+                .checked_sub(fixed)
                 .ok_or("whole worker capture has no retained-byte capacity")?;
             // Reserve simultaneous captures and later decoder/path-copy phases.
             // This is logical payload admission; actual native AS is separate.
@@ -685,17 +692,30 @@ mod whole_worker {
                 usize::try_from(cap)
                     .map_err(|error| format!("whole worker capture cap conversion: {error}"))
             };
-            let names_bound = profile.max_retained_path_bytes
+            let names_bound = profile
+                .max_retained_path_bytes
                 .checked_add(profile.max_inventory_entries)
                 .ok_or("whole worker name framing byte overflow")?;
             let budget = Self {
-                raw: native(share.min(profile.file_size_bytes)
-                    .min(profile.max_artifact_bytes[0]).min(256 * 1024 * 1024))?,
-                presentation: native(share.min(profile.file_size_bytes)
-                    .min(profile.max_artifact_bytes[2]).min(256 * 1024 * 1024))?,
-                names: native(share.min(profile.file_size_bytes)
-                    .min(profile.max_inventory_bytes).min(names_bound)
-                    .min(256 * 1024 * 1024))?,
+                raw: native(
+                    share
+                        .min(profile.file_size_bytes)
+                        .min(profile.max_artifact_bytes[0])
+                        .min(256 * 1024 * 1024),
+                )?,
+                presentation: native(
+                    share
+                        .min(profile.file_size_bytes)
+                        .min(profile.max_artifact_bytes[2])
+                        .min(256 * 1024 * 1024),
+                )?,
+                names: native(
+                    share
+                        .min(profile.file_size_bytes)
+                        .min(profile.max_inventory_bytes)
+                        .min(names_bound)
+                        .min(256 * 1024 * 1024),
+                )?,
                 fixed,
             };
             budget.validate(profile)?;
@@ -709,12 +729,17 @@ mod whole_worker {
                 (self.presentation, profile.max_artifact_bytes[2]),
                 (self.names, profile.max_inventory_bytes),
             ] {
-                if cap == 0 || cap as u64 > bound
-                    || cap as u64 > profile.file_size_bytes || cap > 256 * 1024 * 1024
+                if cap == 0
+                    || cap as u64 > bound
+                    || cap as u64 > profile.file_size_bytes
+                    || cap > 256 * 1024 * 1024
                 {
                     return Err("whole worker original capture cap differs from profile".into());
                 }
-                phase_bytes(profile.max_buffered_bytes, &[self.fixed, stream_bytes(cap)?])?;
+                phase_bytes(
+                    profile.max_buffered_bytes,
+                    &[self.fixed, stream_bytes(cap)?],
+                )?;
             }
             Ok(())
         }
@@ -728,16 +753,20 @@ mod whole_worker {
     }
 
     impl OriginalInputs {
-        pub(in crate::app::pr_evidence) fn into_parts(
-            self,
-        ) -> (Vec<u8>, String, Vec<String>, u64) {
-            (self.raw, self.presentation, self.changed_paths, self.name_bytes)
+        pub(in crate::app::pr_evidence) fn into_parts(self) -> (Vec<u8>, String, Vec<String>, u64) {
+            (
+                self.raw,
+                self.presentation,
+                self.changed_paths,
+                self.name_bytes,
+            )
         }
     }
 
     fn phase_bytes(limit: u64, terms: &[u64]) -> Result<u64, String> {
         let total = terms.iter().try_fold(0_u64, |sum, bytes| {
-            sum.checked_add(*bytes).ok_or("whole worker capture accounting overflow")
+            sum.checked_add(*bytes)
+                .ok_or("whole worker capture accounting overflow")
         })?;
         if total > limit {
             return Err("whole worker original capture buffer admission exceeded".into());
@@ -746,9 +775,11 @@ mod whole_worker {
     }
 
     fn stream_bytes(cap: usize) -> Result<u64, String> {
-        let sentinel = cap.checked_add(1)
+        let sentinel = cap
+            .checked_add(1)
             .ok_or("whole worker capture sentinel overflow")?;
-        (sentinel as u64).checked_mul(2)
+        (sentinel as u64)
+            .checked_mul(2)
             .ok_or_else(|| "whole worker capture stream accounting overflow".into())
     }
 
@@ -761,7 +792,9 @@ mod whole_worker {
             return Err("whole worker name inventory lacks final NUL".into());
         }
         let count = original.iter().filter(|byte| **byte == 0).count();
-        let path_bytes = original.len().checked_sub(count)
+        let path_bytes = original
+            .len()
+            .checked_sub(count)
             .ok_or("whole worker name framing accounting overflow")?;
         if count as u64 > profile.max_inventory_entries
             || path_bytes as u64 > profile.max_retained_path_bytes
@@ -769,17 +802,28 @@ mod whole_worker {
         {
             return Err("whole worker name inventory admission exceeded".into());
         }
-        let slots = count.checked_add(1).ok_or("whole worker name slot overflow")?;
-        let scratch = slots.checked_mul(std::mem::size_of::<&[u8]>())
+        let slots = count
+            .checked_add(1)
+            .ok_or("whole worker name slot overflow")?;
+        let scratch = slots
+            .checked_mul(std::mem::size_of::<&[u8]>())
             .ok_or("whole worker name parser scratch overflow")?;
-        let records = count.checked_mul(
-            std::mem::size_of::<PathBuf>() + std::mem::size_of::<String>(),
-        ).ok_or("whole worker name record accounting overflow")?;
-        let copies = (path_bytes as u64).checked_mul(2)
+        let records = count
+            .checked_mul(std::mem::size_of::<PathBuf>() + std::mem::size_of::<String>())
+            .ok_or("whole worker name record accounting overflow")?;
+        let copies = (path_bytes as u64)
+            .checked_mul(2)
             .ok_or("whole worker name payload accounting overflow")?;
-        phase_bytes(profile.max_buffered_bytes, &[
-            retained, original.len() as u64, scratch as u64, records as u64, copies,
-        ])?;
+        phase_bytes(
+            profile.max_buffered_bytes,
+            &[
+                retained,
+                original.len() as u64,
+                scratch as u64,
+                records as u64,
+                copies,
+            ],
+        )?;
         // Shared parser owns the path grammar. Original bytes own String data.
         let parsed = crate::analysis::parse_git_path_records(original)
             .map_err(|error| format!("whole worker name inventory: {error}"))?;
@@ -787,9 +831,12 @@ mod whole_worker {
             return Err("whole worker parsed name count differs from original records".into());
         }
         let mut names = Vec::new();
-        names.try_reserve_exact(count)
+        names
+            .try_reserve_exact(count)
             .map_err(|error| format!("whole worker name reservation: {error}"))?;
-        let fields = original.strip_suffix(&[0]).unwrap_or(original)
+        let fields = original
+            .strip_suffix(&[0])
+            .unwrap_or(original)
             .split(|byte| *byte == 0);
         for (path, field) in parsed.iter().zip(fields) {
             if path.as_os_str().as_bytes() != field {
@@ -804,7 +851,8 @@ mod whole_worker {
         if names.windows(2).any(|pair| pair[0] == pair[1]) {
             return Err("whole worker name inventory contains duplicate records".into());
         }
-        let charge = (count as u64).checked_mul(std::mem::size_of::<String>() as u64)
+        let charge = (count as u64)
+            .checked_mul(std::mem::size_of::<String>() as u64)
             .and_then(|records| records.checked_add(path_bytes as u64))
             .ok_or("whole worker retained name accounting overflow")?;
         Ok((names, charge))
@@ -828,33 +876,48 @@ mod whole_worker {
             crate::analysis::diff::load::load_canonical_pr_evidence_diff_bytes_bounded(
                 root, base, head, budget.raw,
             )
-        }).map_err(|error| error.to_string())?;
+        })
+        .map_err(|error| error.to_string())?;
         check()?;
-        phase_bytes(profile.max_buffered_bytes, &[
-            budget.fixed, raw.len() as u64, stream_bytes(budget.presentation)?,
-        ])?;
+        phase_bytes(
+            profile.max_buffered_bytes,
+            &[
+                budget.fixed,
+                raw.len() as u64,
+                stream_bytes(budget.presentation)?,
+            ],
+        )?;
         checkpoint(deadline)?;
-        let presentation = crate::git::with_complete_capture_restriction(
-            deadline, budget.presentation, || {
+        let presentation =
+            crate::git::with_complete_capture_restriction(deadline, budget.presentation, || {
                 crate::analysis::load_pr_evidence_diff_range(root, base, head)
                     .map_err(CoreError::message)
-            },
-        ).map_err(|error| error.to_string())?;
+            })
+            .map_err(|error| error.to_string())?;
         check()?;
-        let retained = phase_bytes(profile.max_buffered_bytes, &[
-            budget.fixed, raw.len() as u64, presentation.len() as u64,
-        ])?;
-        phase_bytes(profile.max_buffered_bytes, &[retained, stream_bytes(budget.names)?])?;
+        let retained = phase_bytes(
+            profile.max_buffered_bytes,
+            &[budget.fixed, raw.len() as u64, presentation.len() as u64],
+        )?;
+        phase_bytes(
+            profile.max_buffered_bytes,
+            &[retained, stream_bytes(budget.names)?],
+        )?;
         checkpoint(deadline)?;
         let range = format!("{base}...{head}");
         let output = crate::git::with_complete_capture_restriction(deadline, budget.names, || {
             crate::git::run_git_output_with_deadline(
-                root, &["diff", "--name-only", "-z", &range], Some(Duration::from_mins(5)),
+                root,
+                &["diff", "--name-only", "-z", &range],
+                Some(Duration::from_mins(5)),
             )
-        }).map_err(|error| error.to_string())?;
+        })
+        .map_err(|error| error.to_string())?;
         if !output.status.success() {
-            return Err(format!("whole worker full name inventory failed: {}",
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(format!(
+                "whole worker full name inventory failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
         check()?;
         let original_names = output.stdout;
@@ -862,7 +925,12 @@ mod whole_worker {
         let (changed_paths, name_bytes) = bound_original_names(&original_names, profile, retained)?;
         check()?;
         checkpoint(deadline)?;
-        Ok(OriginalInputs { raw, presentation, changed_paths, name_bytes })
+        Ok(OriginalInputs {
+            raw,
+            presentation,
+            changed_paths,
+            name_bytes,
+        })
     }
 
     /// Worker-local authenticated invocation; no data constructor or cleanup grant.
@@ -940,12 +1008,10 @@ mod whole_worker {
                 self.entry.scalars.deadline,
             )?;
             stage.require_role_entries(self.entry.scalars.deadline)?;
-            let source = stage.open_child(
-                "source",
-                &self.stage.source,
-                self.entry.scalars.deadline,
-            )?;
-            let spool = stage.open_child("spool", &self.stage.spool, self.entry.scalars.deadline)?;
+            let source =
+                stage.open_child("source", &self.stage.source, self.entry.scalars.deadline)?;
+            let spool =
+                stage.open_child("spool", &self.stage.spool, self.entry.scalars.deadline)?;
             let artifacts = stage.open_child(
                 "artifacts",
                 &self.stage.artifacts,
@@ -967,13 +1033,17 @@ mod whole_worker {
             self.stage_current()?;
             let deadline = self.entry.scalars.deadline;
             RetainedDirectory::open_absolute(
-                &self.stage.spool, self.profile.max_retained_path_bytes.min(LITERAL_MAX as u64),
+                &self.stage.spool,
+                self.profile.max_retained_path_bytes.min(LITERAL_MAX as u64),
                 deadline,
-            )?.require_empty(deadline)?;
+            )?
+            .require_empty(deadline)?;
             RetainedDirectory::open_absolute(
-                &self.stage.artifacts, self.profile.max_retained_path_bytes.min(LITERAL_MAX as u64),
+                &self.stage.artifacts,
+                self.profile.max_retained_path_bytes.min(LITERAL_MAX as u64),
                 deadline,
-            )?.require_empty(deadline)?;
+            )?
+            .require_empty(deadline)?;
             checkpoint(deadline)
         }
 
@@ -993,8 +1063,12 @@ mod whole_worker {
             require_whole_invocation_root(subject)?;
             self.capture_current()?;
             capture_original_data(
-                &subject.root, subject.base_commit.as_str(), subject.head_commit.as_str(),
-                &self.profile, &budget, self.entry.scalars.deadline,
+                &subject.root,
+                subject.base_commit.as_str(),
+                subject.head_commit.as_str(),
+                &self.profile,
+                &budget,
+                self.entry.scalars.deadline,
                 || self.capture_current(),
             )
         }
@@ -1025,7 +1099,9 @@ mod whole_worker {
             || header.parent.group != entry.parent.group()
             || (header.parent.address_space_bytes, header.parent.file_bytes) != entry.parent_limits
         {
-            return Err("whole worker startup parent differs from actual native observation".into());
+            return Err(
+                "whole worker startup parent differs from actual native observation".into(),
+            );
         }
         if stable_build()? != header.build_identity {
             return Err("whole worker startup build differs from actual compiled identity".into());
@@ -1048,7 +1124,9 @@ mod whole_worker {
         let subject = request.resolve_whole_subject(&options)?;
         require_whole_invocation_root(&subject)?;
         if !header.subject_commitment.matches(&subject, &options) {
-            return Err("whole worker complete subject differs from authentic Git resolution".into());
+            return Err(
+                "whole worker complete subject differs from authentic Git resolution".into(),
+            );
         }
         let check = surface_seed(&repo, &options, header.surface)?;
         let startup = NativeStartup::authenticate(
@@ -1100,8 +1178,7 @@ mod whole_worker {
 
         fn scalars() -> Result<Scalars, String> {
             Scalars::parse(
-                &["1073741824", "16777216", "10000", "65536"]
-                    .map(str::to_string),
+                &["1073741824", "16777216", "10000", "65536"].map(str::to_string),
                 Instant::now(),
             )
         }
@@ -1112,8 +1189,11 @@ mod whole_worker {
             let binding = super::super::super::complete_contract::tests::fixture_binding()?;
             let mut subject = serde_json::to_value(&binding.subject)
                 .map_err(|error| format!("startup subject fixture: {error}"))?;
-            subject.as_object_mut().ok_or("subject fixture is not an object")?
-                .remove("changed_paths").ok_or("subject fixture lacks changed_paths")?;
+            subject
+                .as_object_mut()
+                .ok_or("subject fixture is not an object")?
+                .remove("changed_paths")
+                .ok_or("subject fixture lacks changed_paths")?;
             let mut profile = binding.profile;
             profile.address_space_bytes = 1073741824;
             profile.file_size_bytes = 16777216;
@@ -1152,10 +1232,13 @@ mod whole_worker {
         fn closed_worker_entry_refuses_bad_scalars_before_stdin_or_continuation()
         -> Result<(), String> {
             let called = std::cell::Cell::new(false);
-            refusal(with_whole_worker(&[], |_, _, _, _, _, _, _| {
-                called.set(true);
-                Err("continuation must not run".into())
-            }), "exactly four")?;
+            refusal(
+                with_whole_worker(&[], |_, _, _, _, _, _, _| {
+                    called.set(true);
+                    Err("continuation must not run".into())
+                }),
+                "exactly four",
+            )?;
             assert!(!called.get());
             for args in [
                 ["1", "1", "0", "65536"],
@@ -1163,12 +1246,18 @@ mod whole_worker {
                 ["1", "1", "1", "65537"],
                 ["1", "1", "invalid", "65536"],
             ] {
-                refusal(Scalars::parse(&args.map(str::to_string), Instant::now()), "whole worker")?;
+                refusal(
+                    Scalars::parse(&args.map(str::to_string), Instant::now()),
+                    "whole worker",
+                )?;
             }
-            let entered = Instant::now().checked_sub(Duration::from_secs(1))
+            let entered = Instant::now()
+                .checked_sub(Duration::from_secs(1))
                 .ok_or("expired scalar fixture clock unavailable")?;
-            refusal(Scalars::parse(&["1", "1", "1", "65536"].map(str::to_string), entered),
-                "original deadline exhausted")?;
+            refusal(
+                Scalars::parse(&["1", "1", "1", "65536"].map(str::to_string), entered),
+                "original deadline exhausted",
+            )?;
             Ok(())
         }
 
@@ -1177,18 +1266,19 @@ mod whole_worker {
         -> Result<(), String> {
             let valid = "Max address space 1073741824 1073741824 bytes\nMax file size 16777216 16777216 bytes\nMax core file size 0 0 bytes\n";
             assert_eq!(parent_profile_from_limits(valid)?, (1073741824, 16777216));
-            for address_space in [
-                "0 0",
-                "1073741824 2147483648",
-                "2147483649 2147483649",
-            ] {
+            for address_space in ["0 0", "1073741824 2147483648", "2147483649 2147483649"] {
                 let malformed = format!(
                     "Max address space {address_space} bytes\nMax file size unlimited unlimited bytes\nMax core file size unlimited unlimited bytes\n",
                 );
-                refusal(parent_profile_from_limits(&malformed), "Max address space is not")?;
+                refusal(
+                    parent_profile_from_limits(&malformed),
+                    "Max address space is not",
+                )?;
             }
             refusal(
-                parent_profile_from_limits(&valid.replace("16777216 16777216", "unlimited unlimited")),
+                parent_profile_from_limits(
+                    &valid.replace("16777216 16777216", "unlimited unlimited"),
+                ),
                 "nonfinite Max file size",
             )?;
             refusal(
@@ -1218,7 +1308,10 @@ mod whole_worker {
             refusal(decode_header(&encode(&unknown)?, &scalars), "unknown field")?;
             let text = std::str::from_utf8(&bytes).map_err(|error| error.to_string())?;
             let duplicate = format!("{{\"schema_version\":\"{STARTUP_SCHEMA}\",{}", &text[1..]);
-            refusal(decode_header(duplicate.as_bytes(), &scalars), "duplicate field")?;
+            refusal(
+                decode_header(duplicate.as_bytes(), &scalars),
+                "duplicate field",
+            )?;
             let mut trailing = bytes.clone();
             trailing.extend_from_slice(b"{}");
             refusal(decode_header(&trailing, &scalars), "trailing characters")?;
@@ -1234,10 +1327,16 @@ mod whole_worker {
             let supported = header_value()?;
             let header = decode_header(&encode(&supported)?, &scalars)?;
             require_fixed_stage(&header.stage)?;
-            for path in ["/tmp/ripr-complete-retained", "/var/tmp/ripr-complete-retained/other"] {
+            for path in [
+                "/tmp/ripr-complete-retained",
+                "/var/tmp/ripr-complete-retained/other",
+            ] {
                 let mut invalid = supported.clone();
                 invalid["stage"]["stage"]["path"] = json!(path);
-                refusal(decode_header(&encode(&invalid)?, &scalars), "stage namespace override")?;
+                refusal(
+                    decode_header(&encode(&invalid)?, &scalars),
+                    "stage namespace override",
+                )?;
             }
             Ok(())
         }
@@ -1246,13 +1345,37 @@ mod whole_worker {
         fn startup_profiles_literals_and_argument_growth_fail_closed() -> Result<(), String> {
             let scalars = scalars()?;
             for (path, value, cause) in [
-                ("/profile/address_space_bytes", json!(1073741825_u64), "admitted scalar"),
+                (
+                    "/profile/address_space_bytes",
+                    json!(1073741825_u64),
+                    "admitted scalar",
+                ),
                 ("/profile/deadline_ms", json!(9999), "admitted scalar"),
-                ("/generation_nonce", json!("b".repeat(31)), "generation nonce"),
-                ("/subject_commitment/requested_base", json!("bad\nbase"), "original literal"),
-                ("/subject_commitment/logical_root", json!("/repo/./"), "canonical absolute"),
-                ("/subject_commitment/origin_tree", json!("A".repeat(40)), "canonical"),
-                ("/profile/max_buffered_bytes", json!(1), "logical payload admission"),
+                (
+                    "/generation_nonce",
+                    json!("b".repeat(31)),
+                    "generation nonce",
+                ),
+                (
+                    "/subject_commitment/requested_base",
+                    json!("bad\nbase"),
+                    "original literal",
+                ),
+                (
+                    "/subject_commitment/logical_root",
+                    json!("/repo/./"),
+                    "canonical absolute",
+                ),
+                (
+                    "/subject_commitment/origin_tree",
+                    json!("A".repeat(40)),
+                    "canonical",
+                ),
+                (
+                    "/profile/max_buffered_bytes",
+                    json!(1),
+                    "logical payload admission",
+                ),
             ] {
                 let mut invalid = header_value()?;
                 *invalid.pointer_mut(path).ok_or("invalid fixture path")? = value;
@@ -1260,10 +1383,16 @@ mod whole_worker {
             }
             let mut too_many = header_value()?;
             too_many["producer_args"] = json!(vec!["--root"; ARGS_MAX + 1]);
-            refusal(decode_header(&encode(&too_many)?, &scalars), "argument count")?;
+            refusal(
+                decode_header(&encode(&too_many)?, &scalars),
+                "argument count",
+            )?;
             let mut too_long = header_value()?;
             too_long["producer_args"][0] = json!("x".repeat(LITERAL_MAX + 1));
-            refusal(decode_header(&encode(&too_long)?, &scalars), "original literal")?;
+            refusal(
+                decode_header(&encode(&too_long)?, &scalars),
+                "original literal",
+            )?;
             Ok(())
         }
 
@@ -1276,7 +1405,10 @@ mod whole_worker {
             let decoded = read_header(std::io::Cursor::new(&bytes), &limits)?;
             assert_eq!(decoded.schema_version, STARTUP_SCHEMA);
             limits.startup_cap = limits.startup_cap.checked_sub(1).ok_or("empty fixture")?;
-            refusal(read_header(std::io::Cursor::new(&bytes), &limits), "input exceeds")?;
+            refusal(
+                read_header(std::io::Cursor::new(&bytes), &limits),
+                "input exceeds",
+            )?;
             struct FailingRead(bool);
             impl Read for FailingRead {
                 fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
@@ -1294,11 +1426,16 @@ mod whole_worker {
                     Ok(1)
                 }
             }
-            refusal(read_header(FailingRead(false), &scalars()?), "actual partial read failure")?;
-            refusal(read_header(std::io::Cursor::new([0xff]), &scalars()?), "valid UTF-8")?;
+            refusal(
+                read_header(FailingRead(false), &scalars()?),
+                "actual partial read failure",
+            )?;
+            refusal(
+                read_header(std::io::Cursor::new([0xff]), &scalars()?),
+                "valid UTF-8",
+            )?;
             Ok(())
         }
-
 
         #[test]
         fn actual_nested_invocation_with_absolute_whole_root_refuses_before_whole_entry()
@@ -1313,29 +1450,41 @@ mod whole_worker {
             }
             let stamp = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|error| error.to_string())?.as_nanos();
+                .map_err(|error| error.to_string())?
+                .as_nanos();
             let fixture = Fixture(std::env::temp_dir().join(format!(
-                "ripr-whole-worker-nested-{}-{stamp}", std::process::id(),
+                "ripr-whole-worker-nested-{}-{stamp}",
+                std::process::id(),
             )));
-            fs::create_dir_all(fixture.0.join("nested"))
-                .map_err(|error| error.to_string())?;
+            fs::create_dir_all(fixture.0.join("nested")).map_err(|error| error.to_string())?;
             fixture_git_ok(
                 &fixture.0,
                 &["-c", "init.templateDir=", "init", "--quiet", "-b", "whole"],
             )?;
             fixture_git_ok(
                 &fixture.0,
-                &["config", "--local", "user.name", "RIPR whole worker fixture"],
+                &[
+                    "config",
+                    "--local",
+                    "user.name",
+                    "RIPR whole worker fixture",
+                ],
             )?;
             fixture_git_ok(
                 &fixture.0,
                 &["config", "--local", "user.email", "whole@example.invalid"],
             )?;
-            fixture_git_ok(&fixture.0, &["config", "--local", "commit.gpgsign", "false"])?;
+            fixture_git_ok(
+                &fixture.0,
+                &["config", "--local", "commit.gpgsign", "false"],
+            )?;
             fs::write(fixture.0.join("outside.rs"), "pub const OUTSIDE: u8 = 1;\n")
                 .map_err(|error| error.to_string())?;
-            fs::write(fixture.0.join("nested/inside.rs"), "pub const INSIDE: u8 = 1;\n")
-                .map_err(|error| error.to_string())?;
+            fs::write(
+                fixture.0.join("nested/inside.rs"),
+                "pub const INSIDE: u8 = 1;\n",
+            )
+            .map_err(|error| error.to_string())?;
             fixture_git_ok(&fixture.0, &["add", "--", "outside.rs", "nested/inside.rs"])?;
             fixture_git_ok(&fixture.0, &["commit", "--quiet", "-m", "whole base"])?;
             fixture_git_ok(&fixture.0, &["tag", "whole-base"])?;
@@ -1346,18 +1495,28 @@ mod whole_worker {
             ).map_err(|error| error.to_string())?;
             fs::write(fixture.0.join("outside.rs"), "pub const OUTSIDE: u8 = 2;\n")
                 .map_err(|error| error.to_string())?;
-            fs::write(fixture.0.join("nested/inside.rs"), "pub const INSIDE: u8 = 2;\n")
-                .map_err(|error| error.to_string())?;
-            fixture_git_ok(&fixture.0, &["add", "--", ".ripr", "outside.rs", "nested/inside.rs"])?;
+            fs::write(
+                fixture.0.join("nested/inside.rs"),
+                "pub const INSIDE: u8 = 2;\n",
+            )
+            .map_err(|error| error.to_string())?;
+            fixture_git_ok(
+                &fixture.0,
+                &["add", "--", ".ripr", "outside.rs", "nested/inside.rs"],
+            )?;
             fixture_git_ok(&fixture.0, &["commit", "--quiet", "-m", "whole request"])?;
             let root = fs::canonicalize(&fixture.0).map_err(|error| error.to_string())?;
-            let nested = fs::canonicalize(root.join("nested")).map_err(|error| error.to_string())?;
+            let nested =
+                fs::canonicalize(root.join("nested")).map_err(|error| error.to_string())?;
             let options = PrEvidenceOptions {
                 root: root.to_str().ok_or("fixture root is not UTF-8")?.into(),
-                base: "refs/tags/whole-base".into(), base_explicit: true,
-                head: "HEAD".into(), check: false,
+                base: "refs/tags/whole-base".into(),
+                base_explicit: true,
+                head: "HEAD".into(),
+                check: false,
             };
-            let deadline = Instant::now().checked_add(Duration::from_secs(30))
+            let deadline = Instant::now()
+                .checked_add(Duration::from_secs(30))
                 .ok_or("fixture deadline overflow")?;
             let mut request = match select_request_with_deadline(&nested, "HEAD", deadline)? {
                 RequestedRoute::Complete(request) => request,
@@ -1366,10 +1525,16 @@ mod whole_worker {
                 }
             };
             let subject = request.resolve_whole_subject(&options)?;
-            assert_eq!(subject.invocation_repository.as_os_str(), nested.as_os_str());
+            assert_eq!(
+                subject.invocation_repository.as_os_str(),
+                nested.as_os_str()
+            );
             assert_eq!(subject.root.as_os_str(), root.as_os_str());
             assert_eq!(subject.work_tree.as_os_str(), root.as_os_str());
-            refusal(require_whole_invocation_root(&subject), "nested invocation is unsupported")?;
+            refusal(
+                require_whole_invocation_root(&subject),
+                "nested invocation is unsupported",
+            )?;
             // The same real committed policy and whole subject are supported
             // from the existing production invocation root; no token is forged.
             let mut supported = match select_request_with_deadline(&root, "HEAD", deadline)? {
@@ -1385,8 +1550,11 @@ mod whole_worker {
         fn surface_seed_preserves_input_base_selection_and_all_native_path_spelling()
         -> Result<(), String> {
             let options = PrEvidenceOptions {
-                root: ".".into(), base: "original-base".into(), base_explicit: true,
-                head: "original-head".into(), check: false,
+                root: ".".into(),
+                base: "original-base".into(),
+                base_explicit: true,
+                head: "original-head".into(),
+                check: false,
             };
             let installed = surface_seed(Path::new("/repo"), &options, ProducerSurface::Installed)?;
             assert_eq!(installed.base, None);
@@ -1399,8 +1567,10 @@ mod whole_worker {
             different.root = PathBuf::from("/repo");
             assert!(!same_check(&installed, &different));
             let timeout = crate::cli::commands::git_timeout_from_env(
-                false, std::env::var("RIPR_GIT_TIMEOUT"),
-            )?.unwrap_or(Some(crate::app::default_cli_git_timeout()));
+                false,
+                std::env::var("RIPR_GIT_TIMEOUT"),
+            )?
+            .unwrap_or(Some(crate::app::default_cli_git_timeout()));
             let xtask = surface_seed(Path::new("/repo"), &options, ProducerSurface::Xtask)?;
             assert_eq!(xtask.base.as_deref(), Some("original-base"));
             assert_eq!(xtask.git_timeout, timeout);
@@ -1408,24 +1578,32 @@ mod whole_worker {
             Ok(())
         }
 
-
         fn capture_profile() -> Result<CompleteVerificationLimits, String> {
             Ok(super::super::super::complete_contract::tests::fixture_binding()?.profile)
         }
 
         #[test]
-        fn original_name_records_use_shared_grammar_and_preserve_native_bytes()
-        -> Result<(), String> {
+        fn original_name_records_use_shared_grammar_and_preserve_native_bytes() -> Result<(), String>
+        {
             let profile = capture_profile()?;
             let original = "z\nline.rs\0a\tλ.py\0deleted.rs\0binary.dat\0";
             let (names, charge) = bound_original_names(original.as_bytes(), &profile, 0)?;
             assert_eq!(names, ["a\tλ.py", "binary.dat", "deleted.rs", "z\nline.rs"]);
             assert!(charge >= original.len() as u64 - 4);
-            assert_eq!(bound_original_names(b"", &profile, 0)?.0, Vec::<String>::new());
+            assert_eq!(
+                bound_original_names(b"", &profile, 0)?.0,
+                Vec::<String>::new()
+            );
             refusal(bound_original_names(b"a.rs", &profile, 0), "final NUL")?;
             refusal(bound_original_names(b"a.rs\0\0", &profile, 0), "is empty")?;
-            refusal(bound_original_names(b"a\xff.rs\0", &profile, 0), "not valid UTF-8")?;
-            refusal(bound_original_names(b"a.rs\0a.rs\0", &profile, 0), "duplicate records")?;
+            refusal(
+                bound_original_names(b"a\xff.rs\0", &profile, 0),
+                "not valid UTF-8",
+            )?;
+            refusal(
+                bound_original_names(b"a.rs\0a.rs\0", &profile, 0),
+                "duplicate records",
+            )?;
             Ok(())
         }
 
@@ -1435,15 +1613,26 @@ mod whole_worker {
             let profile = capture_profile()?;
             let mut limited = profile.clone();
             limited.max_inventory_entries = 1;
-            refusal(bound_original_names(b"a\0b\0", &limited, 0), "inventory admission")?;
+            refusal(
+                bound_original_names(b"a\0b\0", &limited, 0),
+                "inventory admission",
+            )?;
             limited = profile.clone();
             limited.max_retained_path_bytes = 1;
-            refusal(bound_original_names(b"aa\0", &limited, 0), "inventory admission")?;
+            refusal(
+                bound_original_names(b"aa\0", &limited, 0),
+                "inventory admission",
+            )?;
             limited = profile.clone();
             limited.max_inventory_bytes = 1;
-            refusal(bound_original_names(b"a\0", &limited, 0), "inventory admission")?;
-            refusal(bound_original_names(b"a\0", &profile, profile.max_buffered_bytes),
-                "buffer admission")?;
+            refusal(
+                bound_original_names(b"a\0", &limited, 0),
+                "inventory admission",
+            )?;
+            refusal(
+                bound_original_names(b"a\0", &profile, profile.max_buffered_bytes),
+                "buffer admission",
+            )?;
             refusal(phase_bytes(u64::MAX, &[u64::MAX, 1]), "accounting overflow")?;
             refusal(stream_bytes(usize::MAX), "sentinel overflow")?;
             assert_eq!(bound_original_names(b"a\0", &profile, 0)?.0, ["a"]);
@@ -1461,9 +1650,11 @@ mod whole_worker {
                 use crate::testing::fixture_git::fixture_git_ok;
                 let stamp = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
-                    .map_err(|error| error.to_string())?.as_nanos();
+                    .map_err(|error| error.to_string())?
+                    .as_nanos();
                 let fixture = Self(std::env::temp_dir().join(format!(
-                    "ripr-whole-original-{}-{stamp}", std::process::id(),
+                    "ripr-whole-original-{}-{stamp}",
+                    std::process::id(),
                 )));
                 fs::create_dir_all(&fixture.0).map_err(|error| error.to_string())?;
                 let git = |args: &[&str]| fixture_git_ok(&fixture.0, args);
@@ -1486,11 +1677,17 @@ mod whole_worker {
                 git(&["commit", "--quiet", "-m", "capture base"])?;
                 let revision = || -> Result<String, String> {
                     let output = crate::git::run_git_output_with_deadline_and_limit_isolated(
-                        &fixture.0, &["rev-parse", "HEAD"], Duration::from_secs(30), 4096,
-                    ).map_err(|error| error.to_string())?;
+                        &fixture.0,
+                        &["rev-parse", "HEAD"],
+                        Duration::from_secs(30),
+                        4096,
+                    )
+                    .map_err(|error| error.to_string())?;
                     if !output.status.success() {
-                        return Err(format!("capture fixture revision failed: {}",
-                            String::from_utf8_lossy(&output.stderr)));
+                        return Err(format!(
+                            "capture fixture revision failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
                     }
                     String::from_utf8(output.stdout)
                         .map(|text| text.trim().to_string())
@@ -1504,7 +1701,8 @@ mod whole_worker {
                     .map_err(|error| error.to_string())?;
                 let mut binary = vec![0_u8; 65537];
                 binary[65536] = 0xff;
-                fs::write(fixture.0.join("binary.dat"), binary).map_err(|error| error.to_string())?;
+                fs::write(fixture.0.join("binary.dat"), binary)
+                    .map_err(|error| error.to_string())?;
                 fs::write(fixture.0.join("λ\tline\nname.py"), b"VALUE = 2\n")
                     .map_err(|error| error.to_string())?;
                 git(&["add", "--all"])?;
@@ -1520,25 +1718,55 @@ mod whole_worker {
             let (fixture, base, head) = CaptureFixture::new()?;
             let profile = capture_profile()?;
             let budget = CaptureBudget::new(&profile, 0)?;
-            let deadline = Instant::now().checked_add(Duration::from_secs(60))
+            let deadline = Instant::now()
+                .checked_add(Duration::from_secs(60))
                 .ok_or("capture fixture deadline overflow")?;
             let called = std::cell::Cell::new(0);
             let captured = capture_original_data(
-                &fixture.0, &base, &head, &profile, &budget, deadline,
-                || { called.set(called.get() + 1); Ok(()) },
+                &fixture.0,
+                &base,
+                &head,
+                &profile,
+                &budget,
+                deadline,
+                || {
+                    called.set(called.get() + 1);
+                    Ok(())
+                },
             )?;
-            assert!(called.get() >= 5, "capture did not reach every actual phase");
-            assert_eq!(captured.raw,
+            assert!(
+                called.get() >= 5,
+                "capture did not reach every actual phase"
+            );
+            assert_eq!(
+                captured.raw,
                 crate::analysis::diff::load::load_canonical_pr_evidence_diff_bytes_bounded(
                     &fixture.0, &base, &head, budget.raw,
-                ).map_err(|error| error.to_string())?);
-            assert_eq!(captured.presentation,
-                crate::analysis::load_pr_evidence_diff_range(&fixture.0, &base, &head)?);
-            assert_eq!(captured.changed_paths, [
-                "binary.dat", "deleted.rs", "nested/a.rs", "outside.rs", "λ\tline\nname.py",
-            ]);
+                )
+                .map_err(|error| error.to_string())?
+            );
+            assert_eq!(
+                captured.presentation,
+                crate::analysis::load_pr_evidence_diff_range(&fixture.0, &base, &head)?
+            );
+            assert_eq!(
+                captured.changed_paths,
+                [
+                    "binary.dat",
+                    "deleted.rs",
+                    "nested/a.rs",
+                    "outside.rs",
+                    "λ\tline\nname.py",
+                ]
+            );
             let zero = capture_original_data(
-                &fixture.0, &head, &head, &profile, &budget, deadline, || Ok(()),
+                &fixture.0,
+                &head,
+                &head,
+                &profile,
+                &budget,
+                deadline,
+                || Ok(()),
             )?;
             assert!(zero.raw.is_empty());
             assert!(zero.presentation.is_empty());
@@ -1551,19 +1779,30 @@ mod whole_worker {
         -> Result<(), String> {
             let (fixture, base, head) = CaptureFixture::new()?;
             let profile = capture_profile()?;
-            let deadline = Instant::now().checked_add(Duration::from_secs(60))
+            let deadline = Instant::now()
+                .checked_add(Duration::from_secs(60))
                 .ok_or("capture refusal fixture deadline overflow")?;
             let budget = CaptureBudget::new(&profile, 0)?;
             let called = std::cell::Cell::new(0);
-            refusal(capture_original_data(
-                &fixture.0, &base, &head, &profile, &budget, deadline,
-                || {
-                    called.set(called.get() + 1);
-                    if called.get() == 3 {
-                        Err("actual post-presentation custody refusal".into())
-                    } else { Ok(()) }
-                },
-            ), "post-presentation custody refusal")?;
+            refusal(
+                capture_original_data(
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &profile,
+                    &budget,
+                    deadline,
+                    || {
+                        called.set(called.get() + 1);
+                        if called.get() == 3 {
+                            Err("actual post-presentation custody refusal".into())
+                        } else {
+                            Ok(())
+                        }
+                    },
+                ),
+                "post-presentation custody refusal",
+            )?;
             assert_eq!(called.get(), 3);
             // Each cap is applied to a real original helper. Earlier phases
             // are admitted; no synthetic collector success or QWI is created.
@@ -1575,19 +1814,38 @@ mod whole_worker {
                     _ => budget.names = 1,
                 }
                 let result = capture_original_data(
-                    &fixture.0, &base, &head, &profile, &budget, deadline, || Ok(()),
+                    &fixture.0,
+                    &base,
+                    &head,
+                    &profile,
+                    &budget,
+                    deadline,
+                    || Ok(()),
                 );
                 match result {
-                    Err(error) if error.contains("limit") || error.contains("cap")
-                        || error.contains("exceed") => {}
+                    Err(error)
+                        if error.contains("limit")
+                            || error.contains("cap")
+                            || error.contains("exceed") => {}
                     Err(error) => return Err(format!("wrong actual capture cap refusal: {error}")),
                     Ok(_) => return Err(format!("original capture phase {phase} ignored its cap")),
                 }
             }
             let recovered = capture_original_data(
-                &fixture.0, &base, &head, &profile, &budget, deadline, || Ok(()),
+                &fixture.0,
+                &base,
+                &head,
+                &profile,
+                &budget,
+                deadline,
+                || Ok(()),
             )?;
-            assert!(recovered.changed_paths.iter().any(|path| path == "deleted.rs"));
+            assert!(
+                recovered
+                    .changed_paths
+                    .iter()
+                    .any(|path| path == "deleted.rs")
+            );
             Ok(())
         }
 
@@ -1596,15 +1854,28 @@ mod whole_worker {
         -> Result<(), String> {
             let profile = capture_profile()?;
             let budget = CaptureBudget::new(&profile, 0)?;
-            refusal(capture_original_data(
-                Path::new("/missing-whole-capture"), &"1".repeat(40), &"2".repeat(40),
-                &profile, &budget, Instant::now(), || Ok(()),
-            ), "deadline")?;
-            refusal(CaptureBudget::new(&profile, profile.max_buffered_bytes), "capacity")?;
+            refusal(
+                capture_original_data(
+                    Path::new("/missing-whole-capture"),
+                    &"1".repeat(40),
+                    &"2".repeat(40),
+                    &profile,
+                    &budget,
+                    Instant::now(),
+                    || Ok(()),
+                ),
+                "deadline",
+            )?;
+            refusal(
+                CaptureBudget::new(&profile, profile.max_buffered_bytes),
+                "capacity",
+            )?;
             Ok(())
         }
     }
 }
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-pub(super) use whole_worker::{CaptureBudget, QualifiedWholeInvocation, WHOLE_WORKER_FLAG, with_whole_worker};
+pub(super) use whole_worker::{
+    CaptureBudget, QualifiedWholeInvocation, WHOLE_WORKER_FLAG, with_whole_worker,
+};
