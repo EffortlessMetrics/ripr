@@ -430,6 +430,17 @@ fn verify_configuration(
         // Actual xtask run_ripr_check passes --no-unchanged-tests explicitly.
         ProducerSurface::Xtask => false,
     };
+    let declared_input_base = match options.surface {
+        ProducerSurface::Installed => None,
+        ProducerSurface::Xtask => Some(expected.subject.requested_base.as_str()),
+    };
+    if options.check_input_base.as_deref() != declared_input_base
+        || (options.surface == ProducerSurface::Installed && options.git_timeout_ms.is_some())
+    {
+        return Err("actual supplied-diff declared input surface differs from binding".into());
+    }
+    // Declared input base is serialized separately. The supplied canonical
+    // loader still reports effective base None in check/outcome below.
     if options.config_identity_version != crate::config::CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION
         || options.config_identity_hash
             != crate::config::check_artifact_config_identity_hash(&config)
@@ -1304,12 +1315,26 @@ mod tests {
     fn saved_fixture(
         source: &frozen::tests::Fixture,
     ) -> Result<(CompleteBinding, [Vec<u8>; 9]), String> {
+        saved_fixture_for_surface(source, ProducerSurface::Installed)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn saved_fixture_for_surface(
+        source: &frozen::tests::Fixture,
+        surface: ProducerSurface,
+    ) -> Result<(CompleteBinding, [Vec<u8>; 9]), String> {
         use super::super::raw_coverage::build_raw_coverage;
         use crate::analysis::git_candidate_execution::CapturedConfiguration;
         use crate::analysis_outcome::{
             AnalysisIdentity, AnalysisOutcomeCounts, AnalysisOutcomeKind,
         };
         let mut binding = fixture_binding()?;
+        binding.effective_options.surface = surface;
+        if surface == ProducerSurface::Xtask {
+            binding.effective_options.include_unchanged_tests = false;
+            binding.effective_options.check_input_base = Some(binding.subject.requested_base.clone());
+            binding.effective_options.git_timeout_ms = Some(300_000);
+        }
         let logical = source
             .logical
             .to_str()
@@ -2061,6 +2086,77 @@ mod tests {
             assert_eq!(recovered.generation_id(), old_generation);
             assert_eq!(recovered.total_finding_count(), 1);
             Ok(())
+        })
+    }
+
+    #[test]
+    fn wrong_declared_input_base_refuses_before_stage_or_frozen_authority()
+        -> Result<(), String> {
+        let mut binding = fixture_binding()?;
+        binding.effective_options.surface = ProducerSurface::Xtask;
+        binding.effective_options.include_unchanged_tests = false;
+        binding.effective_options.check_input_base = Some("wrong-original-base".into());
+        binding.effective_options.git_timeout_ms = Some(300_000);
+        let error = require_error(verify_staged_generation(
+            Path::new("/absent-complete-stage"), &binding, &binding.profile,
+        ), "wrong declared input base reached stage verification")?;
+        assert!(error.to_string().contains("xtask declared input base differs"),
+            "wrong precedence: {error}");
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn xtask_input_base_is_bound_while_saved_effective_base_stays_absent()
+        -> Result<(), String> {
+        let source = frozen_source_fixture()?;
+        let stage = stage()?;
+        frozen::with_context(Some(source.authority.clone()), || -> Result<(), String> {
+            let (binding, original) = saved_fixture_for_surface(&source, ProducerSurface::Xtask)?;
+            let wire: CompleteCheck = payload(&original[ArtifactRole::FullCheck.ordinal()],
+                ArtifactRole::FullCheck, &binding.generation_id()?)?;
+            assert_eq!(wire.effective_options.check_input_base.as_deref(), Some("base"));
+            assert!(wire.check["base"].is_null());
+            let outcome: AnalysisOutcome = serde_json::from_value(
+                wire.check["analysis_outcome"]["outcome"].clone(),
+            ).map_err(|error| error.to_string())?;
+            assert_eq!(outcome.identity.base_revision, None,
+                "declared input must not replace effective supplied-diff provenance");
+            save_fixture(&stage.0, &binding, &original)?;
+            let proof = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(proof.total_finding_count(), 1);
+            for (pointer, wrong) in [
+                ("/value/effective_options/check_input_base", serde_json::json!("alias")),
+                ("/value/check/base", serde_json::json!("base")),
+                ("/value/check/analysis_outcome/outcome/identity/base_revision",
+                    serde_json::json!("base")),
+            ] {
+                let mut changed = original.clone();
+                let mut value: Value = strict_json(&changed[ArtifactRole::FullCheck.ordinal()])?;
+                *value.pointer_mut(pointer).ok_or("fixture base mutation target missing")? = wrong;
+                changed[ArtifactRole::FullCheck.ordinal()] =
+                    serde_json::to_vec(&value).map_err(|error| error.to_string())?;
+                // Re-sign every artifact descriptor; relational refusal must survive.
+                save_fixture(&stage.0, &binding, &changed)?;
+                let _error = require_error(verify_staged_generation(
+                    &stage.0, &binding, &binding.profile,
+                ), "re-signed input/effective base contradiction was accepted")?;
+            }
+            let mut missing = original.clone();
+            let mut value: Value = strict_json(&missing[ArtifactRole::FullCheck.ordinal()])?;
+            value.pointer_mut("/value/effective_options").and_then(Value::as_object_mut)
+                .ok_or("fixture effective options missing")?.remove("check_input_base");
+            missing[ArtifactRole::FullCheck.ordinal()] =
+                serde_json::to_vec(&value).map_err(|error| error.to_string())?;
+            save_fixture(&stage.0, &binding, &missing)?;
+            let _error = require_error(verify_staged_generation(
+                &stage.0, &binding, &binding.profile,
+            ), "re-signed missing declared input field was accepted")?;
+            save_fixture(&stage.0, &binding, &original)?;
+            verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            source.authority.ensure_clean().map_err(|error| error.to_string())
         })
     }
 

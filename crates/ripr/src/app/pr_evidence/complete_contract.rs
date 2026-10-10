@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use std::io::{self, Write};
 use std::path::{Component, Path};
 
-pub(super) const BINDING_SCHEMA: &str = "ripr.complete_binding.v3";
+pub(super) const BINDING_SCHEMA: &str = "ripr.complete_binding.v4";
 pub(super) const MANIFEST_SCHEMA: &str = "ripr.complete_manifest.v1";
 pub(super) const PAYLOAD_SCHEMA: &str = "ripr.complete_payload.v1";
 pub(super) const MANIFEST_FILE: &str = "complete-manifest.json";
@@ -457,13 +457,26 @@ pub(super) struct EffectiveOptions {
     pub(super) mode: CompleteMode,
     pub(super) include_unchanged_tests: bool,
     pub(super) enabled_languages: Vec<String>,
-    /// Supplied canonical diff: no declared base, candidate subject, facts or
-    /// suppression input. External effects require a successor contract.
+    /// Declared CheckInput base. Supplied-diff output has no loader-effective
+    /// base even when this is Some; that output provenance remains separate.
+    #[serde(deserialize_with = "required_check_input_base")]
+    pub(super) check_input_base: Option<String>,
+    /// Actual surface timeout; supplied canonical input still has no candidate
+    /// subject, external facts or suppression authority.
     pub(super) git_timeout_ms: Option<u64>,
     pub(super) config_identity_version: u32,
     pub(super) config_identity_hash: String,
     pub(super) loaded_config_identity: Option<String>,
     pub(super) finding_affecting_fields: Vec<PolicyField>,
+}
+
+// deserialize_with and no default require the nullable field to be present.
+// Explicit null is accepted as DATA; missing, duplicate and wrong types refuse.
+fn required_check_input_base<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<String>::deserialize(deserializer)
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
@@ -841,6 +854,18 @@ impl CompleteBinding {
         validate_config_identity(&options.config_identity_hash)?;
         if let Some(identity) = &options.loaded_config_identity {
             validate_config_identity(identity)?;
+        }
+        match options.surface {
+            ProducerSurface::Installed => {
+                if options.check_input_base.is_some() || options.git_timeout_ms.is_some() {
+                    return Err("installed supplied-diff input base/timeout differs from its surface".into());
+                }
+            }
+            ProducerSurface::Xtask => {
+                if options.check_input_base.as_deref() != Some(s.requested_base.as_str()) {
+                    return Err("xtask declared input base differs from its original request".into());
+                }
+            }
         }
         if options.git_timeout_ms == Some(0) {
             return Err("zero optional Git deadline".into());
@@ -1268,6 +1293,7 @@ pub(super) mod tests {
                 mode: CompleteMode::Draft,
                 include_unchanged_tests: true,
                 enabled_languages: vec!["rust".into()],
+                check_input_base: None,
                 git_timeout_ms: None,
                 config_identity_version: crate::config::CHECK_ARTIFACT_CONFIG_IDENTITY_VERSION,
                 config_identity_hash: crate::config::config_fingerprint("config"),
@@ -1666,6 +1692,80 @@ pub(super) mod tests {
             };
         changed.validate()?;
         assert_ne!(changed.generation_id()?, binding.generation_id()?);
+        Ok(())
+    }
+
+    #[test]
+    fn input_base_is_required_nullable_closed_and_has_literal_surface_policy()
+        -> Result<(), String> {
+        let binding = fixture_binding()?;
+        let mut value = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
+        assert_eq!(value["effective_options"]["check_input_base"], serde_json::Value::Null);
+        serde_json::from_value::<CompleteBinding>(value.clone())
+            .map_err(|error| error.to_string())?.validate()?;
+        value["effective_options"].as_object_mut().ok_or("options missing")?
+            .remove("check_input_base");
+        let missing = require_error(serde_json::from_value::<CompleteBinding>(value),
+            "missing nullable input base was accepted")?;
+        assert!(missing.to_string().contains("missing field"));
+        let mut value = serde_json::to_value(&binding).map_err(|error| error.to_string())?;
+        value["effective_options"]["check_input_base"] = serde_json::json!(false);
+        let _error = require_error(serde_json::from_value::<CompleteBinding>(value),
+            "wrong nullable input base type was accepted")?;
+        let text = serde_json::to_string(&binding.effective_options)
+            .map_err(|error| error.to_string())?;
+        let duplicate = text.replacen("\"check_input_base\":null",
+            "\"check_input_base\":null,\"check_input_base\":null", 1);
+        let duplicate = require_error(serde_json::from_str::<EffectiveOptions>(&duplicate),
+            "duplicate nullable input base was accepted")?;
+        assert!(duplicate.to_string().contains("duplicate field"));
+        let mut legacy = binding.clone();
+        legacy.schema_version = "ripr.complete_binding.v3".into();
+        let _error = require_error(legacy.validate(), "old binding v3 was accepted")?;
+        let mut installed = binding.clone();
+        installed.effective_options.check_input_base = Some("base".into());
+        let _error = require_error(installed.validate(), "installed declared base was accepted")?;
+        installed = binding.clone();
+        installed.effective_options.git_timeout_ms = Some(300_000);
+        let _error = require_error(installed.validate(), "installed CLI timeout was accepted")?;
+        let mut xtask = binding;
+        xtask.effective_options.surface = ProducerSurface::Xtask;
+        xtask.effective_options.include_unchanged_tests = false;
+        xtask.effective_options.check_input_base = Some(xtask.subject.requested_base.clone());
+        xtask.effective_options.git_timeout_ms = Some(300_000);
+        xtask.validate()?;
+        xtask.effective_options.git_timeout_ms = None; // Existing CLI zero disables.
+        xtask.validate()?;
+        for wrong in [None, Some("alias".into()), Some("".into())] {
+            let mut invalid = xtask.clone();
+            invalid.effective_options.check_input_base = wrong;
+            let _error = require_error(invalid.validate(),
+                "wrong xtask original declared base was accepted")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn declared_input_base_changes_generation_and_invalid_alias_cannot_be_resigned()
+        -> Result<(), String> {
+        let mut first = fixture_binding()?;
+        first.effective_options.surface = ProducerSurface::Xtask;
+        first.effective_options.include_unchanged_tests = false;
+        first.effective_options.check_input_base = Some(first.subject.requested_base.clone());
+        first.effective_options.git_timeout_ms = Some(300_000);
+        first.validate()?;
+        let mut successor = first.clone();
+        successor.subject.requested_base = "other-base".into();
+        successor.effective_options.check_input_base = Some("other-base".into());
+        successor.validate()?;
+        assert_ne!(first.generation_id()?, successor.generation_id()?);
+        let manifest = fixture_manifest(successor)?;
+        let _error = require_error(manifest.validate(&first, &first.profile),
+            "re-signed changed original/input base was accepted")?;
+        let mut alias = first.clone();
+        alias.effective_options.check_input_base = Some("same-tree-alias".into());
+        let _error = require_error(alias.generation_id(),
+            "invalid declared input alias produced a generation")?;
         Ok(())
     }
 
