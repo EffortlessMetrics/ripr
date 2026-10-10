@@ -38,24 +38,39 @@ fn given_product_when_rc_placement_is_separate_then_identity_preserves_both() ->
 }
 
 #[test]
-fn given_wrong_source_or_noncanonical_placement_then_identity_rejects() {
-    for (product, placement) in [
-        ("0.11.0-rc.2", "v0.11.0-rc.2"),
-        ("0.11.0-alpha.2", "v0.11.0-rc.2"),
-        ("0.11.0", "v0.12.0-rc.2"),
-        ("0.11.0", "v0.11.0-rc.0"),
-        ("0.11.0", "v0.11.0-rc.02"),
-        ("0.11.0", "v0.11.0-rc.-1"),
-        ("0.11.0", "v0.11.0-rc.2+build"),
-        ("0.11.0", "v0.11.0-beta.2"),
-        ("0.11.0", "vv0.11.0-rc.2"),
-        ("0.11.0", " v0.11.0-rc.2"),
+fn given_wrong_source_or_noncanonical_placement_then_identity_rejects() -> Result<(), String> {
+    for (product, placement, reason) in [
+        (
+            "0.11.0-rc.2",
+            "v0.11.0-rc.2",
+            "must not carry a release-channel suffix",
+        ),
+        (
+            "0.11.0-alpha.2",
+            "v0.11.0-rc.2",
+            "must not carry a release-channel suffix",
+        ),
+        ("0.11.0", "v0.12.0-rc.2", "must name source product"),
+        ("0.11.0", "v0.11.0-rc.0", "positive canonical RC number"),
+        ("0.11.0", "v0.11.0-rc.02", "positive canonical RC number"),
+        ("0.11.0", "v0.11.0-rc.-1", "positive canonical RC number"),
+        (
+            "0.11.0",
+            "v0.11.0-rc.2+build",
+            "positive canonical RC number",
+        ),
+        ("0.11.0", "v0.11.0-beta.2", "must name source product"),
+        ("0.11.0", "vv0.11.0-rc.2", "is not canonical"),
+        ("0.11.0", " v0.11.0-rc.2", "is not canonical"),
     ] {
-        assert!(
-            ServerIdentity::from_source(product, placement).is_err(),
-            "{product} / {placement}"
-        );
+        let Err(error) = ServerIdentity::from_source(product, placement) else {
+            return Err(format!(
+                "identity unexpectedly admitted {product} / {placement}"
+            ));
+        };
+        assert!(error.contains(reason), "{product} / {placement}: {error}");
     }
+    Ok(())
 }
 
 #[test]
@@ -73,22 +88,49 @@ fn given_source_when_placement_args_are_adapted_then_product_is_source_bound() -
             producer_args(&arguments(&["--version", "0.11.0"]))?,
             arguments(&["--version", "0.11.0"])
         );
-        for values in [
-            vec!["--release-version"],
-            vec!["--release-version="],
-            vec!["--release-version", "v0.11.0-rc.2", "--version", "0.11.0"],
-            vec!["--release-version=v0.11.0-rc.2", "--version=0.11.0"],
-            vec![
-                "--release-version=v0.11.0-rc.2",
-                "--release-version=v0.11.0-rc.2",
-            ],
+        for (values, reason) in [
+            (
+                vec!["--release-version"],
+                "requires a placement version or tag",
+            ),
+            (vec!["--release-version="], "must name source product"),
+            (
+                vec!["--release-version", "v0.11.0-rc.2", "--version", "0.11.0"],
+                "mutually exclusive",
+            ),
+            (
+                vec!["--release-version=v0.11.0-rc.2", "--version=0.11.0"],
+                "mutually exclusive",
+            ),
+            (
+                vec![
+                    "--release-version=v0.11.0-rc.2",
+                    "--release-version=v0.11.0-rc.2",
+                ],
+                "exactly once",
+            ),
         ] {
-            assert!(producer_args(&arguments(&values)).is_err(), "{values:?}");
+            let Err(error) = producer_args(&arguments(&values)) else {
+                return Err(format!("arguments unexpectedly admitted {values:?}"));
+            };
+            assert!(error.contains(reason), "{values:?}: {error}");
         }
         source(root, "0.12.0")?;
-        assert!(producer_args(&arguments(&["--release-version", "v0.11.0-rc.2"])).is_err());
+        let Err(error) = producer_args(&arguments(&["--release-version", "v0.11.0-rc.2"])) else {
+            return Err("wrong source product unexpectedly admitted placement".to_string());
+        };
+        assert!(
+            error.contains("must name source product `0.12.0`"),
+            "{error}"
+        );
         fs::remove_file(root.join("crates/ripr/Cargo.toml")).map_err(|error| error.to_string())?;
-        assert!(producer_args(&arguments(&["--release-version", "v0.11.0-rc.2"])).is_err());
+        let Err(error) = producer_args(&arguments(&["--release-version", "v0.11.0-rc.2"])) else {
+            return Err("unreadable source product unexpectedly admitted placement".to_string());
+        };
+        assert!(
+            error.contains("cannot read the checked-out ripr source product version"),
+            "{error}"
+        );
         Ok(())
     })
 }
