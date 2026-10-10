@@ -3786,9 +3786,16 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             ("large.dat", (0..1_000_000).map(|n| (n % 251) as u8).collect()),
         ] {
             std::fs::write(fixture.0.join(name), &bytes).map_err(|error| error.to_string())?;
-            let object = crate::testing::fixture_git::fixture_git_ok(
+            let output = run_git_output_with_deadline_and_limit_isolated(
                 &fixture.0, &["hash-object", "-w", "--", name],
-            )?.trim().to_string();
+                crate::testing::fixture_git::FIXTURE_GIT_DEADLINE, 4096,
+            ).map_err(|error| error.to_string())?;
+            if !output.status.success() {
+                return Err(format!("fixture hash-object failed: {}",
+                    String::from_utf8_lossy(&output.stderr)));
+            }
+            let object = std::str::from_utf8(&output.stdout)
+                .map_err(|error| error.to_string())?.trim().to_string();
             requested.push((object, bytes));
         }
         Ok((fixture, requested))
