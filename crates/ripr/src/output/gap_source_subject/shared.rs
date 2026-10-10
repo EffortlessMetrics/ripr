@@ -207,7 +207,10 @@ fn push_string(value: Option<&Value>, paths: &mut Vec<String>) {
 
 /// Repo-relative files an actionable-gaps packet makes claims about.
 pub(crate) fn actionable_packet_subject_paths(root: &Path, packet: &Value) -> BTreeSet<String> {
-    actionable_packet_subject_paths_with(root, packet, &mut |path| std::fs::canonicalize(path))
+    actionable_packet_named_paths(packet)
+        .iter()
+        .filter_map(|raw| subject_relative_path(root, raw))
+        .collect()
 }
 
 /// Same packet path projection with a caller-owned canonical path resolver.

@@ -7,8 +7,6 @@ use super::*;
 pub(super) const ENV: &str = "RIPR_XTASK_OWNED_FILE_POLICY_CAPTURE";
 #[cfg(test)]
 const PROC_BYTES: u64 = 4096;
-#[cfg(test)]
-const PROC_ENTRIES: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Identity {
@@ -118,41 +116,6 @@ fn read_scanned_identity(reader: impl Read, pid: u32) -> Result<Option<Identity>
     }
     parse_identity(text, pid).map(Some)
 }
-#[cfg(test)]
-fn scan_group(group: u32, deadline: Instant) -> Result<Vec<u32>, String> {
-    let entries = fs::read_dir("/proc")
-        .map_err(|err| format!("owned capture complete group scan unavailable: {err}"))?;
-    let mut live = Vec::new();
-    for (index, entry) in entries.enumerate() {
-        if Instant::now() >= deadline {
-            return Err("owned capture complete group scan exceeded settlement bound".to_string());
-        }
-        if index >= PROC_ENTRIES {
-            return Err("owned capture complete group scan exceeded entry bound".to_string());
-        }
-        let entry = entry.map_err(|err| format!("owned capture /proc entry: {err}"))?;
-        let name = entry.file_name();
-        let Some(pid) = name.to_str().and_then(|value| value.parse::<u32>().ok()) else {
-            continue;
-        };
-        // Disappeared tasks are not survivors. Every other unavailable numeric
-        // entry prevents a complete scan and therefore prevents group signals.
-        match fs::File::open(entry.path().join("stat")) {
-            Ok(file) => {
-                if let Some(process) = read_scanned_identity(file, pid)?
-                    && process.group == group
-                    && process.live()
-                {
-                    live.push(pid);
-                }
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => return Err(format!("owned capture complete group scan refused: {err}")),
-        }
-    }
-    Ok(live)
-}
-
 fn parse_handoff(value: &str) -> Result<(u32, u64, Duration), String> {
     if value.len() > 128 {
         return Err("owned file-policy handoff exceeds its bound".to_string());

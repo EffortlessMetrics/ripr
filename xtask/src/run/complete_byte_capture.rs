@@ -2,17 +2,20 @@
 //! Real success/error receipts are preserved by the explicit-clock entrypoint.
 
 use super::{ByteCaptureBudget, TimedBytesOutput};
-use ripr::process_owner::{
-    CompleteByteCapture, CompleteCaptureBudget, CompleteCaptureError, CompleteCapturedBytes,
-};
+use ripr::process_owner::{CompleteByteCapture, CompleteCaptureBudget};
+#[cfg(all(test, target_os = "linux"))]
+use ripr::process_owner::{CompleteCaptureError, CompleteCapturedBytes};
+#[cfg(all(test, target_os = "linux"))]
 use std::any::Any;
 use std::path::Path;
 use std::process::ExitStatus;
 use std::sync::Arc;
+#[cfg(all(test, target_os = "linux"))]
 use std::time::Instant;
 
 /// Forward the exact actual observation and consume-once receipt without rebuilding
 /// them from status, paths or saved data. The caller owns invocation authentication.
+#[cfg(all(test, target_os = "linux"))]
 pub(crate) fn capture_complete_bytes_in_dir_with_deadline<L: Any + Send + Sync>(
     command: (&Path, &[String]),
     source: (&Path, Option<&[u8]>),
