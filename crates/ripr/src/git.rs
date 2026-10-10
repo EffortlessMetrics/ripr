@@ -1228,8 +1228,9 @@ impl CatFileBatch {
                     Some(remaining - buf.len() as u64)
                 }
                 _ => {
-                    return Err(self
-                        .complete_refusal("complete blob read exceeds or lacks its declared body"));
+                    return Err(self.complete_refusal(
+                        "complete blob read exceeds or lacks its declared body",
+                    ));
                 }
             }
         } else {
