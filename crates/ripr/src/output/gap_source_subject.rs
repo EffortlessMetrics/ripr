@@ -54,7 +54,10 @@ pub(crate) fn require_frozen_stamp_context(
     }
     let canonical = frozen_fs::canonicalize(root).map_err(|error| error.to_string())?;
     authority.ensure_clean().map_err(|error| error.to_string())?;
-    if canonical.as_os_str() != authority.logical_root().as_os_str() {
+    // The frozen canonicalizer joins the empty relative root, which can
+    // retain a trailing separator. Compare native path components while
+    // keeping the real canonicalization, context, and subroot checks.
+    if canonical != authority.logical_root() {
         return Err(authority
             .refuse_external_effect("source subject requires its exact logical root")
             .to_string());
@@ -481,6 +484,32 @@ mod tests {
             Err(error) => Err(format!("wrong stamp refusal for {family}: {error}")),
             Ok(_) => Err(format!("stamp admitted expected refusal {family}")),
         }
+    }
+
+    #[cfg(all(target_os = "linux", feature = "lang-rust"))]
+    #[test]
+    fn frozen_stamp_accepts_exact_root_with_canonical_trailing_separator()
+    -> Result<(), String> {
+        let fixture = NamedStampFixture::new("canonical-root-separator")?;
+        frozen::with_context(Some(fixture.authority.clone()), || {
+            let canonical = frozen_fs::canonicalize(&fixture.root)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(canonical, fixture.authority.logical_root());
+            assert_ne!(
+                canonical.as_os_str(), fixture.authority.logical_root().as_os_str(),
+                "actual frozen canonical root must reach the trailing-separator discriminator",
+            );
+            for root in [fixture.root.clone(), fixture.root.join(""), fixture.root.join(".")] {
+                let bound = frozen_stamp_context(&root)?.ok_or("missing active stamp authority")?;
+                assert!(Arc::ptr_eq(&bound, &fixture.authority));
+                let empty = stamp_source_subject(&root, &BTreeSet::new())?;
+                assert!(empty.files.is_empty());
+                let digest = source_file_digest(&root, "src/lib.rs")?
+                    .ok_or("named source digest is absent")?;
+                assert!(digest.starts_with("sha256:"));
+            }
+            fixture.authority.ensure_clean().map_err(|error| error.to_string())
+        })
     }
 
     #[cfg(all(target_os = "linux", feature = "lang-rust"))]
