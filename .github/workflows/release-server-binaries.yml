@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version, for example 0.2.0 or v0.2.0"
+        description: "Release placement, for example v0.11.0 or v0.11.0-rc.2; product identity comes from checked-out source"
         required: true
   push:
     tags:
@@ -56,7 +56,7 @@ jobs:
         shell: bash
         env:
           RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-        run: cargo run --locked -p xtask -- release-server-archive --version "$RIPR_RELEASE_VERSION" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
+        run: cargo run --locked -p xtask -- release-server-archive --release-version "$RIPR_RELEASE_VERSION" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
 
       - name: Upload server artifact
         uses: actions/upload-artifact@v7
@@ -86,7 +86,7 @@ jobs:
         shell: bash
         env:
           RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
-        run: cargo run --locked -p xtask -- release-server-manifest --version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
+        run: cargo run --locked -p xtask -- release-server-manifest --release-version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
 
       - name: Upload release assets
         env:

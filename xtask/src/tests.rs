@@ -247,7 +247,7 @@ fn release_server_build_uses_canonical_locked_toolchain() -> Result<(), String> 
         || !build.contains("cargo build -p ripr --release --locked --target")
         || !build.contains("cargo run --locked -p xtask -- release-server-archive")
         || !build.contains("RIPR_RELEASE_VERSION:")
-        || !build.contains("--version \"$RIPR_RELEASE_VERSION\"")
+        || !build.contains("--release-version \"$RIPR_RELEASE_VERSION\"")
         || build.contains("github.event.inputs.version || github.ref_name }}\"")
         || build.contains("cargo generate-lockfile")
     {
