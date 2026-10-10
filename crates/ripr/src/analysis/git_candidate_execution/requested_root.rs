@@ -450,7 +450,10 @@ impl CleanupOwner {
                 seen,
             }),
         };
-        owner.current(&owner.lock()?, check)?;
+        {
+            let state = owner.lock()?;
+            owner.current(&state, check)?;
+        }
         clock(check)?;
         let owner = Box::new(owner);
         clock(check)?;
@@ -525,7 +528,8 @@ impl CleanupOwner {
     }
 
     pub(super) fn verify(&self, started: Instant, budget: Duration) -> io::Result<()> {
-        self.current(&self.lock()?, Some((started, budget)))
+        let state = self.lock()?;
+        self.current(&state, Some((started, budget)))
     }
 
     pub(super) fn create_shared(&self, started: Instant, budget: Duration) -> io::Result<()> {
