@@ -125,16 +125,27 @@ struct CaptureCustody {
 #[cfg(target_os = "linux")]
 impl CaptureCustody {
     fn setup(failure: super::GroupSetupFailure) -> Self {
-        Self { setup: Some(failure), group: None }
+        Self {
+            setup: Some(failure),
+            group: None,
+        }
     }
 
     fn group(owner: super::QualifiedGroupOwner) -> Self {
-        Self { setup: None, group: Some(owner) }
+        Self {
+            setup: None,
+            group: Some(owner),
+        }
     }
 
     fn retained_process_count(&self) -> usize {
-        self.setup.as_ref().map_or(0, super::GroupSetupFailure::retained_process_count)
-            + self.group.as_ref().map_or(0, super::QualifiedGroupOwner::retained_process_count)
+        self.setup
+            .as_ref()
+            .map_or(0, super::GroupSetupFailure::retained_process_count)
+            + self
+                .group
+                .as_ref()
+                .map_or(0, super::QualifiedGroupOwner::retained_process_count)
     }
 }
 
@@ -611,7 +622,7 @@ mod linux {
             if strict {
                 // One possible setup OR group owner, containing at most one signal helper.
                 self.custody
-                .try_reserve_exact(1)
+                    .try_reserve_exact(1)
                     .map_err(|error| format!("reserve complete capture custody slot: {error}"))?;
             }
             Ok(())
@@ -792,10 +803,10 @@ mod linux {
             .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
         for name in env_remove {
             strict_time(held_deadline)
-            .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
+                .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
             command.env_remove(name);
             strict_time(held_deadline)
-            .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
+                .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
         }
         command
             .stdout(stdout_child)
@@ -1018,7 +1029,8 @@ mod linux {
             let mut error = failure_storage.failure(
                 format!("{error_context}: {}", errors.join("; ")),
                 receipt,
-                lease);
+                lease,
+            );
             if let Some(state) = error.state_mut() {
                 state.observation = observation;
                 state.timeout_only = timeout_only;
@@ -1164,22 +1176,30 @@ mod linux {
             held: Instant,
         ) -> Result<(), String> {
             let before = super::super::super::ObservedProcessIdentity::read(child.id())?;
-            if before.pid() != child.id() || before.parent() != std::process::id()
-                || before.group() != child.id() || before.start() == 0
+            if before.pid() != child.id()
+                || before.parent() != std::process::id()
+                || before.group() != child.id()
+                || before.start() == 0
                 || child.bounded_drop_until != Some(held)
                 || !matches!(before.state(), 'R' | 'S' | 'D' | 'T' | 't' | 'I')
             {
-                return Err("capture refusal lost actual live direct-child identity or clock".to_string());
+                return Err(
+                    "capture refusal lost actual live direct-child identity or clock".to_string(),
+                );
             }
             if child.reap_until(held) {
                 return Err("retained capture restarted an expired direct reap clock".to_string());
             }
             let after = super::super::super::ObservedProcessIdentity::read(child.id())?;
-            if before.pid() != after.pid() || before.start() != after.start()
-                || before.parent() != after.parent() || before.group() != after.group()
+            if before.pid() != after.pid()
+                || before.start() != after.start()
+                || before.parent() != after.parent()
+                || before.group() != after.group()
                 || !matches!(after.state(), 'R' | 'S' | 'D' | 'T' | 't' | 'I')
             {
-                return Err("retained capture child changed before fixture-only cleanup".to_string());
+                return Err(
+                    "retained capture child changed before fixture-only cleanup".to_string()
+                );
             }
             Ok(())
         }
@@ -1207,26 +1227,35 @@ mod linux {
             };
             let checks = (|| {
                 if !error.message().contains("spawn crossed its held deadline")
-                    || !error.matches_lease(&lease) || error.matches_lease(&foreign)
-                    || settled || Instant::now() < held || error.is_timeout_only()
+                    || !error.matches_lease(&lease)
+                    || error.matches_lease(&foreign)
+                    || settled
+                    || Instant::now() < held
+                    || error.is_timeout_only()
                     || error.take_cleanup_receipt().is_some()
                     || error.take_failed_observation().is_some()
-                    || error.custody.len() != 1 || Arc::strong_count(&lease) != 2
+                    || error.custody.len() != 1
+                    || Arc::strong_count(&lease) != 2
                 {
-                    return Err("post-spawn failure lost primary custody or fabricated evidence".to_string());
+                    return Err(
+                        "post-spawn failure lost primary custody or fabricated evidence"
+                            .to_string(),
+                    );
                 }
                 let custody = error.custody.first_mut().ok_or_else(|| {
                     "failed qualification has no retained custody slot".to_string()
                 })?;
                 if custody.group.is_some() {
-                    return Err("failed qualification was converted to a qualified group".to_string());
+                    return Err(
+                        "failed qualification was converted to a qualified group".to_string()
+                    );
                 }
                 let failure = custody.setup.as_mut().ok_or_else(|| {
                     "failed qualification discarded its setup custody".to_string()
                 })?;
-                let child = failure.fixture_child().ok_or_else(|| {
-                    "actual post-spawn child handle was discarded".to_string()
-                })?;
+                let child = failure
+                    .fixture_child()
+                    .ok_or_else(|| "actual post-spawn child handle was discarded".to_string())?;
                 require_retained_identity(child, held)
             })();
             close_retained_fixture(&mut error)?;
@@ -1259,8 +1288,10 @@ mod linux {
             };
             let checks = (|| {
                 if !error.message().contains("held custody deadline")
-                    || !error.matches_lease(&lease) || error.take_cleanup_receipt().is_some()
-                    || error.observed_outcome().is_some() || error.is_timeout_only()
+                    || !error.matches_lease(&lease)
+                    || error.take_cleanup_receipt().is_some()
+                    || error.observed_outcome().is_some()
+                    || error.is_timeout_only()
                     || error.custody.len() != 1
                 {
                     return Err("late I/O lost group custody or fabricated settlement".to_string());

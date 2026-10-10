@@ -289,8 +289,7 @@ fn verify_inner(
 
 fn raw_limits(limits: &CompleteVerificationLimits) -> Result<RawCoverageLimits, String> {
     let native = |value| {
-        usize::try_from(value)
-            .map_err(|error| format!("raw bound exceeds native usize: {error}"))
+        usize::try_from(value).map_err(|error| format!("raw bound exceeds native usize: {error}"))
     };
     Ok(RawCoverageLimits {
         file_limit: native(limits.file_limit)?,

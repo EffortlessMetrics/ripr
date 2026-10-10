@@ -350,7 +350,9 @@ mod linux {
                 let leader = identity(child.id())?;
                 held_time(held_deadline)?;
                 if leader.pid != leader.group || leader.parent != parent.pid {
-                    return Err("owned capture did not create its own direct-child group".to_string());
+                    return Err(
+                        "owned capture did not create its own direct-child group".to_string()
+                    );
                 }
                 Ok(leader)
             })();
@@ -388,7 +390,9 @@ mod linux {
         #[cfg(test)]
         pub(crate) fn close_fixture_custody(&mut self) -> Result<(), String> {
             // Explicit test-only closeout is not settlement and grants no receipt.
-            self.child.request_kill().map_err(|error| error.to_string())?;
+            self.child
+                .request_kill()
+                .map_err(|error| error.to_string())?;
             if !self.child.reap_within(Duration::from_secs(5)) {
                 return Err("fixture retained direct reap was unconfirmed".to_string());
             }
@@ -696,17 +700,14 @@ mod linux {
             held_time(deadline).map_err(GroupSetupFailure::before_spawn)?;
         }
         let mut child = match held_deadline {
-            Some(held) => {
-                OwnedProcess::spawn_with_bounded_drop_until(command, deadline.min(held)).map_err(
-                    |failure| {
-                        let (error, child) = failure.into_parts();
-                        GroupSetupFailure {
-                            message: format!("owned group signal launch: {error}"),
-                            child,
-                        }
-                    },
-                )?
-            }
+            Some(held) => OwnedProcess::spawn_with_bounded_drop_until(command, deadline.min(held))
+                .map_err(|failure| {
+                    let (error, child) = failure.into_parts();
+                    GroupSetupFailure {
+                        message: format!("owned group signal launch: {error}"),
+                        child,
+                    }
+                })?,
             None => OwnedProcess::spawn_with_bounded_drop(command).map_err(|error| {
                 GroupSetupFailure::before_spawn(format!("owned group signal launch: {error}"))
             })?,
@@ -734,7 +735,8 @@ mod linux {
                 if Instant::now() >= deadline {
                     let _ = child.kill();
                     return Err(
-                        "owned group signal exceeded settlement bound; cleanup unconfirmed".to_string(),
+                        "owned group signal exceeded settlement bound; cleanup unconfirmed"
+                            .to_string(),
                     );
                 }
                 let delay = if held_deadline.is_some() {
@@ -1215,7 +1217,9 @@ mod linux {
                 Err(failure) => failure,
                 Ok(mut child) => {
                     close_fixture(&mut child)?;
-                    return Err("post-spawn barrier did not refuse the actual late spawn".to_string());
+                    return Err(
+                        "post-spawn barrier did not refuse the actual late spawn".to_string()
+                    );
                 }
             };
             let (error, child) = failure.into_parts();
@@ -1223,24 +1227,36 @@ mod linux {
                 "post-spawn refusal discarded its actual direct-child handle".to_string()
             })?;
             let checks = (|| {
-                if !error.to_string().contains("spawn crossed its held deadline")
+                if !error
+                    .to_string()
+                    .contains("spawn crossed its held deadline")
                     || Instant::now() < held
                     || child.bounded_drop_until != Some(held)
                 {
-                    return Err("post-spawn refusal changed its primary error or original clock".to_string());
+                    return Err(
+                        "post-spawn refusal changed its primary error or original clock"
+                            .to_string(),
+                    );
                 }
                 let before = identity(child.id())?;
-                if before.pid != child.id() || before.parent != std::process::id()
-                    || before.group != child.id() || before.start == 0 || !before.live()
+                if before.pid != child.id()
+                    || before.parent != std::process::id()
+                    || before.group != child.id()
+                    || before.start == 0
+                    || !before.live()
                 {
-                    return Err("retained spawn has no actual live direct-child identity".to_string());
+                    return Err(
+                        "retained spawn has no actual live direct-child identity".to_string()
+                    );
                 }
                 if child.reap_until(held) {
                     return Err("expired original ceiling certified direct reap".to_string());
                 }
                 let after = identity(child.id())?;
                 if !before.same_owner(&after) || !after.live() {
-                    return Err("late spawn custody changed before fixture-only cleanup".to_string());
+                    return Err(
+                        "late spawn custody changed before fixture-only cleanup".to_string()
+                    );
                 }
                 Ok(())
             })();
@@ -1251,8 +1267,7 @@ mod linux {
         }
 
         #[test]
-        fn group_setup_clock_crossing_retains_unqualified_direct_custody()
-        -> Result<(), String> {
+        fn group_setup_clock_crossing_retains_unqualified_direct_custody() -> Result<(), String> {
             let held = Instant::now() + Duration::from_millis(500);
             let spawned = super::super::super::with_post_spawn_deadline_barrier(|| {
                 QualifiedGroupOwner::spawn_with_deadline(
@@ -1274,11 +1289,16 @@ mod linux {
             let checks = (|| {
                 let before = identity(child.id())?;
                 if !message.contains("spawn crossed its held deadline")
-                    || child.bounded_drop_until != Some(held) || !before.live()
-                    || before.parent != std::process::id() || before.group != child.id()
+                    || child.bounded_drop_until != Some(held)
+                    || !before.live()
+                    || before.parent != std::process::id()
+                    || before.group != child.id()
                     || before.start == 0
                 {
-                    return Err("group setup error lost the real child, clock or primary failure".to_string());
+                    return Err(
+                        "group setup error lost the real child, clock or primary failure"
+                            .to_string(),
+                    );
                 }
                 let after = identity(child.id())?;
                 require_owner(&before, &after)?;
@@ -1291,8 +1311,7 @@ mod linux {
         }
 
         #[test]
-        fn fixed_signal_clock_crossing_retains_helper_and_primary_custody()
-        -> Result<(), String> {
+        fn fixed_signal_clock_crossing_retains_helper_and_primary_custody() -> Result<(), String> {
             let held = Instant::now() + Duration::from_millis(500);
             let mut owner = QualifiedGroupOwner::spawn_with_deadline(
                 test_command("/usr/bin/sleep", &["30"], true),
@@ -1307,13 +1326,20 @@ mod linux {
                     "late fixed signal discarded its actual helper handle".to_string()
                 })?;
                 let observed = identity(helper.id())?;
-                if owner.id() != primary || owner.held_deadline != Some(held)
+                if owner.id() != primary
+                    || owner.held_deadline != Some(held)
                     || helper.bounded_drop_until != Some(held)
-                    || observed.pid != helper.id() || observed.parent != std::process::id()
-                    || observed.start == 0 || owner.retained_process_count() != 2
-                    || owner.take_settlement().is_some() || owner.settled_status().is_some()
+                    || observed.pid != helper.id()
+                    || observed.parent != std::process::id()
+                    || observed.start == 0
+                    || owner.retained_process_count() != 2
+                    || owner.take_settlement().is_some()
+                    || owner.settled_status().is_some()
                 {
-                    return Err("fixed signal expiry fabricated settlement or lost actual custody".to_string());
+                    return Err(
+                        "fixed signal expiry fabricated settlement or lost actual custody"
+                            .to_string(),
+                    );
                 }
                 require_error(owner.abort(), "held custody deadline")?;
                 Ok(())

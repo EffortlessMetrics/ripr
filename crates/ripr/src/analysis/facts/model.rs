@@ -42,7 +42,6 @@ pub(crate) struct WorkspaceFileAuthority {
     pub(crate) valid: bool,
 }
 
-
 fn frozen_context_clean(
     authority: &Arc<crate::analysis::committed_source::frozen::FrozenSourceAuthority>,
 ) -> std::io::Result<()> {
@@ -65,7 +64,7 @@ fn frozen_workspace_root(
     })?;
     if canonical != authority.logical_root() || !frozen_fs::metadata(&canonical)?.is_dir() {
         return Err(
-            authority.refuse_external_effect("workspace facts root differs from frozen root"),
+            authority.refuse_external_effect("workspace facts root differs from frozen root")
         );
     }
     frozen_context_clean(authority)?;
@@ -166,7 +165,6 @@ impl WorkspaceRootAuthority {
             current_files: Arc::new(Mutex::new(BTreeMap::new())),
         }
     }
-
 
     fn from_frozen_sources<'a>(
         root: &Path,
@@ -468,17 +466,17 @@ enum PackageIdentity {
 fn resolve_package_identity(root: &Path, relative: &Path) -> PackageIdentity {
     if let Some(frozen) = crate::analysis::committed_source::frozen::current() {
         let identity = match frozen_workspace_root(root, &frozen) {
-            Ok(canonical_root) => resolve_package_identity_with_reader(
-                &canonical_root,
-                relative,
-                |path| match crate::analysis::committed_source::frozen::fs::read(path) {
-                    Ok(bytes) => Ok(bytes),
-                    Err(error) if error.kind() == ErrorKind::NotFound => Err(error),
-                    Err(error) => Err(frozen.refuse_external_effect(&format!(
-                        "workspace facts manifest read failed: {error}"
-                    ))),
-                },
-            ),
+            Ok(canonical_root) => {
+                resolve_package_identity_with_reader(&canonical_root, relative, |path| {
+                    match crate::analysis::committed_source::frozen::fs::read(path) {
+                        Ok(bytes) => Ok(bytes),
+                        Err(error) if error.kind() == ErrorKind::NotFound => Err(error),
+                        Err(error) => Err(frozen.refuse_external_effect(&format!(
+                            "workspace facts manifest read failed: {error}"
+                        ))),
+                    }
+                })
+            }
             Err(_) => {
                 return PackageIdentity::UnreadableManifest {
                     manifest: root.join("Cargo.toml"),
@@ -3020,7 +3018,9 @@ fn checks_helper() {
                     })?;
                 Ok((
                     relative,
-                    super::super::build::rust_source_text(&bytes).text.into_owned(),
+                    super::super::build::rust_source_text(&bytes)
+                        .text
+                        .into_owned(),
                 ))
             })
             .collect()
@@ -3073,7 +3073,13 @@ fn checks_helper() {
         std::fs::create_dir_all(root.join("pkg/src"))?;
         std::fs::create_dir_all(root.join("pkg/tests"))?;
         for args in [
-            &["-c", "init.templateDir=", "init", "-q", "--initial-branch=main"][..],
+            &[
+                "-c",
+                "init.templateDir=",
+                "init",
+                "-q",
+                "--initial-branch=main",
+            ][..],
             &["config", "user.email", "ripr@example.invalid"][..],
             &["config", "user.name", "ripr frozen facts"][..],
             &["config", "commit.gpgsign", "false"][..],
@@ -3083,7 +3089,10 @@ fn checks_helper() {
         }
         let source = "pub fn subject() -> u8 { 7 }\n";
         let test = "#[test] fn subject_test() { assert_eq!(subject(), 7); }\n";
-        std::fs::write(root.join("Cargo.toml"), b"[workspace]\nmembers = [\"pkg\"]\n")?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            b"[workspace]\nmembers = [\"pkg\"]\n",
+        )?;
         std::fs::write(root.join("pkg/Cargo.toml"), b"[package]\nname = \"pkg\"\n")?;
         std::fs::write(root.join("pkg/src/lib.rs"), source)?;
         std::fs::write(root.join("pkg/tests/lib.rs"), test)?;
@@ -3095,41 +3104,55 @@ fn checks_helper() {
         let paths = ["pkg/src/lib.rs", "pkg/tests/lib.rs"];
         let test_path = Path::new(paths[1]);
         let source_path = Path::new(paths[0]);
-        frozen::with_context(Some(frozen.clone()), || -> Result<(), Box<dyn std::error::Error>> {
-            let baseline = facts_from_frozen_sources(&root, &paths)?;
-            assert!(baseline.validates_target(test_path, source_path, test));
-            let package = baseline.files.get(test_path).ok_or("missing test authority")?;
-            assert_eq!(
-                package.package_identity,
-                format!(
-                    "pkg/Cargo.toml:{}",
-                    source_digest(b"[package]\nname = \"pkg\"\n")
-                )
-            );
+        frozen::with_context(
+            Some(frozen.clone()),
+            || -> Result<(), Box<dyn std::error::Error>> {
+                let baseline = facts_from_frozen_sources(&root, &paths)?;
+                assert!(baseline.validates_target(test_path, source_path, test));
+                let package = baseline
+                    .files
+                    .get(test_path)
+                    .ok_or("missing test authority")?;
+                assert_eq!(
+                    package.package_identity,
+                    format!(
+                        "pkg/Cargo.toml:{}",
+                        source_digest(b"[package]\nname = \"pkg\"\n")
+                    )
+                );
 
-            std::fs::write(root.join(paths[0]), b"dirty source")?;
-            std::fs::write(root.join("pkg/Cargo.toml"), b"dirty member manifest")?;
-            let dirty = facts_from_frozen_sources(&root, &paths)?;
-            assert_eq!(dirty, baseline);
-            assert!(baseline.validates_target(test_path, source_path, test));
+                std::fs::write(root.join(paths[0]), b"dirty source")?;
+                std::fs::write(root.join("pkg/Cargo.toml"), b"dirty member manifest")?;
+                let dirty = facts_from_frozen_sources(&root, &paths)?;
+                assert_eq!(dirty, baseline);
+                assert!(baseline.validates_target(test_path, source_path, test));
 
-            fixture_git_ok(&root, &["add", "."])?;
-            let staged = facts_from_frozen_sources(&root, &paths)?;
-            assert_eq!(staged, baseline);
-            assert!(baseline.validates_target(test_path, source_path, test));
+                fixture_git_ok(&root, &["add", "."])?;
+                let staged = facts_from_frozen_sources(&root, &paths)?;
+                assert_eq!(staged, baseline);
+                assert!(baseline.validates_target(test_path, source_path, test));
 
-            for path in [paths[0], paths[1], "pkg/Cargo.toml", "Cargo.toml"] {
-                std::fs::remove_file(root.join(path))?;
-            }
-            let deleted = facts_from_frozen_sources(&root.join("."), &paths)?;
-            assert_eq!(deleted, baseline);
-            assert!(baseline.validates_target(test_path, source_path, test));
-            assert!(baseline.current_files.lock().map_err(|error| {
-                std::io::Error::other(format!("fixture currentness cache poisoned: {error}"))
-            })?.is_empty());
-            frozen.ensure_clean()?;
-            Ok(())
-        })?;
+                for path in [paths[0], paths[1], "pkg/Cargo.toml", "Cargo.toml"] {
+                    std::fs::remove_file(root.join(path))?;
+                }
+                let deleted = facts_from_frozen_sources(&root.join("."), &paths)?;
+                assert_eq!(deleted, baseline);
+                assert!(baseline.validates_target(test_path, source_path, test));
+                assert!(
+                    baseline
+                        .current_files
+                        .lock()
+                        .map_err(|error| {
+                            std::io::Error::other(format!(
+                                "fixture currentness cache poisoned: {error}"
+                            ))
+                        })?
+                        .is_empty()
+                );
+                frozen.ensure_clean()?;
+                Ok(())
+            },
+        )?;
         frozen.finalize()?;
         Ok(())
     }
@@ -3157,17 +3180,30 @@ fn checks_helper() {
             || -> Result<(), Box<dyn std::error::Error>> {
                 let facts = facts_from_frozen_sources(
                     &fixture.logical,
-                    &["a/src/lib.rs", "a/tests/lib.rs", "a-y/src/lib.rs", "a-y/tests/lib.rs"],
+                    &[
+                        "a/src/lib.rs",
+                        "a/tests/lib.rs",
+                        "a-y/src/lib.rs",
+                        "a-y/tests/lib.rs",
+                    ],
                 )?;
-                let a = facts.files.get(Path::new("a/tests/lib.rs")).ok_or("missing a")?;
-                let a_y = facts.files.get(Path::new("a-y/tests/lib.rs")).ok_or("missing a-y")?;
+                let a = facts
+                    .files
+                    .get(Path::new("a/tests/lib.rs"))
+                    .ok_or("missing a")?;
+                let a_y = facts
+                    .files
+                    .get(Path::new("a-y/tests/lib.rs"))
+                    .ok_or("missing a-y")?;
                 assert_ne!(a.package_identity, a_y.package_identity);
                 assert_eq!(
                     a.package_identity,
                     format!("a/Cargo.toml:{}", source_digest(manifest))
                 );
                 assert!(facts.validates_target(
-                    Path::new("a/tests/lib.rs"), Path::new("a/src/lib.rs"), "fn identical() {}\n"
+                    Path::new("a/tests/lib.rs"),
+                    Path::new("a/src/lib.rs"),
+                    "fn identical() {}\n"
                 ));
                 assert!(facts.validates_target(
                     Path::new("a-y/tests/lib.rs"),
@@ -3175,7 +3211,9 @@ fn checks_helper() {
                     "fn identical() {}\n",
                 ));
                 assert!(!facts.validates_target(
-                    Path::new("a/tests/lib.rs"), Path::new("a-y/src/lib.rs"), "fn identical() {}\n"
+                    Path::new("a/tests/lib.rs"),
+                    Path::new("a-y/src/lib.rs"),
+                    "fn identical() {}\n"
                 ));
                 fixture.authority.ensure_clean()?;
                 Ok(())
@@ -3194,16 +3232,22 @@ fn checks_helper() {
             Some(fixture.authority.clone()),
             || -> Result<(), Box<dyn std::error::Error>> {
                 let facts = facts_from_frozen_sources(
-                    &fixture.logical, &["pkg/src/lib.rs", "pkg/src/test.rs"]
+                    &fixture.logical,
+                    &["pkg/src/lib.rs", "pkg/src/test.rs"],
                 )?;
                 let text = super::super::build::rust_source_text(bytes);
                 assert!(text.not_utf8, "fixture must exercise lossy decoding");
                 assert!(!text.text.starts_with('\u{feff}'));
-                let entry = facts.files.get(Path::new("pkg/src/test.rs")).ok_or("missing test")?;
+                let entry = facts
+                    .files
+                    .get(Path::new("pkg/src/test.rs"))
+                    .ok_or("missing test")?;
                 assert_eq!(entry.source_digest, source_digest(text.text.as_bytes()));
                 assert_eq!(entry.package_identity, "directory:pkg/src");
                 assert!(facts.validates_target(
-                    Path::new("pkg/src/test.rs"), Path::new("pkg/src/lib.rs"), &text.text
+                    Path::new("pkg/src/test.rs"),
+                    Path::new("pkg/src/lib.rs"),
+                    &text.text
                 ));
                 // A supplied source is not accepted merely because its path
                 // exists in the frozen inventory.
@@ -3212,7 +3256,8 @@ fn checks_helper() {
                     (PathBuf::from("pkg/src/test.rs"), "wrong source"),
                 ]);
                 let mismatched = WorkspaceRootAuthority::from_sources(
-                    &fixture.logical, wrong.iter().map(|(path, source)| (path, *source))
+                    &fixture.logical,
+                    wrong.iter().map(|(path, source)| (path, *source)),
                 );
                 assert!(mismatched.files.values().all(|entry| !entry.valid));
                 fixture.authority.ensure_clean()?;
@@ -3231,16 +3276,18 @@ fn checks_helper() {
         frozen::with_context(
             Some(fixture.authority.clone()),
             || -> Result<(), Box<dyn std::error::Error>> {
-                let facts = facts_from_frozen_sources(
-                    &fixture.logical,
-                    &["src/lib.rs", "src/test.rs"],
-                )?;
+                let facts =
+                    facts_from_frozen_sources(&fixture.logical, &["src/lib.rs", "src/test.rs"])?;
                 assert!(facts.validates_target(
-                    Path::new("src/test.rs"), Path::new("src/lib.rs"), "fn one() {}\n"
+                    Path::new("src/test.rs"),
+                    Path::new("src/lib.rs"),
+                    "fn one() {}\n"
                 ));
                 std::fs::write(fixture.physical.join("src/lib.rs"), b"fn two() {}\n")?;
                 assert!(!facts.validates_target(
-                    Path::new("src/test.rs"), Path::new("src/lib.rs"), "fn one() {}\n"
+                    Path::new("src/test.rs"),
+                    Path::new("src/lib.rs"),
+                    "fn one() {}\n"
                 ));
                 require_frozen_fact_fault(
                     &fixture.authority,
@@ -3249,13 +3296,18 @@ fn checks_helper() {
                 )?;
                 std::fs::write(fixture.physical.join("src/lib.rs"), source)?;
                 assert!(!facts.validates_target(
-                    Path::new("src/test.rs"), Path::new("src/lib.rs"), "fn one() {}\n"
+                    Path::new("src/test.rs"),
+                    Path::new("src/lib.rs"),
+                    "fn one() {}\n"
                 ));
                 let rebuilt = WorkspaceRootAuthority::from_sources(
                     &fixture.logical,
-                    [(PathBuf::from("src/lib.rs"), "fn one() {}\n"),
-                     (PathBuf::from("src/test.rs"), "fn one() {}\n")]
-                        .iter().map(|(path, source)| (path, *source)),
+                    [
+                        (PathBuf::from("src/lib.rs"), "fn one() {}\n"),
+                        (PathBuf::from("src/test.rs"), "fn one() {}\n"),
+                    ]
+                    .iter()
+                    .map(|(path, source)| (path, *source)),
                 );
                 assert!(rebuilt.files.values().all(|entry| !entry.valid));
                 Ok(())
@@ -3265,12 +3317,12 @@ fn checks_helper() {
         frozen::with_context(
             Some(fresh.authority.clone()),
             || -> Result<(), Box<dyn std::error::Error>> {
-                let facts = facts_from_frozen_sources(
-                    &fresh.logical,
-                    &["src/lib.rs", "src/test.rs"],
-                )?;
+                let facts =
+                    facts_from_frozen_sources(&fresh.logical, &["src/lib.rs", "src/test.rs"])?;
                 assert!(facts.validates_target(
-                    Path::new("src/test.rs"), Path::new("src/lib.rs"), "fn one() {}\n"
+                    Path::new("src/test.rs"),
+                    Path::new("src/lib.rs"),
+                    "fn one() {}\n"
                 ));
                 fresh.authority.ensure_clean()?;
                 Ok(())
@@ -3350,15 +3402,22 @@ fn checks_helper() {
                     // Even an empty fact set must authenticate the root and
                     // cannot hide behind a missing-target early return.
                     let facts = WorkspaceRootAuthority::from_sources(
-                        &requested, std::iter::empty::<(&PathBuf, &str)>()
+                        &requested,
+                        std::iter::empty::<(&PathBuf, &str)>(),
                     );
                     assert!(!facts.validates_target(
-                        Path::new("absent.rs"), Path::new("also-absent.rs"), ""
+                        Path::new("absent.rs"),
+                        Path::new("also-absent.rs"),
+                        ""
                     ));
                     require_frozen_fact_fault(
                         &fixture.authority,
                         ErrorKind::PermissionDenied,
-                        if subroot { "differs from frozen root" } else { "outside repository" },
+                        if subroot {
+                            "differs from frozen root"
+                        } else {
+                            "outside repository"
+                        },
                     )?;
                     Ok(())
                 },
@@ -3370,24 +3429,33 @@ fn checks_helper() {
             || -> Result<(), Box<dyn std::error::Error>> {
                 let facts = facts_from_frozen_sources(&fresh.logical, &["src/lib.rs"])?;
                 assert!(facts.validates_target(
-                    Path::new("src/lib.rs"), Path::new("src/lib.rs"), "fn known() {}\n"
+                    Path::new("src/lib.rs"),
+                    Path::new("src/lib.rs"),
+                    "fn known() {}\n"
                 ));
-                let refusal = fresh.authority.refuse_external_effect("fixture later refusal");
+                let refusal = fresh
+                    .authority
+                    .refuse_external_effect("fixture later refusal");
                 assert_eq!(refusal.kind(), ErrorKind::PermissionDenied);
                 assert!(!facts.validates_target(
-                    Path::new("absent.rs"), Path::new("also-absent.rs"), ""
+                    Path::new("absent.rs"),
+                    Path::new("also-absent.rs"),
+                    ""
                 ));
                 assert!(!facts.validates_target(
-                    Path::new("src/lib.rs"), Path::new("src/lib.rs"), "fn known() {}\n"
+                    Path::new("src/lib.rs"),
+                    Path::new("src/lib.rs"),
+                    "fn known() {}\n"
                 ));
                 require_frozen_fact_fault(
-                    &fresh.authority, ErrorKind::PermissionDenied, "fixture later refusal"
+                    &fresh.authority,
+                    ErrorKind::PermissionDenied,
+                    "fixture later refusal",
                 )?;
                 Ok(())
             },
         )
     }
-
 
     #[test]
     fn frozen_workspace_facts_preserve_parent_manifest_fallback_and_refuse_directory_manifest()
@@ -3408,7 +3476,10 @@ fn checks_helper() {
                     &clean.logical,
                     &["pkg/src/lib.rs", "pkg/src/test.rs"],
                 )?;
-                let file = facts.files.get(Path::new("pkg/src/test.rs")).ok_or("missing test")?;
+                let file = facts
+                    .files
+                    .get(Path::new("pkg/src/test.rs"))
+                    .ok_or("missing test")?;
                 assert_eq!(
                     file.package_identity,
                     format!("Cargo.toml:{}", source_digest(root_manifest))
@@ -3451,5 +3522,4 @@ fn checks_helper() {
             },
         )
     }
-
 }

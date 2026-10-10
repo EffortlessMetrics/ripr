@@ -4322,10 +4322,7 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             ("binary.dat", vec![0, 0xff, b'\n', 0x80, 0]),
             ("empty.dat", Vec::new()),
             ("ripr.toml", b"[analysis]\nmode = \"draft\"\n".to_vec()),
-            (
-                "large.dat",
-                (0_u8..=250).cycle().take(1_000_000).collect(),
-            ),
+            ("large.dat", (0_u8..=250).cycle().take(1_000_000).collect()),
         ] {
             std::fs::write(fixture.0.join(name), &bytes).map_err(|error| error.to_string())?;
             let output = run_git_output_with_deadline_and_limit_isolated(
