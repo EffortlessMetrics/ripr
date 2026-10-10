@@ -1128,7 +1128,10 @@ mod tests {
                 assert!(!walk.complete);
                 assert!(walk.queue.is_empty());
                 assert!(walk.evidence_roots.is_none());
-                assert!(walk.reached.is_empty(), "parent was admitted before its edges");
+                assert!(
+                    walk.reached.is_empty(),
+                    "parent was admitted before its edges"
+                );
                 let error = fixture.authority.ensure_clean().expect_err("sticky escape");
                 assert!(error.to_string().contains("outside repository"), "{error}");
             });
@@ -1177,7 +1180,10 @@ mod tests {
             assert_eq!(frozen_results, ordinary_results);
             assert_eq!(frozen.reached, ordinary.reached);
             assert_eq!(frozen.complete, ordinary.complete);
-            fixture.authority.ensure_clean().expect("internal dependencies");
+            fixture
+                .authority
+                .ensure_clean()
+                .expect("internal dependencies");
         });
         Ok(())
     }
@@ -1232,7 +1238,10 @@ mod tests {
                     .is_none(),
                 "cached reach cannot outlive the same authority's refusal"
             );
-            let retained = fixture.authority.ensure_clean().expect_err("retained refusal");
+            let retained = fixture
+                .authority
+                .ensure_clean()
+                .expect_err("retained refusal");
             assert_eq!(retained.to_string(), first.to_string());
         });
         Ok(())
@@ -1253,7 +1262,10 @@ mod tests {
                 symlink_targets: Vec::new(),
             };
             assert!(EscapingReach::scan(&fixture.logical, &listing).is_none());
-            let error = fixture.authority.ensure_clean().expect_err("reported escape");
+            let error = fixture
+                .authority
+                .ensure_clean()
+                .expect_err("reported escape");
             assert!(error.to_string().contains("outside repository"), "{error}");
         });
         Ok(())

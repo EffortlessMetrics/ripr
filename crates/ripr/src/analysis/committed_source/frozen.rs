@@ -1191,8 +1191,14 @@ pub(crate) mod tests {
             .expect_err("existing outside dependency must refuse before any open");
         assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
         assert!(error.to_string().contains("outside repository"));
-        assert_eq!(fixture.authority.opened_reads.load(Ordering::SeqCst), before);
-        let retained = fixture.authority.ensure_clean().expect_err("sticky refusal");
+        assert_eq!(
+            fixture.authority.opened_reads.load(Ordering::SeqCst),
+            before
+        );
+        let retained = fixture
+            .authority
+            .ensure_clean()
+            .expect_err("sticky refusal");
         assert_eq!(retained.to_string(), error.to_string());
         let later = fixture
             .authority
