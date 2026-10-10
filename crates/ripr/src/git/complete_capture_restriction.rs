@@ -59,9 +59,9 @@ pub(crate) fn with_restriction<T>(
     work: impl FnOnce() -> Result<T, CoreError>,
 ) -> Result<T, CoreError> {
     let previous = current();
-    let effective_deadline = previous
-        .as_ref()
-        .map_or(held_deadline, |parent| held_deadline.min(parent.held_deadline));
+    let effective_deadline = previous.as_ref().map_or(held_deadline, |parent| {
+        held_deadline.min(parent.held_deadline)
+    });
     let admission = if max_output_bytes == 0 || max_output_bytes > MAX_CAPTURE_BYTES {
         Err(CoreError::message(
             "complete Git restriction requires a positive limit within 256 MiB",
@@ -101,9 +101,9 @@ pub(crate) fn with_restriction<T>(
     drop(restore);
     match result {
         Err(error) => match fault {
-            Some(fault) if fault != error => Err(error.with_context(format!(
-                "complete Git capture already refused: {fault}"
-            ))),
+            Some(fault) if fault != error => {
+                Err(error.with_context(format!("complete Git capture already refused: {fault}")))
+            }
             _ => Err(error),
         },
         Ok(value) => match fault {
@@ -213,9 +213,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    use crate::analysis::cancellation::{
-        AnalysisAbortKind, AnalysisCancellationToken, with_token,
-    };
+    use crate::analysis::cancellation::{AnalysisAbortKind, AnalysisCancellationToken, with_token};
     use crate::git::with_complete_capture_restriction;
 
     use super::*;
@@ -244,7 +242,13 @@ mod tests {
             ));
             std::fs::create_dir(&root).map_err(|error| error.to_string())?;
             let repo = Self(root);
-            repo.git(&["-c", "init.templateDir=", "init", "--quiet", "--initial-branch=main"])?;
+            repo.git(&[
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--quiet",
+                "--initial-branch=main",
+            ])?;
             repo.git(&["config", "user.email", "ripr-scope@example.invalid"])?;
             repo.git(&["config", "user.name", "RIPR Capture Scope"])?;
             repo.git(&["config", "commit.gpgSign", "false"])?;
@@ -288,32 +292,38 @@ mod tests {
         let repo = Repository::new()?;
         std::fs::write(repo.0.join("source.rs"), "fn value() -> bool { 1 < 2 }\n")
             .map_err(|error| error.to_string())?;
-        std::fs::write(repo.0.join("binary"), [0, 1, 2, 3])
-            .map_err(|error| error.to_string())?;
+        std::fs::write(repo.0.join("binary"), [0, 1, 2, 3]).map_err(|error| error.to_string())?;
         repo.git(&["add", "."])?;
         repo.git(&["commit", "--quiet", "-m", "base"])?;
         let base = repo.head()?;
         std::fs::write(repo.0.join("source.rs"), "fn value() -> bool { 1 <= 2 }\n")
             .map_err(|error| error.to_string())?;
-        std::fs::write(repo.0.join("binary"), [0, 4, 5, 6])
-            .map_err(|error| error.to_string())?;
+        std::fs::write(repo.0.join("binary"), [0, 4, 5, 6]).map_err(|error| error.to_string())?;
         repo.git(&["add", "."])?;
         repo.git(&["commit", "--quiet", "-m", "head"])?;
         let head = repo.head()?;
         let u0 = crate::analysis::diff::load::load_canonical_pr_evidence_diff_bytes_bounded(
-            &repo.0, &base, &head, 64 * 1024,
+            &repo.0,
+            &base,
+            &head,
+            64 * 1024,
         )
         .map_err(|error| error.to_string())?;
         let u3 = crate::analysis::load_pr_evidence_diff_range(&repo.0, &base, &head)?;
         assert!(!u0.is_empty(), "actual canonical range must be nonempty");
-        assert!(u3.contains("GIT binary patch"), "binary packet stimulus absent");
+        assert!(
+            u3.contains("GIT binary patch"),
+            "binary packet stimulus absent"
+        );
         let scoped = with_complete_capture_restriction(held(), 64 * 1024, || {
             let raw = crate::analysis::diff::load::load_canonical_pr_evidence_diff_bytes_bounded(
-                &repo.0, &base, &head, 64 * 1024,
+                &repo.0,
+                &base,
+                &head,
+                64 * 1024,
             )?;
-            let packet =
-                crate::analysis::load_pr_evidence_diff_range(&repo.0, &base, &head)
-                    .map_err(CoreError::message)?;
+            let packet = crate::analysis::load_pr_evidence_diff_range(&repo.0, &base, &head)
+                .map_err(CoreError::message)?;
             Ok((raw, packet))
         })
         .map_err(|error| error.to_string())?;
@@ -329,7 +339,10 @@ mod tests {
             let error = refused(with_complete_capture_restriction(held(), 4, || {
                 super::super::run_git_output_with_deadline(&repo.0, args, None)
             }))?;
-            assert!(error.to_string().contains("git_output_limit_exceeded"), "{error}");
+            assert!(
+                error.to_string().contains("git_output_limit_exceeded"),
+                "{error}"
+            );
         }
         let output = super::super::run_git_output_with_deadline(&repo.0, &["--version"], None)
             .map_err(|error| error.to_string())?;
@@ -342,16 +355,17 @@ mod tests {
     fn nonzero_output_is_data_and_smaller_callee_cap_still_refuses() -> Result<(), String> {
         let repo = Repository::new()?;
         let output = with_complete_capture_restriction(held(), 4096, || {
-            super::super::run_git_output_with_deadline(
-                &repo.0, &["--ripr-invalid-option"], None,
-            )
+            super::super::run_git_output_with_deadline(&repo.0, &["--ripr-invalid-option"], None)
         })
         .map_err(|error| error.to_string())?;
         assert!(!output.status.success());
         assert!(!output.stderr.is_empty());
         let error = refused(with_complete_capture_restriction(held(), 4096, || {
             super::super::run_git_output_with_deadline_and_limit_strict(
-                &repo.0, &["--version"], Duration::from_secs(30), 4,
+                &repo.0,
+                &["--version"],
+                Duration::from_secs(30),
+                4,
             )
         }))?;
         assert!(error.to_string().contains("4-byte"), "{error}");
@@ -359,15 +373,17 @@ mod tests {
     }
 
     #[test]
-    fn swallowed_dispatched_error_is_sticky_and_callback_error_is_primary()
-    -> Result<(), String> {
+    fn swallowed_dispatched_error_is_sticky_and_callback_error_is_primary() -> Result<(), String> {
         let repo = Repository::new()?;
         let error = refused(with_complete_capture_restriction(held(), 4, || {
             let _ignored =
                 super::super::run_git_output_with_deadline(&repo.0, &["--version"], None).ok();
             Ok(())
         }))?;
-        assert!(error.to_string().contains("git_output_limit_exceeded"), "{error}");
+        assert!(
+            error.to_string().contains("git_output_limit_exceeded"),
+            "{error}"
+        );
         let primary = CoreError::git_invocation_timeout("callback primary control", 99, false);
         let error = refused(with_complete_capture_restriction(held(), 4, || {
             let _ignored =
@@ -375,8 +391,14 @@ mod tests {
             Err::<(), _>(primary.clone())
         }))?;
         assert!(error.is_git_invocation_timeout(), "{error}");
-        assert!(error.to_string().contains("callback primary control"), "{error}");
-        assert!(error.to_string().contains("git_output_limit_exceeded"), "{error}");
+        assert!(
+            error.to_string().contains("callback primary control"),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains("git_output_limit_exceeded"),
+            "{error}"
+        );
         let expected = CoreError::git_invocation_timeout("sticky typed zero", 0, false);
         let typed = refused(with_complete_capture_restriction(held(), 4096, || {
             let _ignored = super::super::collect_output_with_deadline(
@@ -387,13 +409,15 @@ mod tests {
             .ok();
             Ok(())
         }))?;
-        assert_eq!(typed, expected, "the first swallowed error must retain its typed kind");
+        assert_eq!(
+            typed, expected,
+            "the first swallowed error must retain its typed kind"
+        );
         Ok(())
     }
 
     #[test]
-    fn discarded_precollector_refusal_is_explicitly_outside_latch_coverage()
-    -> Result<(), String> {
+    fn discarded_precollector_refusal_is_explicitly_outside_latch_coverage() -> Result<(), String> {
         with_complete_capture_restriction(held(), 4096, || {
             let refused_before_dispatch = super::super::run_git_output_with_deadline_and_limit(
                 Path::new("/ripr-missing-precollector-control"),
@@ -416,15 +440,14 @@ mod tests {
     }
 
     #[test]
-    fn nested_restrictions_share_first_fault_and_restore_tighter_bounds()
-    -> Result<(), String> {
+    fn nested_restrictions_share_first_fault_and_restore_tighter_bounds() -> Result<(), String> {
         let repo = Repository::new()?;
         let outer = held();
         let inner = outer - Duration::from_secs(2);
         let error = refused(with_complete_capture_restriction(outer, 4096, || {
             let nested = with_complete_capture_restriction(inner, 4, || {
-                let observed = current()
-                    .ok_or_else(|| CoreError::message("nested restriction missing"))?;
+                let observed =
+                    current().ok_or_else(|| CoreError::message("nested restriction missing"))?;
                 assert_eq!(observed.held_deadline, inner);
                 assert_eq!(observed.max_output_bytes, 4);
                 let _ignored =
@@ -432,13 +455,18 @@ mod tests {
                 Ok(())
             });
             let nested_error = refused(nested).map_err(CoreError::message)?;
-            assert!(nested_error.to_string().contains("4-byte"), "{nested_error}");
+            assert!(
+                nested_error.to_string().contains("4-byte"),
+                "{nested_error}"
+            );
             let restored = current()
                 .ok_or_else(|| CoreError::message("outer restriction was not restored"))?;
             assert_eq!(restored.held_deadline, outer);
             assert_eq!(restored.max_output_bytes, 4096);
             let shared = refused(super::super::run_git_output_with_deadline(
-                &repo.0, &["--version"], None,
+                &repo.0,
+                &["--version"],
+                None,
             ))
             .map_err(CoreError::message)?;
             assert!(shared.to_string().contains("4-byte"), "{shared}");
@@ -471,14 +499,16 @@ mod tests {
             .ok();
             Ok(())
         }))?;
-        assert!(!entered.get(), "nested scope renewed an expired original cutoff");
+        assert!(
+            !entered.get(),
+            "nested scope renewed an expired original cutoff"
+        );
         assert!(error.is_git_invocation_timeout(), "{error}");
         Ok(())
     }
 
     #[test]
-    fn prepared_and_inherited_redirects_refuse_and_removal_is_consistent()
-    -> Result<(), String> {
+    fn prepared_and_inherited_redirects_refuse_and_removal_is_consistent() -> Result<(), String> {
         let repo = Repository::new()?;
         for name in super::super::COMPLETE_GIT_REDIRECTS
             .iter()
@@ -493,8 +523,7 @@ mod tests {
             assert!(error.to_string().contains(name), "{error}");
             let mut removed = super::super::git_command(&repo.0, &["--version"]);
             removed.env_remove(name);
-            validate_command_environment(&removed, |_| false)
-                .map_err(|error| error.to_string())?;
+            validate_command_environment(&removed, |_| false).map_err(|error| error.to_string())?;
             let inherited = refused(validate_command_environment(&removed, |key| key == name))?;
             assert!(inherited.to_string().contains(name), "{inherited}");
         }
@@ -502,8 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn actual_replace_refs_cannot_override_the_scoped_original_objects()
-    -> Result<(), String> {
+    fn actual_replace_refs_cannot_override_the_scoped_original_objects() -> Result<(), String> {
         let repo = Repository::new()?;
         std::fs::write(repo.0.join("source"), b"base bytes\n")
             .map_err(|error| error.to_string())?;
@@ -519,7 +547,9 @@ mod tests {
         let mut ordinary = super::super::git_command(&repo.0, &["show", &expression]);
         ordinary.env_remove("GIT_NO_REPLACE_OBJECTS");
         let output = super::super::collect_output_with_deadline(
-            ordinary, Some(Duration::from_secs(30)), "ordinary replace control",
+            ordinary,
+            Some(Duration::from_secs(30)),
+            "ordinary replace control",
         )
         .map_err(|error| error.to_string())?;
         assert!(output.status.success());
@@ -536,8 +566,7 @@ mod tests {
     }
 
     #[test]
-    fn zero_and_cancellation_keep_priority_before_prepared_redirect()
-    -> Result<(), String> {
+    fn zero_and_cancellation_keep_priority_before_prepared_redirect() -> Result<(), String> {
         let repo = Repository::new()?;
         let mut zero = super::super::git_command(&repo.0, &["--version"]);
         zero.env("GIT_DIR", "forbidden");
@@ -559,8 +588,7 @@ mod tests {
     }
 
     #[test]
-    fn scope_admission_refuses_zero_excess_and_expired_before_callback()
-    -> Result<(), String> {
+    fn scope_admission_refuses_zero_excess_and_expired_before_callback() -> Result<(), String> {
         for (deadline, limit) in [
             (held(), 0),
             (held(), MAX_CAPTURE_BYTES + 1),
@@ -579,17 +607,24 @@ mod tests {
             super::super::run_git_output_with_deadline(&repo.0, &["--version"], None)
         })
         .map_err(|error| error.to_string())?;
-        assert!(output.status.success(), "the existing exact ceiling must remain admitted");
+        assert!(
+            output.status.success(),
+            "the existing exact ceiling must remain admitted"
+        );
         Ok(())
     }
 
     #[test]
-    fn explicit_held_entry_intersects_scope_cap_and_original_runtime_cutoff()
-    -> Result<(), String> {
+    fn explicit_held_entry_intersects_scope_cap_and_original_runtime_cutoff() -> Result<(), String>
+    {
         let repo = Repository::new()?;
         let error = refused(with_complete_capture_restriction(held(), 4, || {
             super::super::run_git_complete_output_with_held_deadline_and_limit(
-                &repo.0, &["--version"], held(), 4096, CompleteGitEnvironment::WholeInput,
+                &repo.0,
+                &["--version"],
+                held(),
+                4096,
+                CompleteGitEnvironment::WholeInput,
             )
         }))?;
         assert!(error.to_string().contains("4-byte"), "{error}");
@@ -600,12 +635,17 @@ mod tests {
             *values.borrow_mut() = Some(Vec::new());
         });
         let command = super::super::git_command(
-            &repo.0, &["-c", "alias.ripr-scope-wait=!sleep 1", "ripr-scope-wait"],
+            &repo.0,
+            &["-c", "alias.ripr-scope-wait=!sleep 1", "ripr-scope-wait"],
         );
         let result = with_complete_capture_restriction(original_held, 4096, || {
             super::super::collect_output_with_reader_policy_and_held_deadline(
-                command, Some(Duration::from_secs(30)), 4096, "scope live cutoff",
-                false, Some((held(), held())),
+                command,
+                Some(Duration::from_secs(30)),
+                4096,
+                "scope live cutoff",
+                false,
+                Some((held(), held())),
             )
         });
         let observations = super::super::HELD_CAPTURE_OBSERVATIONS
@@ -615,30 +655,42 @@ mod tests {
         assert!(error.is_git_invocation_timeout(), "{error}");
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(
-            matches!(observations.first(), Some(super::super::HeldCaptureObservation::SpawnedLive(true))),
+            matches!(
+                observations.first(),
+                Some(super::super::HeldCaptureObservation::SpawnedLive(true))
+            ),
             "actual Git child must be live before the scoped cutoff: {observations:?}"
         );
-        let drains: Vec<_> = observations.iter().filter_map(|value| match value {
-            super::super::HeldCaptureObservation::Drain { deadline, .. } => *deadline,
-            super::super::HeldCaptureObservation::SpawnedLive(_) => None,
-        }).collect();
+        let drains: Vec<_> = observations
+            .iter()
+            .filter_map(|value| match value {
+                super::super::HeldCaptureObservation::Drain { deadline, .. } => *deadline,
+                super::super::HeldCaptureObservation::SpawnedLive(_) => None,
+            })
+            .collect();
         assert_eq!(drains.len(), 2, "both actual readers must be drained");
-        assert_eq!(drains[0], drains[1], "stderr must not renew the drain deadline");
+        assert_eq!(
+            drains[0], drains[1],
+            "stderr must not renew the drain deadline"
+        );
         assert!(drains[0] <= original_held);
         Ok(())
     }
 
     #[test]
-    fn caller_phase_cannot_be_extended_by_scope_or_explicit_held_data()
-    -> Result<(), String> {
+    fn caller_phase_cannot_be_extended_by_scope_or_explicit_held_data() -> Result<(), String> {
         let repo = Repository::new()?;
         let error = refused(with_complete_capture_restriction(held(), 4096, || {
             super::super::collect_output_with_reader_policy_and_held_deadline(
                 super::super::git_command(
-                    &repo.0, &["-c", "alias.ripr-scope-wait=!sleep 1", "ripr-scope-wait"],
+                    &repo.0,
+                    &["-c", "alias.ripr-scope-wait=!sleep 1", "ripr-scope-wait"],
                 ),
-                Some(Duration::from_millis(20)), 4096, "short caller phase",
-                true, Some((held(), held())),
+                Some(Duration::from_millis(20)),
+                4096,
+                "short caller phase",
+                true,
+                Some((held(), held())),
             )
         }))?;
         assert!(error.is_git_invocation_timeout(), "{error}");
@@ -646,8 +698,7 @@ mod tests {
     }
 
     #[test]
-    fn unwind_restores_tls_and_other_threads_do_not_inherit_restrictions()
-    -> Result<(), String> {
+    fn unwind_restores_tls_and_other_threads_do_not_inherit_restrictions() -> Result<(), String> {
         let unwind = std::panic::catch_unwind(|| {
             with_complete_capture_restriction::<()>(held(), 4096, || {
                 std::panic::resume_unwind(Box::new("scope unwind control"))
@@ -661,9 +712,17 @@ mod tests {
         with_complete_capture_restriction(held(), 4096, || {
             let other = std::thread::spawn(|| current().is_none())
                 .join()
-                .map_err(|payload| CoreError::message(format!("thread control panicked (string payload: {})", payload.is::<&str>())))?;
+                .map_err(|payload| {
+                    CoreError::message(format!(
+                        "thread control panicked (string payload: {})",
+                        payload.is::<&str>()
+                    ))
+                })?;
             assert!(other, "TLS restriction was unexpectedly inherited");
-            assert!(current().is_some(), "other thread changed caller restrictions");
+            assert!(
+                current().is_some(),
+                "other thread changed caller restrictions"
+            );
             Ok(())
         })
         .map_err(|error| error.to_string())?;

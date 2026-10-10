@@ -338,6 +338,15 @@ pub(crate) fn render_check_json_unbounded(output: &CheckOutput) -> String {
     output::render::render_check_json_unbounded(output, &RiprConfig::default())
 }
 
+/// Full PR input rendering with fallible frozen-source stamping. Retain the
+/// existing ordinary default-render configuration.
+pub(crate) fn render_check_json_for_pr_evidence(output: &CheckOutput) -> Result<String, String> {
+    if crate::analysis::committed_source::frozen::current().is_none() {
+        return Ok(render_check_json_unbounded(output));
+    }
+    output::render::render_check_json_for_pr_evidence(output, &RiprConfig::default())
+}
+
 /// Renders with navigation while reporting repo-scope progress boundaries to
 /// `progress` for the full-repo audit-path formats (#4945).
 pub(crate) fn render_check_with_config_and_navigation_and_progress(

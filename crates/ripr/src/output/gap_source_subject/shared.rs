@@ -68,11 +68,20 @@ pub(crate) fn absolute_root(root: &Path) -> PathBuf {
 /// - traversal (`..`) is rejected;
 /// - whitespace in a filename or directory is identity, not padding (#5128).
 pub(crate) fn subject_relative_path(root: &Path, raw: &str) -> Option<String> {
+    subject_relative_path_with(root, raw, &mut |path| std::fs::canonicalize(path))
+}
+
+/// Same path grammar with a caller-owned canonical path resolver.
+pub(crate) fn subject_relative_path_with(
+    root: &Path,
+    raw: &str,
+    canonicalize: &mut impl FnMut(&Path) -> std::io::Result<PathBuf>,
+) -> Option<String> {
     let file = subject_named_file(raw)?;
     let normalized = file.replace('\\', "/");
     let path = Path::new(&normalized);
     let relative = if path.is_absolute() {
-        strip_absolute_root(root, path)?
+        strip_absolute_root(root, path, canonicalize)?
     } else {
         strip_relative_root_prefix(root, path)
     };
@@ -106,16 +115,20 @@ fn relative_stamp_path(relative: &Path) -> Option<String> {
     Some(parts.join("/"))
 }
 
-fn strip_absolute_root(root: &Path, path: &Path) -> Option<PathBuf> {
+fn strip_absolute_root(
+    root: &Path,
+    path: &Path,
+    canonicalize: &mut impl FnMut(&Path) -> std::io::Result<PathBuf>,
+) -> Option<PathBuf> {
     let absolute = absolute_root(root);
     if let Ok(relative) = path.strip_prefix(&absolute) {
         return Some(relative.to_path_buf());
     }
-    let canonical_root = std::fs::canonicalize(&absolute).ok()?;
+    let canonical_root = canonicalize(&absolute).ok()?;
     if let Ok(relative) = path.strip_prefix(&canonical_root) {
         return Some(relative.to_path_buf());
     }
-    let canonical_path = std::fs::canonicalize(path).ok()?;
+    let canonical_path = canonicalize(path).ok()?;
     canonical_path
         .strip_prefix(&canonical_root)
         .ok()
@@ -194,9 +207,18 @@ fn push_string(value: Option<&Value>, paths: &mut Vec<String>) {
 
 /// Repo-relative files an actionable-gaps packet makes claims about.
 pub(crate) fn actionable_packet_subject_paths(root: &Path, packet: &Value) -> BTreeSet<String> {
+    actionable_packet_subject_paths_with(root, packet, &mut |path| std::fs::canonicalize(path))
+}
+
+/// Same packet path projection with a caller-owned canonical path resolver.
+pub(crate) fn actionable_packet_subject_paths_with(
+    root: &Path,
+    packet: &Value,
+    canonicalize: &mut impl FnMut(&Path) -> std::io::Result<PathBuf>,
+) -> BTreeSet<String> {
     actionable_packet_named_paths(packet)
         .iter()
-        .filter_map(|raw| subject_relative_path(root, raw))
+        .filter_map(|raw| subject_relative_path_with(root, raw, canonicalize))
         .collect()
 }
 
@@ -210,6 +232,23 @@ pub(crate) fn derive_source_subject(
     input_root: &Path,
     output_root: &Path,
     required: &BTreeSet<String>,
+) -> Result<GapSourceSubject, &'static str> {
+    derive_source_subject_with(
+        input_stamp,
+        input_root,
+        output_root,
+        required,
+        &mut |path| std::fs::canonicalize(path),
+    )
+}
+
+/// Same digest-copy projection with a caller-owned canonical path resolver.
+pub(crate) fn derive_source_subject_with(
+    input_stamp: Option<&Value>,
+    input_root: &Path,
+    output_root: &Path,
+    required: &BTreeSet<String>,
+    canonicalize: &mut impl FnMut(&Path) -> std::io::Result<PathBuf>,
 ) -> Result<GapSourceSubject, &'static str> {
     if required.is_empty() {
         return Ok(GapSourceSubject {
@@ -227,11 +266,11 @@ pub(crate) fn derive_source_subject(
     let input_absolute = absolute_root(input_root);
     let mut digests = BTreeMap::new();
     for file in subject.files {
-        if subject_relative_path(input_root, &file.path).as_deref() != Some(file.path.as_str()) {
+        if subject_relative_path_with(input_root, &file.path, canonicalize).as_deref() != Some(file.path.as_str()) {
             return Err("input_source_subject_malformed");
         }
         let absolute = input_absolute.join(&file.path);
-        if let Some(path) = subject_relative_path(output_root, &absolute.to_string_lossy()) {
+        if let Some(path) = subject_relative_path_with(output_root, &absolute.to_string_lossy(), canonicalize) {
             digests.insert(path, file.digest);
         }
     }

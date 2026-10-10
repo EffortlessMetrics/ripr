@@ -7,7 +7,7 @@
 //!
 //! Unlike the xtask, this command does NOT shell out to `cargo run -p ripr --
 //! check ...`. It calls [`crate::app::check_workspace_with_config`] directly and renders the
-//! resulting [`crate::CheckOutput`] as JSON via [`crate::app::render_check_json_unbounded`].
+//! resulting [`crate::CheckOutput`] as JSON via [`crate::app::render_check_json_for_pr_evidence`].
 //! This avoids recompilation and keeps the analysis in-process.
 
 mod complete_execution;
@@ -1293,7 +1293,7 @@ fn run_ripr_check(repo: &Path, options: &PrEvidenceOptions) -> Result<String, St
     // the full finding set; the external findings-array byte budget must
     // not silently truncate the counts this packet routes from (Codex P1:
     // a bounded prefix under-counted severe gaps with no disclosure).
-    Ok(crate::app::render_check_json_unbounded(&output))
+    crate::app::render_check_json_for_pr_evidence(&output)
 }
 
 /// `pr-evidence` reads Git history and writes `target/ripr/pr/` from the
