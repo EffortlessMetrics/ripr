@@ -406,7 +406,8 @@ impl OwnedProcess {
             if let Ok(Some(actual)) = observed.as_ref() {
                 // Preserve actual progress even when the following check is late.
                 *status = Some(*actual);
-                self.enclosing_observed_reap.get_or_insert((*actual, Instant::now()));
+                self.enclosing_observed_reap
+                    .get_or_insert((*actual, Instant::now()));
                 if let Some(delay) = ENCLOSING_AFTER_REAP_DELAY.with(|stored| stored.take()) {
                     std::thread::sleep(delay);
                 }
@@ -430,7 +431,8 @@ impl OwnedProcess {
         let observed = self.child.try_wait();
         if let Ok(Some(actual)) = observed.as_ref() {
             *status = Some(*actual);
-            self.enclosing_observed_reap.get_or_insert((*actual, Instant::now()));
+            self.enclosing_observed_reap
+                .get_or_insert((*actual, Instant::now()));
         }
         enclosing_time(deadline)?;
         match observed {
@@ -495,7 +497,8 @@ impl OwnedProcess {
             if let Ok(Some(status)) = observed.as_ref() {
                 // Preserve the actual reap even if a following caller clock
                 // check fails before its own settled status can be stored.
-                self.enclosing_observed_reap.get_or_insert((*status, Instant::now()));
+                self.enclosing_observed_reap
+                    .get_or_insert((*status, Instant::now()));
                 if let Some(delay) = ENCLOSING_AFTER_TRY_WAIT_DELAY.with(|stored| stored.take()) {
                     std::thread::sleep(delay);
                 }

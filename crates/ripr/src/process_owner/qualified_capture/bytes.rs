@@ -562,7 +562,9 @@ impl<L: Any + Send + Sync> CompleteEnclosingCustodian<L> {
             .is_some_and(|inner| inner.matches_lease(lease))
     }
 
-    pub(crate) fn observed_retained_worker(&self) -> Result<super::ObservedProcessIdentity, String> {
+    pub(crate) fn observed_retained_worker(
+        &self,
+    ) -> Result<super::ObservedProcessIdentity, String> {
         crate::process_owner::enclosing_time(self.enclosing_deadline)?;
         let inner = self
             .inner
@@ -647,7 +649,9 @@ impl<L: Any + Send + Sync> CompleteEnclosingCustodian<L> {
         let terminal_started = Instant::now();
         let deadline = terminal_started
             .checked_add(crate::process_owner::enclosing_disposal_grace())
-            .map_or(self.enclosing_deadline, |phase| phase.min(self.enclosing_deadline));
+            .map_or(self.enclosing_deadline, |phase| {
+                phase.min(self.enclosing_deadline)
+            });
         self.disposal_deadline = Some(deadline);
         let group_deadline = terminal_started
             .checked_add(super::linux::terminal_settlement_grace())
@@ -729,7 +733,10 @@ impl<L: Any + Send + Sync> CompleteEnclosingPhysicalClosure<L> {
         self.enclosing
             .inner()
             .and_then(CompleteTerminalCustodian::failure)
-            .map_or("actual capture failure is absent", CompleteCaptureError::message)
+            .map_or(
+                "actual capture failure is absent",
+                CompleteCaptureError::message,
+            )
     }
 }
 
@@ -781,9 +788,10 @@ pub(crate) struct CompleteEnclosingFailure<'a, L: Any + Send + Sync> {
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 impl<L: Any + Send + Sync> CompleteEnclosingFailure<'_, L> {
     pub(crate) fn message(&self) -> &str {
-        self.enclosing.disposal_error.as_deref().unwrap_or(
-            "enclosing disposition was already attempted; actual custody retained",
-        )
+        self.enclosing
+            .disposal_error
+            .as_deref()
+            .unwrap_or("enclosing disposition was already attempted; actual custody retained")
     }
 
     pub(crate) fn enclosing(&self) -> &CompleteEnclosingCustodian<L> {
@@ -2214,8 +2222,8 @@ mod linux {
                 lease: Arc<Lease>,
             ) -> Result<CompleteEnclosingCustodian<Lease>, String> {
                 let mut slot = Some(CompleteTerminalCustodian::new(held, lease)?);
-                let admitted = CompleteEnclosingCustodian::admit(&mut slot, outer)
-                    .map_err(str::to_string)?;
+                let admitted =
+                    CompleteEnclosingCustodian::admit(&mut slot, outer).map_err(str::to_string)?;
                 if slot.is_some() {
                     return Err("enclosing admission duplicated the original owner".to_string());
                 }
@@ -2244,19 +2252,23 @@ mod linux {
                 held: Instant,
                 outer: Instant,
             ) -> Result<(), String> {
-                let inner = enclosing.inner().ok_or("enclosing original owner was lost")?;
+                let inner = enclosing
+                    .inner()
+                    .ok_or("enclosing original owner was lost")?;
                 let failure = inner.failure().ok_or("enclosing actual error was lost")?;
                 if inner.original_deadline() != held
                     || enclosing.original_deadline() != held
                     || enclosing.enclosing_deadline() != outer
                     || !enclosing.matches_lease(lease)
                     || !failure.matches_lease(lease)
-                    || !failure.message().contains("spawn crossed its held deadline")
+                    || !failure
+                        .message()
+                        .contains("spawn crossed its held deadline")
                     || !inner.attempted
                     || inner.retained_process_count() != 1
                 {
                     return Err(
-                        "enclosing transfer changed the original capture or lease".to_string(),
+                        "enclosing transfer changed the original capture or lease".to_string()
                     );
                 }
                 Ok(())
@@ -2286,7 +2298,8 @@ mod linux {
                     || Instant::now() >= outer
                 {
                     return Err(
-                        "enclosing direct disposition changed actual identity or clocks".to_string(),
+                        "enclosing direct disposition changed actual identity or clocks"
+                            .to_string(),
                     );
                 }
                 Ok(())
@@ -2307,13 +2320,18 @@ mod linux {
                 }
                 let before = owner.observed_retained_worker()?;
                 let checks = require_enclosing_binding(&owner, &lease, held, outer);
-                let disposed = owner.try_dispose_failure().map_err(enclosing_report_to_string)?;
+                let disposed = owner
+                    .try_dispose_failure()
+                    .map_err(enclosing_report_to_string)?;
                 checks?;
                 require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)?;
                 let inner = owner.inner.as_mut().ok_or("original inner slot lost")?;
                 let child = retained_child(inner)?;
                 if child.bounded_drop_until != Some(held)
-                    || child.try_wait().map_err(|error| error.to_string())?.is_none()
+                    || child
+                        .try_wait()
+                        .map_err(|error| error.to_string())?
+                        .is_none()
                     || inner.take_cleanup_receipt().is_some()
                     || inner.try_closeout_failure().is_ok()
                     || dropped.load(Ordering::SeqCst)
@@ -2360,11 +2378,13 @@ mod linux {
                 }));
                 let before = owner.observed_retained_worker()?;
                 let checks = require_enclosing_binding(&owner, &lease, held, outer);
-                let disposed = owner.try_dispose_failure().map_err(enclosing_report_to_string)?;
+                let disposed = owner
+                    .try_dispose_failure()
+                    .map_err(enclosing_report_to_string)?;
                 checks?;
                 if unwound.is_ok() || dropped.load(Ordering::SeqCst) {
                     return Err(
-                        "unwind lost the actual outside owner or resource lease".to_string(),
+                        "unwind lost the actual outside owner or resource lease".to_string()
                     );
                 }
                 require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)
@@ -2382,19 +2402,25 @@ mod linux {
                     Err(_) => {}
                     Ok(_) => return Err("enclosing admission accepted T equal to U".to_string()),
                 }
-                let rejected = slot.as_ref().ok_or("rejected admission dropped original slot")?;
+                let rejected = slot
+                    .as_ref()
+                    .ok_or("rejected admission dropped original slot")?;
                 if rejected.original_deadline() != held || !rejected.matches_lease(&lease) {
                     return Err("rejected admission replaced original state".to_string());
                 }
-                let mut owner = CompleteEnclosingCustodian::admit(&mut slot, outer)
+                let mut owner =
+                    CompleteEnclosingCustodian::admit(&mut slot, outer).map_err(str::to_string)?;
+                owner
+                    .with_inner(|inner| {
+                        inner.attempted = true;
+                    })
                     .map_err(str::to_string)?;
-                owner.with_inner(|inner| {
-                    inner.attempted = true;
-                }).map_err(str::to_string)?;
                 match owner.with_inner(|_| ()) {
                     Err(_) if owner.matches_lease(&lease) => {}
                     Err(error) => return Err(error.to_string()),
-                    Ok(()) => return Err("enclosing boundary accepted a second attempt".to_string()),
+                    Ok(()) => {
+                        return Err("enclosing boundary accepted a second attempt".to_string());
+                    }
                 }
                 let mut used = owner.inner.take();
                 match CompleteEnclosingCustodian::admit(&mut used, outer) {
@@ -2405,23 +2431,23 @@ mod linux {
             }
 
             #[test]
-            fn enclosing_real_live_descendant_refuses_before_primary_reap()
-            -> Result<(), String> {
+            fn enclosing_real_live_descendant_refuses_before_primary_reap() -> Result<(), String> {
                 let started = Instant::now();
                 let held = started + Duration::from_millis(100);
                 let outer = started + Duration::from_secs(5);
                 let (lease, _dropped) = lease()?;
                 let mut owner = enclosing(held, outer, lease.clone())?;
-                let _report = expire_inner(
-                    &mut owner,
-                    "/usr/bin/sleep 0.5 & exec /usr/bin/sleep 30",
-                )?;
+                let _report =
+                    expire_inner(&mut owner, "/usr/bin/sleep 0.5 & exec /usr/bin/sleep 30")?;
                 let before = owner.observed_retained_worker()?;
                 let refused = match owner.try_dispose_failure() {
                     Err(error) => error.message().contains("live descendants remain"),
                     Ok(_) => false,
                 };
-                let inner = owner.inner.as_mut().ok_or("descendant refusal lost inner")?;
+                let inner = owner
+                    .inner
+                    .as_mut()
+                    .ok_or("descendant refusal lost inner")?;
                 let child = retained_child(inner)?;
                 let original = child.bounded_drop_until;
                 // Controlled finite descendant exits naturally. This fixture
@@ -2472,7 +2498,7 @@ mod linux {
                     || !owner.progress.no_live_members()
                 {
                     return Err(
-                        "late actual reap discarded status or granted disposition".to_string(),
+                        "late actual reap discarded status or granted disposition".to_string()
                     );
                 }
                 match owner.try_dispose_failure() {
@@ -2482,8 +2508,8 @@ mod linux {
             }
 
             #[test]
-            fn enclosing_qualified_refusal_keeps_original_flags_and_deadline()
-            -> Result<(), String> {
+            fn enclosing_qualified_refusal_keeps_original_flags_and_deadline() -> Result<(), String>
+            {
                 let started = Instant::now();
                 let held = started + Duration::from_millis(100);
                 let outer = started + Duration::from_secs(5);
@@ -2492,27 +2518,39 @@ mod linux {
                 HOOKS.with(|hooks| {
                     hooks.borrow_mut().delay_first_wait = Some(Duration::from_millis(150));
                 });
-                let report = owner.with_inner(|inner| {
-                    capture(
-                        "exec 1>&- 2>&-; exec /usr/bin/sleep 30",
-                        None,
-                        budget(0, 64),
-                        inner,
-                    )
-                }).map_err(str::to_string)?;
+                let report = owner
+                    .with_inner(|inner| {
+                        capture(
+                            "exec 1>&- 2>&-; exec /usr/bin/sleep 30",
+                            None,
+                            budget(0, 64),
+                            inner,
+                        )
+                    })
+                    .map_err(str::to_string)?;
                 if report.is_ok() {
                     return Err("qualified held expiry admitted capture".to_string());
                 }
                 let before = owner.observed_retained_worker()?;
-                let disposed = owner.try_dispose_failure().map_err(enclosing_report_to_string)?;
+                let disposed = owner
+                    .try_dispose_failure()
+                    .map_err(enclosing_report_to_string)?;
                 require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)?;
-                let inner = owner.inner.as_mut().ok_or("qualified disposal lost inner")?;
-                let failure = inner.failure.as_mut().ok_or("qualified actual error lost")?;
-                let group = failure.custody[0].group.as_ref().ok_or("qualified owner lost")?;
-                if group.enclosing_failure_state() != (Some(held), true, false, false, false)
-                {
+                let inner = owner
+                    .inner
+                    .as_mut()
+                    .ok_or("qualified disposal lost inner")?;
+                let failure = inner
+                    .failure
+                    .as_mut()
+                    .ok_or("qualified actual error lost")?;
+                let group = failure.custody[0]
+                    .group
+                    .as_ref()
+                    .ok_or("qualified owner lost")?;
+                if group.enclosing_failure_state() != (Some(held), true, false, false, false) {
                     return Err(
-                        "enclosing endpoint requalified or reset failed capture".to_string(),
+                        "enclosing endpoint requalified or reset failed capture".to_string()
                     );
                 }
                 Ok(())
@@ -2528,14 +2566,16 @@ mod linux {
                 HOOKS.with(|hooks| {
                     hooks.borrow_mut().delay_first_wait = Some(Duration::from_millis(150));
                 });
-                let report = owner.with_inner(|inner| {
-                    capture(
-                        "exec 1>&- 2>&-; /usr/bin/sleep 30 & exec /usr/bin/sleep 30",
-                        None,
-                        budget(0, 64),
-                        inner,
-                    )
-                }).map_err(str::to_string)?;
+                let report = owner
+                    .with_inner(|inner| {
+                        capture(
+                            "exec 1>&- 2>&-; /usr/bin/sleep 30 & exec /usr/bin/sleep 30",
+                            None,
+                            budget(0, 64),
+                            inner,
+                        )
+                    })
+                    .map_err(str::to_string)?;
                 let primary = match report {
                     Err(message) => message,
                     Ok(_) => return Err("qualified descendant expiry admitted capture".to_string()),
@@ -2546,28 +2586,41 @@ mod linux {
                         .try_dispose_failure()
                         .map_err(enclosing_report_to_string)?;
                     require_enclosing_disposed(&disposed, &before, &lease, held, outer, false)?;
-                    let inner = owner.inner.as_mut().ok_or("descendant original owner lost")?;
-                    let failure = inner.failure.as_mut().ok_or("descendant first failure lost")?;
-                    let group = failure.custody[0].group.as_ref().ok_or("descendant group lost")?;
+                    let inner = owner
+                        .inner
+                        .as_mut()
+                        .ok_or("descendant original owner lost")?;
+                    let failure = inner
+                        .failure
+                        .as_mut()
+                        .ok_or("descendant first failure lost")?;
+                    let group = failure.custody[0]
+                        .group
+                        .as_ref()
+                        .ok_or("descendant group lost")?;
                     if failure.message() != primary
-                        || group.enclosing_failure_state() != (Some(held), true, false, false, false)
+                        || group.enclosing_failure_state()
+                            != (Some(held), true, false, false, false)
                         || failure.take_cleanup_receipt().is_some()
                         || inner.try_closeout_failure().is_ok()
                     {
                         return Err(
-                            "negative group disposal altered failure or minted receipt".to_string(),
+                            "negative group disposal altered failure or minted receipt".to_string()
                         );
                     }
                     // This is the endpoint's actual no-live-before-reap audit,
                     // not a receipt inferred from a retained handle count.
                     if !owner.progress.no_live_members() || owner.progress.status().is_none() {
                         return Err(
-                            "descendant negative disposition lost actual observations".to_string(),
+                            "descendant negative disposition lost actual observations".to_string()
                         );
                     }
                     Ok(())
                 })();
-                let inner = owner.inner.as_mut().ok_or("descendant fixture owner lost")?;
+                let inner = owner
+                    .inner
+                    .as_mut()
+                    .ok_or("descendant fixture owner lost")?;
                 fixture_closeout(inner, checks)
             }
 
@@ -2582,32 +2635,35 @@ mod linux {
                 HOOKS.with(|hooks| {
                     hooks.borrow_mut().delay_first_wait = Some(Duration::from_millis(150));
                 });
-                let report = owner.with_inner(|inner| {
-                    capture(
-                        "exec 1>&- 2>&-; /usr/bin/sleep 30 & exec /usr/bin/sleep 30",
-                        None,
-                        budget(0, 64),
-                        inner,
-                    )
-                }).map_err(str::to_string)?;
+                let report = owner
+                    .with_inner(|inner| {
+                        capture(
+                            "exec 1>&- 2>&-; /usr/bin/sleep 30 & exec /usr/bin/sleep 30",
+                            None,
+                            budget(0, 64),
+                            inner,
+                        )
+                    })
+                    .map_err(str::to_string)?;
                 let primary = match report {
                     Err(message) => message,
                     Ok(_) => return Err("signal uncertainty control admitted capture".to_string()),
                 };
                 let before = owner.observed_retained_worker()?;
-                let message = crate::process_owner::with_post_spawn_deadline_barrier(|| {
-                    match owner.try_dispose_failure() {
-                        Err(report) => {
-                            if !report.enclosing().matches_lease(&lease) {
-                                return Err(
-                                    "helper refusal transferred the actual lease".to_string(),
-                                );
+                let message =
+                    crate::process_owner::with_post_spawn_deadline_barrier(|| {
+                        match owner.try_dispose_failure() {
+                            Err(report) => {
+                                if !report.enclosing().matches_lease(&lease) {
+                                    return Err(
+                                        "helper refusal transferred the actual lease".to_string()
+                                    );
+                                }
+                                Ok(report.message().to_string())
                             }
-                            Ok(report.message().to_string())
+                            Ok(_) => Err("unknown helper minted negative disposition".to_string()),
                         }
-                        Ok(_) => Err("unknown helper minted negative disposition".to_string()),
-                    }
-                })?;
+                    })?;
                 let checks = (|| {
                     if !message.contains("spawn crossed its held deadline")
                         || owner.original_deadline() != held
@@ -2616,7 +2672,7 @@ mod linux {
                         || owner.progress.no_live_members()
                     {
                         return Err(
-                            "helper uncertainty released primary pin or rebased clocks".to_string(),
+                            "helper uncertainty released primary pin or rebased clocks".to_string()
                         );
                     }
                     let after = owner.observed_retained_worker()?;
@@ -2627,13 +2683,18 @@ mod linux {
                     {
                         return Err("helper uncertainty replaced the pinned primary".to_string());
                     }
-                    let inner = owner.inner
+                    let inner = owner
+                        .inner
                         .as_mut()
                         .ok_or("helper uncertainty original owner lost")?;
-                    let failure = inner.failure
+                    let failure = inner
+                        .failure
                         .as_mut()
                         .ok_or("helper uncertainty first error lost")?;
-                    let group = failure.custody[0].group.as_ref().ok_or("helper uncertainty group lost")?;
+                    let group = failure.custody[0]
+                        .group
+                        .as_ref()
+                        .ok_or("helper uncertainty group lost")?;
                     let (helper, helper_clock) =
                         group.observe_pending_enclosing_helper_for_test(outer)?;
                     if helper.pid() == before.pid()
@@ -2642,11 +2703,12 @@ mod linux {
                         || inner.held_deadline != held
                         || failure.message() != primary
                         || group.retained_process_count() != 2
-                        || group.enclosing_failure_state() != (Some(held), true, false, false, false)
+                        || group.enclosing_failure_state()
+                            != (Some(held), true, false, false, false)
                         || failure.take_cleanup_receipt().is_some()
                     {
                         return Err(
-                            "actual pending helper or original refusal was discarded".to_string(),
+                            "actual pending helper or original refusal was discarded".to_string()
                         );
                     }
                     match owner.try_dispose_failure() {
@@ -2655,27 +2717,39 @@ mod linux {
                     }
                 })();
                 let mut slot = Some(owner);
-                let checks = checks.and_then(|()| {
-                    match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
-                        Err(_) => {
-                            let actual = slot.as_ref().ok_or("live helper moved actual owner")?;
-                            let inner = actual.inner().ok_or("live helper lost original custodian")?;
-                            if inner.retained_process_count() != 2
-                                || actual.original_deadline() != held
-                                || actual.enclosing_deadline() != outer
-                                || !actual.matches_lease(&lease)
-                            {
-                                return Err(
-                                    "physical refusal discarded live helper or primary".to_string(),
-                                );
+                let checks =
+                    checks.and_then(
+                        |()| match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
+                            Err(_) => {
+                                let actual =
+                                    slot.as_ref().ok_or("live helper moved actual owner")?;
+                                let inner = actual
+                                    .inner()
+                                    .ok_or("live helper lost original custodian")?;
+                                if inner.retained_process_count() != 2
+                                    || actual.original_deadline() != held
+                                    || actual.enclosing_deadline() != outer
+                                    || !actual.matches_lease(&lease)
+                                {
+                                    return Err(
+                                        "physical refusal discarded live helper or primary"
+                                            .to_string(),
+                                    );
+                                }
+                                Ok(())
                             }
-                            Ok(())
-                        }
-                        Ok(_) => Err("unreaped helper manufactured physical closure".to_string()),
-                    }
-                });
-                let owner = slot.as_mut().ok_or("helper uncertainty actual fixture owner lost")?;
-                let inner = owner.inner.as_mut().ok_or("helper uncertainty fixture owner lost")?;
+                            Ok(_) => {
+                                Err("unreaped helper manufactured physical closure".to_string())
+                            }
+                        },
+                    );
+                let owner = slot
+                    .as_mut()
+                    .ok_or("helper uncertainty actual fixture owner lost")?;
+                let inner = owner
+                    .inner
+                    .as_mut()
+                    .ok_or("helper uncertainty fixture owner lost")?;
                 fixture_closeout(inner, checks)
             }
 
@@ -2688,9 +2762,9 @@ mod linux {
                 let report = crate::process_owner::with_enclosing_after_try_wait_delay(
                     Duration::from_millis(300),
                     || {
-                        owner.with_inner(|inner| {
-                            capture("exit 0", None, budget(0, 64), inner)
-                        }).map_err(str::to_string)
+                        owner
+                            .with_inner(|inner| capture("exit 0", None, budget(0, 64), inner))
+                            .map_err(str::to_string)
                     },
                 )?;
                 let primary = match report {
@@ -2698,9 +2772,15 @@ mod linux {
                     Ok(_) => return Err("late actual reap admitted capture".to_string()),
                 };
                 let before = {
-                    let inner = owner.inner.as_mut().ok_or("late reap original owner lost")?;
+                    let inner = owner
+                        .inner
+                        .as_mut()
+                        .ok_or("late reap original owner lost")?;
                     let failure = inner.failure.as_mut().ok_or("late reap first error lost")?;
-                    let group = failure.custody[0].group.as_mut().ok_or("late reap group lost")?;
+                    let group = failure.custody[0]
+                        .group
+                        .as_mut()
+                        .ok_or("late reap group lost")?;
                     let observed = group.initial_enclosing_worker_for_test()?;
                     if remove_actual_audit {
                         // This destructive negative control removes real DATA.
@@ -2713,7 +2793,9 @@ mod linux {
                     match owner.observed_retained_worker() {
                         Err(error) if error.contains("actually reaped; no PID lookup") => {}
                         Err(error) => return Err(format!("wrong reaped-worker refusal: {error}")),
-                        Ok(_) => return Err("reaped worker getter revisited numeric PID".to_string()),
+                        Ok(_) => {
+                            return Err("reaped worker getter revisited numeric PID".to_string());
+                        }
                     }
                     let result = owner.try_dispose_failure();
                     if remove_actual_audit {
@@ -2721,7 +2803,7 @@ mod linux {
                             Err(report) => report.message().to_string(),
                             Ok(_) => {
                                 return Err(
-                                    "missing empty audit admitted U disposition".to_string(),
+                                    "missing empty audit admitted U disposition".to_string()
                                 );
                             }
                         };
@@ -2733,14 +2815,20 @@ mod linux {
                         require_enclosing_disposed(&disposed, &before, &lease, held, outer, true)?;
                         if !disposed.status().success() {
                             return Err(
-                                "retained actual successful native reap was altered".to_string(),
+                                "retained actual successful native reap was altered".to_string()
                             );
                         }
                     }
                     let same_lease = owner.matches_lease(&lease);
-                    let inner = owner.inner.as_mut().ok_or("late reap original owner lost")?;
+                    let inner = owner
+                        .inner
+                        .as_mut()
+                        .ok_or("late reap original owner lost")?;
                     let failure = inner.failure.as_mut().ok_or("late reap first error lost")?;
-                    let group = failure.custody[0].group.as_mut().ok_or("late reap group lost")?;
+                    let group = failure.custody[0]
+                        .group
+                        .as_mut()
+                        .ok_or("late reap group lost")?;
                     let original_flags = group.enclosing_failure_state();
                     let child = group.fixture_child();
                     let actual_reap = child.enclosing_observed_reap;
@@ -2755,7 +2843,8 @@ mod linux {
                         || failure.take_cleanup_receipt().is_some()
                     {
                         return Err(
-                            "late real reap changed old refusal or inferred a missing audit".to_string(),
+                            "late real reap changed old refusal or inferred a missing audit"
+                                .to_string(),
                         );
                     }
                     Ok(())
@@ -2765,15 +2854,15 @@ mod linux {
                     if remove_actual_audit {
                         match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
                             Err(_) => {
-                                let actual = slot
-                                    .as_ref()
-                                    .ok_or("missing audit moved actual owner")?;
+                                let actual =
+                                    slot.as_ref().ok_or("missing audit moved actual owner")?;
                                 if actual.original_deadline() != held
                                     || actual.enclosing_deadline() != outer
                                     || !actual.matches_lease(&lease)
                                 {
                                     return Err(
-                                        "physical refusal replaced original missing-audit owner".to_string(),
+                                        "physical refusal replaced original missing-audit owner"
+                                            .to_string(),
                                     );
                                 }
                                 Ok(())
@@ -2796,8 +2885,8 @@ mod linux {
             }
 
             #[test]
-            fn enclosing_late_reap_without_actual_empty_audit_stays_retained()
-            -> Result<(), String> {
+            fn enclosing_late_reap_without_actual_empty_audit_stays_retained() -> Result<(), String>
+            {
                 late_reap_control(true)
             }
 
@@ -2849,14 +2938,19 @@ mod linux {
                         || !timely.contains("admitted ceiling")
                     {
                         return Err(
-                            "actual native reap did not cross U while preserving T refusal".to_string(),
+                            "actual native reap did not cross U while preserving T refusal"
+                                .to_string(),
                         );
                     }
                     let closed = CompleteEnclosingCustodian::take_physically_closed(&mut slot)
                         .map_err(str::to_string)?;
                     let owner = closed.enclosing();
-                    let inner = owner.inner().ok_or("after-U physical move lost original owner")?;
-                    let failure = inner.failure().ok_or("after-U physical move lost first error")?;
+                    let inner = owner
+                        .inner()
+                        .ok_or("after-U physical move lost original owner")?;
+                    let failure = inner
+                        .failure()
+                        .ok_or("after-U physical move lost first error")?;
                     if slot.is_some()
                         || closed.message() != primary
                         || owner.original_deadline() != held
@@ -2871,7 +2965,8 @@ mod linux {
                         || dropped.load(Ordering::SeqCst)
                     {
                         return Err(
-                            "after-U physical move changed ownership or granted timely evidence".to_string(),
+                            "after-U physical move changed ownership or granted timely evidence"
+                                .to_string(),
                         );
                     }
                     if before.start() == 0 || before.pid() != before.group() {
@@ -2879,9 +2974,13 @@ mod linux {
                     }
                     drop(lease);
                     let message = physically_closed_report_to_string(closed);
-                    if message != primary || !dropped.load(Ordering::SeqCst) || weak.upgrade().is_some() {
+                    if message != primary
+                        || !dropped.load(Ordering::SeqCst)
+                        || weak.upgrade().is_some()
+                    {
                         return Err(
-                            "after-U physical report retained or dropped the wrong lease".to_string(),
+                            "after-U physical report retained or dropped the wrong lease"
+                                .to_string(),
                         );
                     }
                     match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {
@@ -2926,7 +3025,9 @@ mod linux {
                     let closed = CompleteEnclosingCustodian::take_physically_closed(&mut slot)
                         .map_err(str::to_string)?;
                     let owner = closed.enclosing();
-                    let inner = owner.inner().ok_or("physical closure lost original owner")?;
+                    let inner = owner
+                        .inner()
+                        .ok_or("physical closure lost original owner")?;
                     let failure = inner
                         .failure()
                         .ok_or("physical closure lost actual first error")?;
@@ -2950,7 +3051,8 @@ mod linux {
                         || weak.upgrade().is_none()
                     {
                         return Err(
-                            "physical move changed ownership or fabricated timely authority".to_string(),
+                            "physical move changed ownership or fabricated timely authority"
+                                .to_string(),
                         );
                     }
                     drop(lease);
@@ -2959,7 +3061,8 @@ mod linux {
                         || weak.upgrade().is_some()
                     {
                         return Err(
-                            "physical-only terminal report failed actual closed-owner disposition".to_string(),
+                            "physical-only terminal report failed actual closed-owner disposition"
+                                .to_string(),
                         );
                     }
                     match CompleteEnclosingCustodian::take_physically_closed(&mut slot) {

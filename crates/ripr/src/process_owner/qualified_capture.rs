@@ -396,8 +396,7 @@ mod linux {
                 return Err("enclosing live descendants remain; custody retained".to_string());
             }
             thread::sleep(
-                Duration::from_millis(5)
-                    .min(deadline.saturating_duration_since(Instant::now())),
+                Duration::from_millis(5).min(deadline.saturating_duration_since(Instant::now())),
             );
         }
         child.enclosing_reap_until(deadline, &mut progress.primary_status)?;
@@ -451,9 +450,10 @@ mod linux {
             &self,
             deadline: Instant,
         ) -> Result<ObservedProcessIdentity, String> {
-            let child = self.child.as_ref().ok_or_else(|| {
-                "enclosing setup has no actual pinned child".to_string()
-            })?;
+            let child = self
+                .child
+                .as_ref()
+                .ok_or_else(|| "enclosing setup has no actual pinned child".to_string())?;
             observe_enclosing_worker(child, None, deadline)
         }
 
@@ -669,15 +669,14 @@ mod linux {
         fn record_enclosing_empty_audit(&mut self, result: &Result<Vec<u32>, String>) {
             if let Some(scope) = self.enclosing_scope.as_mut() {
                 let now = Instant::now();
-                scope.empty_audit_before_reap = (
-                    result.as_ref().is_ok_and(Vec::is_empty)
+                scope.empty_audit_before_reap = (result.as_ref().is_ok_and(Vec::is_empty)
                     && self.child.enclosing_observed_reap.is_none()
                     && self.unconfirmed_signal.is_none()
                     && scope.pending_helper.is_none()
                     && self.held_deadline == Some(scope.original_deadline)
                     && scope.leader.same_owner(&self.leader)
-                    && scope.parent.same_owner(&self.parent)
-                ).then_some(now);
+                    && scope.parent.same_owner(&self.parent))
+                .then_some(now);
             }
         }
 
@@ -697,8 +696,14 @@ mod linux {
             deadline: Instant,
         ) -> Result<(ObservedProcessIdentity, Option<Instant>), String> {
             super::super::enclosing_time(deadline)?;
-            let scope = self.enclosing_scope.as_ref().ok_or("actual initial U scope is absent")?;
-            let helper = scope.pending_helper.as_ref().ok_or("actual pending U helper is absent")?;
+            let scope = self
+                .enclosing_scope
+                .as_ref()
+                .ok_or("actual initial U scope is absent")?;
+            let helper = scope
+                .pending_helper
+                .as_ref()
+                .ok_or("actual pending U helper is absent")?;
             let observed = identity(helper.id())?;
             super::super::enclosing_time(deadline)?;
             if observed.pid != helper.id()
@@ -712,7 +717,10 @@ mod linux {
 
         #[cfg(all(test, feature = "lang-rust"))]
         pub(super) fn remove_enclosing_empty_audit_for_test(&mut self) -> Result<(), String> {
-            let scope = self.enclosing_scope.as_mut().ok_or("missing actual initial U scope")?;
+            let scope = self
+                .enclosing_scope
+                .as_mut()
+                .ok_or("missing actual initial U scope")?;
             if scope.empty_audit_before_reap.take().is_none() {
                 return Err("negative control had no real empty audit to remove".to_string());
             }
@@ -726,13 +734,15 @@ mod linux {
             progress: &mut EnclosingDispositionProgress,
         ) -> Result<(), String> {
             super::super::enclosing_time(deadline)?;
-            let (status, reaped_at) = self.child.enclosing_observed_reap
+            let (status, reaped_at) = self
+                .child
+                .enclosing_observed_reap
                 .ok_or("enclosing native reap observation is absent")?;
             let scope = self.enclosing_scope.as_mut().ok_or(
                 "enclosing actual primary was already reaped without initial U scope; custody retained"
             )?;
             let audited_at = scope.empty_audit_before_reap.ok_or(
-                "enclosing reaped primary lacks actual before-reap empty audit; custody retained"
+                "enclosing reaped primary lacks actual before-reap empty audit; custody retained",
             )?;
             if scope.attempted
                 || audited_at > reaped_at
@@ -745,7 +755,8 @@ mod linux {
                 || !scope.parent.same_owner(&self.parent)
             {
                 return Err(
-                    "enclosing reaped-primary observations mismatched; custody retained".to_string(),
+                    "enclosing reaped-primary observations mismatched; custody retained"
+                        .to_string(),
                 );
             }
             scope.attempted = true;
@@ -856,11 +867,7 @@ mod linux {
                 signaled_group,
                 progress,
             );
-            if actual_direct_closure(
-                &self.child,
-                Some((&self.leader, &self.parent)),
-                progress,
-            ) {
+            if actual_direct_closure(&self.child, Some((&self.leader, &self.parent)), progress) {
                 // Record only genuine physical closure from this endpoint,
                 // including native reap followed by a late clock refusal.
                 self.enclosing_direct_reaped = true;
@@ -874,24 +881,25 @@ mod linux {
             &self,
             progress: &EnclosingDispositionProgress,
         ) -> Result<(), &'static str> {
-            let helpers_closed = self.unconfirmed_signal.as_ref()
+            let helpers_closed = self
+                .unconfirmed_signal
+                .as_ref()
                 .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
                 && self.enclosing_scope.as_ref().is_none_or(|scope| {
-                    scope.pending_helper.as_ref()
+                    scope
+                        .pending_helper
+                        .as_ref()
                         .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
                 });
-            let direct_closed = actual_direct_closure(
-                &self.child,
-                Some((&self.leader, &self.parent)),
-                progress,
-            );
+            let direct_closed =
+                actual_direct_closure(&self.child, Some((&self.leader, &self.parent)), progress);
             let original_audit_closed = self.enclosing_scope.as_ref().is_some_and(|scope| {
                 let Some((_, reaped_at)) = self.child.enclosing_observed_reap else {
                     return false;
                 };
-                scope.empty_audit_before_reap.is_some_and(|audited_at| {
-                    audited_at <= reaped_at
-                })
+                scope
+                    .empty_audit_before_reap
+                    .is_some_and(|audited_at| audited_at <= reaped_at)
                     && self.held_deadline == Some(scope.original_deadline)
                     && scope.leader.same_owner(&self.leader)
                     && scope.parent.same_owner(&self.parent)
@@ -904,8 +912,7 @@ mod linux {
         }
 
         pub(crate) fn retained_process_count(&self) -> usize {
-            let count =
-                usize::from(!self.settled) + usize::from(self.unconfirmed_signal.is_some());
+            let count = usize::from(!self.settled) + usize::from(self.unconfirmed_signal.is_some());
             #[cfg(all(test, feature = "lang-rust"))]
             let count = count
                 + usize::from(
@@ -1942,7 +1949,10 @@ mod linux {
             if progress.primary_status.is_none()
                 || progress.helper_status.is_none()
                 || !progress.no_live_members
-                || progress.leader.as_ref().is_none_or(|actual| !before.same_owner(actual))
+                || progress
+                    .leader
+                    .as_ref()
+                    .is_none_or(|actual| !before.same_owner(actual))
                 || owner.held_deadline != Some(held)
                 || !owner.refused
                 || owner.settled
@@ -1952,7 +1962,8 @@ mod linux {
                 || Instant::now() >= outer
             {
                 return Err(
-                    "enclosing helper disposition changed capture or lost actual progress".to_string(),
+                    "enclosing helper disposition changed capture or lost actual progress"
+                        .to_string(),
                 );
             }
             require_not_live(primary)?;
