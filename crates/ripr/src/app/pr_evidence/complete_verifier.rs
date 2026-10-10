@@ -2305,6 +2305,9 @@ mod tests {
                 observed.manifest_identity(),
                 (metadata.dev(), metadata.ino(), metadata.len())
             );
+            let manifest_wire = std::fs::read(stage.0.join(MANIFEST_FILE))
+                .map_err(|error| format!("actual manifest wire fixture: {error}"))?;
+            assert_eq!(observed.manifest_sha256(), sha256_bytes(&manifest_wire));
             // Equal bytes can form a fresh saved proof, but its observed file
             // identity cannot reconcile an earlier IO closure's actual inode.
             let role = ArtifactRole::FullCheck;
@@ -2320,6 +2323,23 @@ mod tests {
                 fresh.artifact_identity(role),
                 observed.artifact_identity(role)
             );
+            // Equivalent JSON whitespace keeps the bound generation, while
+            // the receipt must retain the exact opened manifest wire hash.
+            let mut formatted_manifest = manifest_wire.clone();
+            formatted_manifest.push(b'\n');
+            assert!(formatted_manifest.len() as u64 <= binding.profile.max_manifest_bytes);
+            std::fs::write(stage.0.join(MANIFEST_FILE), &formatted_manifest)
+                .map_err(|error| format!("manifest whitespace fixture: {error}"))?;
+            let formatted = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(formatted.generation_id(), observed.generation_id());
+            assert_eq!(formatted.manifest_sha256(), sha256_bytes(&formatted_manifest));
+            assert_ne!(formatted.manifest_sha256(), observed.manifest_sha256());
+            std::fs::write(stage.0.join(MANIFEST_FILE), &manifest_wire)
+                .map_err(|error| format!("manifest wire restoration fixture: {error}"))?;
+            let restored = verify_staged_generation(&stage.0, &binding, &binding.profile)
+                .map_err(|error| error.to_string())?;
+            assert_eq!(restored.manifest_sha256(), observed.manifest_sha256());
             Ok(())
         })
     }
