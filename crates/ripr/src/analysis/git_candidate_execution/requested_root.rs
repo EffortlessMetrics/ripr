@@ -955,15 +955,15 @@ impl CleanupOwner {
             self.audit_directory(&file, None, state)?;
         }
         for index in 0..self.keys.len() {
-            if let NodeState::Created(identity) = state.nodes[index] {
-                if identity.directory {
-                    let parent = self.parent(index, state, None)?;
-                    let directory = opened(&child(&parent.file, self.leaf(index)?)?, true, None)?;
-                    if !identity.matches(&directory.file.metadata()?) {
-                        return Err(refusal("Requested admitted directory changed"));
-                    }
-                    self.audit_directory(&directory.file, Some(index), state)?;
+            if let NodeState::Created(identity) = state.nodes[index]
+                && identity.directory
+            {
+                let parent = self.parent(index, state, None)?;
+                let directory = opened(&child(&parent.file, self.leaf(index)?)?, true, None)?;
+                if !identity.matches(&directory.file.metadata()?) {
+                    return Err(refusal("Requested admitted directory changed"));
                 }
+                self.audit_directory(&directory.file, Some(index), state)?;
             }
         }
         self.current(state, None)?;
