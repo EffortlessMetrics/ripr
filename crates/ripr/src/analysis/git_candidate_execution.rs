@@ -19,6 +19,9 @@
 //!   traversal, materialization error) fails closed naming the exact
 //!   identity — never an empty analysis.
 
+#[cfg(test)]
+pub(crate) mod staged;
+
 use crate::domain::{
     GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError, GitObjectId,
 };
@@ -323,6 +326,16 @@ pub(crate) fn prepare_named_tree(
 }
 
 fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> {
+    validate_configuration_inventory_with(listing, |_, _, _, _| Ok(()))
+}
+
+/// The existing inventory grammar, with a synchronous caller admission before
+/// retaining each borrowed path in the duplicate detector. Ordinary capture
+/// supplies a no-op observer and keeps its error ordering and messages.
+fn validate_configuration_inventory_with<'a>(
+    listing: &'a [u8],
+    mut observe: impl FnMut(&'a str, &'a str, &'a str, &'a str) -> Result<(), SubjectError>,
+) -> Result<(), SubjectError> {
     if !listing.is_empty() && listing.last() != Some(&0) {
         return Err(failed(
             "configuration inventory is not NUL-terminated".into(),
@@ -343,13 +356,18 @@ fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> 
         let (metadata, path) = text
             .split_once('\t')
             .ok_or_else(|| failed("configuration inventory entry has no TAB".into()))?;
-        let fields: Vec<_> = metadata.split_whitespace().collect();
-        if fields.len() != 3 {
+        let mut fields = metadata.split_whitespace();
+        let (Some(mode), Some(kind), Some(object)) = (fields.next(), fields.next(), fields.next()) else {
+            return Err(failed(
+                "configuration inventory metadata is malformed".into(),
+            ));
+        };
+        if fields.next().is_some() {
             return Err(failed(
                 "configuration inventory metadata is malformed".into(),
             ));
         }
-        GitObjectId::parse(fields[2])
+        GitObjectId::parse(object)
             .map_err(|error| failed(format!("configuration inventory object ID: {error}")))?;
         if path.is_empty()
             || Path::new(path)
@@ -358,12 +376,13 @@ fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> 
         {
             return Err(failed("configuration inventory path is malformed".into()));
         }
+        observe(mode, kind, object, path)?;
         if !paths.insert(path) {
             return Err(failed(format!(
                 "configuration inventory duplicates path {path}"
             )));
         }
-        if (path == "ripr.toml" && fields[1] == "tree") || path.starts_with("ripr.toml/") {
+        if (path == "ripr.toml" && kind == "tree") || path.starts_with("ripr.toml/") {
             return Err(failed(
                 "configuration inventory ripr.toml is a directory".into(),
             ));
