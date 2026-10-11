@@ -163,51 +163,126 @@ pub(crate) fn config_present_at_root(root: &Path) -> bool {
     config_entry_present(&root.join(CONFIG_FILE_NAME))
 }
 
-fn discover_config_path(root: &Path) -> Option<PathBuf> {
-    let direct = root.join(CONFIG_FILE_NAME);
-    if config_entry_present(&direct) {
-        // A link that cannot be resolved keeps its own path so the read below
-        // names it instead of the search moving on to an ancestor.
-        return Some(std::fs::canonicalize(&direct).unwrap_or(direct));
+trait ConfigurationIo: python::DiscoveryControl {
+    fn config_entry(&mut self, path: &Path) -> Result<bool, String>;
+    fn canonical_root(&mut self, path: &Path) -> Result<Option<PathBuf>, String>;
+    fn canonical_config(&mut self, path: PathBuf) -> Result<PathBuf, String>;
+    fn git_boundary(&mut self, path: &Path) -> Result<bool, String>;
+    fn cargo_text(&mut self, path: &Path) -> Result<Option<String>, String>;
+    fn config_text(&mut self, path: &Path) -> Result<String, String>;
+}
+
+struct OrdinaryConfigurationIo;
+
+impl python::DiscoveryControl for OrdinaryConfigurationIo {
+    fn checkpoint(&mut self) -> Result<(), crate::core_error::CoreError> {
+        Ok(())
+    }
+    fn strict(&self) -> bool {
+        false
+    }
+    fn joined_path(
+        &mut self,
+        parent: &Path,
+        name: &std::ffi::OsStr,
+    ) -> Result<PathBuf, crate::core_error::CoreError> {
+        Ok(parent.join(name))
+    }
+    fn entry_path(
+        &mut self,
+        _parent: &Path,
+        entry: &crate::analysis::committed_source::frozen::fs::FrozenDirEntry,
+    ) -> Result<PathBuf, crate::core_error::CoreError> {
+        Ok(entry.path())
+    }
+    fn before_entry(&mut self) -> Result<(), crate::core_error::CoreError> {
+        Ok(())
+    }
+}
+
+impl ConfigurationIo for OrdinaryConfigurationIo {
+    fn config_entry(&mut self, path: &Path) -> Result<bool, String> {
+        Ok(config_entry_present(path))
+    }
+    fn canonical_root(&mut self, path: &Path) -> Result<Option<PathBuf>, String> {
+        Ok(std::fs::canonicalize(path).ok())
+    }
+    fn canonical_config(&mut self, path: PathBuf) -> Result<PathBuf, String> {
+        Ok(std::fs::canonicalize(&path).unwrap_or(path))
+    }
+    fn git_boundary(&mut self, path: &Path) -> Result<bool, String> {
+        Ok(path.exists())
+    }
+    fn cargo_text(&mut self, path: &Path) -> Result<Option<String>, String> {
+        Ok(std::fs::read_to_string(path).ok())
+    }
+    fn config_text(&mut self, path: &Path) -> Result<String, String> {
+        crate::bounded_input::read_to_string(path)
+            .map_err(|err| format!("read {} failed: {err}", path.display()))
+    }
+}
+
+fn discover_config_path(
+    root: &Path,
+    io: &mut impl ConfigurationIo,
+) -> Result<Option<PathBuf>, String> {
+    let direct = io
+        .joined_path(root, std::ffi::OsStr::new(CONFIG_FILE_NAME))
+        .map_err(|error| error.to_string())?;
+    if io.config_entry(&direct)? {
+        // Ordinary unresolved links retain the original diagnostic path.
+        return io.canonical_config(direct).map(Some);
     }
 
-    let search_root = std::fs::canonicalize(root).ok()?;
+    let Some(search_root) = io.canonical_root(root)? else {
+        return Ok(None);
+    };
     for ancestor in search_root.ancestors() {
-        let path = ancestor.join(CONFIG_FILE_NAME);
-        if config_entry_present(&path) {
-            return Some(path);
+        let path = io
+            .joined_path(ancestor, std::ffi::OsStr::new(CONFIG_FILE_NAME))
+            .map_err(|error| error.to_string())?;
+        if io.config_entry(&path)? {
+            return Ok(Some(path));
         }
-        if is_repository_boundary(ancestor) {
+        if is_repository_boundary(ancestor, io)? {
             break;
         }
     }
-    None
+    Ok(None)
 }
 
-fn is_repository_boundary(directory: &Path) -> bool {
-    if directory.join(".git").exists() {
-        return true;
+fn is_repository_boundary(directory: &Path, io: &mut impl ConfigurationIo) -> Result<bool, String> {
+    let git = io
+        .joined_path(directory, std::ffi::OsStr::new(".git"))
+        .map_err(|error| error.to_string())?;
+    if io.git_boundary(&git)? {
+        return Ok(true);
     }
 
-    let manifest = directory.join("Cargo.toml");
-    let Ok(contents) = std::fs::read_to_string(manifest) else {
-        return false;
+    let manifest = io
+        .joined_path(directory, std::ffi::OsStr::new("Cargo.toml"))
+        .map_err(|error| error.to_string())?;
+    let Some(contents) = io.cargo_text(&manifest)? else {
+        return Ok(false);
     };
     if !contents.contains("workspace") {
-        return false;
+        return Ok(false);
     }
     let Ok(document) = toml::from_str::<toml::Value>(&contents) else {
-        return false;
+        return Ok(false);
     };
-    document.get("workspace").is_some_and(toml::Value::is_table)
+    Ok(document.get("workspace").is_some_and(toml::Value::is_table))
 }
 
 pub fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
-    let Some(path) = discover_config_path(root) else {
-        return default_config_for_root(root);
+    load_for_root_with_io(root, &mut OrdinaryConfigurationIo)
+}
+
+fn load_for_root_with_io(root: &Path, io: &mut impl ConfigurationIo) -> Result<RiprConfig, String> {
+    let Some(path) = discover_config_path(root, io)? else {
+        return default_config_with_control(root, io);
     };
-    let text = crate::bounded_input::read_to_string(&path)
-        .map_err(|err| format!("read {} failed: {err}", path.display()))?;
+    let text = io.config_text(&path)?;
     let mut config = parse_config(&text).map_err(|err| format!("{}: {err}", path.display()))?;
     config.source_path = Some(path);
     config.source_text = Some(text);
@@ -215,8 +290,17 @@ pub fn load_for_root(root: &Path) -> Result<RiprConfig, String> {
 }
 
 fn default_config_for_root(root: &Path) -> Result<RiprConfig, String> {
+    default_config_with_control(root, &mut OrdinaryConfigurationIo)
+}
+
+fn default_config_with_control(
+    root: &Path,
+    control: &mut impl python::DiscoveryControl,
+) -> Result<RiprConfig, String> {
     let mut config = RiprConfig::default();
-    if detect_python_project(root) {
+    if python::detect_python_project_with_control(root, control)
+        .map_err(|error| error.to_string())?
+    {
         if !LanguageId::Python.is_available() {
             return Err(
                 "Python project markers were detected, but this ripr binary was built without Cargo feature `lang-python`; use a Python-enabled ripr binary or add `ripr.toml` with `[languages] enabled = [\"rust\"]` to keep Python preview disabled"
@@ -228,6 +312,426 @@ fn default_config_for_root(root: &Path) -> Result<RiprConfig, String> {
         }
     }
     Ok(config)
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+#[derive(Clone, Copy)]
+pub(crate) struct LiveConfigurationLimits {
+    pub(crate) max_configuration_bytes: u64,
+    pub(crate) max_boundary_bytes: u64,
+    pub(crate) max_read_bytes: u64,
+    pub(crate) max_entries: u64,
+    pub(crate) max_path_bytes: u64,
+    pub(crate) max_buffered_bytes: u64,
+}
+
+/// Private observation DATA, never an execution or saved-generation authority.
+/// Syscall checkpoints are cooperative; the genuine worker cohort owns timeout.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) struct LiveConfigurationBudget {
+    deadline: std::time::Instant,
+    limits: LiveConfigurationLimits,
+    retained_bytes: u64,
+    entries: u64,
+    paths: u64,
+    read_bytes: u64,
+    claimed: bool,
+    failed: Option<String>,
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl LiveConfigurationBudget {
+    const SCRATCH_BYTES: u64 = 64 * 1024;
+
+    pub(crate) fn new(
+        deadline: std::time::Instant,
+        limits: LiveConfigurationLimits,
+        retained_bytes: u64,
+    ) -> Result<Self, String> {
+        if !cfg!(any(target_arch = "x86_64", target_arch = "aarch64")) {
+            return Err("strict live configuration reads unsupported on this Linux target".into());
+        }
+        if [
+            limits.max_configuration_bytes,
+            limits.max_boundary_bytes,
+            limits.max_read_bytes,
+            limits.max_entries,
+            limits.max_path_bytes,
+            limits.max_buffered_bytes,
+        ]
+        .contains(&0)
+            || limits.max_configuration_bytes > crate::bounded_input::MAX_CLI_INPUT_BYTES
+            || limits.max_boundary_bytes > crate::bounded_input::MAX_CLI_INPUT_BYTES
+        {
+            return Err("live configuration invalid existing scalar bounds".into());
+        }
+        let budget = Self {
+            deadline,
+            limits,
+            retained_bytes,
+            entries: 0,
+            paths: 0,
+            read_bytes: 0,
+            claimed: false,
+            failed: None,
+        };
+        budget.checkpoint_live()?;
+        budget.admit(0)?;
+        Ok(budget)
+    }
+
+    fn checkpoint_live(&self) -> Result<(), String> {
+        if let Some(error) = &self.failed {
+            return Err(error.clone());
+        }
+        if std::time::Instant::now() >= self.deadline {
+            return Err("live configuration original deadline expired".into());
+        }
+        crate::analysis::cancellation::checkpoint_typed().map_err(|error| error.to_string())
+    }
+
+    fn admit(&self, extra: u64) -> Result<(), String> {
+        let total = self
+            .retained_bytes
+            .checked_add(self.paths)
+            .and_then(|n| n.checked_add(Self::SCRATCH_BYTES))
+            .and_then(|n| n.checked_add(extra))
+            .ok_or("live configuration retained-byte overflow")?;
+        if total > self.limits.max_buffered_bytes {
+            return Err("live configuration retained-byte bound exceeded".into());
+        }
+        Ok(())
+    }
+
+    fn admit_entry(&mut self) -> Result<(), String> {
+        self.checkpoint_live()?;
+        self.entries = self
+            .entries
+            .checked_add(1)
+            .filter(|n| *n <= self.limits.max_entries)
+            .ok_or("live configuration entry bound exceeded")?;
+        Ok(())
+    }
+
+    fn admit_path(&mut self, bytes: u64, temporary_name_bytes: u64) -> Result<(), String> {
+        self.checkpoint_live()?;
+        let next = self
+            .paths
+            .checked_add(bytes)
+            .filter(|n| *n <= self.limits.max_path_bytes)
+            .ok_or("live configuration path bound exceeded")?;
+        // Cumulative admission is conservative: ancestor/recursive parent
+        // frames and selected provenance remain charged until this pass drops.
+        let old = self.paths;
+        self.paths = next;
+        let result = self.admit(temporary_name_bytes);
+        if result.is_err() {
+            self.paths = old;
+        }
+        result
+    }
+
+    fn join_live(&mut self, parent: &Path, name: &std::ffi::OsStr) -> Result<PathBuf, String> {
+        let name_bytes = name.as_encoded_bytes().len() as u64;
+        let bytes = (parent.as_os_str().as_encoded_bytes().len() as u64)
+            .checked_add(1)
+            .and_then(|n| n.checked_add(name_bytes))
+            .ok_or("live configuration joined-path overflow")?;
+        self.admit_path(bytes, name_bytes)?;
+        Ok(parent.join(name))
+    }
+
+    fn inspect(
+        &mut self,
+        path: &Path,
+        no_follow: bool,
+    ) -> Result<Option<std::fs::Metadata>, String> {
+        self.admit_entry()?;
+        let result = if no_follow {
+            std::fs::symlink_metadata(path)
+        } else {
+            std::fs::metadata(path)
+        };
+        self.checkpoint_live()?;
+        match result {
+            Ok(metadata) => Ok(Some(metadata)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(format!(
+                "observe live configuration {}: {error}",
+                path.display()
+            )),
+        }
+    }
+
+    fn canonical_live(&mut self, path: &Path) -> Result<PathBuf, String> {
+        self.admit_entry()?;
+        // Resolver internals are short-lived native-AS computation. Measure
+        // and admit its returned path before retaining it in discovery state.
+        let canonical = std::fs::canonicalize(path)
+            .map_err(|error| format!("resolve live configuration {}: {error}", path.display()))?;
+        self.checkpoint_live()?;
+        self.admit_path(canonical.as_os_str().as_encoded_bytes().len() as u64, 0)?;
+        Ok(canonical)
+    }
+
+    fn regular_text(&mut self, path: &Path, cap: u64) -> Result<String, String> {
+        use std::io::Read as _;
+        use std::os::unix::fs::{MetadataExt as _, OpenOptionsExt as _};
+        self.admit_entry()?;
+        // Linux ARM64 has a distinct O_NOFOLLOW ABI. Unsupported Linux
+        // targets cannot use this private reader. Ordinary nonregular inputs
+        // retain their existing loader behavior.
+        let no_follow = if cfg!(target_arch = "x86_64") {
+            0x0002_0000
+        } else if cfg!(target_arch = "aarch64") {
+            0x0000_8000
+        } else {
+            return Err("strict live configuration reads unsupported on this Linux target".into());
+        };
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(no_follow | 0x0000_0800)
+            .open(path)
+            .map_err(|error| format!("open live configuration {}: {error}", path.display()))?;
+        self.checkpoint_live()?;
+        let before = file
+            .metadata()
+            .map_err(|error| format!("stat live configuration {}: {error}", path.display()))?;
+        if !before.file_type().is_file() {
+            return Err(format!(
+                "live configuration {} is not a regular file",
+                path.display()
+            ));
+        }
+        if before.len() > cap {
+            return Err(format!(
+                "live configuration {} exceeds byte cap {cap}",
+                path.display()
+            ));
+        }
+        let identity = |metadata: &std::fs::Metadata| {
+            (
+                metadata.dev(),
+                metadata.ino(),
+                metadata.mode(),
+                metadata.len(),
+                metadata.mtime(),
+                metadata.mtime_nsec(),
+                metadata.ctime(),
+                metadata.ctime_nsec(),
+            )
+        };
+        let original = identity(&before);
+        let mut reader = file;
+        let mut bytes = Vec::new();
+        let mut scratch = [0_u8; 64 * 1024];
+        loop {
+            self.checkpoint_live()?;
+            // Preserve the existing one-byte EOF/overflow sentinel. A failed
+            // probe can read one excess byte, never an uncharged full chunk.
+            let remaining_file = cap
+                .checked_sub(bytes.len() as u64)
+                .ok_or("live configuration file-read counter exceeds cap")?;
+            let remaining_total = self
+                .limits
+                .max_read_bytes
+                .checked_sub(self.read_bytes)
+                .ok_or("live configuration aggregate-read counter exceeds cap")?;
+            let requested = remaining_file
+                .min(remaining_total)
+                .saturating_add(1)
+                .min(scratch.len() as u64) as usize;
+            self.admit(bytes.len() as u64)?;
+            let read = match reader.read(&mut scratch[..requested]) {
+                Ok(read) => read,
+                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(error) => {
+                    return Err(format!(
+                        "read live configuration {}: {error}",
+                        path.display()
+                    ));
+                }
+            };
+            // Charge every byte actually returned immediately, including a
+            // failed probe or a read that crossed cancellation/deadline.
+            self.read_bytes = self
+                .read_bytes
+                .checked_add(read as u64)
+                .ok_or("live configuration aggregate read counter overflow")?;
+            if self.read_bytes > self.limits.max_read_bytes {
+                return Err("live configuration aggregate read bound exceeded".into());
+            }
+            self.checkpoint_live()?;
+            if read == 0 {
+                break;
+            }
+            let next = (bytes.len() as u64)
+                .checked_add(read as u64)
+                .filter(|n| *n <= cap)
+                .ok_or("live configuration byte cap exceeded during read")?;
+            self.admit(next)?;
+            // Payload growth is checked before allocation. Allocator rounding
+            // and old/new allocation overlap remain under genuine native AS.
+            let next = usize::try_from(next)
+                .map_err(|error| format!("live configuration buffer size: {error}"))?;
+            if bytes.capacity() < next {
+                bytes
+                    .try_reserve_exact(next - bytes.len())
+                    .map_err(|error| format!("live configuration buffer allocation: {error}"))?;
+            }
+            bytes.extend_from_slice(&scratch[..read]);
+        }
+        let after = reader
+            .metadata()
+            .map_err(|error| format!("restat live configuration {}: {error}", path.display()))?;
+        let named = std::fs::symlink_metadata(path)
+            .map_err(|error| format!("reobserve live configuration {}: {error}", path.display()))?;
+        self.checkpoint_live()?;
+        if identity(&after) != original
+            || identity(&named) != original
+            || bytes.len() as u64 != before.len()
+        {
+            return Err("live configuration regular file changed during observation".into());
+        }
+        String::from_utf8(bytes).map_err(|error| format!("read {} failed: {error}", path.display()))
+    }
+
+    pub(crate) fn reobserve_root(
+        &mut self,
+        requested_root: &Path,
+        expected_root: &Path,
+    ) -> Result<(), String> {
+        self.admit_path(
+            requested_root.as_os_str().as_encoded_bytes().len() as u64,
+            0,
+        )?;
+        let observed = self.canonical_live(requested_root)?;
+        if observed.as_os_str() != expected_root.as_os_str() {
+            return Err("live configuration bound root changed".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn admit_full_copy(&self, text_bytes: u64, copy_bytes: u64) -> Result<(), String> {
+        self.checkpoint_live()?;
+        self.admit(
+            text_bytes
+                .checked_add(copy_bytes)
+                .ok_or("live configuration comparison-byte overflow")?,
+        )
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl python::DiscoveryControl for LiveConfigurationBudget {
+    fn checkpoint(&mut self) -> Result<(), crate::core_error::CoreError> {
+        self.checkpoint_live().map_err(Into::into)
+    }
+    fn strict(&self) -> bool {
+        true
+    }
+    fn before_directory(&mut self, dir: &Path) -> Result<(), crate::core_error::CoreError> {
+        self.admit_entry()?;
+        // A directory iterator retains its root through recursive descent.
+        self.admit_path(dir.as_os_str().as_encoded_bytes().len() as u64, 0)
+            .map_err(Into::into)
+    }
+    fn after_io(&mut self) -> Result<(), crate::core_error::CoreError> {
+        self.checkpoint_live().map_err(Into::into)
+    }
+    fn absent_directory(&self, error: &std::io::Error) -> bool {
+        matches!(
+            error.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::NotADirectory
+        )
+    }
+    fn joined_path(
+        &mut self,
+        parent: &Path,
+        name: &std::ffi::OsStr,
+    ) -> Result<PathBuf, crate::core_error::CoreError> {
+        self.join_live(parent, name).map_err(Into::into)
+    }
+    fn entry_path(
+        &mut self,
+        parent: &Path,
+        entry: &crate::analysis::committed_source::frozen::fs::FrozenDirEntry,
+    ) -> Result<PathBuf, crate::core_error::CoreError> {
+        // This transient OS name is native-AS-contained; charge coexistence
+        // with the new joined path before growth, then drop it before descent.
+        let name = entry.file_name();
+        // The entry's original name remains alive while a child is visited.
+        // The temporary copy coexists until the measured join completes.
+        let name_bytes = name.as_encoded_bytes().len() as u64;
+        self.admit_path(name_bytes, name_bytes)?;
+        self.join_live(parent, &name).map_err(Into::into)
+    }
+    fn before_entry(&mut self) -> Result<(), crate::core_error::CoreError> {
+        self.admit_entry().map_err(Into::into)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+impl ConfigurationIo for LiveConfigurationBudget {
+    fn config_entry(&mut self, path: &Path) -> Result<bool, String> {
+        self.inspect(path, true).map(|value| value.is_some())
+    }
+    fn canonical_root(&mut self, path: &Path) -> Result<Option<PathBuf>, String> {
+        self.canonical_live(path).map(Some)
+    }
+    fn canonical_config(&mut self, path: PathBuf) -> Result<PathBuf, String> {
+        self.canonical_live(&path)
+    }
+    fn git_boundary(&mut self, path: &Path) -> Result<bool, String> {
+        self.inspect(path, false).map(|value| value.is_some())
+    }
+    fn cargo_text(&mut self, path: &Path) -> Result<Option<String>, String> {
+        if self.inspect(path, true)?.is_none() {
+            return Ok(None);
+        }
+        self.regular_text(path, self.limits.max_boundary_bytes)
+            .map(Some)
+    }
+    fn config_text(&mut self, path: &Path) -> Result<String, String> {
+        self.regular_text(path, self.limits.max_configuration_bytes)
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn load_for_root_bounded(
+    root: &Path,
+    budget: &mut LiveConfigurationBudget,
+) -> Result<RiprConfig, String> {
+    if let Some(error) = &budget.failed {
+        return Err(error.clone());
+    }
+    if budget.claimed {
+        let error = "live configuration observation already claimed".to_string();
+        budget.failed = Some(error.clone());
+        return Err(error);
+    }
+    // Claim before cancellation/deadline checks as well as discovery. Restoring
+    // a cancellation context cannot turn this failed attempt into fresh DATA.
+    budget.claimed = true;
+    let result = budget.checkpoint_live().and_then(|()| {
+        if crate::analysis::committed_source::frozen::current().is_some() {
+            Err("live configuration observation still has frozen source context".into())
+        } else {
+            budget
+                .admit_path(root.as_os_str().as_encoded_bytes().len() as u64, 0)
+                .and_then(|()| load_for_root_with_io(root, budget))
+        }
+    });
+    // Parsing/default construction must also finish under the ORIGINAL clock.
+    // Existing failures keep their first diagnostic and cannot be retried.
+    let result = result.and_then(|config| {
+        budget.checkpoint_live()?;
+        Ok(config)
+    });
+    if let Err(error) = &result {
+        budget.failed = Some(error.clone());
+    }
+    result
 }
 
 /// Construct configuration from the snapshot owner's captured configuration.
@@ -1467,6 +1971,317 @@ mod captured_snapshot_tests {
                 .err()
                 .ok_or("malformed captured configuration was admitted")?;
             assert_eq!(error, format!("{}: {parse_error}", logical.display()));
+            Ok(())
+        })
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod live_configuration_tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn limits() -> LiveConfigurationLimits {
+        LiveConfigurationLimits {
+            max_configuration_bytes: 64 * 1024,
+            max_boundary_bytes: 64 * 1024,
+            max_read_bytes: 256 * 1024,
+            max_entries: 1024,
+            max_path_bytes: 256 * 1024,
+            max_buffered_bytes: 1024 * 1024,
+        }
+    }
+
+    fn budget_with(limits: LiveConfigurationLimits) -> Result<LiveConfigurationBudget, String> {
+        LiveConfigurationBudget::new(Instant::now() + Duration::from_secs(10), limits, 0)
+    }
+
+    fn bounded(root: &Path) -> Result<RiprConfig, String> {
+        load_for_root_bounded(root, &mut budget_with(limits())?)
+    }
+
+    fn with_fixture(
+        label: &str,
+        run: impl FnOnce(&Path) -> Result<(), String>,
+    ) -> Result<(), String> {
+        struct FixtureCleanup<'a> {
+            root: &'a Path,
+            armed: bool,
+        }
+
+        impl Drop for FixtureCleanup<'_> {
+            fn drop(&mut self) {
+                if self.armed {
+                    let _ = std::fs::remove_dir_all(self.root);
+                }
+            }
+        }
+
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|error| error.to_string())?
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ripr-live-config-{label}-{}-{stamp}",
+            std::process::id(),
+        ));
+        std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+        let mut fixture_cleanup = FixtureCleanup {
+            root: &root,
+            armed: true,
+        };
+        let result = (|| {
+            std::fs::create_dir(root.join(".git")).map_err(|error| error.to_string())?;
+            run(&root)
+        })();
+        fixture_cleanup.armed = false;
+        let cleanup = std::fs::remove_dir_all(&root).map_err(|error| error.to_string());
+        match (result, cleanup) {
+            (Err(first), Err(last)) => Err(format!("{first}; {last}")),
+            (result, cleanup) => result.and(cleanup),
+        }
+    }
+
+    fn write(path: &Path, text: &str) -> Result<(), String> {
+        std::fs::write(path, text).map_err(|error| error.to_string())
+    }
+
+    fn refuses<T>(result: Result<T, String>, expected: &str) -> Result<(), String> {
+        match result {
+            Err(error) if error.contains(expected) => Ok(()),
+            Err(error) => Err(format!("expected {expected}, got {error}")),
+            Ok(_) => Err(format!("expected refusal {expected}")),
+        }
+    }
+
+    #[test]
+    fn bounded_loader_preserves_direct_absent_empty_and_dot_root_configuration()
+    -> Result<(), String> {
+        with_fixture("direct", |root| {
+            assert_eq!(bounded(root)?, load_for_root(root)?);
+            let config_path = root.join(CONFIG_FILE_NAME);
+            write(&config_path, "")?;
+            assert_eq!(bounded(root)?, load_for_root(root)?);
+            let text = "[analysis]\nmode=\"fast\"\n[reports]\nmax_related_tests=9\n";
+            write(&config_path, text)?;
+            let dot = root.join(".");
+            let config = bounded(&dot)?;
+            assert_eq!(config, load_for_root(&dot)?);
+            assert_eq!(config.analysis.mode, Some(Mode::Fast));
+            assert_eq!(config.reports.max_related_tests, 9);
+            assert_eq!(
+                config.source_path,
+                Some(config_path.canonicalize().map_err(|e| e.to_string())?)
+            );
+            assert_eq!(config.source_text.as_deref(), Some(text));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn bounded_loader_preserves_ancestor_and_workspace_boundary_order() -> Result<(), String> {
+        with_fixture("ancestor", |root| {
+            write(&root.join(CONFIG_FILE_NAME), "[analysis]\nmode=\"ready\"\n")?;
+            let child = root.join("child");
+            std::fs::create_dir(&child).map_err(|e| e.to_string())?;
+            assert_eq!(bounded(&child)?, load_for_root(&child)?);
+            assert_eq!(bounded(&child)?.analysis.mode, Some(Mode::Ready));
+            write(&child.join("Cargo.toml"), "[workspace]\nmembers=[]\n")?;
+            assert_eq!(bounded(&child)?, load_for_root(&child)?);
+            assert_eq!(bounded(&child)?.analysis.mode, None);
+            // Malformed TOML syntax is the same available non-workspace result.
+            write(&child.join("Cargo.toml"), "workspace = [\n")?;
+            assert_eq!(bounded(&child)?, load_for_root(&child)?);
+            assert_eq!(bounded(&child)?.analysis.mode, Some(Mode::Ready));
+            // A direct config precedes an existing repository boundary.
+            std::fs::create_dir(child.join(".git")).map_err(|e| e.to_string())?;
+            write(&child.join(CONFIG_FILE_NAME), "[analysis]\nmode=\"deep\"\n")?;
+            assert_eq!(bounded(&child)?, load_for_root(&child)?);
+            assert_eq!(bounded(&child)?.analysis.mode, Some(Mode::Deep));
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn bounded_loader_observes_finding_render_and_python_default_edits() -> Result<(), String> {
+        with_fixture("drift", |root| {
+            let config_path = root.join(CONFIG_FILE_NAME);
+            write(
+                &config_path,
+                "[analysis]\nmode=\"draft\"\n[reports]\nmax_related_tests=5\n",
+            )?;
+            let initial = bounded(root)?;
+            write(
+                &config_path,
+                "[analysis]\nmode=\"fast\"\n[reports]\nmax_related_tests=5\n",
+            )?;
+            assert_ne!(bounded(root)?, initial);
+            write(
+                &config_path,
+                "[analysis]\nmode=\"draft\"\n[reports]\nmax_related_tests=17\n",
+            )?;
+            let rendered = bounded(root)?;
+            assert_ne!(rendered, initial);
+            assert_eq!(rendered, load_for_root(root)?);
+            std::fs::remove_file(&config_path).map_err(|e| e.to_string())?;
+            let defaults = bounded(root)?;
+            let source = root.join("src");
+            std::fs::create_dir(&source).map_err(|e| e.to_string())?;
+            write(&source.join("generated_client.py"), "")?;
+            assert_eq!(bounded(root)?, defaults);
+            write(&source.join("real.py"), "def real():\n    return 1\n")?;
+            if LanguageId::Python.is_available() {
+                let python = bounded(root)?;
+                assert_ne!(python, defaults);
+                assert!(python.languages.enabled.contains(&LanguageId::Python));
+                assert_eq!(python, load_for_root(root)?);
+            } else {
+                refuses(bounded(root), "lang-python")?;
+                assert_eq!(bounded(root).err(), load_for_root(root).err());
+            }
+            std::fs::remove_file(source.join("real.py")).map_err(|e| e.to_string())?;
+            assert_eq!(bounded(root)?, defaults);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn bounded_loader_fails_inaccessible_present_entries_and_keeps_alias_provenance()
+    -> Result<(), String> {
+        use std::os::unix::fs::symlink;
+        with_fixture("links", |root| {
+            let config_path = root.join(CONFIG_FILE_NAME);
+            let text = "[reports]\nmax_related_tests=7\n";
+            write(&config_path, text)?;
+            let ordinary_source = bounded(root)?;
+            std::fs::remove_file(&config_path).map_err(|e| e.to_string())?;
+            symlink(CONFIG_FILE_NAME, &config_path).map_err(|e| e.to_string())?;
+            refuses(bounded(root), "resolve live configuration")?;
+            refuses(load_for_root(root), "read ")?;
+            std::fs::remove_file(&config_path).map_err(|e| e.to_string())?;
+            let alias_target = root.join("same-text.toml");
+            write(&alias_target, text)?;
+            symlink(&alias_target, &config_path).map_err(|e| e.to_string())?;
+            let alias = bounded(root)?;
+            assert_eq!(alias, load_for_root(root)?);
+            assert_eq!(alias.source_text, ordinary_source.source_text);
+            assert_ne!(alias.source_path, ordinary_source.source_path);
+            std::fs::remove_file(&config_path).map_err(|e| e.to_string())?;
+            write(&config_path, text)?;
+            assert_eq!(bounded(root)?, ordinary_source);
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn bounded_loader_refuses_caps_work_paths_expired_clock_and_reuse_then_recovers()
+    -> Result<(), String> {
+        with_fixture("refusal", |root| {
+            let text = "[reports]\nmax_related_tests=7\n";
+            write(&root.join(CONFIG_FILE_NAME), text)?;
+            let expected = load_for_root(root)?;
+            let mut small = limits();
+            small.max_configuration_bytes = text.len() as u64;
+            assert_eq!(
+                load_for_root_bounded(root, &mut budget_with(small)?)?,
+                expected
+            );
+            small.max_configuration_bytes -= 1;
+            let mut refused = budget_with(small)?;
+            refuses(load_for_root_bounded(root, &mut refused), "byte cap")?;
+            refuses(load_for_root_bounded(root, &mut refused), "byte cap")?;
+            let mut one_entry = limits();
+            one_entry.max_entries = 1;
+            refuses(
+                load_for_root_bounded(root, &mut budget_with(one_entry)?),
+                "entry bound",
+            )?;
+            let mut no_path = limits();
+            no_path.max_path_bytes = 1;
+            refuses(
+                load_for_root_bounded(root, &mut budget_with(no_path)?),
+                "path bound",
+            )?;
+            let mut no_read = limits();
+            no_read.max_read_bytes = 1;
+            let mut exhausted = budget_with(no_read)?;
+            refuses(
+                load_for_root_bounded(root, &mut exhausted),
+                "aggregate read",
+            )?;
+            // Exactly one admitted byte plus the failed one-byte probe was
+            // read and charged; a 64KiB overflow chunk is not permitted.
+            assert_eq!(exhausted.read_bytes, 2);
+            let original_deadline = Instant::now() + Duration::from_millis(20);
+            let mut expired = LiveConfigurationBudget::new(original_deadline, limits(), 0)?;
+            std::thread::sleep(Duration::from_millis(25));
+            refuses(
+                load_for_root_bounded(root, &mut expired),
+                "original deadline",
+            )?;
+            let mut used = budget_with(limits())?;
+            assert_eq!(load_for_root_bounded(root, &mut used)?, expected);
+            refuses(load_for_root_bounded(root, &mut used), "already claimed")?;
+            assert_eq!(bounded(root)?, expected);
+            Ok(())
+        })
+    }
+    #[test]
+    fn strict_reader_refuses_final_symlink_before_read_and_nonregular_or_non_utf8_data()
+    -> Result<(), String> {
+        use std::os::unix::fs::symlink;
+        with_fixture("strict-reader", |root| {
+            let regular = root.join("regular.toml");
+            let link = root.join("link.toml");
+            write(&regular, "[reports]\nmax_related_tests=7\n")?;
+            symlink(&regular, &link).map_err(|e| e.to_string())?;
+            // Removing NOFOLLOW would read the target and reach the later
+            // named-file identity refusal; this requires the earlier open error.
+            refuses(
+                budget_with(limits())?.regular_text(&link, 64 * 1024),
+                "open live configuration",
+            )?;
+            refuses(
+                budget_with(limits())?.regular_text(root, 64 * 1024),
+                "not a regular file",
+            )?;
+            let binary = root.join("binary.toml");
+            std::fs::write(&binary, [0xff_u8, 0xfe]).map_err(|e| e.to_string())?;
+            refuses(
+                budget_with(limits())?.regular_text(&binary, 64 * 1024),
+                "failed",
+            )?;
+            assert_eq!(
+                budget_with(limits())?.regular_text(&regular, 64 * 1024)?,
+                "[reports]\nmax_related_tests=7\n"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn bounded_loader_claims_cancelled_attempt_and_preserves_first_fault_after_token_restoration()
+    -> Result<(), String> {
+        use crate::analysis::cancellation::{
+            AnalysisAbortKind, AnalysisCancellationToken, with_token,
+        };
+        with_fixture("cancelled", |root| {
+            write(
+                &root.join(CONFIG_FILE_NAME),
+                "[reports]\nmax_related_tests=11\n",
+            )?;
+            let token = AnalysisCancellationToken::new();
+            token.cancel(AnalysisAbortKind::Cancelled);
+            let mut attempt = budget_with(limits())?;
+            let first = with_token(&token, || load_for_root_bounded(root, &mut attempt))
+                .err()
+                .ok_or("cancelled observation must refuse")?;
+            assert!(first.contains("analysis cancelled"));
+            let restored = load_for_root_bounded(root, &mut attempt)
+                .err()
+                .ok_or("restored token must not refresh a failed observation")?;
+            assert_eq!(restored, first);
+            assert_eq!(bounded(root)?, load_for_root(root)?);
             Ok(())
         })
     }

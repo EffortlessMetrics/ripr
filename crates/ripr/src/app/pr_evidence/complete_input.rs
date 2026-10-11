@@ -4,9 +4,9 @@
 //! dispatch, qualified raw capture and artifact/custody integration remain
 //! root-owned dependencies. Neither startup DATA, native limits, a frozen Arc
 //! nor a saved generation can construct this token.
-//! Root owns worker/cohort custody, bounded live-config reobservation,
-//! artifact qualification and publication. Retained config equality alone
-//! cannot prove that the caller's live config stayed unchanged.
+//! Root owns worker/cohort custody, post-render live-config reobservation,
+//! artifact qualification and publication. Actual bounded live observation
+//! surrounds this inactive analysis path; no post-render proof is supplied.
 
 use super::PrEvidenceOptions;
 use super::complete_contract::{
@@ -49,6 +49,8 @@ use std::time::Instant;
 const RAW_MAX: u64 = 256 * 1024 * 1024;
 const SOURCE_MAX: u64 = 512 * 1024 * 1024;
 const POLICY_MAX: u64 = 4096;
+// Existing generation contract: `sha256:` followed by 64 lowercase hex bytes.
+const GENERATION_ID_BYTES: u64 = 71;
 
 #[derive(Clone, Copy, Eq, PartialEq)]
 enum Phase {
@@ -89,6 +91,12 @@ pub(super) struct FreshWholeInput {
     build_identity: String,
     profile: CompleteVerificationLimits,
     retained_input_bytes: u64,
+    // Actual admitted inputs stay with the same sealed owner through closeout.
+    original_raw: Vec<u8>,
+    original_presentation: String,
+    generation_id: String,
+    live_configuration_pass: u8,
+    live_configuration_failed: bool,
 }
 
 pub(super) struct AnalyzedWholeInput {
@@ -1206,6 +1214,12 @@ pub(super) fn prepare(
             name_bytes,
         ],
     )?;
+    // Reserve the generation digest before binding copies and hashing; the
+    // final retained total below charges the actual digest length only once.
+    let retained_with_generation = admit_sum(
+        profile.max_buffered_bytes,
+        &[retained_input_bytes, GENERATION_ID_BYTES],
+    )?;
     let build_identity = crate::build_identity::cache_identity().to_string();
     let binding = build_expected_binding(BindingInputs {
         subject: &subject,
@@ -1223,9 +1237,12 @@ pub(super) fn prepare(
         nonce: startup.generation_nonce(),
         profile,
         deadline: startup.deadline(),
-        retained: retained_input_bytes,
+        retained: retained_with_generation,
     })?;
     let generation_id = binding.generation_id()?;
+    if generation_id.len() as u64 != GENERATION_ID_BYTES {
+        return Err("whole-input generation digest length differs from its admission".into());
+    }
     let binding_size = binding_bytes(&binding, profile.max_binding_bytes)?;
     let binding_entries = binding
         .inventory
@@ -1237,6 +1254,7 @@ pub(super) fn prepare(
         profile.max_buffered_bytes,
         &[
             retained_input_bytes,
+            generation_id.len() as u64,
             inventory_retention(&authority)?,
             multiply(binding_entries as u64, 256)?,
             multiply(binding_size, 2)?,
@@ -1247,10 +1265,8 @@ pub(super) fn prepare(
         .ensure_clean()
         .map_err(|error| error.to_string())?;
     checkpoint(startup.deadline())?;
-    // Original bytes and the generation calculation are retained through the
-    // same binding/admission checks; no publication-only copy escapes this
-    // analysis component. The retained phase charge stays conservative.
-    drop((raw, presentation, generation_id));
+    // Move the exact admitted inputs into the sealed owner without another
+    // capture, decode, copy or publication-only lifetime.
     Ok(FreshWholeInput {
         whole: VerifiedWholeInput {
             phase: Phase::Fresh,
@@ -1276,6 +1292,11 @@ pub(super) fn prepare(
         build_identity,
         profile: profile.clone(),
         retained_input_bytes,
+        original_raw: raw,
+        original_presentation: presentation,
+        generation_id,
+        live_configuration_pass: 0,
+        live_configuration_failed: false,
     })
 }
 
@@ -1418,7 +1439,139 @@ impl VerifiedWholeInput {
     }
 }
 
+#[derive(Clone, Copy)]
+enum LiveConfigurationPass {
+    BeforeAnalysis = 0,
+    AfterAnalysis = 1,
+    BeforeCloseout = 2,
+}
+
+fn live_configuration_limits(
+    profile: &CompleteVerificationLimits,
+) -> crate::config::LiveConfigurationLimits {
+    crate::config::LiveConfigurationLimits {
+        max_configuration_bytes: crate::bounded_input::MAX_CLI_INPUT_BYTES
+            .min(profile.max_binding_bytes)
+            .min(profile.max_buffered_bytes),
+        max_boundary_bytes: crate::bounded_input::MAX_CLI_INPUT_BYTES
+            .min(profile.file_size_bytes)
+            .min(profile.max_source_bytes),
+        max_read_bytes: profile.max_source_bytes,
+        max_entries: profile.max_inventory_entries,
+        max_path_bytes: profile.max_retained_path_bytes,
+        max_buffered_bytes: profile.max_buffered_bytes,
+    }
+}
+
+/// Reobserves actual live discovery/defaults outside frozen source context.
+/// No saved binding, fake owner or captured-config reconstruction is accepted.
+fn compare_live_configuration(
+    root: &Path,
+    expected_root: &Path,
+    authority: &Arc<FrozenSourceAuthority>,
+    expected: &FullConfiguration,
+    profile: &CompleteVerificationLimits,
+    deadline: Instant,
+    retained_bytes: u64,
+) -> Result<(), String> {
+    if !same_path(authority.logical_root(), expected_root) {
+        return Err("whole-input live configuration frozen root differs".into());
+    }
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
+    if frozen::current().is_some_and(|current| !Arc::ptr_eq(&current, authority)) {
+        return Err("whole-input live configuration has a foreign frozen context".into());
+    }
+    // Reserve the existing path ceiling before resolver/command-path growth.
+    // Native AS owns resolver, TOML/typed-config and allocator computation.
+    admit_sum(
+        profile.max_buffered_bytes,
+        &[retained_bytes, profile.max_retained_path_bytes, 64 * 1024],
+    )?;
+    let result = frozen::with_context(None, || {
+        let mut budget = crate::config::LiveConfigurationBudget::new(
+            deadline,
+            live_configuration_limits(profile),
+            retained_bytes,
+        )?;
+        budget.reobserve_root(root, expected_root)?;
+        let config = crate::config::load_for_root_bounded(root, &mut budget)?;
+        let text_bytes = config
+            .source_text
+            .as_ref()
+            .map_or(0, |text| text.len() as u64);
+        budget.admit_full_copy(text_bytes, profile.max_binding_bytes)?;
+        let observed = FullConfiguration::capture(&config, profile)?;
+        if &observed != expected {
+            return Err("whole-input live complete configuration changed".into());
+        }
+        // Source text moved into the config; the one bounded full projection
+        // and parsed config leave this pass before another observation starts.
+        drop(observed);
+        drop(config);
+        budget.reobserve_root(root, expected_root)?;
+        checkpoint(deadline)
+    });
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
+    result
+}
+
 impl FreshWholeInput {
+    fn observe_live_configuration(&mut self, pass: LiveConfigurationPass) -> Result<(), String> {
+        let already_failed = self.live_configuration_failed;
+        self.live_configuration_failed = true;
+        if already_failed || self.live_configuration_pass != pass as u8 {
+            return Err("whole-input live configuration pass repeated or out of order".into());
+        }
+        // Claim before every fallible observation. This consuming owner never
+        // retries a refused pass or returns an input capability after failure.
+        self.live_configuration_pass += 1;
+        checkpoint(self.startup.deadline())?;
+        self.startup.verify_stage_current()?;
+        self.whole
+            .authority
+            .ensure_clean()
+            .map_err(|error| error.to_string())?;
+        super::complete_execution::verify_limits(
+            self.profile.address_space_bytes,
+            self.profile.file_size_bytes,
+        )?;
+        admit_sum(
+            self.profile.max_buffered_bytes,
+            &[
+                self.retained_input_bytes,
+                self.profile.max_retained_path_bytes,
+                64 * 1024,
+            ],
+        )?;
+        let root = super::command_root_path(
+            &self.subject.invocation_repository,
+            &self.binding.subject.requested_root,
+        );
+        caller_root_at(&self.subject.root, &root)?;
+        compare_live_configuration(
+            &root,
+            &self.subject.root,
+            &self.whole.authority,
+            &self.binding.full_configuration,
+            &self.profile,
+            self.startup.deadline(),
+            self.retained_input_bytes,
+        )?;
+        self.whole
+            .authority
+            .ensure_clean()
+            .map_err(|error| error.to_string())?;
+        self.startup.source().verify_materialized()?;
+        self.startup.verify_stage_current()?;
+        checkpoint(self.startup.deadline())?;
+        self.live_configuration_failed = false;
+        Ok(())
+    }
+
     /// Ordinary observation on the exact retained input creates no token or receipt.
     pub(super) fn observe_ordinary_guard(&self) -> Result<String, String> {
         if self.whole.phase != Phase::Fresh {
@@ -1483,6 +1636,7 @@ impl FreshWholeInput {
     }
 
     pub(super) fn execute(mut self) -> Result<AnalyzedWholeInput, String> {
+        self.observe_live_configuration(LiveConfigurationPass::BeforeAnalysis)?;
         checkpoint(self.startup.deadline())?;
         self.startup.verify_stage_current()?;
         self.whole.phase = Phase::Running;
@@ -1497,6 +1651,7 @@ impl FreshWholeInput {
         });
         self.whole.phase = Phase::Closed;
         let output = output?;
+        self.observe_live_configuration(LiveConfigurationPass::AfterAnalysis)?;
         self.whole
             .authority
             .ensure_clean()
@@ -1674,9 +1829,12 @@ fn reconcile_postflight_inputs(
 }
 
 fn closeout_analyzed_input(
-    input: FreshWholeInput,
+    mut input: FreshWholeInput,
     native_observer: Option<NativeObserver>,
 ) -> Result<(), String> {
+    // This is an actual analysis/inspection closeout observation, not a
+    // post-render witness. The future renderer must provide its distinct join.
+    input.observe_live_configuration(LiveConfigurationPass::BeforeCloseout)?;
     let FreshWholeInput {
         whole,
         startup,
@@ -1689,6 +1847,11 @@ fn closeout_analyzed_input(
         build_identity,
         profile,
         retained_input_bytes,
+        original_raw,
+        original_presentation,
+        generation_id,
+        live_configuration_pass: _,
+        live_configuration_failed: _,
     } = input;
     // This distinct capture method claims before every fallible Postflight check.
     // Fresh buffers and replay state leave this scope before the existing copier.
@@ -1736,9 +1899,8 @@ fn closeout_analyzed_input(
         profile.max_buffered_bytes,
         &[retained_input_bytes, profile.max_binding_bytes],
     )?;
-    // This reconciles the retained immutable effective config. It is not
-    // a reobservation of dirty live ripr.toml. Root must supply the genuine
-    // bounded live-config pre/postflight join before production admission.
+    // Preserve the distinct immutable effective-config reconciliation. Actual
+    // live configuration was reobserved before this consuming closeout.
     let observed = FullConfiguration::capture(&whole.config, &profile)?;
     if observed != binding.full_configuration {
         return Err("whole-input complete effective configuration changed".into());
@@ -1758,6 +1920,9 @@ fn closeout_analyzed_input(
     if let Some(observe) = native_observer {
         observe(&invocation)?;
     }
+    // Exact original inputs remain owned through source finalization and the
+    // last native observation. Releasing DATA grants no cleanup or publication.
+    drop((original_raw, original_presentation, generation_id));
     // Retain qualified invocation/native custody through all observations
     // and source-context closeout. Their release grants no publication.
     drop(invocation);
@@ -3190,4 +3355,118 @@ mod tests {
     // There is deliberately no positive factory fixture here. A real factory
     // control must enter root's qualified hidden worker, actual finite native
     // startup/fresh held stage and real qualified Git/source/raw helpers.
+    #[test]
+    fn live_config_observation_compares_real_dirty_render_fields_and_alias_provenance()
+    -> Result<(), String> {
+        use std::os::unix::fs::symlink;
+        let fixture = PostflightFixture::new()?;
+        let path = fixture.root.join("ripr.toml");
+        let original = fixture
+            .config
+            .source_text
+            .as_deref()
+            .ok_or("fixture config text")?;
+        let root = fixture.root.join(".");
+        let observe = || {
+            compare_live_configuration(
+                &root,
+                &fixture.root,
+                &fixture.authority,
+                &fixture.binding.full_configuration,
+                &fixture.profile,
+                fixture.deadline,
+                fixture.retained,
+            )
+        };
+        frozen::with_context(
+            Some(Arc::clone(&fixture.authority)),
+            || -> Result<(), String> {
+                observe()?;
+                let restored = frozen::current().ok_or("live observation lost frozen context")?;
+                assert!(Arc::ptr_eq(&restored, &fixture.authority));
+                // A rendering-only change is outside the finding fingerprint, but
+                // actual full configuration authority must still refuse it.
+                fs::write(
+                    &path,
+                    format!("{original}\n[reports]\nmax_related_tests=31\n"),
+                )
+                .map_err(|error| error.to_string())?;
+                error(observe(), "live complete configuration changed")?;
+                assert!(Arc::ptr_eq(
+                    &frozen::current().ok_or("error lost frozen context")?,
+                    &fixture.authority
+                ));
+                fs::write(&path, original).map_err(|error| error.to_string())?;
+                observe()?;
+                let alternate = fixture.root.join("same-config.toml");
+                fs::write(&alternate, original).map_err(|error| error.to_string())?;
+                fs::remove_file(&path).map_err(|error| error.to_string())?;
+                symlink(&alternate, &path).map_err(|error| error.to_string())?;
+                // Identical text cannot replace the actual source-path provenance.
+                error(observe(), "live complete configuration changed")?;
+                fs::remove_file(&path).map_err(|error| error.to_string())?;
+                fs::write(&path, original).map_err(|error| error.to_string())?;
+                observe()?;
+                fixture
+                    .authority
+                    .ensure_clean()
+                    .map_err(|error| error.to_string())
+            },
+        )
+    }
+
+    #[test]
+    fn live_config_observation_preserves_sticky_frozen_faults_and_fresh_recovery()
+    -> Result<(), String> {
+        let fixture = PostflightFixture::new()?;
+        let outside = fixture
+            .root
+            .parent()
+            .ok_or("fixture parent")?
+            .join("outside-live-config.toml");
+        frozen::with_context(
+            Some(Arc::clone(&fixture.authority)),
+            || -> Result<(), String> {
+                let first = frozen::fs::read(&outside)
+                    .err()
+                    .ok_or("outside frozen read must refuse")?;
+                let live = compare_live_configuration(
+                    &fixture.root,
+                    &fixture.root,
+                    &fixture.authority,
+                    &fixture.binding.full_configuration,
+                    &fixture.profile,
+                    fixture.deadline,
+                    fixture.retained,
+                )
+                .err()
+                .ok_or("poisoned source must refuse before clearing TLS")?;
+                assert_eq!(live, first.to_string());
+                assert!(Arc::ptr_eq(
+                    &frozen::current().ok_or("fault lost frozen context")?,
+                    &fixture.authority
+                ));
+                assert_eq!(
+                    fixture
+                        .authority
+                        .ensure_clean()
+                        .err()
+                        .ok_or("live observation cleared sticky source fault")?
+                        .to_string(),
+                    live
+                );
+                Ok(())
+            },
+        )?;
+        let recovered = PostflightFixture::new()?;
+        compare_live_configuration(
+            &recovered.root,
+            &recovered.root,
+            &recovered.authority,
+            &recovered.binding.full_configuration,
+            &recovered.profile,
+            recovered.deadline,
+            recovered.retained,
+        )
+    }
 }

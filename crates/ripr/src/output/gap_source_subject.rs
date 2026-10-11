@@ -415,6 +415,359 @@ pub(crate) fn with_source_subject_for_test(root: &Path, mut artifact: Value) -> 
     artifact
 }
 
+// Inactive DATA bridge until the complete renderer supplies genuine admission.
+// Existing production rendering and append paths remain unchanged.
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) mod bounded_stamp_emit {
+    use super::*;
+    use serde::ser::{Error as _, SerializeSeq, SerializeStruct};
+    use serde::{Serialize, Serializer};
+    use std::cell::{Cell, RefCell};
+    use std::io::{self, Write};
+    use std::path::PathBuf;
+    use std::time::Instant;
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(crate) enum StampEmitErrorKind {
+        Context,
+        Deadline,
+        WireLimit,
+        PathLimit,
+        Allocation,
+        Source(ErrorKind),
+        Writer(ErrorKind),
+        InvalidWrite,
+        Serialization,
+        Reentrant,
+    }
+
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+    pub(crate) struct StampEmitError {
+        pub(crate) kind: StampEmitErrorKind,
+        pub(crate) entry: Option<usize>,
+    }
+
+    impl std::fmt::Display for StampEmitError {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(
+                formatter,
+                "bounded source stamp {:?} at {:?}",
+                self.kind, self.entry
+            )
+        }
+    }
+
+    impl std::error::Error for StampEmitError {}
+
+    thread_local! {
+        static ACTIVE: RefCell<Option<Arc<FrozenSourceAuthority>>> = const { RefCell::new(None) };
+    }
+
+    struct EmissionGuard;
+
+    impl EmissionGuard {
+        fn enter(authority: &Arc<FrozenSourceAuthority>) -> Result<Self, StampEmitError> {
+            ACTIVE.with(|active| {
+                let mut active = active.borrow_mut();
+                if let Some(outer) = active.as_ref() {
+                    outer.refuse_external_effect("reentrant bounded source stamp emission");
+                    return Err(StampEmitError {
+                        kind: StampEmitErrorKind::Reentrant,
+                        entry: None,
+                    });
+                }
+                *active = Some(Arc::clone(authority));
+                Ok(Self)
+            })
+        }
+    }
+
+    impl Drop for EmissionGuard {
+        fn drop(&mut self) {
+            ACTIVE.with(|active| {
+                let mut active = active.borrow_mut();
+                if std::thread::panicking()
+                    && let Some(authority) = active.as_ref()
+                {
+                    authority.refuse_external_effect("bounded source stamp emission unwound");
+                }
+                *active = None;
+            });
+        }
+    }
+
+    struct State<'a> {
+        root: &'a Path,
+        authority: &'a Arc<FrozenSourceAuthority>,
+        deadline: Instant,
+        wire_limit: u64,
+        written: Cell<u64>,
+        entry: Cell<Option<usize>>,
+        first: Cell<Option<StampEmitError>>,
+        path: RefCell<PathBuf>,
+    }
+
+    impl State<'_> {
+        fn refuse(&self, kind: StampEmitErrorKind) -> StampEmitError {
+            let error = self.first.get().unwrap_or(StampEmitError {
+                kind,
+                entry: self.entry.get(),
+            });
+            self.first.set(Some(error));
+            self.authority
+                .refuse_external_effect("bounded source stamp emission refused");
+            error
+        }
+
+        fn check(&self) -> Result<(), StampEmitError> {
+            if let Some(error) = self.first.get() {
+                return Err(error);
+            }
+            if Instant::now() >= self.deadline {
+                return Err(self.refuse(StampEmitErrorKind::Deadline));
+            }
+            require_frozen_stamp_context(self.root, self.authority).map_err(|error| {
+                self.authority.refuse_external_effect(&error);
+                self.refuse(StampEmitErrorKind::Context)
+            })?;
+            if Instant::now() >= self.deadline {
+                return Err(self.refuse(StampEmitErrorKind::Deadline));
+            }
+            Ok(())
+        }
+
+        fn digest(&self, relative: &str) -> Result<Option<[u8; 71]>, StampEmitError> {
+            self.check()?;
+            // The sole joined-path buffer was admitted and reserved before emission.
+            // Frozen reading has its own inherited 64 KiB scratch and full-file hash.
+            let read = {
+                let mut path = self
+                    .path
+                    .try_borrow_mut()
+                    .map_err(|_classified_error| self.refuse(StampEmitErrorKind::Reentrant))?;
+                path.clear();
+                path.push(self.root);
+                path.push(relative);
+                frozen_fs::read_prefix(&*path, 0)
+            };
+            self.check()?;
+            match read {
+                Ok(_) => {
+                    let file = self
+                        .authority
+                        .inventory()
+                        .files()
+                        .find(|(path, _)| *path == Path::new(relative))
+                        .map(|(_, file)| file)
+                        .ok_or_else(|| {
+                            self.refuse(StampEmitErrorKind::Source(ErrorKind::NotFound))
+                        })?;
+                    let mut digest = [0_u8; 71];
+                    digest[..7].copy_from_slice(b"sha256:");
+                    const HEX: &[u8; 16] = b"0123456789abcdef";
+                    for (index, byte) in file.sha256.iter().copied().enumerate() {
+                        digest[7 + index * 2] = HEX[usize::from(byte >> 4)];
+                        digest[8 + index * 2] = HEX[usize::from(byte & 0x0f)];
+                    }
+                    self.check()?;
+                    Ok(Some(digest))
+                }
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(self.refuse(StampEmitErrorKind::Source(error.kind()))),
+            }
+        }
+
+        fn io_error(&self) -> io::Error {
+            // Never return Interrupted: write_all would retry it.
+            io::Error::other("bounded source stamp emission refused")
+        }
+    }
+
+    struct CheckedWriter<'a, 'b, W> {
+        state: &'a State<'b>,
+        sink: &'a mut W,
+    }
+
+    impl<W: Write> Write for CheckedWriter<'_, '_, W> {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.state
+                .check()
+                .map_err(|_classified_error| self.state.io_error())?;
+            let length = u64::try_from(bytes.len()).map_err(|_classified_error| {
+                self.state.refuse(StampEmitErrorKind::WireLimit);
+                self.state.io_error()
+            })?;
+            if self
+                .state
+                .written
+                .get()
+                .checked_add(length)
+                .is_none_or(|total| total > self.state.wire_limit)
+            {
+                self.state.refuse(StampEmitErrorKind::WireLimit);
+                return Err(self.state.io_error());
+            }
+            let written = self.sink.write(bytes).map_err(|error| {
+                self.state.refuse(StampEmitErrorKind::Writer(error.kind()));
+                self.state.io_error()
+            })?;
+            if written > bytes.len() || (written == 0 && !bytes.is_empty()) {
+                self.state.refuse(StampEmitErrorKind::InvalidWrite);
+                return Err(self.state.io_error());
+            }
+            let written = u64::try_from(written).map_err(|_classified_error| {
+                self.state.refuse(StampEmitErrorKind::InvalidWrite);
+                self.state.io_error()
+            })?;
+            self.state.written.set(self.state.written.get() + written);
+            self.state
+                .check()
+                .map_err(|_classified_error| self.state.io_error())?;
+            usize::try_from(written).map_err(|_classified_error| self.state.io_error())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            self.state
+                .check()
+                .map_err(|_classified_error| self.state.io_error())?;
+            self.sink.flush().map_err(|error| {
+                self.state.refuse(StampEmitErrorKind::Writer(error.kind()));
+                self.state.io_error()
+            })?;
+            self.state
+                .check()
+                .map_err(|_classified_error| self.state.io_error())
+        }
+    }
+
+    struct Stamp<'a, 'b> {
+        state: &'a State<'b>,
+        paths: &'a BTreeSet<String>,
+    }
+
+    struct Files<'a, 'b>(&'a Stamp<'a, 'b>);
+
+    struct File<'a, 'b> {
+        state: &'a State<'b>,
+        path: &'a str,
+    }
+
+    impl Serialize for Stamp<'_, '_> {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            self.state
+                .check()
+                .map_err(|_classified_error| S::Error::custom("stamp refused"))?;
+            let mut object = serializer.serialize_struct("GapSourceSubject", 2)?;
+            object.serialize_field("digest_algorithm", SOURCE_SUBJECT_DIGEST_ALGORITHM)?;
+            object.serialize_field("files", &Files(self))?;
+            object.end()
+        }
+    }
+
+    impl Serialize for Files<'_, '_> {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let mut sequence = serializer.serialize_seq(Some(self.0.paths.len()))?;
+            for (ordinal, path) in self.0.paths.iter().enumerate() {
+                self.0.state.entry.set(Some(ordinal));
+                sequence.serialize_element(&File {
+                    state: self.0.state,
+                    path,
+                })?;
+            }
+            self.0.state.entry.set(None);
+            sequence.end()
+        }
+    }
+
+    impl Serialize for File<'_, '_> {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let digest = self
+                .state
+                .digest(self.path)
+                .map_err(|_classified_error| S::Error::custom("stamp source refused"))?;
+            let digest = digest
+                .as_ref()
+                .map(|bytes| std::str::from_utf8(bytes))
+                .transpose()
+                .map_err(|_classified_error| {
+                    self.state.refuse(StampEmitErrorKind::Serialization);
+                    S::Error::custom("stamp digest refused")
+                })?;
+            let mut file = serializer.serialize_struct("GapSourceSubjectFile", 2)?;
+            file.serialize_field("path", self.path)?;
+            file.serialize_field("digest", &digest)?;
+            file.end()
+        }
+    }
+
+    /// Emit only a source-subject JSON value under caller-admitted DATA bounds.
+    /// This grants no input, resource, generation or publication authority.
+    pub(crate) fn write_source_subject_bounded<W: Write>(
+        root: &Path,
+        authority: &Arc<FrozenSourceAuthority>,
+        paths: &BTreeSet<String>,
+        original_deadline: Instant,
+        wire_limit: u64,
+        path_temporary_limit: u64,
+        sink: &mut W,
+    ) -> Result<u64, StampEmitError> {
+        let _guard = EmissionGuard::enter(authority)?;
+        let mut state = State {
+            root,
+            authority,
+            deadline: original_deadline,
+            wire_limit,
+            written: Cell::new(0),
+            entry: Cell::new(None),
+            first: Cell::new(None),
+            path: RefCell::new(PathBuf::new()),
+        };
+        let longest = paths.iter().map(String::len).max().unwrap_or(0);
+        let joined = root
+            .as_os_str()
+            .as_encoded_bytes()
+            .len()
+            .checked_add(1)
+            .and_then(|length| length.checked_add(longest))
+            .ok_or_else(|| state.refuse(StampEmitErrorKind::PathLimit))?;
+        let joined_u64 = u64::try_from(joined)
+            .map_err(|_classified_error| state.refuse(StampEmitErrorKind::PathLimit))?;
+        if joined_u64 > path_temporary_limit {
+            return Err(state.refuse(StampEmitErrorKind::PathLimit));
+        }
+        state.check()?;
+        state
+            .path
+            .get_mut()
+            .try_reserve_exact(joined)
+            .map_err(|_classified_error| state.refuse(StampEmitErrorKind::Allocation))?;
+        state.check()?;
+        let stamp = Stamp {
+            state: &state,
+            paths,
+        };
+        let mut writer = CheckedWriter {
+            state: &state,
+            sink,
+        };
+        if serde_json::to_writer(&mut writer, &stamp).is_err() {
+            return Err(state.refuse(StampEmitErrorKind::Serialization));
+        }
+        if writer.flush().is_err() {
+            return Err(state.refuse(StampEmitErrorKind::Writer(ErrorKind::Other)));
+        }
+        // Audit AFTER the last sink callback: ensure_clean alone does not notice
+        // a physical snapshot mutation which happened after its first digest.
+        for (ordinal, path) in paths.iter().enumerate() {
+            state.entry.set(Some(ordinal));
+            state.digest(path)?;
+        }
+        state.entry.set(None);
+        state.check()?;
+        Ok(state.written.get())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1560,6 +1913,450 @@ mod tests {
             Some("sha256:aa")
         );
         Ok(())
+    }
+
+    #[cfg(all(target_os = "linux", feature = "lang-rust"))]
+    mod bounded_stamp_tests {
+        use super::super::bounded_stamp_emit::{
+            StampEmitError, StampEmitErrorKind, write_source_subject_bounded,
+        };
+        use super::*;
+        use std::io::{self, Write};
+        use std::time::{Duration, Instant};
+
+        fn path_limit(fixture: &NamedStampFixture, paths: &BTreeSet<String>) -> u64 {
+            (fixture.root.as_os_str().as_encoded_bytes().len()
+                + 1
+                + paths.iter().map(String::len).max().unwrap_or(0)) as u64
+        }
+
+        fn emit<W: Write>(
+            fixture: &NamedStampFixture,
+            paths: &BTreeSet<String>,
+            limit: u64,
+            sink: &mut W,
+        ) -> Result<u64, StampEmitError> {
+            write_source_subject_bounded(
+                &fixture.root,
+                &fixture.authority,
+                paths,
+                Instant::now() + Duration::from_secs(5),
+                limit,
+                path_limit(fixture, paths),
+                sink,
+            )
+        }
+
+        fn refused(
+            result: Result<u64, StampEmitError>,
+            kind: StampEmitErrorKind,
+        ) -> Result<StampEmitError, String> {
+            match result {
+                Err(error) if error.kind == kind => Ok(error),
+                Err(error) => Err(format!("expected {kind:?}, got {error:?}")),
+                Ok(_) => Err(format!("bounded stamp admitted {kind:?}")),
+            }
+        }
+
+        #[test]
+        fn bounded_stamp_bytes_match_actual_frozen_serializer_and_named_absence()
+        -> Result<(), String> {
+            let fixture = NamedStampFixture::new("bounded-parity")?;
+            let paths = BTreeSet::from([
+                "src/lib.rs".to_string(),
+                "absent-\"\\-☃.rs".to_string(),
+                "tests/check.rs".to_string(),
+            ]);
+            let ordinary = frozen::with_context(None, || {
+                serde_json::to_vec(&stamp_source_subject(&fixture.root, &paths)?)
+                    .map_err(|error| error.to_string())
+            })?;
+            frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                let expected = serde_json::to_vec(&stamp_source_subject(&fixture.root, &paths)?)
+                    .map_err(|error| error.to_string())?;
+                assert_eq!(expected, ordinary);
+                let mut bytes = Vec::new();
+                let written = emit(&fixture, &paths, expected.len() as u64, &mut bytes)
+                    .map_err(|error| format!("{error:?}"))?;
+                assert_eq!(bytes, expected);
+                assert_eq!(written, expected.len() as u64);
+                std::fs::write(
+                    fixture.root.join("tests/check.rs"),
+                    "dirty live test replacement\n",
+                )
+                .map_err(|error| error.to_string())?;
+                std::fs::remove_file(fixture.root.join("src/lib.rs"))
+                    .map_err(|error| error.to_string())?;
+                let mut after_live_drift = Vec::new();
+                let written = emit(
+                    &fixture,
+                    &paths,
+                    expected.len() as u64,
+                    &mut after_live_drift,
+                )
+                .map_err(|error| format!("{error:?}"))?;
+                assert_eq!(after_live_drift, ordinary);
+                assert_eq!(written, ordinary.len() as u64);
+                let empty = BTreeSet::new();
+                let expected = serde_json::to_vec(&stamp_source_subject(&fixture.root, &empty)?)
+                    .map_err(|error| error.to_string())?;
+                let mut bytes = Vec::new();
+                emit(&fixture, &empty, expected.len() as u64, &mut bytes)
+                    .map_err(|error| format!("{error:?}"))?;
+                assert_eq!(bytes, expected);
+                Ok::<_, String>(())
+            })
+        }
+
+        #[test]
+        fn bounded_stamp_admits_exact_wire_and_path_before_growth_and_latches_refusal()
+        -> Result<(), String> {
+            let fixture = NamedStampFixture::new("bounded-cap")?;
+            let paths = BTreeSet::from(["src/lib.rs".to_string()]);
+            frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                let expected = serde_json::to_vec(&stamp_source_subject(&fixture.root, &paths)?)
+                    .map_err(|error| error.to_string())?;
+                let mut bytes = Vec::new();
+                emit(&fixture, &paths, expected.len() as u64, &mut bytes)
+                    .map_err(|error| format!("{error:?}"))?;
+                assert_eq!(bytes, expected);
+                let mut refused_bytes = Vec::new();
+                refused(
+                    emit(
+                        &fixture,
+                        &paths,
+                        expected.len() as u64 - 1,
+                        &mut refused_bytes,
+                    ),
+                    StampEmitErrorKind::WireLimit,
+                )?;
+                assert!(refused_bytes.len() < expected.len());
+                refused(
+                    emit(&fixture, &paths, expected.len() as u64, &mut Vec::new()),
+                    StampEmitErrorKind::Context,
+                )?;
+                Ok::<_, String>(())
+            })?;
+            let path_fixture = NamedStampFixture::new("bounded-path")?;
+            frozen::with_context(Some(Arc::clone(&path_fixture.authority)), || {
+                let mut bytes = Vec::new();
+                let error = refused(
+                    write_source_subject_bounded(
+                        &path_fixture.root,
+                        &path_fixture.authority,
+                        &paths,
+                        Instant::now() + Duration::from_secs(5),
+                        4096,
+                        path_limit(&path_fixture, &paths) - 1,
+                        &mut bytes,
+                    ),
+                    StampEmitErrorKind::PathLimit,
+                )?;
+                assert_eq!(error.entry, None);
+                assert!(bytes.is_empty());
+                Ok::<_, String>(())
+            })?;
+            let recovery = NamedStampFixture::new("bounded-cap-recovery")?;
+            frozen::with_context(Some(Arc::clone(&recovery.authority)), || {
+                emit(&recovery, &paths, 4096, &mut Vec::new())
+                    .map_err(|error| format!("{error:?}"))?;
+                Ok::<_, String>(())
+            })
+        }
+
+        struct FaultWriter {
+            mode: u8,
+            calls: usize,
+            bytes: Vec<u8>,
+        }
+
+        impl Write for FaultWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.calls += 1;
+                match self.mode {
+                    1 => Err(io::Error::from(io::ErrorKind::Interrupted)),
+                    2 => Ok(0),
+                    3 => Ok(bytes.len() + 1),
+                    4 => Err(io::Error::other("injected writer failure")),
+                    _ => {
+                        let length = bytes.len().min(1);
+                        self.bytes.extend_from_slice(&bytes[..length]);
+                        Ok(length)
+                    }
+                }
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                if self.mode == 5 {
+                    Err(io::Error::other("injected flush failure"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+
+        #[test]
+        fn bounded_stamp_handles_short_writes_and_refuses_interrupt_zero_excess_and_flush()
+        -> Result<(), String> {
+            let paths = BTreeSet::from(["src/lib.rs".to_string()]);
+            for mode in 0..=5 {
+                let fixture = NamedStampFixture::new(&format!("bounded-writer-{mode}"))?;
+                frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                    let mut sink = FaultWriter {
+                        mode,
+                        calls: 0,
+                        bytes: Vec::new(),
+                    };
+                    let expected =
+                        serde_json::to_vec(&stamp_source_subject(&fixture.root, &paths)?)
+                            .map_err(|error| error.to_string())?;
+                    let result = emit(&fixture, &paths, expected.len() as u64, &mut sink);
+                    if mode == 0 {
+                        assert_eq!(
+                            result.map_err(|error| format!("{error:?}"))?,
+                            expected.len() as u64,
+                        );
+                        assert_eq!(sink.bytes, expected);
+                    } else {
+                        let kind = if matches!(mode, 2 | 3) {
+                            StampEmitErrorKind::InvalidWrite
+                        } else if mode == 1 {
+                            StampEmitErrorKind::Writer(io::ErrorKind::Interrupted)
+                        } else {
+                            StampEmitErrorKind::Writer(io::ErrorKind::Other)
+                        };
+                        refused(result, kind)?;
+                        if mode != 5 {
+                            assert_eq!(sink.calls, 1, "failed writer must not retry");
+                        } else {
+                            assert_eq!(sink.bytes, expected);
+                        }
+                        refused(
+                            emit(&fixture, &paths, 4096, &mut Vec::new()),
+                            StampEmitErrorKind::Context,
+                        )?;
+                    }
+                    Ok::<_, String>(())
+                })?;
+            }
+            Ok(())
+        }
+
+        struct ExpiringWriter {
+            deadline: Instant,
+            calls: usize,
+        }
+
+        impl Write for ExpiringWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.calls += 1;
+                while Instant::now() < self.deadline {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn bounded_stamp_keeps_original_live_deadline_across_sink_callback() -> Result<(), String> {
+            let fixture = NamedStampFixture::new("bounded-deadline")?;
+            let paths = BTreeSet::from(["src/lib.rs".to_string()]);
+            frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                let deadline = Instant::now() + Duration::from_secs(1);
+                let mut sink = ExpiringWriter { deadline, calls: 0 };
+                refused(
+                    write_source_subject_bounded(
+                        &fixture.root,
+                        &fixture.authority,
+                        &paths,
+                        deadline,
+                        4096,
+                        path_limit(&fixture, &paths),
+                        &mut sink,
+                    ),
+                    StampEmitErrorKind::Deadline,
+                )?;
+                assert_eq!(sink.calls, 1);
+                Ok::<_, String>(())
+            })?;
+            let expired = NamedStampFixture::new("bounded-expired")?;
+            frozen::with_context(Some(Arc::clone(&expired.authority)), || {
+                let mut bytes = Vec::new();
+                refused(
+                    write_source_subject_bounded(
+                        &expired.root,
+                        &expired.authority,
+                        &paths,
+                        Instant::now(),
+                        4096,
+                        path_limit(&expired, &paths),
+                        &mut bytes,
+                    ),
+                    StampEmitErrorKind::Deadline,
+                )?;
+                assert!(bytes.is_empty());
+                Ok::<_, String>(())
+            })
+        }
+
+        struct MutatingFlush<'a> {
+            path: &'a Path,
+            delete: bool,
+            bytes: Vec<u8>,
+        }
+
+        impl Write for MutatingFlush<'_> {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                self.bytes.extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                if self.delete {
+                    std::fs::remove_file(self.path)
+                } else {
+                    std::fs::write(self.path, "changed physical named snapshot\n")
+                }
+            }
+        }
+
+        #[test]
+        fn bounded_stamp_reauthenticates_after_last_callback_mutation_or_deletion()
+        -> Result<(), String> {
+            let paths = BTreeSet::from(["src/lib.rs".to_string()]);
+            for delete in [false, true] {
+                let fixture = NamedStampFixture::new(if delete {
+                    "bounded-late-delete"
+                } else {
+                    "bounded-late-change"
+                })?;
+                let physical = fixture.physical.join("src/lib.rs");
+                frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                    let expected =
+                        serde_json::to_vec(&stamp_source_subject(&fixture.root, &paths)?)
+                            .map_err(|error| error.to_string())?;
+                    let mut sink = MutatingFlush {
+                        path: &physical,
+                        delete,
+                        bytes: Vec::new(),
+                    };
+                    let error = refused(
+                        emit(&fixture, &paths, expected.len() as u64, &mut sink),
+                        StampEmitErrorKind::Context,
+                    )?;
+                    assert_eq!(error.entry, Some(0));
+                    assert_eq!(sink.bytes, expected, "full bytes do not grant acceptance");
+                    refused(
+                        emit(&fixture, &paths, 4096, &mut Vec::new()),
+                        StampEmitErrorKind::Context,
+                    )?;
+                    Ok::<_, String>(())
+                })?;
+            }
+            let recovery = NamedStampFixture::new("bounded-late-recovery")?;
+            frozen::with_context(Some(Arc::clone(&recovery.authority)), || {
+                emit(&recovery, &paths, 4096, &mut Vec::new())
+                    .map_err(|error| format!("{error:?}"))?;
+                Ok::<_, String>(())
+            })
+        }
+
+        struct NestedWriter<'a> {
+            fixture: &'a NamedStampFixture,
+            paths: &'a BTreeSet<String>,
+            nested: Option<StampEmitErrorKind>,
+        }
+
+        impl Write for NestedWriter<'_> {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                let result = frozen::with_context(None, || {
+                    emit(self.fixture, self.paths, 4096, &mut Vec::new())
+                });
+                self.nested = Some(match result {
+                    Err(error) => error.kind,
+                    Ok(_) => return Err(io::Error::other("nested emission was admitted")),
+                });
+                Ok(bytes.len())
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn bounded_stamp_rejects_foreign_context_and_swallowed_nested_entry() -> Result<(), String>
+        {
+            let fixture = NamedStampFixture::new("bounded-nested")?;
+            let paths = BTreeSet::from(["src/lib.rs".to_string()]);
+            frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                let mut sink = NestedWriter {
+                    fixture: &fixture,
+                    paths: &paths,
+                    nested: None,
+                };
+                refused(
+                    emit(&fixture, &paths, 4096, &mut sink),
+                    StampEmitErrorKind::Context,
+                )?;
+                assert_eq!(sink.nested, Some(StampEmitErrorKind::Reentrant));
+                Ok::<_, String>(())
+            })?;
+            let original = NamedStampFixture::new("bounded-original")?;
+            let foreign = NamedStampFixture::new("bounded-foreign")?;
+            frozen::with_context(Some(Arc::clone(&foreign.authority)), || {
+                let mut bytes = Vec::new();
+                refused(
+                    emit(&original, &paths, 4096, &mut bytes),
+                    StampEmitErrorKind::Context,
+                )?;
+                assert!(bytes.is_empty());
+                Ok::<_, String>(())
+            })
+        }
+
+        struct PanickingWriter;
+
+        impl Write for PanickingWriter {
+            fn write(&mut self, _: &[u8]) -> io::Result<usize> {
+                std::panic::resume_unwind(Box::new("injected stamp writer unwind"))
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Ok(())
+            }
+        }
+
+        #[test]
+        fn bounded_stamp_unwind_latches_authority_and_releases_only_reentrancy_guard()
+        -> Result<(), String> {
+            let fixture = NamedStampFixture::new("bounded-unwind")?;
+            let paths = BTreeSet::from(["src/lib.rs".to_string()]);
+            frozen::with_context(Some(Arc::clone(&fixture.authority)), || {
+                let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    emit(&fixture, &paths, 4096, &mut PanickingWriter)
+                }));
+                match unwind {
+                    Err(_) => {}
+                    Ok(_) => return Err("writer did not reach actual unwind".into()),
+                }
+                refused(
+                    emit(&fixture, &paths, 4096, &mut Vec::new()),
+                    StampEmitErrorKind::Context,
+                )?;
+                Ok::<_, String>(())
+            })?;
+            let recovery = NamedStampFixture::new("bounded-unwind-recovery")?;
+            frozen::with_context(Some(Arc::clone(&recovery.authority)), || {
+                emit(&recovery, &paths, 4096, &mut Vec::new())
+                    .map_err(|error| format!("{error:?}"))?;
+                Ok::<_, String>(())
+            })
+        }
     }
 
     #[test]

@@ -103,12 +103,100 @@ pub(crate) fn is_detectable_excluded_python_path(path: &Path) -> bool {
 }
 
 pub(crate) fn detect_python_project(root: &Path) -> bool {
-    PYTHON_PROJECT_MARKERS
-        .iter()
-        .any(|marker| frozen_fs::is_file(root.join(marker)))
-        || PYTHON_SOURCE_DIR_MARKERS
-            .iter()
-            .any(|marker| dir_contains_python_source(&root.join(marker)))
+    detect_python_project_with_control(root, &mut OrdinaryDiscovery { cooperative: false })
+        .unwrap_or(false)
+}
+
+pub(super) trait DiscoveryControl {
+    fn checkpoint(&mut self) -> Result<(), crate::core_error::CoreError>;
+    fn strict(&self) -> bool;
+    fn before_directory(&mut self, _dir: &Path) -> Result<(), crate::core_error::CoreError> {
+        Ok(())
+    }
+    fn after_io(&mut self) -> Result<(), crate::core_error::CoreError> {
+        Ok(())
+    }
+    fn absent_directory(&self, error: &std::io::Error) -> bool {
+        !self.strict() || error.kind() == std::io::ErrorKind::NotFound
+    }
+    fn joined_path(
+        &mut self,
+        parent: &Path,
+        name: &std::ffi::OsStr,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError>;
+    fn entry_path(
+        &mut self,
+        parent: &Path,
+        entry: &frozen_fs::FrozenDirEntry,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError>;
+    fn before_entry(&mut self) -> Result<(), crate::core_error::CoreError>;
+}
+
+struct OrdinaryDiscovery {
+    cooperative: bool,
+}
+
+impl DiscoveryControl for OrdinaryDiscovery {
+    fn checkpoint(&mut self) -> Result<(), crate::core_error::CoreError> {
+        if self.cooperative {
+            crate::analysis::cancellation::checkpoint_typed()?;
+        }
+        Ok(())
+    }
+    fn strict(&self) -> bool {
+        self.cooperative
+    }
+    fn joined_path(
+        &mut self,
+        parent: &Path,
+        name: &std::ffi::OsStr,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError> {
+        Ok(parent.join(name))
+    }
+    fn entry_path(
+        &mut self,
+        _parent: &Path,
+        entry: &frozen_fs::FrozenDirEntry,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError> {
+        Ok(entry.path())
+    }
+    fn before_entry(&mut self) -> Result<(), crate::core_error::CoreError> {
+        self.checkpoint()
+    }
+}
+
+pub(super) fn detect_python_project_with_control(
+    root: &Path,
+    control: &mut impl DiscoveryControl,
+) -> Result<bool, crate::core_error::CoreError> {
+    for marker in PYTHON_PROJECT_MARKERS {
+        control.checkpoint()?;
+        let path = control.joined_path(root, std::ffi::OsStr::new(marker))?;
+        control.before_entry()?;
+        if control.strict() {
+            let metadata = frozen_fs::metadata(&path);
+            control.after_io()?;
+            match metadata {
+                Ok(metadata) if metadata.is_file() => return Ok(true),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(
+                        format!("stat Python project marker {}: {error}", path.display()).into(),
+                    );
+                }
+            }
+        } else if frozen_fs::is_file(&path) {
+            return Ok(true);
+        }
+    }
+    for marker in PYTHON_SOURCE_DIR_MARKERS {
+        let path = control.joined_path(root, std::ffi::OsStr::new(marker))?;
+        if dir_contains_python_source_with_io(&path, control)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Canonical root project-marker file name for a candidate name. Marker
@@ -166,35 +254,41 @@ fn dir_contains_python_source_with_control(
     dir: &Path,
     cooperative: bool,
 ) -> Result<bool, crate::core_error::CoreError> {
-    if cooperative {
-        crate::analysis::cancellation::checkpoint_typed()?;
-    }
+    dir_contains_python_source_with_io(dir, &mut OrdinaryDiscovery { cooperative })
+}
+
+fn dir_contains_python_source_with_io(
+    dir: &Path,
+    control: &mut impl DiscoveryControl,
+) -> Result<bool, crate::core_error::CoreError> {
+    control.checkpoint()?;
+    control.before_directory(dir)?;
     let entries = match frozen_fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(error) if cooperative && error.kind() != std::io::ErrorKind::NotFound => {
+        Err(error) if !control.absent_directory(&error) => {
             return Err(format!("read Python role directory {}: {error}", dir.display()).into());
         }
         Err(_) => return Ok(false),
     };
     for entry in entries {
-        if cooperative {
-            crate::analysis::cancellation::checkpoint_typed()?;
-        }
+        control.before_entry()?;
         let entry = match entry {
             Ok(entry) => entry,
-            Err(error) if cooperative => {
+            Err(error) if control.strict() => {
                 return Err(format!("read Python role entry: {error}").into());
             }
             Err(_) => continue,
         };
-        let path = entry.path();
+        let path = control.entry_path(dir, &entry)?;
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        let file_type = match entry.file_type() {
+        let observed_type = entry.file_type();
+        control.after_io()?;
+        let file_type = match observed_type {
             Ok(kind) => kind,
-            Err(error) if cooperative => {
+            Err(error) if control.strict() => {
                 return Err(format!("stat Python role entry {}: {error}", path.display()).into());
             }
             Err(_) => continue,
@@ -203,13 +297,14 @@ fn dir_contains_python_source_with_control(
             if is_python_excluded_dir_everywhere(name) {
                 continue;
             }
-            if dir_contains_python_source_with_control(&path, cooperative)? {
+            if dir_contains_python_source_with_io(&path, control)? {
                 return Ok(true);
             }
         } else if file_type.is_file() && is_detectable_python_source_path(&path, name) {
             return Ok(true);
         }
     }
+    control.after_io()?;
     Ok(false)
 }
 
