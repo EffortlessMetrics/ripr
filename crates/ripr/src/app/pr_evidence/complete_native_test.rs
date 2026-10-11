@@ -1032,32 +1032,73 @@ struct NativeResources {
     enclosing_deadline: Instant,
 }
 
+#[derive(Default)]
+struct NativeVerificationTrace {
+    site: &'static str,
+    elapsed: [Duration; 5],
+    sampled: u8,
+}
+
+impl NativeVerificationTrace {
+    fn measure<T>(
+        &mut self,
+        index: usize,
+        site: &'static str,
+        action: impl FnOnce() -> Result<T, String>,
+    ) -> Result<T, String> {
+        self.site = site;
+        let entered = Instant::now();
+        let result = action();
+        self.elapsed[index] = entered.elapsed();
+        self.sampled |= 1 << index;
+        result
+    }
+}
+
 impl NativeResources {
     fn verify(&self, empty: bool) -> Result<(), String> {
+        self.verify_traced(empty, &mut NativeVerificationTrace::default())
+    }
+
+    fn verify_traced(
+        &self,
+        empty: bool,
+        trace: &mut NativeVerificationTrace,
+    ) -> Result<(), String> {
         let u = self.enclosing_deadline;
-        adapter_native(u)?;
-        if !same_process(&adapter_self(u)?, &self.controller)
-            || capture_complete_rust_policy()? != self.policy
-            || crate::build_identity::cache_identity() != self.build
-        {
-            return Err("native adapter parent/policy/build changed".into());
-        }
-        self.fixture.verify(u)?;
-        let actual = self.stage.worker_binding()?;
-        if actual.nonce != self.binding.stage_nonce
-            || adapter_directory(&actual.stage) != self.binding.stage
-            || adapter_directory(&actual.source) != self.binding.source
-            || adapter_directory(&actual.spool) != self.binding.spool
-            || adapter_directory(&actual.artifacts) != self.binding.artifacts
-        {
-            return Err("native adapter actual parent stage binding changed".into());
-        }
-        let inventory = self.stage.audit_closed_inventory_with_deadline(u)?;
-        if empty && (inventory.aggregate.files != 0 || inventory.aggregate.directories != 4) {
-            return Err("native adapter pre-analysis stage is not exactly empty".into());
-        }
+        trace.measure(0, "verify.identity", || {
+            adapter_native(u)?;
+            if !same_process(&adapter_self(u)?, &self.controller)
+                || capture_complete_rust_policy()? != self.policy
+                || crate::build_identity::cache_identity() != self.build
+            {
+                return Err("native adapter parent/policy/build changed".into());
+            }
+            Ok(())
+        })?;
+        trace.measure(1, "verify.fixture", || self.fixture.verify(u))?;
+        trace.measure(2, "verify.stage", || {
+            let actual = self.stage.worker_binding()?;
+            if actual.nonce != self.binding.stage_nonce
+                || adapter_directory(&actual.stage) != self.binding.stage
+                || adapter_directory(&actual.source) != self.binding.source
+                || adapter_directory(&actual.spool) != self.binding.spool
+                || adapter_directory(&actual.artifacts) != self.binding.artifacts
+            {
+                return Err("native adapter actual parent stage binding changed".into());
+            }
+            Ok(())
+        })?;
+        trace.measure(3, "verify.inventory", || {
+            let inventory = self.stage.audit_closed_inventory_with_deadline(u)?;
+            if empty && (inventory.aggregate.files != 0 || inventory.aggregate.directories != 4) {
+                return Err("native adapter pre-analysis stage is not exactly empty".into());
+            }
+            Ok(())
+        })?;
         // This bounded observed inventory is not membership or quiescence authority.
-        adapter_lock(&self.image)?.recheck()?;
+        trace.measure(4, "verify.image", || adapter_lock(&self.image)?.recheck())?;
+        trace.site = "verify.exit";
         checkpoint(u)
     }
 
@@ -1269,6 +1310,10 @@ pub(super) fn prepare_native(
             profile.max_binding_bytes,
             std::mem::size_of::<NativeController>() as u64,
             3 * std::mem::size_of::<NativeClosedFailure>() as u64,
+            // Fixed timing scratch and ten scalar fields; the failure string
+            // uses the existing controller diagnostic reservation.
+            std::mem::size_of::<NativeVerificationTrace>() as u64,
+            std::mem::size_of::<[(&str, Duration); 10]>() as u64,
         ],
         profile.max_buffered_bytes,
     )?;
@@ -1494,23 +1539,143 @@ impl NativePhaseSlot {
     }
 
     fn binds(&self, prepared: &PreparedNative) -> Result<(), String> {
-        checkpoint(self.lease.original_deadline)?;
-        let enclosing = self
-            .enclosing
-            .as_ref()
-            .ok_or("native adapter original phase holder absent")?;
-        if !Arc::ptr_eq(&self.lease.resources, &prepared.resources)
-            || self.lease.phase.index() != prepared.next
-            || !enclosing.matches_lease(&self.lease)
-            || enclosing.original_deadline() != self.lease.original_deadline
-            || enclosing.enclosing_deadline() != self.lease.enclosing_deadline
-            || self.lease.enclosing_deadline != prepared.resources.enclosing_deadline
-        {
-            return Err("native adapter phase/resources/original clocks differ".into());
-        }
-        prepared.resources.verify(true)?;
-        checkpoint(self.lease.original_deadline)
+        let mut site = "bind.entry";
+        let mut verification = NativeVerificationTrace::default();
+        let mut verification_elapsed = Duration::ZERO;
+        let result = (|| {
+            checkpoint(self.lease.original_deadline)?;
+            site = "bind.identity";
+            let enclosing = self
+                .enclosing
+                .as_ref()
+                .ok_or("native adapter original phase holder absent")?;
+            if !Arc::ptr_eq(&self.lease.resources, &prepared.resources)
+                || self.lease.phase.index() != prepared.next
+                || !enclosing.matches_lease(&self.lease)
+                || enclosing.original_deadline() != self.lease.original_deadline
+                || enclosing.enclosing_deadline() != self.lease.enclosing_deadline
+                || self.lease.enclosing_deadline != prepared.resources.enclosing_deadline
+            {
+                return Err("native adapter phase/resources/original clocks differ".into());
+            }
+            site = "bind.verify";
+            let entered = Instant::now();
+            let verified = prepared.resources.verify_traced(true, &mut verification);
+            verification_elapsed = entered.elapsed();
+            verified?;
+            site = "bind.exit";
+            checkpoint(self.lease.original_deadline)
+        })();
+        result.map_err(|error| {
+            let observed = Instant::now();
+            native_bind_diagnostic(
+                self.lease.phase,
+                if site == "bind.verify" {
+                    verification.site
+                } else {
+                    site
+                },
+                [
+                    ("age_ms", observed.saturating_duration_since(self.started)),
+                    (
+                        "t_remaining_ms",
+                        self.lease
+                            .original_deadline
+                            .saturating_duration_since(observed),
+                    ),
+                    (
+                        "t_late_ms",
+                        observed.saturating_duration_since(self.lease.original_deadline),
+                    ),
+                    (
+                        "u_remaining_ms",
+                        self.lease
+                            .enclosing_deadline
+                            .saturating_duration_since(observed),
+                    ),
+                    ("verify_ms", verification_elapsed),
+                    ("identity_ms", verification.elapsed[0]),
+                    ("fixture_ms", verification.elapsed[1]),
+                    ("stage_ms", verification.elapsed[2]),
+                    ("inventory_ms", verification.elapsed[3]),
+                    ("image_ms", verification.elapsed[4]),
+                ],
+                verification.sampled,
+                &error,
+            )
+        })
     }
+}
+
+fn native_bind_diagnostic(
+    phase: NativePhase,
+    site: &'static str,
+    fields: [(&'static str, Duration); 10],
+    sampled: u8,
+    error: &str,
+) -> String {
+    use std::fmt::Write as _;
+    // Only fixed labels and bounded scalar observations are added. No content,
+    // path, environment, image bytes or acceptance receipt is logged. Ten u64
+    // millisecond scalars and <=48 ASCII-escaped cause bytes fit the existing
+    // 736 raw stderr display even after libtest Error escaping and the phase
+    // transition prefix. sampled bits distinguish unvisited from measured zero.
+    // Simultaneous first-error strings remain reserved at 4096.
+    let mut diagnostic = String::with_capacity(CONTROLLER_DIAGNOSTIC_CAP);
+    let _ = write!(
+        diagnostic,
+        "phase={phase:?} site={site} sampled_bits={sampled}"
+    );
+    for (label, elapsed) in fields {
+        let millis = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
+        let _ = write!(diagnostic, " {label}={millis}");
+    }
+    diagnostic.push_str("; cause=");
+    for byte in error.as_bytes().iter().take(48) {
+        for escaped in byte.escape_ascii() {
+            diagnostic.push(char::from(escaped));
+        }
+    }
+    let _ = write!(diagnostic, " cause_truncated={}", error.len() > 48);
+    diagnostic
+}
+
+#[test]
+fn native_bind_diagnostic_survives_outer_stderr_bound() {
+    let fields = [
+        ("age_ms", Duration::MAX),
+        ("t_remaining_ms", Duration::MAX),
+        ("t_late_ms", Duration::MAX),
+        ("u_remaining_ms", Duration::MAX),
+        ("verify_ms", Duration::MAX),
+        ("identity_ms", Duration::MAX),
+        ("fixture_ms", Duration::MAX),
+        ("stage_ms", Duration::MAX),
+        ("inventory_ms", Duration::MAX),
+        ("image_ms", Duration::MAX),
+    ];
+    for cause in ["\x01".repeat(4096), "🦀".repeat(4096)] {
+        let diagnostic =
+            native_bind_diagnostic(NativePhase::Discard, "verify.inventory", fields, 31, &cause);
+        let stderr = format!(
+            "Error: {:?}\n",
+            format!("phase=Discard transition=retained: {diagnostic}")
+        );
+        assert!(stderr.len() <= 736, "{} bytes", stderr.len());
+        assert!(stderr.contains("site=verify.inventory sampled_bits=31"));
+        assert!(stderr.contains("image_ms=18446744073709551615"));
+        assert!(stderr.contains("cause_truncated=true"));
+    }
+    let diagnostic = native_bind_diagnostic(
+        NativePhase::Unwind,
+        "bind.entry",
+        fields.map(|(label, _)| (label, Duration::ZERO)),
+        0,
+        "native analysis test original deadline expired",
+    );
+    assert!(diagnostic.contains("site=bind.entry sampled_bits=0"));
+    assert!(diagnostic.contains("cause=native analysis test original deadline expired"));
+    assert!(diagnostic.ends_with("cause_truncated=false"));
 }
 
 fn native_receipt_report(
@@ -2079,6 +2244,22 @@ impl NativeController {
         }
     }
 
+    fn refuse_phase(&mut self, phase: NativePhase, site: &'static str, message: &str) {
+        if self.first_error.is_none() {
+            use std::fmt::Write as _;
+            let mut diagnostic = String::with_capacity(CONTROLLER_DIAGNOSTIC_CAP);
+            let _ = write!(diagnostic, "phase={phase:?} transition={site}: ");
+            let mut end = message
+                .len()
+                .min(CONTROLLER_DIAGNOSTIC_CAP - diagnostic.len());
+            while !message.is_char_boundary(end) {
+                end -= 1;
+            }
+            diagnostic.push_str(&message[..end]);
+            self.first_error = Some(diagnostic);
+        }
+    }
+
     fn run_admitted(&mut self) {
         for phase in [
             NativePhase::Discard,
@@ -2092,7 +2273,11 @@ impl NativeController {
                     self.closed[index] = true;
                     self.accepted = Some(accepted);
                     if phase != NativePhase::Analyze {
-                        self.refuse("native controller accepted a negative phase");
+                        self.refuse_phase(
+                            phase,
+                            "accepted-negative",
+                            "native controller accepted a negative phase",
+                        );
                     }
                 }
                 NativePhaseOutcome::PhysicallyClosedFailure(failure) => {
@@ -2101,13 +2286,13 @@ impl NativeController {
                         || failure.secondary().is_some()
                         || failure.discriminator().is_none()
                     {
-                        self.refuse(failure.message());
+                        self.refuse_phase(phase, "closed-failure", failure.message());
                     }
                     self.failures[index] = Some(failure);
                 }
                 NativePhaseOutcome::Retained(slot) => {
                     let message = bounded_controller_diagnostic(slot.retained_message());
-                    self.refuse(&message);
+                    self.refuse_phase(phase, "retained", &message);
                 }
             }
             if self.first_error.is_some() {
