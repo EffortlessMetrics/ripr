@@ -23,6 +23,9 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
 use super::finding_alignment;
+use super::formatter::{
+    JsonSink, emit_escape, emit_field, emit_number_field, emit_usize, infallible,
+};
 use super::{array_field, escape, field, float_field, number_field};
 
 /// Cap on `related_tests` serialized per finding in the diff-check JSON output.
@@ -755,17 +758,13 @@ fn finding_json_with_config_and_counts(
     // arrays, so the map never names a line the arrays dropped.
     let rendered_values = rendered_observed_values(finding);
     let shared_text = shared_assertion_text_map(&rendered_values);
-    assertion_texts_json(out, &shared_text, indent + 1);
-    out.push_str(",\n");
-    activation_json(out, finding, &rendered_values, &shared_text, indent + 1);
-    out.push_str(",\n");
-    value_facts_array_json(
+    infallible(emit_preview_block(
         out,
-        "observed_values",
+        finding,
         &rendered_values,
-        indent + 1,
         &shared_text,
-    );
+        indent + 1,
+    ));
     out.push_str(",\n");
     if let Some(total) = crate::output::observed_values::elided_observed_values_total(
         &finding.activation.observed_values,
@@ -1101,31 +1100,95 @@ fn rendered_observed_values(finding: &Finding) -> Vec<&ValueFact> {
     crate::output::observed_values::bounded_observed_values(&finding.activation.observed_values)
 }
 
-fn activation_json(
-    out: &mut String,
+// Nest indentation structurally, without adding to a caller-provided usize.
+// The private grammar has fixed nesting depth; no heap or indent+1 overflow.
+enum PreviewIndent<'a> {
+    Base(usize),
+    Child(&'a PreviewIndent<'a>),
+}
+
+impl PreviewIndent<'_> {
+    fn child(&self) -> PreviewIndent<'_> {
+        PreviewIndent::Child(self)
+    }
+}
+
+fn emit_preview_indent<S: JsonSink + ?Sized>(
+    out: &mut S,
+    indent: &PreviewIndent<'_>,
+) -> Result<(), S::Error> {
+    match indent {
+        PreviewIndent::Base(depth) => {
+            for _ in 0..*depth {
+                out.write_str("  ")?;
+            }
+        }
+        PreviewIndent::Child(parent) => {
+            emit_preview_indent(out, parent)?;
+            out.write_str("  ")?;
+        }
+    }
+    Ok(())
+}
+
+fn emit_preview_prefix<S: JsonSink + ?Sized>(
+    out: &mut S,
+    indent: &PreviewIndent<'_>,
+    name: &str,
+) -> Result<(), S::Error> {
+    emit_preview_indent(out, indent)?;
+    out.write_str("\"")?;
+    out.write_str(name)?;
+    out.write_str("\": ")
+}
+
+fn emit_preview_field<S: JsonSink + ?Sized>(
+    out: &mut S,
+    indent: &PreviewIndent<'_>,
+    name: &str,
+    value: &str,
+    trailing: bool,
+) -> Result<(), S::Error> {
+    emit_preview_indent(out, indent)?;
+    emit_field(out, 0, name, value, trailing)
+}
+
+fn emit_preview_block<S: JsonSink + ?Sized>(
+    out: &mut S,
     finding: &Finding,
-    rendered_values: &[&ValueFact],
-    shared_text: &BTreeMap<usize, &str>,
+    facts: &[&ValueFact],
+    shared: &BTreeMap<usize, &str>,
     indent: usize,
-) {
-    let sp = "  ".repeat(indent);
-    out.push_str(&format!("{sp}\"activation\": {{\n"));
-    value_facts_array_json(
-        out,
-        "observed_values",
-        rendered_values,
-        indent + 1,
-        shared_text,
-    );
-    out.push_str(",\n");
-    missing_discriminators_array_json(
+) -> Result<(), S::Error> {
+    let indent = PreviewIndent::Base(indent);
+    emit_assertion_texts(out, shared, &indent)?;
+    out.write_str(",\n")?;
+    emit_activation(out, finding, facts, shared, &indent)?;
+    out.write_str(",\n")?;
+    emit_value_facts_array(out, "observed_values", facts, &indent, shared)
+}
+
+fn emit_activation<S: JsonSink + ?Sized>(
+    out: &mut S,
+    finding: &Finding,
+    facts: &[&ValueFact],
+    shared: &BTreeMap<usize, &str>,
+    indent: &PreviewIndent<'_>,
+) -> Result<(), S::Error> {
+    emit_preview_prefix(out, indent, "activation")?;
+    out.write_str("{\n")?;
+    let child = indent.child();
+    emit_value_facts_array(out, "observed_values", facts, &child, shared)?;
+    out.write_str(",\n")?;
+    emit_missing_discriminators_array(
         out,
         "missing_discriminators",
         &finding.activation.missing_discriminators,
-        indent + 1,
-    );
-    out.push('\n');
-    out.push_str(&format!("{sp}}}"));
+        &child,
+    )?;
+    out.write_str("\n")?;
+    emit_preview_indent(out, indent)?;
+    out.write_str("}")
 }
 
 fn flow_sinks_json(out: &mut String, finding: &Finding, indent: usize) {
@@ -1146,17 +1209,37 @@ fn value_facts_array_json(
     name: &str,
     facts: &[&ValueFact],
     indent: usize,
-    shared_text: &BTreeMap<usize, &str>,
+    shared: &BTreeMap<usize, &str>,
 ) {
-    out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
-    for (idx, value) in facts.iter().enumerate() {
-        value_fact_json(out, value, indent + 1, shared_text);
-        if idx + 1 != facts.len() {
-            out.push(',');
+    infallible(emit_value_facts_array(
+        out,
+        name,
+        facts,
+        &PreviewIndent::Base(indent),
+        shared,
+    ));
+}
+
+fn emit_value_facts_array<S: JsonSink + ?Sized>(
+    out: &mut S,
+    name: &str,
+    facts: &[&ValueFact],
+    indent: &PreviewIndent<'_>,
+    shared: &BTreeMap<usize, &str>,
+) -> Result<(), S::Error> {
+    emit_preview_prefix(out, indent, name)?;
+    out.write_str("[\n")?;
+    let child = indent.child();
+    let mut values = facts.iter().peekable();
+    while let Some(value) = values.next() {
+        emit_value_fact(out, value, &child, shared)?;
+        if values.peek().is_some() {
+            out.write_str(",")?;
         }
-        out.push('\n');
+        out.write_str("\n")?;
     }
-    out.push_str(&format!("{}]", "  ".repeat(indent)));
+    emit_preview_indent(out, indent)?;
+    out.write_str("]")
 }
 
 fn missing_discriminators_array_json(
@@ -1165,78 +1248,91 @@ fn missing_discriminators_array_json(
     facts: &[MissingDiscriminatorFact],
     indent: usize,
 ) {
-    out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
-    for (idx, discriminator) in facts.iter().enumerate() {
-        missing_discriminator_json(out, discriminator, indent + 1);
-        if idx + 1 != facts.len() {
-            out.push(',');
-        }
-        out.push('\n');
-    }
-    out.push_str(&format!("{}]", "  ".repeat(indent)));
+    infallible(emit_missing_discriminators_array(
+        out,
+        name,
+        facts,
+        &PreviewIndent::Base(indent),
+    ));
 }
 
-fn value_fact_json(
-    out: &mut String,
+fn emit_missing_discriminators_array<S: JsonSink + ?Sized>(
+    out: &mut S,
+    name: &str,
+    facts: &[MissingDiscriminatorFact],
+    indent: &PreviewIndent<'_>,
+) -> Result<(), S::Error> {
+    emit_preview_prefix(out, indent, name)?;
+    out.write_str("[\n")?;
+    let child = indent.child();
+    let mut values = facts.iter().peekable();
+    while let Some(value) = values.next() {
+        emit_missing_discriminator(out, value, &child)?;
+        if values.peek().is_some() {
+            out.write_str(",")?;
+        }
+        out.write_str("\n")?;
+    }
+    emit_preview_indent(out, indent)?;
+    out.write_str("]")
+}
+
+fn emit_value_fact<S: JsonSink + ?Sized>(
+    out: &mut S,
     fact: &ValueFact,
-    indent: usize,
-    shared_text: &BTreeMap<usize, &str>,
-) {
-    let sp = "  ".repeat(indent);
-    out.push_str(&format!("{sp}{{\n"));
-    number_field(out, indent + 1, "line", fact.line, true);
-    field(out, indent + 1, "value", &fact.value, true);
-    // Additive (#3295 deferred follow-up): when this fact's retained
-    // text is NOT the shared assertion source for its line, it carries
-    // computed-value provenance (operation chain, source inputs, chain
-    // depth) that the line-keyed `assertion_texts` map cannot express.
-    // Surface it per-value; plain assertion-source facts stay deduped.
-    let provenance_differs = shared_text
+    indent: &PreviewIndent<'_>,
+    shared: &BTreeMap<usize, &str>,
+) -> Result<(), S::Error> {
+    emit_preview_indent(out, indent)?;
+    out.write_str("{\n")?;
+    let child = indent.child();
+    emit_preview_indent(out, &child)?;
+    emit_number_field(out, 0, "line", fact.line, true)?;
+    emit_preview_field(out, &child, "value", &fact.value, true)?;
+    let provenance_differs = shared
         .get(&fact.line)
         .is_none_or(|shared| *shared != fact.text);
-    field(
+    emit_preview_field(
         out,
-        indent + 1,
+        &child,
         "context",
         fact.context.as_str(),
         provenance_differs,
-    );
+    )?;
     if provenance_differs {
-        field(out, indent + 1, "provenance", &fact.text, false);
+        emit_preview_field(out, &child, "provenance", &fact.text, false)?;
     }
-    out.push_str(&format!("{sp}}}"));
+    emit_preview_indent(out, indent)?;
+    out.write_str("}")
 }
 
-/// Collect the unique (line -> assertion source text) map for a slice of
-/// [`ValueFact`]s and emit it as a JSON object keyed by line number string.
-///
-/// **Schema 0.2 dedup**: per-value objects no longer carry a redundant `text`
-/// field; downstream recovers the full assertion source via
-/// `assertion_texts[line.to_string()]`.
-///
-/// **Known limitation**: the map is keyed by line number only, so if two
-/// assertions in different source files share the same line number within one
-/// finding, only one text is retained.  This is a low-probability edge case; a
-/// future schema could use `"file:line"` composite keys.
-fn assertion_texts_json(out: &mut String, map: &BTreeMap<usize, &str>, indent: usize) {
-    let sp = "  ".repeat(indent);
-    let isp = "  ".repeat(indent + 1);
-    // BTreeMap gives deterministic (ascending) key order.
-    out.push_str(&format!("{sp}\"assertion_texts\": {{\n"));
-    for (idx, (line, text)) in map.iter().enumerate() {
-        let trailing = if idx + 1 != map.len() { "," } else { "" };
-        out.push_str(&format!(
-            "{isp}\"{line}\": \"{}\"{trailing}\n",
-            escape(text)
-        ));
+/// Numeric line ordering, first selected text and content-based provenance stay
+/// authoritative; each unescaped text span is offered from the original input.
+fn emit_assertion_texts<S: JsonSink + ?Sized>(
+    out: &mut S,
+    map: &BTreeMap<usize, &str>,
+    indent: &PreviewIndent<'_>,
+) -> Result<(), S::Error> {
+    emit_preview_prefix(out, indent, "assertion_texts")?;
+    out.write_str("{\n")?;
+    let child = indent.child();
+    let mut entries = map.iter().peekable();
+    while let Some((line, text)) = entries.next() {
+        emit_preview_indent(out, &child)?;
+        out.write_str("\"")?;
+        emit_usize(out, *line)?;
+        out.write_str("\": \"")?;
+        emit_escape(out, text)?;
+        out.write_str(if entries.peek().is_some() {
+            "\",\n"
+        } else {
+            "\"\n"
+        })?;
     }
-    out.push_str(&format!("{sp}}}"));
+    emit_preview_indent(out, indent)?;
+    out.write_str("}")
 }
 
-/// The line -> first-retained-text map behind `assertion_texts`. The
-/// per-value `provenance` field uses the same map to decide whether a
-/// fact's text is the shared assertion source or a distinct
-/// provenance-bearing string.
 fn shared_assertion_text_map<'a>(facts: &[&'a ValueFact]) -> BTreeMap<usize, &'a str> {
     let mut map = BTreeMap::new();
     for fact in facts {
@@ -1245,28 +1341,39 @@ fn shared_assertion_text_map<'a>(facts: &[&'a ValueFact]) -> BTreeMap<usize, &'a
     map
 }
 
-fn missing_discriminator_json(out: &mut String, fact: &MissingDiscriminatorFact, indent: usize) {
-    let sp = "  ".repeat(indent);
-    out.push_str(&format!("{sp}{{\n"));
-    field(out, indent + 1, "value", &fact.value, true);
-    field(out, indent + 1, "reason", &fact.reason, true);
-    out.push_str(&format!("{}\"flow_sink\": ", "  ".repeat(indent + 1)));
+fn emit_missing_discriminator<S: JsonSink + ?Sized>(
+    out: &mut S,
+    fact: &MissingDiscriminatorFact,
+    indent: &PreviewIndent<'_>,
+) -> Result<(), S::Error> {
+    emit_preview_indent(out, indent)?;
+    out.write_str("{\n")?;
+    let child = indent.child();
+    emit_preview_field(out, &child, "value", &fact.value, true)?;
+    emit_preview_field(out, &child, "reason", &fact.reason, true)?;
+    emit_preview_prefix(out, &child, "flow_sink")?;
     if let Some(sink) = &fact.flow_sink {
-        flow_sink_json(out, sink);
+        emit_flow_sink(out, sink)?;
     } else {
-        out.push_str("null");
+        out.write_str("null")?;
     }
-    out.push('\n');
-    out.push_str(&format!("{sp}}}"));
+    out.write_str("\n")?;
+    emit_preview_indent(out, indent)?;
+    out.write_str("}")
 }
 
 fn flow_sink_json(out: &mut String, sink: &FlowSinkFact) {
-    out.push_str(&format!(
-        "{{\"kind\":\"{}\",\"text\":\"{}\",\"line\":{}}}",
-        sink.kind.as_str(),
-        escape(&sink.text),
-        sink.line
-    ));
+    infallible(emit_flow_sink(out, sink));
+}
+
+fn emit_flow_sink<S: JsonSink + ?Sized>(out: &mut S, sink: &FlowSinkFact) -> Result<(), S::Error> {
+    out.write_str("{\"kind\":\"")?;
+    out.write_str(sink.kind.as_str())?;
+    out.write_str("\",\"text\":\"")?;
+    emit_escape(out, &sink.text)?;
+    out.write_str("\",\"line\":")?;
+    emit_usize(out, sink.line)?;
+    out.write_str("}")
 }
 
 struct RepairPlacement {
@@ -1931,8 +2038,8 @@ mod borrowed_preview_tests {
     use super::*;
     use crate::app::Mode;
     use crate::domain::{
-        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Probe, ProbeFamily, ProbeId,
-        RevealEvidence, RiprEvidence, SourceLocation, StageState, Summary, ValueContext,
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, FlowSinkKind, Probe, ProbeFamily,
+        ProbeId, RevealEvidence, RiprEvidence, SourceLocation, StageState, Summary, ValueContext,
     };
     use std::borrow::Borrow;
 
@@ -2011,6 +2118,25 @@ mod borrowed_preview_tests {
 
     fn fixture(count: usize) -> CheckOutput {
         let mut finding = fixture_finding();
+        let sink = FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "sink 雪\n\"\\".to_string(),
+            line: 100,
+            owner: None,
+        };
+        finding.flow_sinks.push(sink.clone());
+        finding.activation.missing_discriminators = vec![
+            MissingDiscriminatorFact {
+                value: "missing 雪\t".to_string(),
+                reason: "why\u{0001}".to_string(),
+                flow_sink: None,
+            },
+            MissingDiscriminatorFact {
+                value: "boundary".to_string(),
+                reason: "nonnull".to_string(),
+                flow_sink: Some(sink),
+            },
+        ];
         let contexts = [
             ValueContext::Unknown,
             ValueContext::AssertionArgument,
@@ -2098,6 +2224,18 @@ mod borrowed_preview_tests {
         let before = finding.activation.observed_values.clone();
         let original_storage = finding.activation.observed_values.as_ptr();
         let expected = legacy_preview_block(finding);
+        assert_eq!(finding.activation.missing_discriminators.len(), 2);
+        assert_eq!(finding.flow_sinks.len(), 1);
+        let mut expected_missing = String::new();
+        legacy_missing_discriminators_array_json(
+            &mut expected_missing,
+            "missing_discriminators",
+            &finding.activation.missing_discriminators,
+            3,
+        );
+        let mut expected_flow = String::new();
+        legacy_flow_sink_json(&mut expected_flow, &finding.flow_sinks[0]);
+        let expected_flow = format!("      \"flow_sinks\": [\n        {expected_flow}\n      ]");
         let expected_fields: Value =
             serde_json::from_str(&format!("{{{expected}}}")).map_err(|error| error.to_string())?;
         let mut result = Value::Null;
@@ -2107,6 +2245,8 @@ mod borrowed_preview_tests {
             Some((1, FindingsBudgetSource::Configured)),
         ] {
             let rendered = render_with_config(output, &RiprConfig::default(), budget);
+            assert_eq!(rendered.matches(&expected_missing).count(), 1);
+            assert_eq!(rendered.matches(&expected_flow).count(), 1);
             assert_eq!(
                 rendered.matches(&expected).count(),
                 1,
@@ -2269,7 +2409,7 @@ mod borrowed_preview_tests {
             &shared_text,
         );
         out.push_str(",\n");
-        missing_discriminators_array_json(
+        legacy_missing_discriminators_array_json(
             out,
             "missing_discriminators",
             &finding.activation.missing_discriminators,
@@ -2305,7 +2445,7 @@ mod borrowed_preview_tests {
     ) {
         let sp = "  ".repeat(indent);
         out.push_str(&format!("{sp}{{\n"));
-        number_field(out, indent + 1, "line", fact.line, true);
+        legacy_number_field(out, indent + 1, "line", fact.line, true);
         field(out, indent + 1, "value", &fact.value, true);
         // Additive (#3295 deferred follow-up): when this fact's retained
         // text is NOT the shared assertion source for its line, it carries
@@ -2351,5 +2491,303 @@ mod borrowed_preview_tests {
             map.entry(fact.line).or_insert_with(|| fact.text.clone());
         }
         map
+    }
+
+    // Independently retained aa12 nested byte helpers and original integer grammar.
+    fn legacy_missing_discriminators_array_json(
+        out: &mut String,
+        name: &str,
+        facts: &[MissingDiscriminatorFact],
+        indent: usize,
+    ) {
+        out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
+        for (idx, discriminator) in facts.iter().enumerate() {
+            legacy_missing_discriminator_json(out, discriminator, indent + 1);
+            if idx + 1 != facts.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str(&format!("{}]", "  ".repeat(indent)));
+    }
+
+    fn legacy_missing_discriminator_json(
+        out: &mut String,
+        fact: &MissingDiscriminatorFact,
+        indent: usize,
+    ) {
+        let sp = "  ".repeat(indent);
+        out.push_str(&format!("{sp}{{\n"));
+        field(out, indent + 1, "value", &fact.value, true);
+        field(out, indent + 1, "reason", &fact.reason, true);
+        out.push_str(&format!("{}\"flow_sink\": ", "  ".repeat(indent + 1)));
+        if let Some(sink) = &fact.flow_sink {
+            legacy_flow_sink_json(out, sink);
+        } else {
+            out.push_str("null");
+        }
+        out.push('\n');
+        out.push_str(&format!("{sp}}}"));
+    }
+
+    fn legacy_flow_sink_json(out: &mut String, sink: &FlowSinkFact) {
+        out.push_str(&format!(
+            "{{\"kind\":\"{}\",\"text\":\"{}\",\"line\":{}}}",
+            sink.kind.as_str(),
+            escape(&sink.text),
+            sink.line
+        ));
+    }
+
+    fn legacy_number_field(
+        out: &mut String,
+        indent: usize,
+        name: &str,
+        value: usize,
+        trailing: bool,
+    ) {
+        out.push_str(&format!(
+            "{}\"{}\": {}{}\n",
+            "  ".repeat(indent),
+            name,
+            value,
+            if trailing { "," } else { "" }
+        ));
+    }
+
+    // Same refusing/alias-checking consumer used by the frozen baseline adapter.
+    // The production common grammar owns emission; no owned wire adapter remains.
+    fn subject_preview_to_sink<S: super::super::formatter::JsonSink>(
+        sink: &mut S,
+        finding: &Finding,
+        materialized_capacity: &mut usize,
+    ) -> Result<(), S::Error> {
+        let facts = rendered_observed_values(finding);
+        let shared = shared_assertion_text_map(&facts);
+        *materialized_capacity = 0;
+        emit_preview_block(sink, finding, &facts, &shared, 3)
+    }
+
+    #[test]
+    fn preview_emission_reaches_sink_before_owned_wire_fragment() {
+        struct Refuse {
+            calls: usize,
+        }
+        impl super::super::formatter::JsonSink for Refuse {
+            type Error = ();
+            fn write_str(&mut self, _chunk: &str) -> Result<(), ()> {
+                self.calls += 1;
+                Err(())
+            }
+        }
+        let output = fixture(33);
+        assert_eq!(output.findings[0].activation.observed_values.len(), 33);
+        let mut sink = Refuse { calls: 0 };
+        let mut capacity = 0;
+        assert!(subject_preview_to_sink(&mut sink, &output.findings[0], &mut capacity).is_err());
+        assert_eq!(sink.calls, 1);
+        assert_eq!(capacity, 0, "owned wire materialized before first refusal");
+    }
+
+    #[test]
+    fn preview_emission_offers_original_unescaped_text() {
+        struct Alias<'a> {
+            original: &'a str,
+            observed: usize,
+        }
+        impl super::super::formatter::JsonSink for Alias<'_> {
+            type Error = ();
+            fn write_str(&mut self, chunk: &str) -> Result<(), ()> {
+                if chunk.contains(self.original) {
+                    assert_eq!(chunk, self.original);
+                    assert_eq!(chunk.as_ptr(), self.original.as_ptr());
+                    self.observed += 1;
+                }
+                Ok(())
+            }
+        }
+        let mut output = fixture(1);
+        output.findings[0].activation.observed_values[0].text =
+            "literal original text ".repeat(1000);
+        let finding = &output.findings[0];
+        let original = finding.activation.observed_values[0].text.as_str();
+        assert!(original.len() > 10000);
+        let mut sink = Alias {
+            original,
+            observed: 0,
+        };
+        let mut capacity = 0;
+        assert!(subject_preview_to_sink(&mut sink, finding, &mut capacity).is_ok());
+        assert_eq!(sink.observed, 1);
+    }
+    #[test]
+    fn bounded_preview_matches_frozen_bytes_and_count_for_actual_input() -> Result<(), String> {
+        use super::super::formatter::{BoundedWriteSink, CountingSink, WireFailureKind};
+        for count in [0, 1, 7, 31, 32, 33, 257, 5000] {
+            let output = fixture(count);
+            let finding = &output.findings[0];
+            let facts = rendered_observed_values(finding);
+            let shared = shared_assertion_text_map(&facts);
+            let expected = legacy_preview_block(finding);
+            assert!(!expected.is_empty());
+            let mut counter = CountingSink::new(expected.len());
+            emit_preview_block(&mut counter, finding, &facts, &shared, 3)
+                .map_err(|e| format!("{e:?}"))?;
+            assert_eq!(counter.bytes(), expected.len());
+            let mut bytes = Vec::new();
+            let mut writer = BoundedWriteSink::new(&mut bytes, expected.len(), None);
+            emit_preview_block(&mut writer, finding, &facts, &shared, 3)
+                .map_err(|e| format!("{e:?}"))?;
+            assert_eq!(
+                writer.finish().map_err(|e| format!("{e:?}"))?,
+                expected.len()
+            );
+            assert_eq!(bytes, expected.as_bytes());
+            for cap in [0, expected.len() - 1] {
+                let mut bytes = Vec::new();
+                let mut writer = BoundedWriteSink::new(&mut bytes, cap, None);
+                let error = emit_preview_block(&mut writer, finding, &facts, &shared, 3)
+                    .expect_err("short cap accepted");
+                assert_eq!(error.kind, WireFailureKind::Limit);
+                let charged = writer.written();
+                assert!(charged <= cap);
+                assert_eq!(writer.finish(), Err(error));
+                assert_eq!(bytes.len(), charged);
+                assert_eq!(bytes, expected.as_bytes()[..charged]);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn preview_literal_keys_empty_arrays_and_shared_nested_helpers() {
+        let map = BTreeMap::from([(100, "hundred"), (10, "ten"), (9, "nine 雪\n")]);
+        let mut out = String::new();
+        infallible(emit_assertion_texts(
+            &mut out,
+            &map,
+            &PreviewIndent::Base(0),
+        ));
+        assert_eq!(
+            out,
+            "\"assertion_texts\": {\n  \"9\": \"nine 雪\\n\",\n  \"10\": \"ten\",\n  \"100\": \"hundred\"\n}"
+        );
+        let finding = fixture_finding();
+        let mut empty = String::new();
+        infallible(emit_preview_block(
+            &mut empty,
+            &finding,
+            &[],
+            &BTreeMap::new(),
+            0,
+        ));
+        assert_eq!(
+            empty,
+            "\"assertion_texts\": {\n},\n\"activation\": {\n  \"observed_values\": [\n  ],\n  \"missing_discriminators\": [\n  ]\n},\n\"observed_values\": [\n]"
+        );
+        let sink = FlowSinkFact {
+            kind: FlowSinkKind::ReturnValue,
+            text: "雪\n\"\\".to_string(),
+            line: usize::MAX,
+            owner: None,
+        };
+        let mut compact = String::new();
+        infallible(emit_flow_sink(&mut compact, &sink));
+        let mut frozen = String::new();
+        legacy_flow_sink_json(&mut frozen, &sink);
+        assert_eq!(compact, frozen);
+        assert!(
+            compact.starts_with("{\"kind\":\"return_value\",\"text\":\"雪\\n\\\"\\\\\",\"line\":")
+        );
+        let missing = [MissingDiscriminatorFact {
+            value: "a".to_string(),
+            reason: "why".to_string(),
+            flow_sink: None,
+        }];
+        let mut out = String::new();
+        infallible(emit_missing_discriminators_array(
+            &mut out,
+            "missing",
+            &missing,
+            &PreviewIndent::Base(0),
+        ));
+        assert_eq!(
+            out,
+            "\"missing\": [\n  {\n    \"value\": \"a\",\n    \"reason\": \"why\",\n    \"flow_sink\": null\n  }\n]"
+        );
+    }
+
+    #[test]
+    fn every_nested_preview_fault_stops_the_common_grammar() {
+        struct Fault {
+            offered: usize,
+            fail_at: Option<usize>,
+        }
+        impl JsonSink for Fault {
+            type Error = usize;
+            fn write_str(&mut self, _: &str) -> Result<(), usize> {
+                let ordinal = self.offered;
+                self.offered += 1;
+                if self.fail_at.is_some_and(|n| ordinal >= n) {
+                    Err(self.fail_at.expect("configured fault"))
+                } else {
+                    Ok(())
+                }
+            }
+        }
+        let output = fixture(3);
+        let finding = &output.findings[0];
+        let facts = rendered_observed_values(finding);
+        let shared = shared_assertion_text_map(&facts);
+        let mut baseline = Fault {
+            offered: 0,
+            fail_at: None,
+        };
+        assert!(emit_preview_block(&mut baseline, finding, &facts, &shared, 3).is_ok());
+        assert!(baseline.offered > 100);
+        for fail_at in 0..baseline.offered {
+            let mut fault = Fault {
+                offered: 0,
+                fail_at: Some(fail_at),
+            };
+            assert_eq!(
+                emit_preview_block(&mut fault, finding, &facts, &shared, 3),
+                Err(fail_at)
+            );
+            assert_eq!(
+                fault.offered,
+                fail_at + 1,
+                "grammar continued after ordinal {fail_at}"
+            );
+        }
+    }
+
+    #[test]
+    fn huge_base_and_nested_indent_refuse_before_growth_or_overflow() {
+        use super::super::formatter::{BoundedWriteSink, WireFailureKind};
+        let output = fixture(1);
+        let finding = &output.findings[0];
+        let facts = rendered_observed_values(finding);
+        let shared = shared_assertion_text_map(&facts);
+        let mut bytes = Vec::new();
+        let mut writer = BoundedWriteSink::new(&mut bytes, 0, None);
+        let error = emit_preview_block(&mut writer, finding, &facts, &shared, usize::MAX)
+            .expect_err("huge indent accepted");
+        assert_eq!(error.kind, WireFailureKind::Limit);
+        assert_eq!(error.ordinal, 0);
+        assert_eq!(writer.written(), 0);
+        assert!(bytes.is_empty());
+        let base = PreviewIndent::Base(usize::MAX);
+        let child = base.child();
+        let child = child.child();
+        let mut bytes = Vec::new();
+        let mut writer = BoundedWriteSink::new(&mut bytes, 0, None);
+        assert_eq!(
+            emit_preview_indent(&mut writer, &child)
+                .expect_err("nested indent accepted")
+                .kind,
+            WireFailureKind::Limit
+        );
+        assert!(bytes.is_empty());
     }
 }
