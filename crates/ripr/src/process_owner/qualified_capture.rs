@@ -9,10 +9,10 @@ pub use bytes::{
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 pub(crate) use bytes::{
+    CompleteControllerFailure, CompleteControllerTerminal, CompleteControllerTransport,
     CompleteEnclosingCustodian, CompleteEnclosingDisposed, CompleteEnclosingFailure,
     CompleteEnclosingPhysicalClosure, CompleteFailedClosed, CompleteTerminalCustodian,
-    CompleteTerminalFailure, CompleteControllerTransport, CompleteControllerTerminal,
-    CompleteControllerFailure,
+    CompleteTerminalFailure,
 };
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
@@ -469,7 +469,8 @@ mod linux {
         if helper.enclosing_observed_reap.is_some() {
             return Ok(true);
         }
-        let _observed = helper.physical_poll_reap()
+        let _observed = helper
+            .physical_poll_reap()
             .map_err(|error| format!("physical helper poll: {error}"))?;
         // Even an actual Some ends this step. The next step consumes the
         // recorded status before another native helper/primary action.
@@ -497,14 +498,19 @@ mod linux {
             || expected.is_some_and(|(original, original_parent)| {
                 !original.same_owner(&leader) || !original_parent.same_owner(&parent)
             })
-            || progress.leader.as_ref().is_some_and(|original| !original.same_owner(&leader))
+            || progress
+                .leader
+                .as_ref()
+                .is_some_and(|original| !original.same_owner(&leader))
         {
             return Err("physical direct identity changed; actual custody retained".to_string());
         }
         progress.leader.get_or_insert_with(|| leader.clone());
         progress.parent.get_or_insert(parent);
         if !progress.physical_direct_kill {
-            child.physical_request_kill().map_err(|error| format!("physical direct termination: {error}"))?;
+            child
+                .physical_request_kill()
+                .map_err(|error| format!("physical direct termination: {error}"))?;
             progress.physical_direct_kill = true;
             return Ok(false);
         }
@@ -513,13 +519,16 @@ mod linux {
         let members = physical_scan_group(leader.group)?;
         if !members.is_empty() {
             if members.iter().any(|pid| *pid != leader.pid) {
-                return Err("physical direct custody has live descendants; no group authority".to_string());
+                return Err(
+                    "physical direct custody has live descendants; no group authority".to_string(),
+                );
             }
             return Ok(false);
         }
         progress.no_live_members = true;
         progress.empty_before_reap_at = Some(Instant::now());
-        if let Some(status) = child.physical_poll_reap()
+        if let Some(status) = child
+            .physical_poll_reap()
             .map_err(|error| format!("physical direct reap: {error}"))?
         {
             progress.primary_status = Some(status);
@@ -547,7 +556,8 @@ mod linux {
             let mut progress = EnclosingDispositionProgress::new();
             loop {
                 held_time(deadline)?;
-                if physical_primary_step(child, None, self.physical_parent.as_ref(), &mut progress)? {
+                if physical_primary_step(child, None, self.physical_parent.as_ref(), &mut progress)?
+                {
                     return Ok(());
                 }
                 thread::sleep(Duration::from_millis(5));
@@ -560,7 +570,9 @@ mod linux {
             progress: &mut EnclosingDispositionProgress,
         ) -> super::PhysicalStep {
             let Some(child) = self.child.as_mut() else {
-                return super::PhysicalStep::Retained("physical setup has no actual child".to_string());
+                return super::PhysicalStep::Retained(
+                    "physical setup has no actual child".to_string(),
+                );
             };
             match physical_primary_step(child, None, self.physical_parent.as_ref(), progress) {
                 Ok(true) => super::PhysicalStep::Closed,
@@ -819,11 +831,17 @@ mod linux {
                 let now = Instant::now();
                 scope.empty_audit_before_reap = (result.as_ref().is_ok_and(Vec::is_empty)
                     && self.child.enclosing_observed_reap.is_none()
-                    && self.unconfirmed_signal.as_ref()
+                    && self
+                        .unconfirmed_signal
+                        .as_ref()
                         .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
-                    && scope.pending_helper.as_ref()
+                    && scope
+                        .pending_helper
+                        .as_ref()
                         .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
-                    && scope.physical_helper.as_ref()
+                    && scope
+                        .physical_helper
+                        .as_ref()
                         .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
                     && self.held_deadline == Some(scope.original_deadline)
                     && scope.leader.same_owner(&self.leader)
@@ -1057,7 +1075,9 @@ mod linux {
                     || !scope.leader.same_owner(&self.leader)
                     || !scope.parent.same_owner(&self.parent)
                 {
-                    return Err("physical initial scope changed; actual custody retained".to_string());
+                    return Err(
+                        "physical initial scope changed; actual custody retained".to_string()
+                    );
                 }
                 if let Some(helper) = scope.pending_helper.as_mut()
                     && !physical_helper_step(helper)?
@@ -1071,7 +1091,9 @@ mod linux {
                 }
             }
             if self.child.enclosing_observed_reap.is_some() {
-                return self.require_actual_enclosing_physical_closure(progress).map(|()| true)
+                return self
+                    .require_actual_enclosing_physical_closure(progress)
+                    .map(|()| true)
                     .map_err(str::to_string);
             }
             let parent = physical_identity(std::process::id())?;
@@ -1091,22 +1113,29 @@ mod linux {
                 if let Some(scope) = self.enclosing_scope.as_mut() {
                     scope.empty_audit_before_reap = progress.empty_before_reap_at;
                 }
-                if let Some(status) = self.child.physical_poll_reap()
+                if let Some(status) = self
+                    .child
+                    .physical_poll_reap()
                     .map_err(|error| format!("physical primary reap: {error}"))?
                 {
                     progress.primary_status = Some(status);
                 }
-                if actual_direct_closure(&self.child, Some((&self.leader, &self.parent)), progress) {
+                if actual_direct_closure(&self.child, Some((&self.leader, &self.parent)), progress)
+                {
                     self.enclosing_direct_reaped = true;
-                    return self.require_actual_enclosing_physical_closure(progress).map(|()| true)
+                    return self
+                        .require_actual_enclosing_physical_closure(progress)
+                        .map(|()| true)
                         .map_err(str::to_string);
                 }
                 return Ok(false);
             }
             let Some(scope) = self.enclosing_scope.as_mut() else {
                 let closed = physical_primary_step(
-                    &mut self.child, Some((&self.leader, &self.parent)),
-                    Some(&self.parent), progress,
+                    &mut self.child,
+                    Some((&self.leader, &self.parent)),
+                    Some(&self.parent),
+                    progress,
                 )?;
                 if closed {
                     self.enclosing_direct_reaped = true;
@@ -1114,20 +1143,28 @@ mod linux {
                 return Ok(closed);
             };
             if scope.physical_signal_started && scope.physical_helper.is_none() {
-                return Err("physical group signal launch is unresolved; custody retained".to_string());
+                return Err(
+                    "physical group signal launch is unresolved; custody retained".to_string(),
+                );
             }
             if scope.physical_helper.as_ref().is_some_and(|helper| {
-                helper.enclosing_observed_reap.is_some_and(|(status, _)| !status.success())
+                helper
+                    .enclosing_observed_reap
+                    .is_some_and(|(status, _)| !status.success())
             }) {
-                return Err("physical group signal failed with live members; custody retained".to_string());
+                return Err(
+                    "physical group signal failed with live members; custody retained".to_string(),
+                );
             }
             if !scope.physical_signal_started {
                 // The fixed inline slot was admitted with the initial scope.
                 // It is never replaced, including after an uncertain launch.
                 scope.physical_signal_started = true;
                 let helper = OwnedProcess::physical_spawn_prepared(
-                    prepare_group_signal(scope.leader.group), scope.enclosing_deadline,
-                ).map_err(|error| format!("physical group signal launch: {error}"))?;
+                    prepare_group_signal(scope.leader.group),
+                    scope.enclosing_deadline,
+                )
+                .map_err(|error| format!("physical group signal launch: {error}"))?;
                 scope.physical_helper = Some(helper);
             }
             Ok(false)
@@ -1182,7 +1219,9 @@ mod linux {
                         .pending_helper
                         .as_ref()
                         .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
-                        && scope.physical_helper.as_ref()
+                        && scope
+                            .physical_helper
+                            .as_ref()
                             .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
                 });
             let direct_closed =
@@ -1214,8 +1253,11 @@ mod linux {
                         .as_ref()
                         .is_some_and(|scope| scope.pending_helper.is_some()),
                 )
-                + usize::from(self.enclosing_scope.as_ref()
-                    .is_some_and(|scope| scope.physical_helper.is_some()));
+                + usize::from(
+                    self.enclosing_scope
+                        .as_ref()
+                        .is_some_and(|scope| scope.physical_helper.is_some()),
+                );
             count
         }
 
@@ -1281,7 +1323,11 @@ mod linux {
                 child.request_kill().map_err(|error| error.to_string())?;
                 loop {
                     held_time(deadline)?;
-                    if child.physical_poll_reap().map_err(|error| error.to_string())?.is_some() {
+                    if child
+                        .physical_poll_reap()
+                        .map_err(|error| error.to_string())?
+                        .is_some()
+                    {
                         return Ok(());
                     }
                     thread::sleep(Duration::from_millis(5));
@@ -1323,7 +1369,9 @@ mod linux {
                     return Err("fixture has no empty retained signal-helper slot".to_string());
                 };
                 if let Err(failure) = bounded_group_signal_with_held(
-                    self.leader.group, fixture_deadline, Some(fixture_deadline),
+                    self.leader.group,
+                    fixture_deadline,
+                    Some(fixture_deadline),
                 ) {
                     let (primary, helper) = failure.into_parts();
                     *helper_slot = helper;
@@ -1333,7 +1381,9 @@ mod linux {
                     };
                     return match cleanup {
                         Ok(()) => Err(primary),
-                        Err(cleanup) => Err(format!("{primary}; fixture signal disposal: {cleanup}")),
+                        Err(cleanup) => {
+                            Err(format!("{primary}; fixture signal disposal: {cleanup}"))
+                        }
                     };
                 }
             }
@@ -1350,7 +1400,12 @@ mod linux {
             // No old flags or capture/physical proof fields are changed here.
             loop {
                 held_time(fixture_deadline)?;
-                if self.child.physical_poll_reap().map_err(|error| error.to_string())?.is_some() {
+                if self
+                    .child
+                    .physical_poll_reap()
+                    .map_err(|error| error.to_string())?
+                    .is_some()
+                {
                     return Ok(());
                 }
                 thread::sleep(Duration::from_millis(5));
@@ -2390,12 +2445,15 @@ mod linux {
                         owner.leader.group,
                         Instant::now() + Duration::from_secs(2),
                         None,
-                    ).map_err(|error| error.to_string())?;
+                    )
+                    .map_err(|error| error.to_string())?;
                 }
                 owner.close_fixture_custody()
             })();
             match (checks, cleanup) {
-                (Err(primary), Err(cleanup)) => Err(format!("{primary}; fixture disposal: {cleanup}")),
+                (Err(primary), Err(cleanup)) => {
+                    Err(format!("{primary}; fixture disposal: {cleanup}"))
+                }
                 (Err(primary), Ok(())) => Err(primary),
                 (Ok(()), _) => Ok(()),
             }
@@ -2412,10 +2470,14 @@ mod linux {
                     super::super::PhysicalStep::Closed => return Ok(()),
                     super::super::PhysicalStep::Retained(error) => return Err(error),
                     super::super::PhysicalStep::Pending => {}
-                    super::super::PhysicalStep::NoProcess => return Err("physical owned group cannot be no-process".to_string()),
+                    super::super::PhysicalStep::NoProcess => {
+                        return Err("physical owned group cannot be no-process".to_string());
+                    }
                 }
                 if Instant::now() >= fixture_end {
-                    return Err("physical control did not reach its fixture observation bound".to_string());
+                    return Err(
+                        "physical control did not reach its fixture observation bound".to_string(),
+                    );
                 }
                 thread::sleep(Duration::from_millis(5));
             }
@@ -2428,56 +2490,95 @@ mod linux {
             let held = started + Duration::from_millis(150);
             let outer = started + Duration::from_millis(300);
             let mut owner = QualifiedGroupOwner::spawn_with_deadline(
-                test_command("/bin/sh", &["-c", "/usr/bin/sleep 30 & exec /usr/bin/sleep 30"], true), held,
-            ).map_err(|error| error.to_string())?;
+                test_command(
+                    "/bin/sh",
+                    &["-c", "/usr/bin/sleep 30 & exec /usr/bin/sleep 30"],
+                    true,
+                ),
+                held,
+            )
+            .map_err(|error| error.to_string())?;
             let checks = (|| {
                 owner.admit_enclosing_scope(outer)?;
                 let before = owner.leader.clone();
-                owner.unconfirmed_signal = Some(OwnedProcess::physical_spawn_prepared(
-                    test_command("/usr/bin/sleep", &["30"], false), held,
-                ).map_err(|error| error.to_string())?);
+                owner.unconfirmed_signal = Some(
+                    OwnedProcess::physical_spawn_prepared(
+                        test_command("/usr/bin/sleep", &["30"], false),
+                        held,
+                    )
+                    .map_err(|error| error.to_string())?,
+                );
                 thread::sleep(Duration::from_millis(350));
                 let flags = owner.enclosing_failure_state();
                 let mut progress = EnclosingDispositionProgress::new();
                 let signals = SIGNAL_ATTEMPTS.with(std::cell::Cell::get);
-                if !matches!(owner.continue_enclosing_physical(&mut progress), super::super::PhysicalStep::Pending)
-                    || owner.child.enclosing_observed_reap.is_some()
-                    || owner.unconfirmed_signal.as_ref().is_none_or(|helper| helper.enclosing_observed_reap.is_some())
+                if !matches!(
+                    owner.continue_enclosing_physical(&mut progress),
+                    super::super::PhysicalStep::Pending
+                ) || owner.child.enclosing_observed_reap.is_some()
+                    || owner
+                        .unconfirmed_signal
+                        .as_ref()
+                        .is_none_or(|helper| helper.enclosing_observed_reap.is_some())
                     || SIGNAL_ATTEMPTS.with(std::cell::Cell::get) != signals
                 {
-                    return Err("physical pending helper released primary pin or launched another signal".to_string());
+                    return Err(
+                        "physical pending helper released primary pin or launched another signal"
+                            .to_string(),
+                    );
                 }
-                owner.unconfirmed_signal.as_mut().ok_or("old actual helper missing")?
-                    .request_kill().map_err(|error| error.to_string())?;
+                owner
+                    .unconfirmed_signal
+                    .as_mut()
+                    .ok_or("old actual helper missing")?
+                    .request_kill()
+                    .map_err(|error| error.to_string())?;
                 finish_physical(&mut owner, &mut progress)?;
-                let scope = owner.enclosing_scope.as_ref().ok_or("physical initial scope missing")?;
-                let helper = scope.physical_helper.as_ref().ok_or("real physical signal helper missing")?;
+                let scope = owner
+                    .enclosing_scope
+                    .as_ref()
+                    .ok_or("physical initial scope missing")?;
+                let helper = scope
+                    .physical_helper
+                    .as_ref()
+                    .ok_or("real physical signal helper missing")?;
                 if !before.same_owner(&owner.leader)
                     || owner.enclosing_failure_state() != flags
                     || owner.child.bounded_drop_until != Some(held)
                     || helper.bounded_drop_until != Some(outer)
                     || owner.child.enclosing_observed_reap.is_none()
                     || helper.enclosing_observed_reap.is_none()
-                    || owner.unconfirmed_signal.as_ref().is_none_or(|old| old.enclosing_observed_reap.is_none())
+                    || owner
+                        .unconfirmed_signal
+                        .as_ref()
+                        .is_none_or(|old| old.enclosing_observed_reap.is_none())
                     || !progress.no_live_members()
                     || owner.take_settlement().is_some()
                 {
-                    return Err("physical closeout changed eligibility or lost actual helper observations".to_string());
+                    return Err(
+                        "physical closeout changed eligibility or lost actual helper observations"
+                            .to_string(),
+                    );
                 }
-                owner.require_actual_enclosing_physical_closure(&progress).map_err(str::to_string)
+                owner
+                    .require_actual_enclosing_physical_closure(&progress)
+                    .map_err(str::to_string)
             })();
             finish_physical_fixture_checks(&mut owner, checks)
         }
 
         #[cfg(feature = "lang-rust")]
         #[test]
-        fn physical_transient_read_refusal_retains_same_owner_then_recovers() -> Result<(), String> {
+        fn physical_transient_read_refusal_retains_same_owner_then_recovers() -> Result<(), String>
+        {
             let started = Instant::now();
             let held = started + Duration::from_millis(100);
             let outer = started + Duration::from_millis(200);
             let mut owner = QualifiedGroupOwner::spawn_with_deadline(
-                test_command("/usr/bin/sleep", &["30"], true), held,
-            ).map_err(|error| error.to_string())?;
+                test_command("/usr/bin/sleep", &["30"], true),
+                held,
+            )
+            .map_err(|error| error.to_string())?;
             let checks = (|| {
                 owner.admit_enclosing_scope(outer)?;
                 let before = owner.leader.clone();
@@ -2486,18 +2587,23 @@ mod linux {
                 let mut progress = EnclosingDispositionProgress::new();
                 PHYSICAL_IDENTITY_REFUSAL.with(|refusal| refusal.set(true));
                 match owner.continue_enclosing_physical(&mut progress) {
-                    super::super::PhysicalStep::Retained(error) if error.contains("identity read refused") => {}
+                    super::super::PhysicalStep::Retained(error)
+                        if error.contains("identity read refused") => {}
                     _ => return Err("physical injected read refusal was discarded".to_string()),
                 }
                 if owner.child.enclosing_observed_reap.is_some()
                     || !before.same_owner(&physical_identity(owner.child.id())?)
                     || owner.enclosing_failure_state() != flags
                 {
-                    return Err("physical refusal replaced or prematurely reaped its owner".to_string());
+                    return Err(
+                        "physical refusal replaced or prematurely reaped its owner".to_string()
+                    );
                 }
                 finish_physical(&mut owner, &mut progress)?;
                 if owner.enclosing_failure_state() != flags || owner.take_settlement().is_some() {
-                    return Err("physical recovery reset the failed original qualification".to_string());
+                    return Err(
+                        "physical recovery reset the failed original qualification".to_string()
+                    );
                 }
                 Ok(())
             })();
@@ -2511,19 +2617,34 @@ mod linux {
             let held = started + Duration::from_millis(100);
             let outer = started + Duration::from_millis(200);
             let mut owner = QualifiedGroupOwner::spawn_with_deadline(
-                test_command("/bin/sh", &["-c", "exit 0"], true), held,
-            ).map_err(|error| error.to_string())?;
+                test_command("/bin/sh", &["-c", "exit 0"], true),
+                held,
+            )
+            .map_err(|error| error.to_string())?;
             let checks = (|| {
                 owner.admit_enclosing_scope(outer)?;
                 thread::sleep(Duration::from_millis(250));
-                let actual = owner.child.physical_poll_reap().map_err(|error| error.to_string())?;
-                if actual.is_none() { return Err("missing actual native reap stimulus".to_string()); }
+                let actual = owner
+                    .child
+                    .physical_poll_reap()
+                    .map_err(|error| error.to_string())?;
+                if actual.is_none() {
+                    return Err("missing actual native reap stimulus".to_string());
+                }
                 let signals = SIGNAL_ATTEMPTS.with(std::cell::Cell::get);
                 let mut progress = EnclosingDispositionProgress::new();
-                if !matches!(owner.continue_enclosing_physical(&mut progress), super::super::PhysicalStep::Retained(_))
-                    || owner.require_actual_enclosing_physical_closure(&progress).is_ok()
+                if !matches!(
+                    owner.continue_enclosing_physical(&mut progress),
+                    super::super::PhysicalStep::Retained(_)
+                ) || owner
+                    .require_actual_enclosing_physical_closure(&progress)
+                    .is_ok()
                     || SIGNAL_ATTEMPTS.with(std::cell::Cell::get) != signals
-                    || owner.child.enclosing_observed_reap.map(|(status, _)| status) != actual
+                    || owner
+                        .child
+                        .enclosing_observed_reap
+                        .map(|(status, _)| status)
+                        != actual
                     || owner.child.bounded_drop_until != Some(held)
                 {
                     return Err("native status alone fabricated physical group closure or signaled a reaped PID".to_string());

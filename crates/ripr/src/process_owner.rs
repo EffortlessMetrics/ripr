@@ -43,10 +43,10 @@ pub use qualified_capture::{
 };
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 pub(crate) use qualified_capture::{
+    CompleteControllerFailure, CompleteControllerTerminal, CompleteControllerTransport,
     CompleteEnclosingCustodian, CompleteEnclosingDisposed, CompleteEnclosingFailure,
     CompleteEnclosingPhysicalClosure, CompleteFailedClosed, CompleteTerminalCustodian,
-    CompleteTerminalFailure, CompleteControllerTransport, CompleteControllerTerminal,
-    CompleteControllerFailure, PhysicalStep,
+    CompleteTerminalFailure, PhysicalStep,
 };
 
 #[cfg(target_os = "linux")]
@@ -464,7 +464,10 @@ impl OwnedProcess {
     }
 
     #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
-    fn physical_spawn_prepared(command: Command, original_deadline: Instant) -> std::io::Result<Self> {
+    fn physical_spawn_prepared(
+        command: Command,
+        original_deadline: Instant,
+    ) -> std::io::Result<Self> {
         let mut child = Self::spawn_with_bounded_drop(command)?;
         child.bounded_drop_until = Some(original_deadline);
         Ok(child)

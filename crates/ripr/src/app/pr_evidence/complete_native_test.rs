@@ -440,21 +440,23 @@ fn native_analysis_scalar_grammar_refuses_aliases_and_missing_witness() -> Resul
     }
 }
 
-
 #[test]
 fn native_controller_entry_cannot_authorize_worker_invocation() -> Result<(), String> {
-    let scalars = [AS_BYTES, FS_BYTES, 1, HEADER_CAP as u64]
-        .map(|value| value.to_string());
+    let scalars = [AS_BYTES, FS_BYTES, 1, HEADER_CAP as u64].map(|value| value.to_string());
     match authenticate_actual_libtest_argv(CONTROLLER_TEST_NAME, &scalars) {
         Err(error) if error == "native analysis test entry name is not fixed" => {}
         Err(error) => {
-            return Err(format!("native controller alias reached worker argv decoding: {error}"));
+            return Err(format!(
+                "native controller alias reached worker argv decoding: {error}"
+            ));
         }
         Ok(()) => return Err("native controller entry granted worker authentication".into()),
     }
     match actual_scalars(CONTROLLER_TEST_NAME) {
         Err(error) if error == "native analysis test entry name is not fixed" => Ok(()),
-        Err(error) => Err(format!("native controller alias reached worker scalar decoding: {error}")),
+        Err(error) => Err(format!(
+            "native controller alias reached worker scalar decoding: {error}"
+        )),
         Ok(_) => Err("native controller entry granted worker scalar authentication".into()),
     }
 }
@@ -472,10 +474,9 @@ use super::{PrEvidenceOptions, parse_options};
 use crate::analysis::CompleteRustPolicySnapshot;
 use crate::analysis::committed_source::staged::DirectoryIdentity;
 use crate::process_owner::{
-    CompleteByteCapture, CompleteCaptureBudget, CompleteCaptureReceipt,
-    CompleteEnclosingCustodian, PhysicalStep,
+    CompleteByteCapture, CompleteCaptureBudget, CompleteCaptureReceipt, CompleteEnclosingCustodian,
     CompleteEnclosingPhysicalClosure, CompleteTerminalCustodian, NativeLimitTuple, ParentStage,
-    StageBudget, StageDirectoryBinding, StageRoleBudget,
+    PhysicalStep, StageBudget, StageDirectoryBinding, StageRoleBudget,
 };
 #[cfg(all(
     not(feature = "lang-typescript"),
@@ -486,7 +487,7 @@ use crate::process_owner::{CompleteControllerTerminal, CompleteControllerTranspo
 use sha2::{Digest, Sha256};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::{DirBuilderExt, MetadataExt};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
@@ -554,8 +555,7 @@ fn fixture_oid(root: &Path, deadline: Instant) -> Result<String, String> {
     let literal = text
         .strip_suffix('\n')
         .ok_or("native adapter fixture OID has no original LF")?;
-    let oid = crate::domain::GitObjectId::parse(literal)
-        .map_err(|error| error.to_string())?;
+    let oid = crate::domain::GitObjectId::parse(literal).map_err(|error| error.to_string())?;
     if oid.as_str() != literal {
         return Err("native adapter fixture OID spelling changed".into());
     }
@@ -638,7 +638,8 @@ impl FixtureIdentity {
             .metadata()
             .map_err(|error| format!("native adapter fixture metadata: {error}"))?;
         checkpoint(deadline)?;
-        if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() > FIXTURE_BYTES_MAX as u64 {
+        if !metadata.is_file() || metadata.nlink() != 1 || metadata.len() > FIXTURE_BYTES_MAX as u64
+        {
             return Err("native adapter fixture file identity is inadmissible".into());
         }
         Ok(Self {
@@ -707,8 +708,10 @@ impl FixtureFile {
         let after = fs::symlink_metadata(root.join(self.relative))
             .map_err(|error| format!("native adapter fixture final name metadata: {error}"))?;
         checkpoint(deadline)?;
-        if !after.is_file() || after.nlink() != 1
-            || after.dev() != self.identity.device || after.ino() != self.identity.inode
+        if !after.is_file()
+            || after.nlink() != 1
+            || after.dev() != self.identity.device
+            || after.ino() != self.identity.inode
             || after.len() != self.identity.bytes
         {
             return Err("native adapter fixture final name no longer binds its held file".into());
@@ -727,14 +730,31 @@ struct CommittedFixture {
 }
 
 impl CommittedFixture {
-    fn create(deadline: Instant) -> Result<(Self, String), String> {
+    fn create(nonce: &str, deadline: Instant) -> Result<(Self, String), String> {
+        checkpoint(deadline)?;
+        if !controller_nonce(nonce) {
+            return Err("native adapter fixture nonce is not canonical".into());
+        }
+        let temp_base = std::env::temp_dir();
+        checkpoint(deadline)?;
+        let temp_text = temp_base
+            .to_str()
+            .ok_or("native adapter fixture temp root is not UTF-8")?;
+        let prefix = "ripr-native-analysis-retained-";
+        temp_text
+            .len()
+            .checked_add(1)
+            .and_then(|bytes| bytes.checked_add(prefix.len()))
+            .and_then(|bytes| bytes.checked_add(nonce.len()))
+            .filter(|bytes| *bytes <= 4096)
+            .ok_or("native adapter fixture claimed path exceeds bounded UTF-8")?;
+        let claimed = temp_base.join(format!("{prefix}{nonce}"));
         checkpoint(deadline)?;
         // Keep immediately, including every later failure path.
-        let claimed = tempfile::Builder::new()
-            .prefix("ripr-native-analysis-retained-")
-            .tempdir()
-            .map_err(|error| format!("native adapter fixture claim: {error}"))?
-            .keep();
+        fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&claimed)
+            .map_err(|error| format!("native adapter fixture claim: {error}"))?;
         checkpoint(deadline)?;
         let root = fs::canonicalize(&claimed)
             .map_err(|error| format!("native adapter fixture canonical root: {error}"))?;
@@ -776,32 +796,75 @@ impl CommittedFixture {
             fixture_write(&mut file, bytes, deadline)?;
             opened[index] = Some(file);
         }
-        fixture_git(&root, &["-c", "init.templateDir=", "init", "--quiet", "-b", "request"], deadline)?;
-        fixture_git(&root, &["config", "--local", "user.name", "RIPR native analysis fixture"], deadline)?;
-        fixture_git(&root, &["config", "--local", "user.email", "native@example.invalid"], deadline)?;
-        fixture_git(&root, &["config", "--local", "commit.gpgsign", "false"], deadline)?;
+        fixture_git(
+            &root,
+            &[
+                "-c",
+                "init.templateDir=",
+                "init",
+                "--quiet",
+                "-b",
+                "request",
+            ],
+            deadline,
+        )?;
+        fixture_git(
+            &root,
+            &[
+                "config",
+                "--local",
+                "user.name",
+                "RIPR native analysis fixture",
+            ],
+            deadline,
+        )?;
+        fixture_git(
+            &root,
+            &["config", "--local", "user.email", "native@example.invalid"],
+            deadline,
+        )?;
+        fixture_git(
+            &root,
+            &["config", "--local", "commit.gpgsign", "false"],
+            deadline,
+        )?;
         fixture_git(&root, &["add", "--all"], deadline)?;
-        fixture_git(&root, &["commit", "--quiet", "-m", "native analysis base"], deadline)?;
+        fixture_git(
+            &root,
+            &["commit", "--quiet", "-m", "native analysis base"],
+            deadline,
+        )?;
         let base = fixture_oid(&root, deadline)?;
         let source = fixture_source(deadline)?;
         fixture_write(
-            opened[3].as_mut().ok_or("native adapter owner descriptor missing")?,
+            opened[3]
+                .as_mut()
+                .ok_or("native adapter owner descriptor missing")?,
             &source,
             deadline,
         )?;
         let source_hash = format!("{:x}", Sha256::digest(&source));
         drop(source);
         fixture_git(&root, &["add", "--", "src/lib.rs"], deadline)?;
-        fixture_git(&root, &["commit", "--quiet", "-m", "one 7038 line owner"], deadline)?;
+        fixture_git(
+            &root,
+            &["commit", "--quiet", "-m", "one 7038 line owner"],
+            deadline,
+        )?;
         let range = format!("{base}...HEAD");
-        if fixture_git(&root, &["diff", "--no-renames", "--numstat", &range], deadline)?
-            != b"7038\t0\tsrc/lib.rs\n"
+        if fixture_git(
+            &root,
+            &["diff", "--no-renames", "--numstat", &range],
+            deadline,
+        )? != b"7038\t0\tsrc/lib.rs\n"
         {
             return Err("native adapter full fixture numstat differs from 7038/0".into());
         }
         let mut identities: [Option<FixtureFile>; 4] = std::array::from_fn(|_| None);
         for (index, (relative, bytes)) in literals.iter().enumerate() {
-            let file = opened[index].take().ok_or("native adapter fixture descriptor missing")?;
+            let file = opened[index]
+                .take()
+                .ok_or("native adapter fixture descriptor missing")?;
             identities[index] = Some(FixtureFile {
                 relative,
                 identity: FixtureIdentity::file(&file, deadline)?,
@@ -819,10 +882,18 @@ impl CommittedFixture {
             device: metadata.dev(),
             inode: metadata.ino(),
             files: [
-                identities[0].take().ok_or("native adapter Cargo identity missing")?,
-                identities[1].take().ok_or("native adapter config identity missing")?,
-                identities[2].take().ok_or("native adapter request identity missing")?,
-                identities[3].take().ok_or("native adapter owner identity missing")?,
+                identities[0]
+                    .take()
+                    .ok_or("native adapter Cargo identity missing")?,
+                identities[1]
+                    .take()
+                    .ok_or("native adapter config identity missing")?,
+                identities[2]
+                    .take()
+                    .ok_or("native adapter request identity missing")?,
+                identities[3]
+                    .take()
+                    .ok_or("native adapter owner identity missing")?,
             ],
         };
         fixture.verify(deadline)?;
@@ -831,14 +902,19 @@ impl CommittedFixture {
 
     fn verify(&self, deadline: Instant) -> Result<(), String> {
         checkpoint(deadline)?;
-        let held = self.directory.metadata()
+        let held = self
+            .directory
+            .metadata()
             .map_err(|error| format!("native adapter fixture held directory: {error}"))?;
         let named = fs::symlink_metadata(&self.root)
             .map_err(|error| format!("native adapter fixture directory name: {error}"))?;
         checkpoint(deadline)?;
-        if !held.is_dir() || !named.is_dir()
-            || held.dev() != self.device || named.dev() != self.device
-            || held.ino() != self.inode || named.ino() != self.inode
+        if !held.is_dir()
+            || !named.is_dir()
+            || held.dev() != self.device
+            || named.dev() != self.device
+            || held.ino() != self.inode
+            || named.ino() != self.inode
         {
             return Err("native adapter fixture directory identity changed".into());
         }
@@ -1094,12 +1170,16 @@ fn adapter_slot(
         original_deadline: original,
         enclosing_deadline: u,
     });
-    let mut inner = Some(CompleteTerminalCustodian::new(original, Arc::clone(&lease))?);
+    let mut inner = Some(CompleteTerminalCustodian::new(
+        original,
+        Arc::clone(&lease),
+    )?);
     let enclosing = CompleteEnclosingCustodian::admit(&mut inner, u)
         .map_err(|error| format!("native adapter enclosing admission: {error}"))?;
     let (execution, args, input, timeout) = if phase == NativePhase::Analyze {
         let e = execution_deadline.ok_or("native adapter Analyze cutoff missing")?;
-        let remaining = e.checked_duration_since(Instant::now())
+        let remaining = e
+            .checked_duration_since(Instant::now())
             .ok_or("native adapter Analyze original cutoff expired")?;
         let millis = u64::try_from(remaining.as_millis())
             .map_err(|error| format!("native adapter child scalar duration: {error}"))?;
@@ -1159,7 +1239,8 @@ pub(super) fn prepare_native(
     enclosing_deadline: Instant,
 ) -> Result<(PreparedNative, NativePhaseSlots), String> {
     supported()?;
-    let admitted = enclosing_deadline.checked_duration_since(entered)
+    let admitted = enclosing_deadline
+        .checked_duration_since(entered)
         .filter(|duration| !duration.is_zero() && *duration <= Duration::from_mins(5))
         .ok_or("native adapter enclosing admission exceeds original named ceiling")?;
     if entered > Instant::now() || admitted.is_zero() {
@@ -1170,7 +1251,9 @@ pub(super) fn prepare_native(
     let image = ObservedSelfImage::observe(AS_BYTES, FS_BYTES, enclosing_deadline)?;
     let policy = capture_complete_rust_policy()?;
     if policy.changed_rust_line_limit() >= OWNER_LINES {
-        return Err("native adapter fixture does not discriminate its actual ordinary guard".into());
+        return Err(
+            "native adapter fixture does not discriminate its actual ordinary guard".into(),
+        );
     }
     let profile = profile_for_request(PROFILE_NAME, &policy)?;
     // Startup and decoded startup, phase headers, sentinel-bounded streams,
@@ -1189,17 +1272,30 @@ pub(super) fn prepare_native(
         ],
         profile.max_buffered_bytes,
     )?;
-    let (fixture, base) = CommittedFixture::create(enclosing_deadline)?;
+    let seed = format!(
+        "native-adapter:{}:{}:{:?}",
+        controller.pid(),
+        controller.start(),
+        entered
+    );
+    let first = format!("{:x}", Sha256::digest(seed.as_bytes()));
+    let (fixture, base) = CommittedFixture::create(&first[..32], enclosing_deadline)?;
     let producer_args = vec![
-        "--root".into(), ".".into(), "--base".into(), base, "--head".into(), "HEAD".into(),
+        "--root".into(),
+        ".".into(),
+        "--base".into(),
+        base,
+        "--head".into(),
+        "HEAD".into(),
     ];
     let options = parse_options(&producer_args)?;
-    let mut request = match select_request_with_deadline(
-        &fixture.root, &options.head, enclosing_deadline,
-    )? {
-        RequestedRoute::Complete(request) => *request,
-        RequestedRoute::Ordinary => return Err("native adapter committed request absent".into()),
-    };
+    let mut request =
+        match select_request_with_deadline(&fixture.root, &options.head, enclosing_deadline)? {
+            RequestedRoute::Complete(request) => *request,
+            RequestedRoute::Ordinary => {
+                return Err("native adapter committed request absent".into());
+            }
+        };
     let subject = request.resolve_whole_subject(&options)?;
     if subject.invocation_repository.as_os_str() != subject.root.as_os_str()
         || subject.root.as_os_str() != subject.work_tree.as_os_str()
@@ -1211,13 +1307,15 @@ pub(super) fn prepare_native(
     if build.contains("+process:") || build.len() > 4096 || build.contains('\0') {
         return Err("native adapter stable compiled build identity unavailable".into());
     }
-    let seed = format!("native-adapter:{}:{}:{:?}", controller.pid(), controller.start(), entered);
-    let first = format!("{:x}", Sha256::digest(seed.as_bytes()));
     let second = format!("{:x}", Sha256::digest(first.as_bytes()));
     let stage_nonce = format!("{first}{second}");
     let generation_nonce = first[..32].to_string();
     let stage = ParentStage::claim_retained(
-        &stage_nonce, adapter_stage_budget(), enclosing_deadline, AS_BYTES, FS_BYTES,
+        &stage_nonce,
+        adapter_stage_budget(),
+        enclosing_deadline,
+        AS_BYTES,
+        FS_BYTES,
     )?;
     let actual = stage.worker_binding()?;
     let binding = StageRootBinding {
@@ -1254,25 +1352,56 @@ pub(super) fn prepare_native(
     let identifier = adapter_lock(&resources.image)?.execution_identifier()?;
     let header = resources.header()?;
     let started = Instant::now();
-    let discard_t = started.checked_add(Duration::from_secs(1))
+    let discard_t = started
+        .checked_add(Duration::from_secs(1))
         .ok_or("native adapter discriminator original clock overflow")?;
-    let unwind_t = started.checked_add(Duration::from_secs(12))
+    let unwind_t = started
+        .checked_add(Duration::from_secs(12))
         .ok_or("native adapter unwind original clock overflow")?;
-    let analyze_t = enclosing_deadline.checked_sub(Duration::from_secs(1))
+    let analyze_t = enclosing_deadline
+        .checked_sub(Duration::from_secs(1))
         .ok_or("native adapter Analyze original clock underflow")?;
-    let latest_e = analyze_t.checked_sub(Duration::from_secs(7))
+    let latest_e = analyze_t
+        .checked_sub(Duration::from_secs(7))
         .ok_or("native adapter Analyze original reserve underflow")?;
-    let e = started.checked_add(CAPTURE_PHASE_MAX)
-        .ok_or("native adapter Analyze execution overflow")?.min(latest_e);
-    if e <= unwind_t.checked_add(Duration::from_secs(5))
+    let e = started
+        .checked_add(CAPTURE_PHASE_MAX)
+        .ok_or("native adapter Analyze execution overflow")?
+        .min(latest_e);
+    if e <= unwind_t
+        .checked_add(Duration::from_secs(5))
         .ok_or("native adapter discriminator reserve overflow")?
     {
         return Err("native adapter original enclosing budget cannot admit all phases".into());
     }
     let slots = [
-        adapter_slot(&resources, NativePhase::Discard, discard_t, started, None, &identifier, &header)?,
-        adapter_slot(&resources, NativePhase::Unwind, unwind_t, started, None, &identifier, &header)?,
-        adapter_slot(&resources, NativePhase::Analyze, analyze_t, started, Some(e), &identifier, &header)?,
+        adapter_slot(
+            &resources,
+            NativePhase::Discard,
+            discard_t,
+            started,
+            None,
+            &identifier,
+            &header,
+        )?,
+        adapter_slot(
+            &resources,
+            NativePhase::Unwind,
+            unwind_t,
+            started,
+            None,
+            &identifier,
+            &header,
+        )?,
+        adapter_slot(
+            &resources,
+            NativePhase::Analyze,
+            analyze_t,
+            started,
+            Some(e),
+            &identifier,
+            &header,
+        )?,
     ];
     Ok((
         PreparedNative { resources, next: 0 },
@@ -1302,10 +1431,11 @@ impl NativeClosedFailure {
                 if receipt.settled_status() != Some(*status) {
                     "native adapter actual closed transport status differs"
                 } else {
-                    self.diagnostic.as_deref()
+                    self.diagnostic
+                        .as_deref()
                         .unwrap_or("native adapter closed transport failed analysis validation")
                 }
-            },
+            }
         }
     }
 
@@ -1349,15 +1479,25 @@ impl NativePhaseSlot {
     }
 
     pub(super) fn retained_message(&self) -> &str {
-        self.enclosing.as_ref()
+        self.enclosing
+            .as_ref()
             .and_then(CompleteEnclosingCustodian::inner)
             .and_then(CompleteTerminalCustodian::failure)
-            .map_or_else(|| self.refusal.as_deref().unwrap_or("native adapter phase is retained without a physical close observation"), |error| error.message())
+            .map_or_else(
+                || {
+                    self.refusal.as_deref().unwrap_or(
+                        "native adapter phase is retained without a physical close observation",
+                    )
+                },
+                |error| error.message(),
+            )
     }
 
     fn binds(&self, prepared: &PreparedNative) -> Result<(), String> {
         checkpoint(self.lease.original_deadline)?;
-        let enclosing = self.enclosing.as_ref()
+        let enclosing = self
+            .enclosing
+            .as_ref()
             .ok_or("native adapter original phase holder absent")?;
         if !Arc::ptr_eq(&self.lease.resources, &prepared.resources)
             || self.lease.phase.index() != prepared.next
@@ -1417,13 +1557,16 @@ fn native_receipt_report(
             || report.findings == 0
             || !report.postflight
         {
-            return Err("native adapter witness differs from actual image/build/whole subject".into());
+            return Err(
+                "native adapter witness differs from actual image/build/whole subject".into(),
+            );
         }
         drop(image);
         drop(stdout);
         drop(stderr);
         prepared.resources.verify(false)?;
-        let request = adapter_lock(&prepared.resources.request)?.take()
+        let request = adapter_lock(&prepared.resources.request)?
+            .take()
             .ok_or("native adapter original parent request already consumed")?;
         request.validate_whole_current(
             &prepared.resources.subject,
@@ -1447,9 +1590,13 @@ fn original_deadline_discriminator(
     slot: &NativePhaseSlot,
     prepared: &PreparedNative,
 ) -> Result<ObservedProcessIdentity, String> {
-    let owner = slot.enclosing.as_ref()
+    let owner = slot
+        .enclosing
+        .as_ref()
         .ok_or("native adapter actual enclosing holder missing after report")?;
-    let error = owner.inner().and_then(CompleteTerminalCustodian::failure)
+    let error = owner
+        .inner()
+        .and_then(CompleteTerminalCustodian::failure)
         .ok_or("native adapter actual capture failure missing")?;
     if Instant::now() < slot.lease.original_deadline
         || !error.matches_lease(&slot.lease)
@@ -1491,7 +1638,9 @@ pub(super) fn run_native_phase<'a>(
     slot: &'a mut NativePhaseSlot,
 ) -> NativePhaseOutcome<'a> {
     if slot.attempted {
-        slot.remember_refusal("native adapter phase was already attempted; same custody retained".into());
+        slot.remember_refusal(
+            "native adapter phase was already attempted; same custody retained".into(),
+        );
         return NativePhaseOutcome::Retained(slot);
     }
     slot.attempted = true;
@@ -1552,7 +1701,9 @@ pub(super) fn run_native_phase<'a>(
                 && payload.downcast_ref::<NativeReportUnwind>().is_some();
             if !expected_unwind {
                 slot.unexpected_unwind = Some(payload);
-                slot.remember_refusal("native adapter unexpected unwind remains with its phase owner".into());
+                slot.remember_refusal(
+                    "native adapter unexpected unwind remains with its phase owner".into(),
+                );
                 return NativePhaseOutcome::Retained(slot);
             }
         }
@@ -1561,7 +1712,10 @@ pub(super) fn run_native_phase<'a>(
         return match native_receipt_report(output, slot, prepared) {
             Ok((receipt, report)) => {
                 prepared.next = 3;
-                NativePhaseOutcome::Accepted(Box::new(NativeAccepted { receipt, witness: report }))
+                NativePhaseOutcome::Accepted(Box::new(NativeAccepted {
+                    receipt,
+                    witness: report,
+                }))
             }
             Err(closed) => NativePhaseOutcome::PhysicallyClosedFailure(closed),
         };
@@ -1605,7 +1759,7 @@ pub(super) fn run_native_phase<'a>(
         Err(retained) => {
             slot.remember_refusal(retained.into());
             return NativePhaseOutcome::Retained(slot);
-        },
+        }
     };
     if !physical.enclosing().matches_lease(&slot.lease)
         || physical.enclosing().original_deadline() != slot.lease.original_deadline
@@ -1647,12 +1801,16 @@ struct BootstrapImageData {
 
 impl BootstrapImageData {
     fn observe(metadata: &std::fs::Metadata) -> Result<Self, String> {
-        if !metadata.is_file() || metadata.nlink() == 0
-            || metadata.len() == 0 || metadata.len() > FS_BYTES
+        if !metadata.is_file()
+            || metadata.nlink() == 0
+            || metadata.len() == 0
+            || metadata.len() > FS_BYTES
         {
             return Err(format!(
                 "native bootstrap kernel image refuses regular={}/links={}/bytes={}; byte bound={FS_BYTES}",
-                metadata.is_file(), metadata.nlink(), metadata.len(),
+                metadata.is_file(),
+                metadata.nlink(),
+                metadata.len(),
             ));
         }
         Ok(Self {
@@ -1699,7 +1857,8 @@ impl BootstrapHeldImage {
     fn observe(deadline: Instant) -> Result<Self, String> {
         checkpoint(deadline)?;
         let owner = ObservedProcessIdentity::read(std::process::id())?;
-        if owner.pid() != std::process::id() || owner.start() == 0
+        if owner.pid() != std::process::id()
+            || owner.start() == 0
             || matches!(owner.state(), 'Z' | 'X' | 'x')
         {
             return Err("native bootstrap executable owner is not actual live SELF".into());
@@ -1707,9 +1866,8 @@ impl BootstrapHeldImage {
         let file = File::open("/proc/self/exe")
             .map_err(|error| format!("native bootstrap actual kernel image open: {error}"))?;
         checkpoint(deadline)?;
-        let data = BootstrapImageData::observe(
-            &file.metadata().map_err(|error| error.to_string())?,
-        )?;
+        let data =
+            BootstrapImageData::observe(&file.metadata().map_err(|error| error.to_string())?)?;
         let held = Self { file, data, owner };
         held.recheck(deadline)?;
         Ok(held)
@@ -1721,9 +1879,8 @@ impl BootstrapHeldImage {
         if !same_process(&actual, &self.owner) || matches!(actual.state(), 'Z' | 'X' | 'x') {
             return Err("native bootstrap executable owner changed".into());
         }
-        let held = BootstrapImageData::observe(
-            &self.file.metadata().map_err(|error| error.to_string())?,
-        )?;
+        let held =
+            BootstrapImageData::observe(&self.file.metadata().map_err(|error| error.to_string())?)?;
         if held != self.data || BootstrapImageData::kernel(deadline)? != self.data {
             return Err("native bootstrap held/kernel image identity changed".into());
         }
@@ -1734,7 +1891,9 @@ impl BootstrapHeldImage {
         self.recheck(deadline)?;
         use std::os::fd::AsRawFd;
         Ok(PathBuf::from(format!(
-            "/proc/{}/fd/{}", self.owner.pid(), self.file.as_raw_fd(),
+            "/proc/{}/fd/{}",
+            self.owner.pid(),
+            self.file.as_raw_fd(),
         )))
     }
 }
@@ -1757,7 +1916,9 @@ struct ControllerStartup {
 
 fn controller_nonce(nonce: &str) -> bool {
     nonce.len() == 32
-        && nonce.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        && nonce
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn controller_role(nonce: &str) -> String {
@@ -1787,9 +1948,17 @@ impl BootstrapResources {
         if build.contains("+process:") || build.len() > 4096 || build.contains('\0') {
             return Err("native bootstrap requires actual stable compiled build identity".into());
         }
-        let seed = format!("native-controller:{}:{}:{entered:?}", image.owner.pid(), image.owner.start());
+        let seed = format!(
+            "native-controller:{}:{}:{entered:?}",
+            image.owner.pid(),
+            image.owner.start()
+        );
         let hash = format!("{:x}", Sha256::digest(seed.as_bytes()));
-        Ok(Self { image, nonce: hash[..32].into(), build })
+        Ok(Self {
+            image,
+            nonce: hash[..32].into(),
+            build,
+        })
     }
 
     fn header(&self, deadline: Instant) -> Result<Vec<u8>, String> {
@@ -1806,18 +1975,29 @@ impl BootstrapResources {
 
 fn authenticate_controller_startup(
     entered: Instant,
-) -> Result<(ControllerStartup, ObservedProcessIdentity, Instant, ObservedSelfImage), String> {
+) -> Result<
+    (
+        ControllerStartup,
+        ObservedProcessIdentity,
+        Instant,
+        ObservedSelfImage,
+    ),
+    String,
+> {
     let scalars = actual_entry_scalars(NativeTestEntry::Controller)?;
     let address_space = decimal(&scalars[0])?;
     let file_size = decimal(&scalars[1])?;
     let remaining = decimal(&scalars[2])?;
     let cap = decimal(&scalars[3])?;
-    if address_space != AS_BYTES || file_size != FS_BYTES || cap != HEADER_CAP as u64
+    if address_space != AS_BYTES
+        || file_size != FS_BYTES
+        || cap != HEADER_CAP as u64
         || remaining > CONTROLLER_CEILING.as_millis() as u64
     {
         return Err("native controller actual scalar profile differs".into());
     }
-    let deadline = entered.checked_add(Duration::from_millis(remaining))
+    let deadline = entered
+        .checked_add(Duration::from_millis(remaining))
         .ok_or("native controller original scalar deadline overflow")?;
     adapter_native(deadline)?;
     let process = adapter_self(deadline)?;
@@ -1828,13 +2008,14 @@ fn authenticate_controller_startup(
     checkpoint(deadline)?;
     // Exactly the existing UTF-8/cap/error/EOF primitive. No alternate reader
     // or worker header decoder can grant this private controller entry.
-    let bytes = crate::bounded_input::read_reader_to_string_with_limit(
-        std::io::stdin().lock(), cap,
-    ).map_err(|error| format!("native controller startup read: {error}"))?;
+    let bytes =
+        crate::bounded_input::read_reader_to_string_with_limit(std::io::stdin().lock(), cap)
+            .map_err(|error| format!("native controller startup read: {error}"))?;
     checkpoint(deadline)?;
     let startup: ControllerStartup = serde_json::from_str(&bytes)
         .map_err(|error| format!("native controller closed startup: {error}"))?;
-    if startup.schema_version != CONTROLLER_SCHEMA || !controller_nonce(&startup.nonce)
+    if startup.schema_version != CONTROLLER_SCHEMA
+        || !controller_nonce(&startup.nonce)
         || startup.parent != ProcessData::observed(&parent)
         || startup.build_identity != crate::build_identity::cache_identity()
         || startup.build_identity.contains("+process:")
@@ -1882,8 +2063,13 @@ struct NativeController {
 impl NativeController {
     fn new(prepared: PreparedNative, slots: NativePhaseSlots) -> Self {
         Self {
-            prepared, slots, closed: [false; 3], failures: [None, None, None],
-            first_error: None, accepted: None, closeout_unwind: None,
+            prepared,
+            slots,
+            closed: [false; 3],
+            failures: [None, None, None],
+            first_error: None,
+            accepted: None,
+            closeout_unwind: None,
         }
     }
 
@@ -1894,7 +2080,11 @@ impl NativeController {
     }
 
     fn run_admitted(&mut self) {
-        for phase in [NativePhase::Discard, NativePhase::Unwind, NativePhase::Analyze] {
+        for phase in [
+            NativePhase::Discard,
+            NativePhase::Unwind,
+            NativePhase::Analyze,
+        ] {
             let index = phase.index();
             let outcome = run_native_phase(&mut self.prepared, self.slots.phase(phase));
             match outcome {
@@ -1907,7 +2097,8 @@ impl NativeController {
                 }
                 NativePhaseOutcome::PhysicallyClosedFailure(failure) => {
                     self.closed[index] = true;
-                    if phase == NativePhase::Analyze || failure.secondary().is_some()
+                    if phase == NativePhase::Analyze
+                        || failure.secondary().is_some()
                         || failure.discriminator().is_none()
                     {
                         self.refuse(failure.message());
@@ -1919,7 +2110,9 @@ impl NativeController {
                     self.refuse(&message);
                 }
             }
-            if self.first_error.is_some() { break; }
+            if self.first_error.is_some() {
+                break;
+            }
         }
         if self.first_error.is_none() && self.accepted.is_none() {
             self.refuse("native controller genuine accepted analysis is absent");
@@ -2003,7 +2196,9 @@ impl NativeController {
             return Some(payload);
         }
         for slot in &mut self.slots.slots {
-            if let Some(payload) = slot.unexpected_unwind.take() { return Some(payload); }
+            if let Some(payload) = slot.unexpected_unwind.take() {
+                return Some(payload);
+            }
         }
         None
     }
@@ -2034,25 +2229,34 @@ fn native_controller_worker() -> Result<(), String> {
             }
         }
     }
-    if let Some(error) = controller.first_error.as_ref() { return Err(error.clone()); }
-    let accepted = controller.accepted.take()
+    if let Some(error) = controller.first_error.as_ref() {
+        return Err(error.clone());
+    }
+    let accepted = controller
+        .accepted
+        .take()
         .ok_or("native controller genuine completed analysis missing")?;
-    if accepted.receipt().settled_status().is_none_or(|status| !status.success())
+    if accepted
+        .receipt()
+        .settled_status()
+        .is_none_or(|status| !status.success())
         || accepted.witness().worker != ProcessData::observed(&accepted.receipt().observed_worker())
         || !same_process(&accepted.receipt().observed_parent(), &process)
     {
         return Err("native controller actual accepted worker lineage differs".into());
     }
-    let NativeAccepted { receipt, mut witness } = *accepted;
+    let NativeAccepted {
+        receipt,
+        mut witness,
+    } = *accepted;
     checkpoint(deadline)?;
     authenticated_image.recheck()?;
     controller.prepared.resources.verify(false)?;
     adapter_native(deadline)?;
     if BootstrapImageData::kernel(deadline)? != startup.image
         || !same_process(&ObservedProcessIdentity::read(process.pid())?, &process)
-        || startup.parent != ProcessData::observed(
-            &ObservedProcessIdentity::read(process.parent())?,
-        )
+        || startup.parent
+            != ProcessData::observed(&ObservedProcessIdentity::read(process.parent())?)
     {
         return Err("native controller final image/parent/process changed".into());
     }
@@ -2077,9 +2281,8 @@ fn finish_controller_transport(
     unwind: &mut Option<Box<dyn std::any::Any + Send>>,
 ) {
     loop {
-        let step = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            owner.step_to_terminal()
-        }));
+        let step =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| owner.step_to_terminal()));
         match step {
             Ok(PhysicalStep::Closed | PhysicalStep::NoProcess) => return,
             Ok(PhysicalStep::Pending) => {}
@@ -2089,9 +2292,12 @@ fn finish_controller_transport(
                 }
             }
             Err(payload) => {
-                if unwind.is_none() { *unwind = Some(payload); }
+                if unwind.is_none() {
+                    *unwind = Some(payload);
+                }
                 if first_error.is_none() {
-                    *first_error = Some("native bootstrap unwind requires controller closeout".into());
+                    *first_error =
+                        Some("native bootstrap unwind requires controller closeout".into());
                 }
             }
         }
@@ -2108,11 +2314,14 @@ fn finish_controller_transport(
 fn native_bootstrap_complete_owner_and_failure_recovery() -> Result<(), String> {
     supported()?;
     let started = Instant::now();
-    let u = started.checked_add(CONTROLLER_CEILING)
+    let u = started
+        .checked_add(CONTROLLER_CEILING)
         .ok_or("native bootstrap original enclosing clock overflow")?;
-    let t = u.checked_sub(Duration::from_secs(1))
+    let t = u
+        .checked_sub(Duration::from_secs(1))
         .ok_or("native bootstrap original capture clock underflow")?;
-    let e = t.checked_sub(Duration::from_secs(7))
+    let e = t
+        .checked_sub(Duration::from_secs(7))
         .ok_or("native bootstrap original execution clock underflow")?;
     let policy = capture_complete_rust_policy()?;
     let profile = profile_for_request(PROFILE_NAME, &policy)?;
@@ -2138,54 +2347,100 @@ fn native_bootstrap_complete_owner_and_failure_recovery() -> Result<(), String> 
         e.checked_duration_since(Instant::now())
             .ok_or("native bootstrap original execution window expired")?
             .as_millis(),
-    ).map_err(|error| format!("native bootstrap original scalar conversion: {error}"))?;
+    )
+    .map_err(|error| format!("native bootstrap original scalar conversion: {error}"))?;
     if millis == 0 || millis > CONTROLLER_CEILING.as_millis() as u64 {
         return Err("native bootstrap original scalar window is invalid".into());
     }
     let args = vec![
         format!("--as={AS_BYTES}:{AS_BYTES}"),
         format!("--fsize={FS_BYTES}:{FS_BYTES}"),
-        "--core=0:0".into(), "--".into(), adapter_path(&identifier)?.into(),
-        "--ignored".into(), "--exact".into(), CONTROLLER_TEST_NAME.into(),
-        "--nocapture".into(), "--test-threads=1".into(),
-        AS_BYTES.to_string(), FS_BYTES.to_string(), millis.to_string(), HEADER_CAP.to_string(),
+        "--core=0:0".into(),
+        "--".into(),
+        adapter_path(&identifier)?.into(),
+        "--ignored".into(),
+        "--exact".into(),
+        CONTROLLER_TEST_NAME.into(),
+        "--nocapture".into(),
+        "--test-threads=1".into(),
+        AS_BYTES.to_string(),
+        FS_BYTES.to_string(),
+        millis.to_string(),
+        HEADER_CAP.to_string(),
     ];
     let source = std::env::current_dir()
         .map_err(|error| format!("native bootstrap actual invocation directory: {error}"))?;
-    let budget = CompleteCaptureBudget::new(
-        CONTROLLER_CEILING, header.len(), HEADER_CAP, HEADER_CAP,
-    );
+    let budget =
+        CompleteCaptureBudget::new(CONTROLLER_CEILING, header.len(), HEADER_CAP, HEADER_CAP);
     // Admission allocates no child. The actual owner exists before launch and
     // remains outside both fallible work and every caught ordinary unwind.
     let mut owner = CompleteControllerTransport::admit(
         (Path::new("/usr/bin/prlimit"), &args),
-        (&source, Some(&header)), &[], budget, (started, e, t, u), Arc::clone(&resources),
+        (&source, Some(&header)),
+        &[],
+        budget,
+        (started, e, t, u),
+        Arc::clone(&resources),
     )?;
     let mut first_error = None;
     let mut unwind = None;
-    let launch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        owner.launch()
-    }));
+    let launch = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| owner.launch()));
     match launch {
         Ok(Ok(())) => {}
         Ok(Err(error)) => first_error = Some(bounded_controller_diagnostic(&error)),
         Err(payload) => unwind = Some(payload),
     }
     finish_controller_transport(&mut owner, &mut first_error, &mut unwind);
-    if let Some(payload) = unwind { std::panic::resume_unwind(payload); }
+    if let Some(payload) = unwind {
+        std::panic::resume_unwind(payload);
+    }
     let terminal = owner.take_terminal()?;
-    if let Some(error) = first_error { return Err(error); }
+    if let Some(error) = first_error {
+        return Err(error);
+    }
     let output = match terminal {
         CompleteControllerTerminal::Accepted(output) => output,
         CompleteControllerTerminal::Failed(failure) => {
             if !failure.matches_lease(&resources) {
                 return Err("native bootstrap failed terminal lease differs".into());
             }
-            return Err(format!("native bootstrap closed controller failed: {}", failure.message()));
+            use std::fmt::Write as _;
+            // Closed diagnostic data only: raw slices are bounded before ASCII
+            // escaping (at most four bytes per byte). Payload <=3712 bytes;
+            // fixed status/field metadata fits the remaining 384 of the
+            // existing 4096-byte diagnostic reservation. No startup input or
+            // environment is read, and these bytes grant no receipt authority.
+            let mut diagnostic = String::with_capacity(CONTROLLER_DIAGNOSTIC_CAP);
+            let _ = write!(
+                diagnostic,
+                "native bootstrap closed controller failed; observed_status={:?}",
+                failure.observed_status()
+            );
+            for (label, bytes, raw_cap) in [
+                ("message", failure.message().as_bytes(), 96),
+                ("stderr", failure.stderr(), 736),
+                ("stdout", failure.stdout(), 96),
+            ] {
+                let shown = bytes.len().min(raw_cap);
+                let _ = write!(
+                    diagnostic,
+                    "\n{label}[bytes={},shown={shown},truncated={}]: ",
+                    bytes.len(),
+                    shown < bytes.len()
+                );
+                for byte in &bytes[..shown] {
+                    for escaped in byte.escape_ascii() {
+                        diagnostic.push(char::from(escaped));
+                    }
+                }
+            }
+            return Err(diagnostic);
         }
     };
     let (status, stdout, stderr, _duration, timed_out, receipt) = output.into_parts();
-    if !status.success() || timed_out || receipt.settled_status() != Some(status)
+    if !status.success()
+        || timed_out
+        || receipt.settled_status() != Some(status)
         || !receipt.matches_lease(&resources)
     {
         return Err("native bootstrap controller lacks actual timely combined receipt".into());

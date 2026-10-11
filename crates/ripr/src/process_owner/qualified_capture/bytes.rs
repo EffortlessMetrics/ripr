@@ -647,24 +647,35 @@ impl<L: Any + Send + Sync> CompleteEnclosingCustodian<L> {
             return super::PhysicalStep::Retained("physical enclosing owner is absent".to_string());
         };
         if matches!(inner.outcome, TerminalAttempt::Unattempted) && !inner.attempted
-            || matches!(inner.outcome, TerminalAttempt::NoSpawn | TerminalAttempt::NoChild | TerminalAttempt::AcceptedClosed)
+            || matches!(
+                inner.outcome,
+                TerminalAttempt::NoSpawn
+                    | TerminalAttempt::NoChild
+                    | TerminalAttempt::AcceptedClosed
+            )
         {
             return super::PhysicalStep::NoProcess;
         }
         let Some(failure) = inner.failure.as_mut() else {
-            return super::PhysicalStep::Retained("claimed physical capture has no confirmed result; custody retained".to_string());
+            return super::PhysicalStep::Retained(
+                "claimed physical capture has no confirmed result; custody retained".to_string(),
+            );
         };
         if inner.held_deadline != self.original_deadline
             || !failure.matches_lease(&inner.lease)
             || failure.custody.len() != 1
         {
-            return super::PhysicalStep::Retained("physical original custody binding changed".to_string());
+            return super::PhysicalStep::Retained(
+                "physical original custody binding changed".to_string(),
+            );
         }
         let custody = &mut failure.custody[0];
         let step = match (&mut custody.setup, &mut custody.group) {
             (Some(setup), None) => setup.continue_enclosing_physical(&mut self.progress),
             (None, Some(group)) => group.continue_enclosing_physical(&mut self.progress),
-            _ => super::PhysicalStep::Retained("physical original process owner is absent".to_string()),
+            _ => super::PhysicalStep::Retained(
+                "physical original process owner is absent".to_string(),
+            ),
         };
         if let super::PhysicalStep::Retained(error) = &step
             && self.disposal_error.is_none()
@@ -918,7 +929,8 @@ impl<L: Any + Send + Sync> CompleteControllerTransport<L> {
         clocks: (Instant, Instant, Instant, Instant),
         lease: Arc<L>,
     ) -> Result<Self, String> {
-        linux::ControllerTransport::admit(command, source, env_remove, budget, clocks, lease).map(Self)
+        linux::ControllerTransport::admit(command, source, env_remove, budget, clocks, lease)
+            .map(Self)
     }
 
     pub(crate) fn launch(&mut self) -> Result<(), String> {
@@ -955,10 +967,18 @@ pub(crate) struct CompleteControllerFailure {
 
 #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
 impl CompleteControllerFailure {
-    pub(crate) fn message(&self) -> &str { &self.message }
-    pub(crate) fn observed_status(&self) -> Option<ExitStatus> { self.status }
-    pub(crate) fn stdout(&self) -> &[u8] { &self.stdout }
-    pub(crate) fn stderr(&self) -> &[u8] { &self.stderr }
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+    pub(crate) fn observed_status(&self) -> Option<ExitStatus> {
+        self.status
+    }
+    pub(crate) fn stdout(&self) -> &[u8] {
+        &self.stdout
+    }
+    pub(crate) fn stderr(&self) -> &[u8] {
+        &self.stderr
+    }
     pub(crate) fn matches_lease<L: Any + Send + Sync>(&self, lease: &Arc<L>) -> bool {
         let erased: Arc<dyn Any + Send + Sync> = lease.clone();
         Arc::ptr_eq(&self.lease, &erased)
@@ -1023,8 +1043,11 @@ impl CompleteByteCapture {
                 custodian.outcome = if !error.spawn_attempted {
                     TerminalAttempt::NoSpawn
                 } else if error.custody.first().is_some_and(|custody| {
-                    custody.group.is_none() && custody.setup.as_ref()
-                        .is_some_and(super::GroupSetupFailure::failed_before_child_creation)
+                    custody.group.is_none()
+                        && custody
+                            .setup
+                            .as_ref()
+                            .is_some_and(super::GroupSetupFailure::failed_before_child_creation)
                 }) {
                     TerminalAttempt::NoChild
                 } else {
@@ -1094,8 +1117,11 @@ impl CompleteByteCapture {
                 custodian.outcome = if !error.spawn_attempted {
                     TerminalAttempt::NoSpawn
                 } else if error.custody.first().is_some_and(|custody| {
-                    custody.group.is_none() && custody.setup.as_ref()
-                        .is_some_and(super::GroupSetupFailure::failed_before_child_creation)
+                    custody.group.is_none()
+                        && custody
+                            .setup
+                            .as_ref()
+                            .is_some_and(super::GroupSetupFailure::failed_before_child_creation)
                 }) {
                     TerminalAttempt::NoChild
                 } else {
@@ -1676,44 +1702,80 @@ mod linux {
                 || reserved.is_none_or(|end| end > held_deadline)
                 || held_deadline >= enclosing_deadline
             {
-                return Err("controller original windows lack admitted execution and closeout reserve".to_string());
+                return Err(
+                    "controller original windows lack admitted execution and closeout reserve"
+                        .to_string(),
+                );
             }
             for limit in [budget.stdin_bytes, budget.stdout_bytes, budget.stderr_bytes] {
                 if limit > MAX_STREAM_BYTES {
-                    return Err("controller stream exceeds existing complete capture ceiling".to_string());
+                    return Err(
+                        "controller stream exceeds existing complete capture ceiling".to_string(),
+                    );
                 }
             }
-            let relative_deadline = started.checked_add(budget.timeout)
+            let relative_deadline = started
+                .checked_add(budget.timeout)
                 .ok_or("controller relative execution deadline overflow")?;
             let execution_deadline = execution_deadline.min(relative_deadline).min(held_deadline);
             strict_time(Some(execution_deadline))?;
-            let input = source.1.map(|bytes| {
-                if bytes.len() > budget.stdin_bytes {
-                    return Err("controller stdin exceeds its admitted byte budget".to_string());
-                }
-                let mut copy = Vec::new();
-                copy.try_reserve_exact(bytes.len()).map_err(|error| format!("reserve controller stdin: {error}"))?;
-                strict_time(Some(execution_deadline))?;
-                copy.extend_from_slice(bytes);
-                strict_time(Some(execution_deadline))?;
-                Ok(copy)
-            }).transpose()?;
-            let (transport, stdout, stderr, stdin) = prepare_transport(input, &budget, Some(execution_deadline))?;
-            let command = prepare_capture_command(command, source.0, env_remove, (stdout, stderr, stdin), Some(execution_deadline))?;
+            let input = source
+                .1
+                .map(|bytes| {
+                    if bytes.len() > budget.stdin_bytes {
+                        return Err("controller stdin exceeds its admitted byte budget".to_string());
+                    }
+                    let mut copy = Vec::new();
+                    copy.try_reserve_exact(bytes.len())
+                        .map_err(|error| format!("reserve controller stdin: {error}"))?;
+                    strict_time(Some(execution_deadline))?;
+                    copy.extend_from_slice(bytes);
+                    strict_time(Some(execution_deadline))?;
+                    Ok(copy)
+                })
+                .transpose()?;
+            let (transport, stdout, stderr, stdin) =
+                prepare_transport(input, &budget, Some(execution_deadline))?;
+            let command = prepare_capture_command(
+                command,
+                source.0,
+                env_remove,
+                (stdout, stderr, stdin),
+                Some(execution_deadline),
+            )?;
             strict_time(Some(execution_deadline))?;
             Ok(Self {
-                command: Some(command), transport: Some(transport), owner: None,
-                setup: None, progress: super::super::EnclosingDispositionProgress::new(), lease,
-                started, execution_deadline, held_deadline, enclosing_deadline,
-                launched: false, no_spawn: false, closed: false, taken: false,
-                failure: None, status: None, group_settlement: None,
-                stdout: Vec::new(), stderr: Vec::new(),
+                command: Some(command),
+                transport: Some(transport),
+                owner: None,
+                setup: None,
+                progress: super::super::EnclosingDispositionProgress::new(),
+                lease,
+                started,
+                execution_deadline,
+                held_deadline,
+                enclosing_deadline,
+                launched: false,
+                no_spawn: false,
+                closed: false,
+                taken: false,
+                failure: None,
+                status: None,
+                group_settlement: None,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
             })
         }
 
         fn record_failure(&mut self, error: String) {
-            if self.failure.is_none() { self.failure = Some(error); }
-            if let Some(input) = self.transport.as_mut().and_then(|transport| transport.input.as_mut()) {
+            if self.failure.is_none() {
+                self.failure = Some(error);
+            }
+            if let Some(input) = self
+                .transport
+                .as_mut()
+                .and_then(|transport| transport.input.as_mut())
+            {
                 drop(input.stream.take());
             }
         }
@@ -1745,7 +1807,10 @@ mod linux {
                     return Err(message);
                 }
             }
-            let admission = self.owner.as_mut().ok_or("controller actual owner was not stored")?
+            let admission = self
+                .owner
+                .as_mut()
+                .ok_or("controller actual owner was not stored")?
                 .admit_enclosing_scope(self.enclosing_deadline);
             if let Err(error) = admission {
                 self.record_failure(error.clone());
@@ -1760,15 +1825,25 @@ mod linux {
 
         fn eligibility(&mut self) {
             let now = Instant::now();
-            if now >= self.execution_deadline || now >= self.held_deadline || now >= self.enclosing_deadline {
-                self.record_failure("controller original capture eligibility expired; physical owner retained".to_string());
+            if now >= self.execution_deadline
+                || now >= self.held_deadline
+                || now >= self.enclosing_deadline
+            {
+                self.record_failure(
+                    "controller original capture eligibility expired; physical owner retained"
+                        .to_string(),
+                );
             }
         }
 
         pub(super) fn step_to_terminal(&mut self) -> super::super::PhysicalStep {
-            if self.closed { return super::super::PhysicalStep::Closed; }
+            if self.closed {
+                return super::super::PhysicalStep::Closed;
+            }
             if !self.launched {
-                return super::super::PhysicalStep::Retained("controller transport was not launched".to_string());
+                return super::super::PhysicalStep::Retained(
+                    "controller transport was not launched".to_string(),
+                );
             }
             self.eligibility();
             if let Some(transport) = self.transport.as_mut() {
@@ -1780,8 +1855,12 @@ mod linux {
             }
             self.eligibility();
             let transport_error = self.transport.as_ref().and_then(|transport| {
-                transport.stdout_capture.error.as_ref()
-                    .or(transport.stderr_capture.error.as_ref()).cloned()
+                transport
+                    .stdout_capture
+                    .error
+                    .as_ref()
+                    .or(transport.stderr_capture.error.as_ref())
+                    .cloned()
             });
             if let Some(error) = transport_error {
                 self.record_failure(error);
@@ -1793,10 +1872,14 @@ mod linux {
             } else if let Some(setup) = self.setup.as_mut() {
                 setup.continue_enclosing_physical(&mut self.progress)
             } else {
-                super::super::PhysicalStep::Retained("controller actual custody is absent".to_string())
+                super::super::PhysicalStep::Retained(
+                    "controller actual custody is absent".to_string(),
+                )
             };
             match step {
-                super::super::PhysicalStep::NoProcess => super::super::PhysicalStep::Retained("controller spawned path returned no-process DATA".to_string()),
+                super::super::PhysicalStep::NoProcess => super::super::PhysicalStep::Retained(
+                    "controller spawned path returned no-process DATA".to_string(),
+                ),
                 super::super::PhysicalStep::Pending => super::super::PhysicalStep::Pending,
                 super::super::PhysicalStep::Retained(error) => {
                     self.record_failure(error.clone());
@@ -1828,9 +1911,15 @@ mod linux {
                             && transport.stdout_capture.error.is_none()
                             && transport.stderr_capture.error.is_none()
                             && !transport.late_action
-                            && transport.input.as_ref().is_none_or(|input| input.complete && input.error.is_none());
+                            && transport
+                                .input
+                                .as_ref()
+                                .is_none_or(|input| input.complete && input.error.is_none());
                         if !valid {
-                            self.record_failure("controller transport lacked error-free input and real EOF".to_string());
+                            self.record_failure(
+                                "controller transport lacked error-free input and real EOF"
+                                    .to_string(),
+                            );
                         }
                         self.stdout = transport.stdout_capture.bytes;
                         self.stderr = transport.stderr_capture.bytes;
@@ -1847,34 +1936,61 @@ mod linux {
 
         pub(super) fn take_terminal(&mut self) -> Result<CompleteControllerTerminal, String> {
             if !self.closed || self.taken {
-                return Err("controller terminal extraction requires actual closure and is one-shot".to_string());
+                return Err(
+                    "controller terminal extraction requires actual closure and is one-shot"
+                        .to_string(),
+                );
             }
             self.eligibility();
             self.taken = true;
             let status = self.status;
             let stdout = std::mem::take(&mut self.stdout);
             let stderr = std::mem::take(&mut self.stderr);
-            if self.failure.is_none() && status.is_some_and(|status| status.success())
+            if self.failure.is_none()
+                && status.is_some_and(|status| status.success())
                 && let (Some(status), Some(group)) = (status, self.group_settlement.take())
             {
-                let receipt = CompleteCaptureReceipt { group, lease: self.lease.clone() };
+                let receipt = CompleteCaptureReceipt {
+                    group,
+                    lease: self.lease.clone(),
+                };
                 let captured = CompleteCapturedBytes {
-                    status, stdout, stderr, duration: self.started.elapsed(), timed_out: false, receipt,
+                    status,
+                    stdout,
+                    stderr,
+                    duration: self.started.elapsed(),
+                    timed_out: false,
+                    receipt,
                 };
                 self.eligibility();
                 if self.failure.is_none() {
                     return Ok(CompleteControllerTerminal::Accepted(captured));
                 }
                 let (status, stdout, stderr, _, _, _) = captured.into_parts();
-                return Ok(CompleteControllerTerminal::Failed(CompleteControllerFailure {
-                    message: self.failure.take().ok_or("controller late refusal was not retained")?,
-                    status: Some(status), stdout, stderr, lease: self.lease.clone(),
-                }));
+                return Ok(CompleteControllerTerminal::Failed(
+                    CompleteControllerFailure {
+                        message: self
+                            .failure
+                            .take()
+                            .ok_or("controller late refusal was not retained")?,
+                        status: Some(status),
+                        stdout,
+                        stderr,
+                        lease: self.lease.clone(),
+                    },
+                ));
             }
-            Ok(CompleteControllerTerminal::Failed(CompleteControllerFailure {
-                message: self.failure.take().unwrap_or_else(|| "controller failed without timely capture acceptance".to_string()),
-                status, stdout, stderr, lease: self.lease.clone(),
-            }))
+            Ok(CompleteControllerTerminal::Failed(
+                CompleteControllerFailure {
+                    message: self.failure.take().unwrap_or_else(|| {
+                        "controller failed without timely capture acceptance".to_string()
+                    }),
+                    status,
+                    stdout,
+                    stderr,
+                    lease: self.lease.clone(),
+                },
+            ))
         }
     }
 
@@ -2109,9 +2225,13 @@ mod linux {
             prepare_transport(input, &budget, held_deadline)
                 .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
         let command = prepare_capture_command(
-            (program, args), cwd, env_remove,
-            (stdout_child, stderr_child, stdin_child), held_deadline,
-        ).map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
+            (program, args),
+            cwd,
+            env_remove,
+            (stdout_child, stderr_child, stdin_child),
+            held_deadline,
+        )
+        .map_err(|error| failure_storage.failure(error, None, lease.clone()))?;
         // Preserve existing input/setup refusal precedence before admitting the
         // fixed error/retention storage. Nothing can spawn without this storage.
         failure_storage
@@ -2131,7 +2251,9 @@ mod linux {
             ));
         }
         #[cfg(all(test, feature = "lang-rust"))]
-        { failure_storage.spawn_attempted = true; }
+        {
+            failure_storage.spawn_attempted = true;
+        }
         let mut owner = match held_deadline {
             Some(held) => match QualifiedGroupOwner::spawn_with_deadline(command, held) {
                 Ok(owner) => owner,
@@ -3510,7 +3632,6 @@ mod linux {
                 }
             }
 
-
             fn finish_enclosing_physical(
                 owner: &mut CompleteEnclosingCustodian<Lease>,
             ) -> Result<(), String> {
@@ -3543,56 +3664,90 @@ mod linux {
                     let checks = (|| {
                         let owner = slot.as_mut().ok_or("physical enclosing owner absent")?;
                         let primary = if unwind {
-                            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                let _attempt = owner.with_inner(|inner| {
-                                    crate::process_owner::with_post_spawn_deadline_barrier(|| {
-                                        match capture("exec /usr/bin/sleep 30", None, budget(0, 64), inner) {
-                                            Err(message) => std::panic::resume_unwind(Box::new(message)),
-                                            Ok(_) => Err("expired spawn admitted capture".to_string()),
-                                        }
-                                    })
-                                });
-                            }));
+                            let result =
+                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                    let _attempt = owner.with_inner(|inner| {
+                                        crate::process_owner::with_post_spawn_deadline_barrier(
+                                            || match capture(
+                                                "exec /usr/bin/sleep 30",
+                                                None,
+                                                budget(0, 64),
+                                                inner,
+                                            ) {
+                                                Err(message) => {
+                                                    std::panic::resume_unwind(Box::new(message))
+                                                }
+                                                Ok(_) => Err::<(), String>(
+                                                    "expired spawn admitted capture".to_string(),
+                                                ),
+                                            },
+                                        )
+                                    });
+                                }));
                             match result {
-                                Err(payload) => *payload.downcast::<String>()
-                                    .map_err(|_| "actual report unwind lost its diagnostic".to_string())?,
+                                Err(payload) => *payload.downcast::<String>().map_err(|_| {
+                                    "actual report unwind lost its diagnostic".to_string()
+                                })?,
                                 Ok(()) => return Err("actual report did not unwind".to_string()),
                             }
                         } else {
                             expire_inner(owner, "exec /usr/bin/sleep 30")?
                         };
                         let before = owner.observed_retained_worker()?;
-                        std::thread::sleep(outer.saturating_duration_since(Instant::now()) + Duration::from_millis(20));
+                        std::thread::sleep(
+                            outer.saturating_duration_since(Instant::now())
+                                + Duration::from_millis(20),
+                        );
                         require_enclosing_binding(owner, &lease, held, outer)?;
                         if !primary.contains("spawn crossed its held deadline")
                             || dropped.load(Ordering::SeqCst)
                         {
-                            return Err("physical report boundary changed the real failure".to_string());
+                            return Err(
+                                "physical report boundary changed the real failure".to_string()
+                            );
                         }
                         finish_enclosing_physical(owner)?;
                         if owner.progress.observed_worker().is_none_or(|actual| {
-                            actual.pid() != before.pid() || actual.start() != before.start()
-                                || actual.parent() != before.parent() || actual.group() != before.group()
-                        }) || owner.inner().and_then(CompleteTerminalCustodian::failure)
-                            .is_none_or(|failure| failure.state().is_some_and(|state| state.receipt.is_some()))
+                            actual.pid() != before.pid()
+                                || actual.start() != before.start()
+                                || actual.parent() != before.parent()
+                                || actual.group() != before.group()
+                        }) || owner
+                            .inner()
+                            .and_then(CompleteTerminalCustodian::failure)
+                            .is_none_or(|failure| {
+                                failure.state().is_some_and(|state| state.receipt.is_some())
+                            })
                         {
-                            return Err("physical completion changed identity or made a receipt".to_string());
+                            return Err("physical completion changed identity or made a receipt"
+                                .to_string());
                         }
-                        let mut closed = CompleteEnclosingCustodian::take_physically_closed(&mut slot)
-                            .map_err(str::to_string)?;
+                        let mut closed =
+                            CompleteEnclosingCustodian::take_physically_closed(&mut slot)
+                                .map_err(str::to_string)?;
                         if !closed.enclosing().matches_lease(&lease)
                             || closed.enclosing().original_deadline() != held
                             || closed.enclosing().enclosing_deadline() != outer
                             || closed.message() != primary
                         {
-                            return Err("physical extraction replaced original resources".to_string());
+                            return Err(
+                                "physical extraction replaced original resources".to_string()
+                            );
                         }
-                        let child = retained_child(closed.enclosing.inner.as_mut()
-                            .ok_or("physical closed inner absent")?)?;
+                        let child = retained_child(
+                            closed
+                                .enclosing
+                                .inner
+                                .as_mut()
+                                .ok_or("physical closed inner absent")?,
+                        )?;
                         if child.bounded_drop_until != Some(held)
                             || child.enclosing_observed_reap.is_none()
                         {
-                            return Err("physical native observation changed original drop ceiling".to_string());
+                            return Err(
+                                "physical native observation changed original drop ceiling"
+                                    .to_string(),
+                            );
                         }
                         drop(closed);
                         Ok(())
@@ -3609,18 +3764,25 @@ mod linux {
             }
 
             #[test]
-            fn physical_unattempted_prelaunch_refusal_is_only_no_process_data()
-            -> Result<(), String> {
+            fn physical_unattempted_prelaunch_refusal_is_only_no_process_data() -> Result<(), String>
+            {
                 let held = Instant::now() + Duration::from_secs(2);
                 let outer = held + Duration::from_secs(1);
                 let (lease, _) = lease()?;
                 let mut owner = enclosing(held, outer, lease.clone())?;
-                let rejected: Result<(), String> = owner.with_inner(|_inner| {
-                    Err("prelaunch binding refused before capture".to_string())
-                }).map_err(str::to_string)?;
+                let rejected: Result<(), String> = owner
+                    .with_inner(
+                        |_inner| Err("prelaunch binding refused before capture".to_string()),
+                    )
+                    .map_err(str::to_string)?;
                 if rejected.is_ok()
-                    || !matches!(owner.continue_physical_closeout(), crate::process_owner::PhysicalStep::NoProcess)
-                    || owner.inner().is_none_or(|inner| inner.attempted || inner.failure().is_some())
+                    || !matches!(
+                        owner.continue_physical_closeout(),
+                        crate::process_owner::PhysicalStep::NoProcess
+                    )
+                    || owner
+                        .inner()
+                        .is_none_or(|inner| inner.attempted || inner.failure().is_some())
                     || !owner.matches_lease(&lease)
                 {
                     return Err("prelaunch refusal fabricated attempted closure".to_string());
@@ -3635,23 +3797,37 @@ mod linux {
             }
 
             #[test]
-            fn physical_invalid_cap_records_actual_no_spawn_without_receipt()
-            -> Result<(), String> {
+            fn physical_invalid_cap_records_actual_no_spawn_without_receipt() -> Result<(), String>
+            {
                 let held = Instant::now() + Duration::from_secs(2);
                 let outer = held + Duration::from_secs(1);
                 let (lease, _) = lease()?;
                 let mut owner = enclosing(held, outer, lease.clone())?;
-                let result = owner.with_inner(|inner| capture(
-                    "exec /usr/bin/sleep 30", None,
-                    CompleteCaptureBudget::new(Duration::from_secs(1), 0, MAX_STREAM_BYTES + 1, 64),
-                    inner,
-                )).map_err(str::to_string)?;
+                let result = owner
+                    .with_inner(|inner| {
+                        capture(
+                            "exec /usr/bin/sleep 30",
+                            None,
+                            CompleteCaptureBudget::new(
+                                Duration::from_secs(1),
+                                0,
+                                MAX_STREAM_BYTES + 1,
+                                64,
+                            ),
+                            inner,
+                        )
+                    })
+                    .map_err(str::to_string)?;
                 if result.is_ok()
-                    || !matches!(owner.continue_physical_closeout(), crate::process_owner::PhysicalStep::NoProcess)
+                    || !matches!(
+                        owner.continue_physical_closeout(),
+                        crate::process_owner::PhysicalStep::NoProcess
+                    )
                     || owner.inner().is_none_or(|inner| {
                         !matches!(inner.outcome, TerminalAttempt::NoSpawn)
                             || inner.failure().is_none_or(|error| {
-                                error.spawn_attempted || !error.matches_lease(&lease)
+                                error.spawn_attempted
+                                    || !error.matches_lease(&lease)
                                     || error.state().is_some_and(|state| state.receipt.is_some())
                             })
                     })
@@ -3662,59 +3838,85 @@ mod linux {
             }
 
             #[test]
-            fn physical_native_spawn_error_records_actual_no_child_data()
-            -> Result<(), String> {
+            fn physical_native_spawn_error_records_actual_no_child_data() -> Result<(), String> {
                 let held = Instant::now() + Duration::from_secs(2);
                 let outer = held + Duration::from_secs(1);
                 let (lease, _) = lease()?;
                 let mut owner = enclosing(held, outer, lease.clone())?;
-                let result = owner.with_inner(|inner| {
-                    CompleteByteCapture::capture_with_terminal_custody(
-                        (Path::new("/ripr-missing-physical-executable"), &[]),
-                        (Path::new("/"), None), &[], (budget(0, 64), "no-child control"), inner,
-                    ).map_err(report_to_string)
-                }).map_err(str::to_string)?;
+                let result = owner
+                    .with_inner(|inner| {
+                        CompleteByteCapture::capture_with_terminal_custody(
+                            (Path::new("/ripr-missing-physical-executable"), &[]),
+                            (Path::new("/"), None),
+                            &[],
+                            (budget(0, 64), "no-child control"),
+                            inner,
+                        )
+                        .map_err(report_to_string)
+                    })
+                    .map_err(str::to_string)?;
                 if result.is_ok()
-                    || !matches!(owner.continue_physical_closeout(), crate::process_owner::PhysicalStep::NoProcess)
+                    || !matches!(
+                        owner.continue_physical_closeout(),
+                        crate::process_owner::PhysicalStep::NoProcess
+                    )
                     || owner.inner().is_none_or(|inner| {
                         !matches!(inner.outcome, TerminalAttempt::NoChild)
                             || inner.failure().is_none_or(|error| {
-                                !error.spawn_attempted || error.custody.first().is_none_or(|custody| {
-                                    custody.group.is_some() || custody.setup.as_ref()
-                                        .is_none_or(|setup| !setup.failed_before_child_creation())
-                                })
+                                !error.spawn_attempted
+                                    || error.custody.first().is_none_or(|custody| {
+                                        custody.group.is_some()
+                                            || custody.setup.as_ref().is_none_or(|setup| {
+                                                !setup.failed_before_child_creation()
+                                            })
+                                    })
                             })
                     })
                 {
-                    return Err("native spawn error did not retain typed no-child provenance".to_string());
+                    return Err(
+                        "native spawn error did not retain typed no-child provenance".to_string(),
+                    );
                 }
                 Ok(())
             }
 
             #[test]
-            fn physical_accepted_capture_is_no_process_data_with_real_receipt()
-            -> Result<(), String> {
+            fn physical_accepted_capture_is_no_process_data_with_real_receipt() -> Result<(), String>
+            {
                 let held = Instant::now() + Duration::from_secs(3);
                 let outer = held + Duration::from_secs(1);
                 let (lease, _) = lease()?;
                 let mut owner = enclosing(held, outer, lease.clone())?;
                 let checks = (|| {
-                    let captured = owner.with_inner(|inner| {
-                        capture("printf actual", None, budget(0, 64), inner)
-                    }).map_err(str::to_string)??;
+                    let captured = owner
+                        .with_inner(|inner| capture("printf actual", None, budget(0, 64), inner))
+                        .map_err(str::to_string)??;
                     let (status, stdout, stderr, _, timed_out, receipt) = captured.into_parts();
-                    if !status.success() || stdout != b"actual" || !stderr.is_empty() || timed_out
+                    if !status.success()
+                        || stdout != b"actual"
+                        || !stderr.is_empty()
+                        || timed_out
                         || !receipt.matches_lease(&lease)
-                        || !matches!(owner.continue_physical_closeout(), crate::process_owner::PhysicalStep::NoProcess)
+                        || !matches!(
+                            owner.continue_physical_closeout(),
+                            crate::process_owner::PhysicalStep::NoProcess
+                        )
                         || owner.inner().is_none_or(|inner| {
-                            !matches!(inner.outcome, TerminalAttempt::AcceptedClosed) || inner.failure().is_some()
+                            !matches!(inner.outcome, TerminalAttempt::AcceptedClosed)
+                                || inner.failure().is_some()
                         })
                     {
-                        return Err("accepted result lost real receipt or became physical authority".to_string());
+                        return Err(
+                            "accepted result lost real receipt or became physical authority"
+                                .to_string(),
+                        );
                     }
                     Ok(())
                 })();
-                let inner = owner.inner.as_mut().ok_or("actual accepted-control owner absent")?;
+                let inner = owner
+                    .inner
+                    .as_mut()
+                    .ok_or("actual accepted-control owner absent")?;
                 fixture_closeout(inner, checks)
             }
 
@@ -3725,17 +3927,27 @@ mod linux {
                 let outer = held + Duration::from_secs(1);
                 let (lease, _) = lease()?;
                 let mut owner = enclosing(held, outer, lease.clone())?;
-                HOOKS.with(|hooks| hooks.borrow_mut().unwind_capture_claim =
-                    Some(Box::new("actual claimed interruption".to_string())));
+                HOOKS.with(|hooks| {
+                    hooks.borrow_mut().unwind_capture_claim =
+                        Some(Box::new("actual claimed interruption".to_string()))
+                });
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let _attempt = owner.with_inner(|inner| capture("printf unused", None, budget(0, 64), inner));
+                    let _attempt = owner
+                        .with_inner(|inner| capture("printf unused", None, budget(0, 64), inner));
                 }));
-                if result.is_ok() || !owner.matches_lease(&lease)
+                if result.is_ok()
+                    || !owner.matches_lease(&lease)
                     || owner.inner().is_none_or(|inner| {
                         !inner.attempted || !matches!(inner.outcome, TerminalAttempt::Claimed)
-                    }) || !matches!(owner.continue_physical_closeout(), crate::process_owner::PhysicalStep::Retained(_))
+                    })
+                    || !matches!(
+                        owner.continue_physical_closeout(),
+                        crate::process_owner::PhysicalStep::Retained(_)
+                    )
                 {
-                    return Err("claimed unwind was reclassified as untouched no-process DATA".to_string());
+                    return Err(
+                        "claimed unwind was reclassified as untouched no-process DATA".to_string(),
+                    );
                 }
                 Ok(())
             }
@@ -3760,7 +3972,9 @@ mod linux {
                         crate::process_owner::PhysicalStep::Pending => {}
                     }
                     if Instant::now() >= fixture_limit {
-                        return Err("controller fixture did not reach actual terminal state".to_string());
+                        return Err(
+                            "controller fixture did not reach actual terminal state".to_string()
+                        );
                     }
                     std::thread::sleep(Duration::from_millis(5));
                 }
@@ -3786,7 +4000,9 @@ mod linux {
                     Ok(())
                 })();
                 match (checks, cleanup) {
-                    (Err(primary), Err(cleanup)) => Err(format!("{primary}; fixture disposal: {cleanup}")),
+                    (Err(primary), Err(cleanup)) => {
+                        Err(format!("{primary}; fixture disposal: {cleanup}"))
+                    }
                     (Err(primary), Ok(())) => Err(primary),
                     (Ok(()), _) => Ok(()),
                 }
@@ -3804,9 +4020,17 @@ mod linux {
                 let held = execution + Duration::from_secs(7);
                 let outer = held + Duration::from_secs(1);
                 crate::process_owner::CompleteControllerTransport::admit(
-                    (Path::new("/bin/sh"), &shell(script)), (Path::new("/"), input), &[],
-                    CompleteCaptureBudget::new(execution_window, input.map_or(0, <[u8]>::len), output_limit, output_limit),
-                    (started, execution, held, outer), lease,
+                    (Path::new("/bin/sh"), &shell(script)),
+                    (Path::new("/"), input),
+                    &[],
+                    CompleteCaptureBudget::new(
+                        execution_window,
+                        input.map_or(0, <[u8]>::len),
+                        output_limit,
+                        output_limit,
+                    ),
+                    (started, execution, held, outer),
+                    lease,
                 )
             }
 
@@ -3816,23 +4040,37 @@ mod linux {
                 let lease = Arc::new(());
                 let input = b"input\0\xff";
                 let mut transport = controller(
-                    "cat; printf 'stderr\\000\\376' >&2", Some(input), 64,
-                    Duration::from_secs(2), lease.clone(),
+                    "cat; printf 'stderr\\000\\376' >&2",
+                    Some(input),
+                    64,
+                    Duration::from_secs(2),
+                    lease.clone(),
                 )?;
                 let checks = (|| {
                     transport.launch()?;
                     finish_controller(&mut transport)?;
                     match transport.take_terminal()? {
                         crate::process_owner::CompleteControllerTerminal::Accepted(captured) => {
-                            let (status, stdout, stderr, _, timed_out, receipt) = captured.into_parts();
-                            if !status.success() || timed_out || stdout != input || stderr != b"stderr\0\xfe"
-                                || !receipt.matches_lease(&lease) || !transport.matches_lease(&lease)
+                            let (status, stdout, stderr, _, timed_out, receipt) =
+                                captured.into_parts();
+                            if !status.success()
+                                || timed_out
+                                || stdout != input
+                                || stderr != b"stderr\0\xfe"
+                                || !receipt.matches_lease(&lease)
+                                || !transport.matches_lease(&lease)
                             {
-                                return Err("controller timely receipt or binary transport changed".to_string());
+                                return Err(
+                                    "controller timely receipt or binary transport changed"
+                                        .to_string(),
+                                );
                             }
                         }
                         crate::process_owner::CompleteControllerTerminal::Failed(error) => {
-                            return Err(format!("timely controller refused: {}", controller_failure_message(&error)));
+                            return Err(format!(
+                                "timely controller refused: {}",
+                                controller_failure_message(&error)
+                            ));
                         }
                     }
                     if transport.take_terminal().is_ok() {
@@ -3849,7 +4087,11 @@ mod linux {
                 let lease = Arc::new(());
                 HOOKS.with(|hooks| hooks.borrow_mut().hold_writer = Some("stdout"));
                 let mut transport = match controller(
-                    "printf drained", None, 64, Duration::from_secs(4), lease.clone(),
+                    "printf drained",
+                    None,
+                    64,
+                    Duration::from_secs(4),
+                    lease.clone(),
                 ) {
                     Ok(transport) => transport,
                     Err(error) => {
@@ -3867,28 +4109,48 @@ mod linux {
                     loop {
                         match transport.step_to_terminal() {
                             crate::process_owner::PhysicalStep::Pending => {}
-                            crate::process_owner::PhysicalStep::Retained(error) => return Err(error),
-                            _ => return Err("actual held writer did not keep drain pending".to_string()),
+                            crate::process_owner::PhysicalStep::Retained(error) => {
+                                return Err(error);
+                            }
+                            _ => {
+                                return Err(
+                                    "actual held writer did not keep drain pending".to_string()
+                                );
+                            }
                         }
                         if transport.0.group_settlement.is_some() {
                             break;
                         }
                         if Instant::now() >= fixture_limit {
-                            return Err("actual group did not settle before the live drain control".to_string());
+                            return Err(
+                                "actual group did not settle before the live drain control"
+                                    .to_string(),
+                            );
                         }
                         thread::sleep(Duration::from_millis(5));
                     }
-                    let initial = transport.0.group_settlement.as_ref()
-                        .ok_or("actual first group settlement absent")?.observed_worker();
-                    if !matches!(transport.step_to_terminal(), crate::process_owner::PhysicalStep::Pending)
-                        || !transport.matches_lease(&lease)
+                    let initial = transport
+                        .0
+                        .group_settlement
+                        .as_ref()
+                        .ok_or("actual first group settlement absent")?
+                        .observed_worker();
+                    if !matches!(
+                        transport.step_to_terminal(),
+                        crate::process_owner::PhysicalStep::Pending
+                    ) || !transport.matches_lease(&lease)
                         || transport.0.group_settlement.as_ref().is_none_or(|receipt| {
                             let observed = receipt.observed_worker();
-                            observed.pid() != initial.pid() || observed.start() != initial.start()
-                                || observed.group() != initial.group() || observed.parent() != initial.parent()
+                            observed.pid() != initial.pid()
+                                || observed.start() != initial.start()
+                                || observed.group() != initial.group()
+                                || observed.parent() != initial.parent()
                         })
                     {
-                        return Err("partial drain reentry discarded or replaced real settlement".to_string());
+                        return Err(
+                            "partial drain reentry discarded or replaced real settlement"
+                                .to_string(),
+                        );
                     }
                     HOOKS.with(|hooks| {
                         drop(hooks.borrow_mut().held_writer.take());
@@ -3896,18 +4158,29 @@ mod linux {
                     finish_controller(&mut transport)?;
                     match transport.take_terminal()? {
                         crate::process_owner::CompleteControllerTerminal::Accepted(captured) => {
-                            let (status, stdout, stderr, _, timed_out, receipt) = captured.into_parts();
+                            let (status, stdout, stderr, _, timed_out, receipt) =
+                                captured.into_parts();
                             let observed = receipt.observed_worker();
-                            if !status.success() || stdout != b"drained" || !stderr.is_empty() || timed_out
-                                || observed.pid() != initial.pid() || observed.start() != initial.start()
-                                || observed.group() != initial.group() || observed.parent() != initial.parent()
+                            if !status.success()
+                                || stdout != b"drained"
+                                || !stderr.is_empty()
+                                || timed_out
+                                || observed.pid() != initial.pid()
+                                || observed.start() != initial.start()
+                                || observed.group() != initial.group()
+                                || observed.parent() != initial.parent()
                                 || !receipt.matches_lease(&lease)
                             {
-                                return Err("actual EOF did not preserve original captured settlement".to_string());
+                                return Err(
+                                    "actual EOF did not preserve original captured settlement"
+                                        .to_string(),
+                                );
                             }
                             Ok(())
                         }
-                        crate::process_owner::CompleteControllerTerminal::Failed(error) => Err(controller_failure_message(&error)),
+                        crate::process_owner::CompleteControllerTerminal::Failed(error) => {
+                            Err(controller_failure_message(&error))
+                        }
                     }
                 })();
                 HOOKS.with(|hooks| {
@@ -3919,12 +4192,14 @@ mod linux {
             }
 
             #[test]
-            fn controller_overflow_drains_without_more_retained_growth()
-            -> Result<(), String> {
+            fn controller_overflow_drains_without_more_retained_growth() -> Result<(), String> {
                 let lease = Arc::new(());
                 let mut transport = controller(
-                    "head -c 1048576 /dev/zero; printf done >&2", None, 32,
-                    Duration::from_secs(2), lease.clone(),
+                    "head -c 1048576 /dev/zero; printf done >&2",
+                    None,
+                    32,
+                    Duration::from_secs(2),
+                    lease.clone(),
                 )?;
                 let checks = (|| {
                     transport.launch()?;
@@ -3932,11 +4207,15 @@ mod linux {
                     match transport.take_terminal()? {
                         crate::process_owner::CompleteControllerTerminal::Failed(error) => {
                             if !error.message().contains("budget")
-                                || error.stdout().len() != 33 || error.stderr() != b"done"
-                                || !error.observed_status().is_some_and(|status| status.success())
+                                || error.stdout().len() != 33
+                                || error.stderr() != b"done"
+                                || !error
+                                    .observed_status()
+                                    .is_some_and(|status| status.success())
                                 || !error.matches_lease(&lease)
                             {
-                                return Err("controller overflow lost bounded drain observations".to_string());
+                                return Err("controller overflow lost bounded drain observations"
+                                    .to_string());
                             }
                         }
                         crate::process_owner::CompleteControllerTerminal::Accepted(_) => {
@@ -3953,68 +4232,118 @@ mod linux {
             -> Result<(), String> {
                 let lease = Arc::new(());
                 let mut transport = controller(
-                    "exec /usr/bin/sleep 0.75", None, 64,
-                    Duration::from_millis(75), lease.clone(),
+                    "exec /usr/bin/sleep 0.75",
+                    None,
+                    64,
+                    Duration::from_millis(75),
+                    lease.clone(),
                 )?;
                 let checks = (|| {
                     transport.launch()?;
-                    let before = transport.0.owner.as_ref()
-                        .ok_or("actual controller owner missing")?.initial_enclosing_worker_for_test()?;
+                    let before = transport
+                        .0
+                        .owner
+                        .as_ref()
+                        .ok_or("actual controller owner missing")?
+                        .initial_enclosing_worker_for_test()?;
                     std::thread::sleep(Duration::from_millis(100));
-                    if !matches!(transport.step_to_terminal(), crate::process_owner::PhysicalStep::Pending)
-                        || transport.0.owner.as_ref().and_then(QualifiedGroupOwner::physical_status).is_some()
+                    if !matches!(
+                        transport.step_to_terminal(),
+                        crate::process_owner::PhysicalStep::Pending
+                    ) || transport
+                        .0
+                        .owner
+                        .as_ref()
+                        .and_then(QualifiedGroupOwner::physical_status)
+                        .is_some()
                     {
-                        return Err("expired execution reaped or terminated the live controller".to_string());
+                        return Err("expired execution reaped or terminated the live controller"
+                            .to_string());
                     }
-                    let after = super::super::super::super::ObservedProcessIdentity::read(before.pid())?;
-                    if after.start() != before.start() || after.group() != before.group()
+                    let after =
+                        super::super::super::super::ObservedProcessIdentity::read(before.pid())?;
+                    if after.start() != before.start()
+                        || after.group() != before.group()
                         || after.parent() != before.parent()
                     {
-                        return Err("late controller observation changed native identity".to_string());
+                        return Err(
+                            "late controller observation changed native identity".to_string()
+                        );
                     }
                     finish_controller(&mut transport)?;
                     match transport.take_terminal()? {
                         crate::process_owner::CompleteControllerTerminal::Failed(error)
-                            if error.observed_status().is_some_and(|status| status.success())
-                                && error.matches_lease(&lease) => Ok(()),
-                        _ => Err("late natural controller exit gained acceptance or lost status".to_string()),
+                            if error
+                                .observed_status()
+                                .is_some_and(|status| status.success())
+                                && error.matches_lease(&lease) =>
+                        {
+                            Ok(())
+                        }
+                        _ => Err(
+                            "late natural controller exit gained acceptance or lost status"
+                                .to_string(),
+                        ),
                     }
                 })();
                 controller_fixture_checks(&mut transport, checks)
             }
 
             #[test]
-            fn controller_caught_unwind_keeps_external_live_owner_serviceable()
-            -> Result<(), String> {
+            fn controller_caught_unwind_keeps_external_live_owner_serviceable() -> Result<(), String>
+            {
                 let lease = Arc::new(());
                 let mut transport = controller(
-                    "printf prior; exec /usr/bin/sleep 0.5", None, 64,
-                    Duration::from_secs(2), lease.clone(),
+                    "printf prior; exec /usr/bin/sleep 0.5",
+                    None,
+                    64,
+                    Duration::from_secs(2),
+                    lease.clone(),
                 )?;
                 let checks = (|| {
                     transport.launch()?;
-                    let before = transport.0.owner.as_ref()
-                        .ok_or("actual external controller owner missing")?.initial_enclosing_worker_for_test()?;
-                    let interrupted = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        let _step = transport.step_to_terminal();
-                        std::panic::resume_unwind(Box::new("bootstrap operation interrupted".to_string()));
-                    }));
-                    if interrupted.is_ok() || !transport.matches_lease(&lease)
-                        || transport.0.owner.as_mut()
+                    let before = transport
+                        .0
+                        .owner
+                        .as_ref()
+                        .ok_or("actual external controller owner missing")?
+                        .initial_enclosing_worker_for_test()?;
+                    let interrupted =
+                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let _step = transport.step_to_terminal();
+                            std::panic::resume_unwind(Box::new(
+                                "bootstrap operation interrupted".to_string(),
+                            ));
+                        }));
+                    if interrupted.is_ok()
+                        || !transport.matches_lease(&lease)
+                        || transport
+                            .0
+                            .owner
+                            .as_mut()
                             .is_none_or(|owner| owner.fixture_child().id() != before.pid())
                     {
-                        return Err("bootstrap unwind lost the actual external controller".to_string());
+                        return Err(
+                            "bootstrap unwind lost the actual external controller".to_string()
+                        );
                     }
                     finish_controller(&mut transport)?;
                     match transport.take_terminal()? {
                         crate::process_owner::CompleteControllerTerminal::Accepted(captured) => {
                             let (status, stdout, _, _, _, receipt) = captured.into_parts();
-                            if !status.success() || stdout != b"prior" || !receipt.matches_lease(&lease) {
-                                return Err("external unwind recovery changed actual capture".to_string());
+                            if !status.success()
+                                || stdout != b"prior"
+                                || !receipt.matches_lease(&lease)
+                            {
+                                return Err(
+                                    "external unwind recovery changed actual capture".to_string()
+                                );
                             }
                             Ok(())
                         }
-                        crate::process_owner::CompleteControllerTerminal::Failed(error) => Err(error.message().to_string()),
+                        crate::process_owner::CompleteControllerTerminal::Failed(error) => {
+                            Err(error.message().to_string())
+                        }
                     }
                 })();
                 controller_fixture_checks(&mut transport, checks)
