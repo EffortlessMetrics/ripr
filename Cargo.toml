@@ -177,3 +177,9 @@ debug = "line-tables-only"
 # native qualification uses this committed stripping contract.
 [profile.test.package.ripr]
 strip = "debuginfo"
+
+# Native test image authentication rehashes every byte under original clocks.
+# Optimize the existing SHA256 implementation while retaining inherited test
+# assertions, overflow checks and unwind semantics.
+[profile.test.package.sha2]
+opt-level = 3
