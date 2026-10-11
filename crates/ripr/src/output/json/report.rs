@@ -754,11 +754,11 @@ fn finding_json_with_config_and_counts(
     // One bounded projection feeds `assertion_texts` and both observed-value
     // arrays, so the map never names a line the arrays dropped.
     let rendered_values = rendered_observed_values(finding);
-    assertion_texts_json(out, &rendered_values, indent + 1);
-    out.push_str(",\n");
-    activation_json(out, finding, &rendered_values, indent + 1);
-    out.push_str(",\n");
     let shared_text = shared_assertion_text_map(&rendered_values);
+    assertion_texts_json(out, &shared_text, indent + 1);
+    out.push_str(",\n");
+    activation_json(out, finding, &rendered_values, &shared_text, indent + 1);
+    out.push_str(",\n");
     value_facts_array_json(
         out,
         "observed_values",
@@ -1097,28 +1097,25 @@ fn strongest_related_test(finding: &Finding) -> Option<&RelatedTest> {
 
 /// The observed values the check JSON renders for a finding: every value up
 /// to `MAX_OBSERVED_VALUES_PER_FINDING`, otherwise the bounded projection.
-fn rendered_observed_values(finding: &Finding) -> Vec<ValueFact> {
+fn rendered_observed_values(finding: &Finding) -> Vec<&ValueFact> {
     crate::output::observed_values::bounded_observed_values(&finding.activation.observed_values)
-        .into_iter()
-        .cloned()
-        .collect()
 }
 
 fn activation_json(
     out: &mut String,
     finding: &Finding,
-    rendered_values: &[ValueFact],
+    rendered_values: &[&ValueFact],
+    shared_text: &BTreeMap<usize, &str>,
     indent: usize,
 ) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}\"activation\": {{\n"));
-    let shared_text = shared_assertion_text_map(rendered_values);
     value_facts_array_json(
         out,
         "observed_values",
         rendered_values,
         indent + 1,
-        &shared_text,
+        shared_text,
     );
     out.push_str(",\n");
     missing_discriminators_array_json(
@@ -1147,9 +1144,9 @@ fn flow_sinks_json(out: &mut String, finding: &Finding, indent: usize) {
 fn value_facts_array_json(
     out: &mut String,
     name: &str,
-    facts: &[ValueFact],
+    facts: &[&ValueFact],
     indent: usize,
-    shared_text: &BTreeMap<usize, String>,
+    shared_text: &BTreeMap<usize, &str>,
 ) {
     out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
     for (idx, value) in facts.iter().enumerate() {
@@ -1183,7 +1180,7 @@ fn value_fact_json(
     out: &mut String,
     fact: &ValueFact,
     indent: usize,
-    shared_text: &BTreeMap<usize, String>,
+    shared_text: &BTreeMap<usize, &str>,
 ) {
     let sp = "  ".repeat(indent);
     out.push_str(&format!("{sp}{{\n"));
@@ -1221,15 +1218,13 @@ fn value_fact_json(
 /// assertions in different source files share the same line number within one
 /// finding, only one text is retained.  This is a low-probability edge case; a
 /// future schema could use `"file:line"` composite keys.
-fn assertion_texts_json(out: &mut String, facts: &[ValueFact], indent: usize) {
-    let map = shared_assertion_text_map(facts);
+fn assertion_texts_json(out: &mut String, map: &BTreeMap<usize, &str>, indent: usize) {
     let sp = "  ".repeat(indent);
     let isp = "  ".repeat(indent + 1);
     // BTreeMap gives deterministic (ascending) key order.
     out.push_str(&format!("{sp}\"assertion_texts\": {{\n"));
-    let entries: Vec<_> = map.into_iter().collect();
-    for (idx, (line, text)) in entries.iter().enumerate() {
-        let trailing = if idx + 1 != entries.len() { "," } else { "" };
+    for (idx, (line, text)) in map.iter().enumerate() {
+        let trailing = if idx + 1 != map.len() { "," } else { "" };
         out.push_str(&format!(
             "{isp}\"{line}\": \"{}\"{trailing}\n",
             escape(text)
@@ -1242,10 +1237,10 @@ fn assertion_texts_json(out: &mut String, facts: &[ValueFact], indent: usize) {
 /// per-value `provenance` field uses the same map to decide whether a
 /// fact's text is the shared assertion source or a distinct
 /// provenance-bearing string.
-fn shared_assertion_text_map(facts: &[ValueFact]) -> BTreeMap<usize, String> {
-    let mut map: BTreeMap<usize, String> = BTreeMap::new();
+fn shared_assertion_text_map<'a>(facts: &[&'a ValueFact]) -> BTreeMap<usize, &'a str> {
+    let mut map = BTreeMap::new();
     for fact in facts {
-        map.entry(fact.line).or_insert_with(|| fact.text.clone());
+        map.entry(fact.line).or_insert(fact.text.as_str());
     }
     map
 }
@@ -1644,9 +1639,10 @@ mod provenance_tests {
     }
 
     fn render(facts: &[ValueFact]) -> Vec<serde_json::Value> {
-        let shared = shared_assertion_text_map(facts);
+        let facts: Vec<_> = facts.iter().collect();
+        let shared = shared_assertion_text_map(&facts);
         let mut out = String::new();
-        value_facts_array_json(&mut out, "observed_values", facts, 0, &shared);
+        value_facts_array_json(&mut out, "observed_values", &facts, 0, &shared);
         serde_json::from_str::<serde_json::Value>(&format!("{{{out}}}"))
             .map_err(|error| error.to_string())
             .and_then(|value| {
@@ -1678,6 +1674,7 @@ mod provenance_tests {
         ];
         let parsed = render(&facts);
         if parsed.len() != 2 {
+            let facts: Vec<_> = facts.iter().collect();
             let shared = shared_assertion_text_map(&facts);
             let mut raw = String::new();
             value_facts_array_json(&mut raw, "observed_values", &facts, 0, &shared);
@@ -1926,5 +1923,433 @@ mod evidence_path_separator_tests {
             return Err(format!("posix path must stay slash-separated: {posix}"));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod borrowed_preview_tests {
+    use super::*;
+    use crate::app::Mode;
+    use crate::domain::{
+        ActivationEvidence, Confidence, DeltaKind, ExposureClass, Probe, ProbeFamily, ProbeId,
+        RevealEvidence, RiprEvidence, SourceLocation, StageState, Summary, ValueContext,
+    };
+    use std::borrow::Borrow;
+
+    fn fixture_finding() -> Finding {
+        Finding {
+            id: "probe:src_lib_rs:1:static_unknown".to_string(),
+            canonical_gap: None,
+            probe: Probe {
+                id: ProbeId("probe:src_lib_rs:1:static_unknown".to_string()),
+                location: SourceLocation::new("src/lib.rs", 1, 1),
+                owner: None,
+                family: ProbeFamily::StaticUnknown,
+                delta: DeltaKind::Unknown,
+                before: None,
+                after: None,
+                expression: "unknown syntax".to_string(),
+                expected_sinks: vec![],
+                required_oracles: vec![],
+            },
+            class: ExposureClass::StaticUnknown,
+            ripr: RiprEvidence {
+                reach: stage("No stable syntax owner"),
+                infect: stage("Changed syntax is not mapped to a probe"),
+                propagate: stage("No propagation model is available"),
+                reveal: RevealEvidence {
+                    observe: stage("No observation model is available"),
+                    discriminate: stage("No discriminator model is available"),
+                },
+            },
+            confidence: 0.2,
+            evidence: vec![],
+            missing: vec![],
+            flow_sinks: vec![],
+            activation: ActivationEvidence::default(),
+            stop_reasons: vec![],
+            related_tests_matched_total: None,
+            related_tests: vec![],
+            recommended_next_step: Some("Escalate to real mutation testing.".to_string()),
+            language: None,
+            language_status: None,
+            owner_kind: None,
+            static_limit_kind: None,
+            changed_sink: None,
+            observed_sink: None,
+            oracle_alignment: None,
+            alignment_reason: None,
+            source_currentness: crate::domain::SourceCurrentness::CandidateCurrent,
+        }
+    }
+
+    fn stage(summary: &str) -> StageEvidence {
+        StageEvidence::new(StageState::Unknown, Confidence::Low, summary)
+    }
+
+    fn single_finding_output(finding: Finding) -> CheckOutput {
+        CheckOutput {
+            harness_projections: Vec::new(),
+            schema_version: "0.2".to_string(),
+            tool: "ripr".to_string(),
+            mode: Mode::Draft,
+            root: std::path::PathBuf::from("."),
+            base: None,
+            summary: Summary::default(),
+            findings: vec![finding],
+            preview_language_advisories: Vec::new(),
+            language_runs: Vec::new(),
+            no_scope_provided: false,
+            unanalyzed_working_tree: false,
+            untracked_working_tree_source_paths: Vec::new(),
+            unlinked_python_tests: None,
+            suppression: None,
+            analysis_outcome: None,
+            partial_scope: None,
+        }
+    }
+
+    fn fixture(count: usize) -> CheckOutput {
+        let mut finding = fixture_finding();
+        let contexts = [
+            ValueContext::Unknown,
+            ValueContext::AssertionArgument,
+            ValueContext::ReturnValue,
+            ValueContext::EnumVariant,
+            ValueContext::BuilderMethod,
+            ValueContext::TableRow,
+            ValueContext::FunctionArgument,
+        ];
+        finding.activation.observed_values = (0..count)
+            .map(|ordinal| ValueFact {
+                line: [100, 9, 10][ordinal % 3],
+                text: format!("source {ordinal}: 雪\n\t\"\\"),
+                value: format!("value {ordinal}"),
+                context: contexts[ordinal % contexts.len()].clone(),
+            })
+            .collect();
+        single_finding_output(finding)
+    }
+
+    #[test]
+    fn selected_preview_facts_borrow_actual_input() -> Result<(), String> {
+        for count in [1, 31, 32, 33, 257] {
+            let output = fixture(count);
+            let finding = &output.findings[0];
+            let selected = rendered_observed_values(finding);
+            let original = crate::output::observed_values::bounded_observed_values(
+                &finding.activation.observed_values,
+            );
+            assert_eq!(selected.len(), original.len());
+            for (retained, original) in selected.iter().zip(original) {
+                // Normalize the supplied owned/borrowed item, never replace it.
+                let retained: &ValueFact = retained.borrow();
+                assert!(
+                    std::ptr::eq(retained, original),
+                    "selected preview copied the original fact at count {count}"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn shared_preview_text_borrows_first_selected_input() -> Result<(), String> {
+        let output = fixture(257);
+        let finding = &output.findings[0];
+        let selected = rendered_observed_values(finding);
+        let shared = shared_assertion_text_map(&selected);
+        let original = crate::output::observed_values::bounded_observed_values(
+            &finding.activation.observed_values,
+        );
+        for (line, retained) in &shared {
+            let first = original
+                .iter()
+                .find(|fact| fact.line == *line)
+                .ok_or("missing selected original line")?;
+            let retained: &str = retained.as_ref();
+            assert!(!first.text.is_empty());
+            assert_eq!(retained.len(), first.text.len());
+            assert_eq!(
+                retained.as_ptr(),
+                first.text.as_ptr(),
+                "shared preview copied first selected text at line {line}"
+            );
+        }
+        Ok(())
+    }
+    // Retained allocating serializer from baseline blob
+    // f52f9ea23943ad897f2e76018068e71d36ec8400 follows below. It never calls
+    // the borrowed projection/map, so exact byte equality has a separate oracle.
+    fn legacy_preview_block(finding: &Finding) -> String {
+        let mut out = String::new();
+        let selected = legacy_rendered_observed_values(finding);
+        legacy_assertion_texts_json(&mut out, &selected, 3);
+        out.push_str(",\n");
+        legacy_activation_json(&mut out, finding, &selected, 3);
+        out.push_str(",\n");
+        let shared = legacy_shared_assertion_text_map(&selected);
+        legacy_value_facts_array_json(&mut out, "observed_values", &selected, 3, &shared);
+        out
+    }
+
+    fn assert_actual_render_matches_legacy(output: &CheckOutput) -> Result<Value, String> {
+        let finding = &output.findings[0];
+        let before = finding.activation.observed_values.clone();
+        let original_storage = finding.activation.observed_values.as_ptr();
+        let expected = legacy_preview_block(finding);
+        let expected_fields: Value =
+            serde_json::from_str(&format!("{{{expected}}}")).map_err(|error| error.to_string())?;
+        let mut result = Value::Null;
+        for budget in [
+            None,
+            Some((DEFAULT_CHECK_FINDINGS_BYTES, FindingsBudgetSource::Default)),
+            Some((1, FindingsBudgetSource::Configured)),
+        ] {
+            let rendered = render_with_config(output, &RiprConfig::default(), budget);
+            assert_eq!(
+                rendered.matches(&expected).count(),
+                1,
+                "actual render changed the retained allocating serializer bytes"
+            );
+            let parsed: Value =
+                serde_json::from_str(&rendered).map_err(|error| error.to_string())?;
+            let actual = &parsed["findings"][0];
+            for key in ["assertion_texts", "activation", "observed_values"] {
+                assert_eq!(actual[key], expected_fields[key], "changed field {key}");
+            }
+            let facts = &finding.activation.observed_values;
+            assert_eq!(
+                actual["observed_values"].as_array().map(Vec::len),
+                Some(facts.len().min(32))
+            );
+            if facts.len() > 32 {
+                assert_eq!(
+                    actual["observed_values_total"].as_u64(),
+                    Some(facts.len() as u64)
+                );
+            } else {
+                assert!(actual.get("observed_values_total").is_none());
+            }
+            assert_eq!(
+                finding.activation.observed_values, before,
+                "actual supplied CheckOutput vector changed"
+            );
+            assert_eq!(
+                finding.activation.observed_values.as_ptr(),
+                original_storage
+            );
+            result = parsed;
+        }
+        Ok(result)
+    }
+
+    #[test]
+    fn actual_render_preserves_allocating_bytes_caps_contexts_and_unicode() -> Result<(), String> {
+        for count in [0, 1, 7, 31, 32, 33, 257, 5000] {
+            assert_actual_render_matches_legacy(&fixture(count))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn first_selected_text_ignores_an_earlier_fact_dropped_by_rank() -> Result<(), String> {
+        let mut output = fixture(33);
+        let facts = &mut output.findings[0].activation.observed_values;
+        facts[0].line = 9;
+        facts[0].text = "earlier dropped source".to_string();
+        facts[0].context = ValueContext::Unknown;
+        for (ordinal, fact) in facts.iter_mut().enumerate().skip(1) {
+            fact.line = 9;
+            fact.context = ValueContext::FunctionArgument;
+            fact.text = format!("selected source {ordinal}");
+        }
+        let selected = rendered_observed_values(&output.findings[0]);
+        assert_eq!(selected.len(), 32);
+        assert!(std::ptr::eq(
+            selected[0],
+            &output.findings[0].activation.observed_values[1]
+        ));
+        let shared = shared_assertion_text_map(&selected);
+        assert_eq!(shared.get(&9), Some(&"selected source 1"));
+        let parsed = assert_actual_render_matches_legacy(&output)?;
+        assert_eq!(
+            parsed["findings"][0]["assertion_texts"]["9"],
+            "selected source 1"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn provenance_uses_content_even_when_equal_text_has_distinct_storage() -> Result<(), String> {
+        let mut output = fixture(3);
+        let facts = &mut output.findings[0].activation.observed_values;
+        for fact in facts.iter_mut() {
+            fact.line = 9;
+            fact.text = "equal source 雪\n\t\"\\".to_string();
+        }
+        assert_ne!(facts[0].text.as_ptr(), facts[1].text.as_ptr());
+        facts[2].text.push_str(" | computed value");
+        let parsed = assert_actual_render_matches_legacy(&output)?;
+        let finding = &parsed["findings"][0];
+        for values in [
+            &finding["observed_values"],
+            &finding["activation"]["observed_values"],
+        ] {
+            assert!(values[0].get("provenance").is_none());
+            assert!(values[1].get("provenance").is_none());
+            assert_eq!(
+                values[2]["provenance"],
+                output.findings[0].activation.observed_values[2].text
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn assertion_map_keeps_numeric_line_order_and_first_text() -> Result<(), String> {
+        let output = fixture(7);
+        assert_actual_render_matches_legacy(&output)?;
+        let rendered = render_with_config(&output, &RiprConfig::default(), None);
+        let map = rendered
+            .split("\"assertion_texts\": {")
+            .nth(1)
+            .ok_or("missing assertion map")?
+            .split("      }")
+            .next()
+            .ok_or("missing map terminator")?;
+        let nine = map.find("\"9\":").ok_or("missing line 9")?;
+        let ten = map.find("\"10\":").ok_or("missing line 10")?;
+        let hundred = map.find("\"100\":").ok_or("missing line 100")?;
+        assert!(nine < ten && ten < hundred);
+        Ok(())
+    }
+
+    #[test]
+    fn tied_contexts_keep_earliest_ordinals_in_actual_arrays() -> Result<(), String> {
+        let mut output = fixture(65);
+        for fact in &mut output.findings[0].activation.observed_values {
+            fact.context = ValueContext::FunctionArgument;
+        }
+        let parsed = assert_actual_render_matches_legacy(&output)?;
+        for values in [
+            &parsed["findings"][0]["observed_values"],
+            &parsed["findings"][0]["activation"]["observed_values"],
+        ] {
+            let values = values.as_array().ok_or("missing actual array")?;
+            assert_eq!(values.len(), 32);
+            for (ordinal, value) in values.iter().enumerate() {
+                assert_eq!(value["value"], format!("value {ordinal}"));
+            }
+        }
+        Ok(())
+    }
+
+    fn legacy_rendered_observed_values(finding: &Finding) -> Vec<ValueFact> {
+        crate::output::observed_values::bounded_observed_values(&finding.activation.observed_values)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    fn legacy_activation_json(
+        out: &mut String,
+        finding: &Finding,
+        rendered_values: &[ValueFact],
+        indent: usize,
+    ) {
+        let sp = "  ".repeat(indent);
+        out.push_str(&format!("{sp}\"activation\": {{\n"));
+        let shared_text = legacy_shared_assertion_text_map(rendered_values);
+        legacy_value_facts_array_json(
+            out,
+            "observed_values",
+            rendered_values,
+            indent + 1,
+            &shared_text,
+        );
+        out.push_str(",\n");
+        missing_discriminators_array_json(
+            out,
+            "missing_discriminators",
+            &finding.activation.missing_discriminators,
+            indent + 1,
+        );
+        out.push('\n');
+        out.push_str(&format!("{sp}}}"));
+    }
+
+    fn legacy_value_facts_array_json(
+        out: &mut String,
+        name: &str,
+        facts: &[ValueFact],
+        indent: usize,
+        shared_text: &BTreeMap<usize, String>,
+    ) {
+        out.push_str(&format!("{}\"{name}\": [\n", "  ".repeat(indent)));
+        for (idx, value) in facts.iter().enumerate() {
+            legacy_value_fact_json(out, value, indent + 1, shared_text);
+            if idx + 1 != facts.len() {
+                out.push(',');
+            }
+            out.push('\n');
+        }
+        out.push_str(&format!("{}]", "  ".repeat(indent)));
+    }
+
+    fn legacy_value_fact_json(
+        out: &mut String,
+        fact: &ValueFact,
+        indent: usize,
+        shared_text: &BTreeMap<usize, String>,
+    ) {
+        let sp = "  ".repeat(indent);
+        out.push_str(&format!("{sp}{{\n"));
+        number_field(out, indent + 1, "line", fact.line, true);
+        field(out, indent + 1, "value", &fact.value, true);
+        // Additive (#3295 deferred follow-up): when this fact's retained
+        // text is NOT the shared assertion source for its line, it carries
+        // computed-value provenance (operation chain, source inputs, chain
+        // depth) that the line-keyed `assertion_texts` map cannot express.
+        // Surface it per-value; plain assertion-source facts stay deduped.
+        let provenance_differs = shared_text
+            .get(&fact.line)
+            .is_none_or(|shared| *shared != fact.text);
+        field(
+            out,
+            indent + 1,
+            "context",
+            fact.context.as_str(),
+            provenance_differs,
+        );
+        if provenance_differs {
+            field(out, indent + 1, "provenance", &fact.text, false);
+        }
+        out.push_str(&format!("{sp}}}"));
+    }
+
+    fn legacy_assertion_texts_json(out: &mut String, facts: &[ValueFact], indent: usize) {
+        let map = legacy_shared_assertion_text_map(facts);
+        let sp = "  ".repeat(indent);
+        let isp = "  ".repeat(indent + 1);
+        // BTreeMap gives deterministic (ascending) key order.
+        out.push_str(&format!("{sp}\"assertion_texts\": {{\n"));
+        let entries: Vec<_> = map.into_iter().collect();
+        for (idx, (line, text)) in entries.iter().enumerate() {
+            let trailing = if idx + 1 != entries.len() { "," } else { "" };
+            out.push_str(&format!(
+                "{isp}\"{line}\": \"{}\"{trailing}\n",
+                escape(text)
+            ));
+        }
+        out.push_str(&format!("{sp}}}"));
+    }
+
+    fn legacy_shared_assertion_text_map(facts: &[ValueFact]) -> BTreeMap<usize, String> {
+        let mut map: BTreeMap<usize, String> = BTreeMap::new();
+        for fact in facts {
+            map.entry(fact.line).or_insert_with(|| fact.text.clone());
+        }
+        map
     }
 }
