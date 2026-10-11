@@ -2,11 +2,14 @@ use super::progress::{
     AnalysisProgressScope, AnalysisProgressSink, AnalysisProgressStage, ProgressRun,
 };
 use super::{CheckInput, CheckOutput, OutputFormat};
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use crate::analysis::{
     AnalysisResult, run_analysis_with_oracle_policy_and_rust_config,
     run_repo_analysis_with_oracle_policy_and_rust_config,
     run_worktree_analysis_with_oracle_policy_and_rust_config,
 };
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::RiprConfig;
 use crate::core_error::CoreError;
 use crate::domain::LanguageId;
@@ -43,6 +46,25 @@ pub fn check_workspace_with_config(
     config: &RiprConfig,
 ) -> Result<CheckOutput, String> {
     check_with_progress(input, config, AnalysisProgressScope::Diff, None)
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn check_workspace_with_verified_whole(
+    input: CheckInput,
+    config: &RiprConfig,
+    whole: &VerifiedWholeInput,
+) -> Result<CheckOutput, String> {
+    Ok(
+        check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
+            input,
+            config,
+            AnalysisProgressScope::Diff,
+            None,
+            &Default::default(),
+            Some(whole),
+        )?
+        .0,
+    )
 }
 
 pub fn check_workspace_worktree_with_config(
@@ -172,11 +194,39 @@ fn check_with_progress_and_origins(
 }
 
 fn check_with_progress_and_origins_with_open_rust_paths(
+    input: CheckInput,
+    config: &RiprConfig,
+    scope: AnalysisProgressScope,
+    sink: Option<&dyn AnalysisProgressSink>,
+    open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+) -> Result<
+    (
+        CheckOutput,
+        crate::analysis::diagnostic_origin::RustDiagnosticOrigins,
+        crate::analysis::consumed_source::ConsumedRustSources,
+    ),
+    CoreError,
+> {
+    check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
+        input,
+        config,
+        scope,
+        sink,
+        open_rust_index_paths,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        None,
+    )
+}
+
+fn check_with_progress_and_origins_with_open_rust_paths_and_verified_whole(
     mut input: CheckInput,
     config: &RiprConfig,
     scope: AnalysisProgressScope,
     sink: Option<&dyn AnalysisProgressSink>,
     open_rust_index_paths: &std::collections::BTreeSet<PathBuf>,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+        &VerifiedWholeInput,
+    >,
 ) -> Result<
     (
         CheckOutput,
@@ -192,6 +242,29 @@ fn check_with_progress_and_origins_with_open_rust_paths(
     // acquisition, so a subject input can never fall through to worktree
     // analysis or an empty diff.
     super::analysis_subject::validate_input_subject(&input).map_err(|error| error.to_string())?;
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        if !matches!(scope, AnalysisProgressScope::Diff) {
+            return Err("verified whole input requires the diff checker".into());
+        }
+        whole.validate_check(&input, config)?;
+    }
+    if let Some(authority) = frozen::current()
+        && (input.perl_facts_path.is_some()
+            || input.suppression_policy.is_some()
+            || config
+                .perl()
+                .producer()
+                .is_some_and(is_managed_perl_producer))
+    {
+        return Err(authority
+            .refuse_external_effect(
+                "Perl facts, managed exporters and suppression policies are unbound",
+            )
+            .to_string()
+            .into());
+    }
+
     // Managed producer mode (Campaign 31 Phase D, #1407; architecture
     // corrected post perl-lsp-swarm #3294): when a Perl facts exporter is
     // configured (`producer = "perl-ripr-facts"` or `producer = "perllsp"`
@@ -250,8 +323,35 @@ fn check_with_progress_and_origins_with_open_rust_paths(
         eprintln!("ripr: mode = {:?}", scope);
     }
 
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_analysis(
+            &options,
+            config.oracles(),
+            &languages,
+            &config.languages().rust,
+        )?;
+    }
+
     progress.emit(AnalysisProgressStage::Analyzing);
     let mut analysis = match scope {
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        AnalysisProgressScope::Diff => match whole {
+            Some(whole) => crate::analysis::run_analysis_with_verified_whole(
+                &options,
+                config.oracles(),
+                &languages,
+                &config.languages().rust,
+                whole,
+            )?,
+            None => run_analysis_with_oracle_policy_and_rust_config(
+                &options,
+                config.oracles(),
+                &languages,
+                &config.languages().rust,
+            )?,
+        },
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         AnalysisProgressScope::Diff => run_analysis_with_oracle_policy_and_rust_config(
             &options,
             config.oracles(),
@@ -636,7 +736,7 @@ fn invoke_perl_lsp_producer(
                      packet rejected even if a partial file exists"
                 ));
             }
-            if tmp_path.is_file() {
+            if frozen_fs::is_file(&tmp_path) {
                 std::fs::rename(&tmp_path, &packet_path).map_err(|e| {
                     format!(
                         "failed to finalize Perl facts packet `{}`: {e}",
@@ -685,7 +785,7 @@ fn invoke_perl_lsp_producer(
 /// future content-keyed implementation.
 #[allow(dead_code, reason = "retained for future content-keyed cache reuse")]
 fn cached_packet_is_fresh(path: &Path) -> bool {
-    let Ok(metadata) = std::fs::metadata(path) else {
+    let Ok(metadata) = frozen_fs::metadata(path) else {
         return false;
     };
     if !metadata.is_file() {
@@ -704,7 +804,7 @@ fn cached_packet_is_fresh(path: &Path) -> bool {
         return false;
     }
     // schema_version field must match the current schema.
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Ok(text) = frozen_fs::read_to_string(path) else {
         return false;
     };
     let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {

@@ -6,6 +6,7 @@
 //! discovery, and repo role classification all consume these helpers, so
 //! the four surfaces cannot drift apart.
 
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use std::path::Path;
 
 pub(crate) const PYTHON_PROJECT_MARKERS: &[&str] = &[
@@ -102,12 +103,100 @@ pub(crate) fn is_detectable_excluded_python_path(path: &Path) -> bool {
 }
 
 pub(crate) fn detect_python_project(root: &Path) -> bool {
-    PYTHON_PROJECT_MARKERS
-        .iter()
-        .any(|marker| root.join(marker).is_file())
-        || PYTHON_SOURCE_DIR_MARKERS
-            .iter()
-            .any(|marker| dir_contains_python_source(&root.join(marker)))
+    detect_python_project_with_control(root, &mut OrdinaryDiscovery { cooperative: false })
+        .unwrap_or(false)
+}
+
+pub(super) trait DiscoveryControl {
+    fn checkpoint(&mut self) -> Result<(), crate::core_error::CoreError>;
+    fn strict(&self) -> bool;
+    fn before_directory(&mut self, _dir: &Path) -> Result<(), crate::core_error::CoreError> {
+        Ok(())
+    }
+    fn after_io(&mut self) -> Result<(), crate::core_error::CoreError> {
+        Ok(())
+    }
+    fn absent_directory(&self, error: &std::io::Error) -> bool {
+        !self.strict() || error.kind() == std::io::ErrorKind::NotFound
+    }
+    fn joined_path(
+        &mut self,
+        parent: &Path,
+        name: &std::ffi::OsStr,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError>;
+    fn entry_path(
+        &mut self,
+        parent: &Path,
+        entry: &frozen_fs::FrozenDirEntry,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError>;
+    fn before_entry(&mut self) -> Result<(), crate::core_error::CoreError>;
+}
+
+struct OrdinaryDiscovery {
+    cooperative: bool,
+}
+
+impl DiscoveryControl for OrdinaryDiscovery {
+    fn checkpoint(&mut self) -> Result<(), crate::core_error::CoreError> {
+        if self.cooperative {
+            crate::analysis::cancellation::checkpoint_typed()?;
+        }
+        Ok(())
+    }
+    fn strict(&self) -> bool {
+        self.cooperative
+    }
+    fn joined_path(
+        &mut self,
+        parent: &Path,
+        name: &std::ffi::OsStr,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError> {
+        Ok(parent.join(name))
+    }
+    fn entry_path(
+        &mut self,
+        _parent: &Path,
+        entry: &frozen_fs::FrozenDirEntry,
+    ) -> Result<std::path::PathBuf, crate::core_error::CoreError> {
+        Ok(entry.path())
+    }
+    fn before_entry(&mut self) -> Result<(), crate::core_error::CoreError> {
+        self.checkpoint()
+    }
+}
+
+pub(super) fn detect_python_project_with_control(
+    root: &Path,
+    control: &mut impl DiscoveryControl,
+) -> Result<bool, crate::core_error::CoreError> {
+    for marker in PYTHON_PROJECT_MARKERS {
+        control.checkpoint()?;
+        let path = control.joined_path(root, std::ffi::OsStr::new(marker))?;
+        control.before_entry()?;
+        if control.strict() {
+            let metadata = frozen_fs::metadata(&path);
+            control.after_io()?;
+            match metadata {
+                Ok(metadata) if metadata.is_file() => return Ok(true),
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(
+                        format!("stat Python project marker {}: {error}", path.display()).into(),
+                    );
+                }
+            }
+        } else if frozen_fs::is_file(&path) {
+            return Ok(true);
+        }
+    }
+    for marker in PYTHON_SOURCE_DIR_MARKERS {
+        let path = control.joined_path(root, std::ffi::OsStr::new(marker))?;
+        if dir_contains_python_source_with_io(&path, control)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 /// Canonical root project-marker file name for a candidate name. Marker
@@ -165,35 +254,41 @@ fn dir_contains_python_source_with_control(
     dir: &Path,
     cooperative: bool,
 ) -> Result<bool, crate::core_error::CoreError> {
-    if cooperative {
-        crate::analysis::cancellation::checkpoint_typed()?;
-    }
-    let entries = match std::fs::read_dir(dir) {
+    dir_contains_python_source_with_io(dir, &mut OrdinaryDiscovery { cooperative })
+}
+
+fn dir_contains_python_source_with_io(
+    dir: &Path,
+    control: &mut impl DiscoveryControl,
+) -> Result<bool, crate::core_error::CoreError> {
+    control.checkpoint()?;
+    control.before_directory(dir)?;
+    let entries = match frozen_fs::read_dir(dir) {
         Ok(entries) => entries,
-        Err(error) if cooperative && error.kind() != std::io::ErrorKind::NotFound => {
+        Err(error) if !control.absent_directory(&error) => {
             return Err(format!("read Python role directory {}: {error}", dir.display()).into());
         }
         Err(_) => return Ok(false),
     };
     for entry in entries {
-        if cooperative {
-            crate::analysis::cancellation::checkpoint_typed()?;
-        }
+        control.before_entry()?;
         let entry = match entry {
             Ok(entry) => entry,
-            Err(error) if cooperative => {
+            Err(error) if control.strict() => {
                 return Err(format!("read Python role entry: {error}").into());
             }
             Err(_) => continue,
         };
-        let path = entry.path();
+        let path = control.entry_path(dir, &entry)?;
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
             .unwrap_or_default();
-        let file_type = match entry.file_type() {
+        let observed_type = entry.file_type();
+        control.after_io()?;
+        let file_type = match observed_type {
             Ok(kind) => kind,
-            Err(error) if cooperative => {
+            Err(error) if control.strict() => {
                 return Err(format!("stat Python role entry {}: {error}", path.display()).into());
             }
             Err(_) => continue,
@@ -202,13 +297,14 @@ fn dir_contains_python_source_with_control(
             if is_python_excluded_dir_everywhere(name) {
                 continue;
             }
-            if dir_contains_python_source_with_control(&path, cooperative)? {
+            if dir_contains_python_source_with_io(&path, control)? {
                 return Ok(true);
             }
         } else if file_type.is_file() && is_detectable_python_source_path(&path, name) {
             return Ok(true);
         }
     }
+    control.after_io()?;
     Ok(false)
 }
 
@@ -478,4 +574,65 @@ mod tests {
         std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
         Ok(())
     }
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "lang-rust",
+        feature = "lang-typescript",
+        feature = "lang-python"
+    )
+))]
+#[test]
+fn frozen_python_detection_uses_snapshot_markers_and_restores_live_reads() -> Result<(), String> {
+    use crate::analysis::committed_source::frozen;
+    use crate::analysis::git_candidate_execution::prepare_named_tree;
+    use crate::analysis::source_calibration::OwnedFixture;
+    use crate::testing::fixture_git::fixture_git_ok;
+
+    let fixture = OwnedFixture::new()?;
+    fixture.seed("src/owned.py", b"owned = 1\n")?;
+    fixture_git_ok(&fixture.root, &["init", "--initial-branch=main"])?;
+    fixture_git_ok(&fixture.root, &["add", "."])?;
+    fixture_git_ok(
+        &fixture.root,
+        &[
+            "-c",
+            "user.name=ripr fixture",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qm",
+            "frozen Python defaults",
+        ],
+    )?;
+    let prepared =
+        prepare_named_tree(&fixture.root, "HEAD", None).map_err(|error| error.to_string())?;
+    let authority = prepared
+        .frozen_source_authority(&fixture.root)
+        .map_err(|error| error.to_string())?;
+    std::fs::remove_file(fixture.root.join("src/owned.py")).map_err(|error| error.to_string())?;
+    assert!(!frozen::with_context(None, || {
+        detect_python_project(&fixture.root)
+    }));
+    assert!(frozen::with_context(Some(authority.clone()), || {
+        detect_python_project(&fixture.root)
+    }));
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
+    assert!(!frozen::with_context(None, || {
+        detect_python_project(&fixture.root)
+    }));
+    let outside = fixture.root.join("../outside-python-project");
+    assert!(!frozen::with_context(Some(authority.clone()), || {
+        detect_python_project(&outside)
+    }));
+    let fault = authority
+        .ensure_clean()
+        .err()
+        .ok_or("swallowed Python detection refusal did not remain fatal")?;
+    assert!(!fault.to_string().is_empty());
+    Ok(())
 }

@@ -120,6 +120,7 @@ mod pr_comments_github;
 #[path = "commands/check.rs"]
 mod check;
 pub(super) use check::check;
+pub(crate) use check::git_timeout_from_env;
 
 #[path = "commands/review_comments.rs"]
 mod review_comments;

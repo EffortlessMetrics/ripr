@@ -18,6 +18,7 @@
 //!   the fabricated value is observed, not the changed sink)
 
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 
 /// A named TypeScript limitation derived from a real detected TypeScript construct.
 ///
@@ -295,7 +296,7 @@ fn relative_import_resolves_to_workspace_file(
     }
     candidates
         .iter()
-        .any(|candidate| workspace_root.join(candidate).is_file())
+        .any(|candidate| frozen_fs::is_file(workspace_root.join(candidate)))
 }
 
 /// Collect `typescript_target_unresolved` limitations from tests that reference

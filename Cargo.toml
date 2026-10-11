@@ -165,7 +165,21 @@ codegen-units = 1
 # Dev profile: line-tables-only gives backtraces with file:line resolution
 # without the full variable-debuginfo cost of the default `debug = "full"`.
 # This cuts link time and binary size for the daily check/test/xtask loop.
-# Full debuginfo is still available via `CARGO_PROFILE_DEV_DEBUG=true cargo
-# test` when a developer needs to step-debug with variable inspection.
+# Full dev-build debuginfo is available via `CARGO_PROFILE_DEV_DEBUG=true cargo
+# build` when a developer needs to step-debug with variable inspection.
 [profile.dev]
 debug = "line-tables-only"
+
+# Keep ripr test executables inside the native bootstrap's unchanged 256 MiB
+# image admission bound. Link-time debug stripping preserves test execution
+# settings and unwind semantics, but removes file:line backtrace information.
+# Local test debugging also needs `--config 'profile.test.package.ripr.strip="none"'`;
+# native qualification uses this committed stripping contract.
+[profile.test.package.ripr]
+strip = "debuginfo"
+
+# Native test image authentication rehashes every byte under original clocks.
+# Optimize the existing SHA256 implementation while retaining inherited test
+# assertions, overflow checks and unwind semantics.
+[profile.test.package.sha2]
+opt-level = 3

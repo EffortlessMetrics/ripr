@@ -6,6 +6,7 @@ mod incremental_edit_tests;
 use super::super::syntax::{LexicalRustSyntaxAdapter, RaRustSyntaxAdapter, RustSyntaxAdapter};
 use super::model::{RustIndex, WorkspaceRootAuthority};
 use crate::analysis::cancellation;
+use crate::analysis::committed_source::frozen;
 use crate::analysis::seam_cache::{
     CacheLoad, FileFactCacheStats, KnownFilePaths, RepoFileFactCache, RepoFileFactCacheKey,
 };
@@ -61,6 +62,18 @@ fn build_index_from_loaded_files_with_cache_and_adapters(
     fallback: &(dyn RustSyntaxAdapter + Send + Sync),
     attribution: MissAttribution,
 ) -> Result<CachedRustIndex, String> {
+    if frozen::current().is_some() {
+        // Source facts are equivalent without the optional persistent cache.
+        // Complete contexts neither read nor write a live repository cache.
+        return build_index_with_optional_file_fact_cache(
+            root,
+            files,
+            adapter,
+            fallback,
+            None,
+            KnownFilePaths::default,
+        );
+    }
     let cache = RepoFileFactCache::at(root);
     build_index_with_file_fact_cache(
         root,
@@ -81,6 +94,24 @@ fn build_index_with_file_fact_cache(
     adapter: &(dyn RustSyntaxAdapter + Send + Sync),
     fallback: &(dyn RustSyntaxAdapter + Send + Sync),
     cache: &RepoFileFactCache,
+    load_known_file_paths: impl FnMut() -> KnownFilePaths,
+) -> Result<CachedRustIndex, String> {
+    build_index_with_optional_file_fact_cache(
+        root,
+        files,
+        adapter,
+        fallback,
+        Some(cache),
+        load_known_file_paths,
+    )
+}
+
+fn build_index_with_optional_file_fact_cache(
+    root: &Path,
+    files: &[(PathBuf, Vec<u8>)],
+    adapter: &(dyn RustSyntaxAdapter + Send + Sync),
+    fallback: &(dyn RustSyntaxAdapter + Send + Sync),
+    cache: Option<&RepoFileFactCache>,
     mut load_known_file_paths: impl FnMut() -> KnownFilePaths,
 ) -> Result<CachedRustIndex, String> {
     let mut accounting = CacheAccounting::default();
@@ -147,7 +178,7 @@ fn insert_cached_file_batches(
     files: &[(PathBuf, Vec<u8>)],
     adapter: &(dyn RustSyntaxAdapter + Send + Sync),
     fallback: &(dyn RustSyntaxAdapter + Send + Sync),
-    cache: &RepoFileFactCache,
+    cache: Option<&RepoFileFactCache>,
     load_known_file_paths: &mut impl FnMut() -> KnownFilePaths,
     accounting: &mut CacheAccounting,
 ) -> Result<RustIndex, String> {
@@ -166,6 +197,7 @@ fn insert_cached_file_batches(
     let mut known_cached_file_paths: Option<KnownFilePaths> = None;
     let mut index = RustIndex::default();
     let token = cancellation::current_token();
+    let source_context = frozen::current();
     for batch in files.chunks(PARSE_BATCH_FILES) {
         // Phase 1: this batch's cache lookups. Reading, decoding and
         // verifying an entry is most of a warm build, so the lookups run on
@@ -176,11 +208,24 @@ fn insert_cached_file_batches(
             batch
                 .par_iter()
                 .map(|(file, bytes)| {
-                    cancellation::with_optional_token(token.as_ref(), || {
-                        cancellation::checkpoint()?;
-                        let key = RepoFileFactCacheKey::new(file, bytes);
-                        let load = cache.load_file_facts(&key);
-                        Ok((key, load))
+                    frozen::with_context(source_context.clone(), || {
+                        #[cfg(test)]
+                        if let Some(authority) = frozen::current() {
+                            authority.record_worker_context(1);
+                        }
+                        cancellation::with_optional_token(token.as_ref(), || {
+                            cancellation::checkpoint()?;
+                            if let Some(authority) = frozen::current() {
+                                authority
+                                    .verify_loaded(&root.join(file), bytes)
+                                    .map_err(|error| error.to_string())?;
+                            }
+                            let key = RepoFileFactCacheKey::new(file, bytes);
+                            let load = cache
+                                .map(|cache| cache.load_file_facts(&key))
+                                .unwrap_or(CacheLoad::Miss);
+                            Ok((key, load))
+                        })
                     })
                 })
                 .collect();
@@ -194,12 +239,14 @@ fn insert_cached_file_batches(
                     pending.push(Pending::Ready(facts));
                 }
                 CacheLoad::Miss => {
-                    stats.misses += 1;
-                    if known_cached_file_paths
-                        .get_or_insert_with(&mut *load_known_file_paths)
-                        .contains(file)
-                    {
-                        stats.invalidated_files.insert(file.clone());
+                    if cache.is_some() {
+                        stats.misses += 1;
+                        if known_cached_file_paths
+                            .get_or_insert_with(&mut *load_known_file_paths)
+                            .contains(file)
+                        {
+                            stats.invalidated_files.insert(file.clone());
+                        }
                     }
                     pending.push(Pending::Parse { key });
                 }
@@ -229,12 +276,18 @@ fn insert_cached_file_batches(
             let results: Vec<(usize, Result<super::FileFacts, String>)> = parse_positions
                 .par_iter()
                 .map(|&position| {
-                    let result = cancellation::with_optional_token(token.as_ref(), || {
-                        cancellation::checkpoint()?;
-                        let (file, bytes) = &batch[position];
-                        let facts = summarize_loaded_file(file, bytes, adapter, fallback)?;
-                        cancellation::checkpoint()?;
-                        Ok(facts)
+                    let result = frozen::with_context(source_context.clone(), || {
+                        #[cfg(test)]
+                        if let Some(authority) = frozen::current() {
+                            authority.record_worker_context(2);
+                        }
+                        cancellation::with_optional_token(token.as_ref(), || {
+                            cancellation::checkpoint()?;
+                            let (file, bytes) = &batch[position];
+                            let facts = summarize_loaded_file(file, bytes, adapter, fallback)?;
+                            cancellation::checkpoint()?;
+                            Ok(facts)
+                        })
                     });
                     (position, result)
                 })
@@ -277,9 +330,11 @@ fn insert_cached_file_batches(
                         ));
                     };
                     cancellation::checkpoint()?;
-                    match cache.store_file_facts(&key, &facts) {
-                        Ok(()) => stats.stores += 1,
-                        Err(error) => stats.record_store_failure(file.clone(), error),
+                    if let Some(cache) = cache {
+                        match cache.store_file_facts(&key, &facts) {
+                            Ok(()) => stats.stores += 1,
+                            Err(error) => stats.record_store_failure(file.clone(), error),
+                        }
                     }
                     facts
                 }
@@ -342,6 +397,7 @@ fn build_index_with_adapters(
 ) -> Result<RustIndex, String> {
     let mut index = RustIndex::default();
     let token = cancellation::current_token();
+    let source_context = frozen::current();
     for batch in files.chunks(PARSE_BATCH_FILES) {
         cancellation::checkpoint()?;
         // Read + parse run on rayon workers; every file is independent.
@@ -350,15 +406,21 @@ fn build_index_with_adapters(
         let results: Vec<Result<(PathBuf, super::FileFacts, bool), String>> = batch
             .par_iter()
             .map(|file| {
-                cancellation::with_optional_token(token.as_ref(), || {
-                    cancellation::checkpoint()?;
-                    let full = root.join(file);
-                    let bytes = std::fs::read(&full)
-                        .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
-                    cancellation::checkpoint()?;
-                    let summary = summarize_loaded_file(file, &bytes, adapter, fallback)?;
-                    cancellation::checkpoint()?;
-                    Ok((file.clone(), summary, rust_source_text(&bytes).not_utf8))
+                frozen::with_context(source_context.clone(), || {
+                    #[cfg(test)]
+                    if let Some(authority) = frozen::current() {
+                        authority.record_worker_context(4);
+                    }
+                    cancellation::with_optional_token(token.as_ref(), || {
+                        cancellation::checkpoint()?;
+                        let full = root.join(file);
+                        let bytes = frozen::fs::read(&full)
+                            .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
+                        cancellation::checkpoint()?;
+                        let summary = summarize_loaded_file(file, &bytes, adapter, fallback)?;
+                        cancellation::checkpoint()?;
+                        Ok((file.clone(), summary, rust_source_text(&bytes).not_utf8))
+                    })
                 })
             })
             .collect();
@@ -412,7 +474,7 @@ fn build_index_with_adapters(
 /// never an error: the gate only ever under-credits.
 fn manifest_package_names(root: &Path) -> std::collections::BTreeSet<String> {
     let mut names = std::collections::BTreeSet::new();
-    let Ok(text) = std::fs::read_to_string(root.join("Cargo.toml")) else {
+    let Ok(text) = frozen::fs::read_to_string(root.join("Cargo.toml")) else {
         return names;
     };
     // A manifest is a TOML document (a table), not a standalone value:
@@ -508,6 +570,79 @@ fn insert_file_summary(index: &mut RustIndex, file: PathBuf, summary: super::Fil
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn frozen_rust_workers_share_authority_and_bypass_live_persistent_cache()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let source = b"pub fn frozen_owner() -> u8 { 7 }\n";
+        let fixture = crate::analysis::committed_source::frozen::tests::Fixture::new(&[
+            ("src/lib.rs", source),
+            (
+                "Cargo.toml",
+                b"[package]\nname='frozen-owner'\nversion='0.1.0'\n",
+            ),
+        ])?;
+        std::fs::create_dir_all(fixture.logical.join("src"))?;
+        std::fs::write(fixture.logical.join("src/lib.rs"), b"this is a live decoy")?;
+        let file = PathBuf::from("src/lib.rs");
+        let frozen_direct = frozen::with_context(Some(fixture.authority.clone()), || {
+            build_index(&fixture.logical, std::slice::from_ref(&file))
+        })?;
+        assert!(
+            frozen_direct
+                .functions()
+                .iter()
+                .any(|function| function.name == "frozen_owner"),
+            "the actual source-reading Rayon worker must see the named-tree bytes"
+        );
+        let frozen_loaded = frozen::with_context(Some(fixture.authority.clone()), || {
+            build_index_from_loaded_files_with_cache(
+                &fixture.logical,
+                &[(file.clone(), source.to_vec())],
+                MissAttribution::Named,
+            )
+        })?;
+        assert_eq!(frozen_loaded.index.functions(), frozen_direct.functions());
+        assert_eq!(
+            frozen_loaded.index.files().get(&file),
+            frozen_direct.files().get(&file)
+        );
+        assert_eq!(frozen_loaded.file_fact_cache.hits, 0);
+        assert_eq!(frozen_loaded.file_fact_cache.misses, 0);
+        assert_eq!(frozen_loaded.file_fact_cache.stores, 0);
+        assert_eq!(
+            fixture.authority.worker_contexts(),
+            7,
+            "all actual cache-lookup, loaded-parse and source-reading Rayon maps install authority"
+        );
+        assert!(
+            !std::fs::exists(fixture.logical.join("target/ripr/cache"))?,
+            "frozen builds must not create a live persistent fact cache"
+        );
+        fixture.authority.ensure_clean()?;
+        assert!(frozen::current().is_none());
+        let failure = frozen::with_context(Some(fixture.authority.clone()), || {
+            build_index_from_loaded_files_with_cache(
+                &fixture.logical,
+                &[(file, b"pub fn live_decoy() {}\n".to_vec())],
+                MissAttribution::Skipped,
+            )
+        });
+        let failure = failure
+            .err()
+            .ok_or("live decoy loaded bytes were accepted")?;
+        assert!(
+            failure.contains("loaded bytes differ from admitted blob"),
+            "{failure}"
+        );
+        let retained = fixture
+            .authority
+            .ensure_clean()
+            .err()
+            .ok_or("loaded-byte mismatch must remain fatal")?;
+        assert_eq!(retained.kind(), std::io::ErrorKind::InvalidData);
+        Ok(())
+    }
+
     #[test]
     fn corrupt_entries_collapse_into_one_warning_line() {
         let one = super::corrupt_entries_warning(1, "read failed");

@@ -5,6 +5,7 @@ use super::owners_tests::{
 };
 use super::source_utils::{SourceText, line_for_range_end, line_for_range_start, text_for_range};
 use super::{PythonOwner, PythonTest, expr_full_name};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::domain::{LanguageId as DomainLanguageId, StaticLimitKind};
 use rustpython_parser::{
     Mode,
@@ -114,8 +115,8 @@ pub(super) struct PythonSourceLimitation {
 /// Fail-closed: `None` when no marker matches — callers must report
 /// "not detected", never guess.
 pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> {
-    if root.join("pytest.ini").exists()
-        || root.join("conftest.py").exists()
+    if frozen_fs::exists(root.join("pytest.ini"))
+        || frozen_fs::exists(root.join("conftest.py"))
         // A bare pyproject.toml is PEP 517 packaging, not pytest evidence
         // (#2183 review); only an actual pytest section counts.
         || ini_section_present(&root.join("pyproject.toml"), "[tool.pytest.ini_options]")
@@ -125,7 +126,7 @@ pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> 
         return Some("pytest");
     }
     for dir in [root.to_path_buf(), root.join("tests"), root.join("test")] {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = frozen_fs::read_dir(&dir) else {
             continue;
         };
         for entry in entries.flatten().take(64) {
@@ -138,7 +139,7 @@ pub(crate) fn detect_python_test_framework(root: &Path) -> Option<&'static str> 
             }
             // Bounded evidence read: the import line is at the top of the
             // file, so a small prefix suffices.
-            let Ok(bytes) = std::fs::read(entry.path()) else {
+            let Ok(bytes) = frozen_fs::read(entry.path()) else {
                 continue;
             };
             let prefix = &bytes[..bytes.len().min(4096)];
@@ -174,7 +175,7 @@ fn is_unittest_import_line(line: &str) -> bool {
 
 /// Whether an INI-style file exists and contains the given section header.
 fn ini_section_present(path: &Path, section: &str) -> bool {
-    std::fs::read_to_string(path)
+    frozen_fs::read_to_string(path)
         .map(|text| text.lines().any(|line| line.trim() == section))
         .unwrap_or(false)
 }

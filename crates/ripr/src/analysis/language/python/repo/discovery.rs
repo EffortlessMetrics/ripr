@@ -15,6 +15,7 @@
 
 use super::super::{LanguageAdapter, PythonAdapter};
 use super::roles::{PythonFileRole, classify_python_file_role, role_is_excluded_from_analysis};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::config::is_python_dir_pruned_from_repo_discovery;
 use std::path::{Path, PathBuf};
 
@@ -291,7 +292,7 @@ impl BoundedWalkState {
 }
 
 fn visit_repo_workspace(root: &Path, dir: &Path, state: &mut BoundedWalkState) {
-    let entries = match std::fs::read_dir(dir) {
+    let entries = match frozen_fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(_) => {
             state.unreadable_subtrees += 1;

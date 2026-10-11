@@ -32,6 +32,37 @@
 //! passthrough whose termination kills and reaps the direct child, with the
 //! Unix process-group authority unchanged in its callers.
 
+pub(crate) mod native_limits;
+mod qualified_capture;
+mod retained_stage;
+
+#[doc(hidden)]
+pub use qualified_capture::{
+    CompleteByteCapture, CompleteCaptureBudget, CompleteCaptureError, CompleteCaptureReceipt,
+    CompleteCapturedBytes,
+};
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) use qualified_capture::{
+    CompleteControllerFailure, CompleteControllerTerminal, CompleteControllerTransport,
+    CompleteEnclosingCustodian, CompleteEnclosingDisposed, CompleteEnclosingFailure,
+    CompleteEnclosingPhysicalClosure, CompleteFailedClosed, CompleteTerminalCustodian,
+    CompleteTerminalFailure, PhysicalStep,
+};
+
+#[cfg(target_os = "linux")]
+#[doc(hidden)]
+pub use qualified_capture::{
+    ObservedProcessIdentity, QualifiedGroupOwner, QualifiedGroupSettlement, QualifiedGroupWait,
+};
+
+#[doc(hidden)]
+pub use native_limits::NativeLimitTuple;
+#[doc(hidden)]
+pub use retained_stage::{
+    ParentStage, StageBudget, StageDirectoryBinding, StageEntry, StageEntryKind, StageInventory,
+    StageInventoryClosure, StageRole, StageRoleBudget, StageRootBinding, StageUsage,
+};
+
 use std::process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};
 use std::time::{Duration, Instant};
 
@@ -109,6 +140,116 @@ pub struct OwnedProcess {
     child: std::process::Child,
     #[cfg(not(windows))]
     bounded_drop: bool,
+    #[cfg(target_os = "linux")]
+    bounded_drop_until: Option<Instant>,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    enclosing_observed_reap: Option<(ExitStatus, Instant)>,
+}
+
+/// A strict spawn refusal retains any actual child created before the clock crossed.
+/// This private custody is not a process-group or termination observation.
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+pub(crate) struct OwnedSpawnFailure {
+    error: std::io::Error,
+    child: Option<OwnedProcess>,
+}
+#[cfg(target_os = "linux")]
+impl OwnedSpawnFailure {
+    fn before_spawn(error: std::io::Error) -> Self {
+        Self { error, child: None }
+    }
+
+    pub(crate) fn into_parts(self) -> (std::io::Error, Option<OwnedProcess>) {
+        (self.error, self.child)
+    }
+}
+#[cfg(target_os = "linux")]
+impl std::fmt::Display for OwnedSpawnFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, formatter)
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+thread_local! {
+    static POST_SPAWN_DEADLINE_BARRIER: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(all(test, target_os = "linux"))]
+pub(crate) fn with_post_spawn_deadline_barrier<T>(work: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            POST_SPAWN_DEADLINE_BARRIER.with(|barrier| barrier.set(self.0));
+        }
+    }
+    let previous = POST_SPAWN_DEADLINE_BARRIER.with(|barrier| barrier.replace(true));
+    let _restore = Restore(previous);
+    work()
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+thread_local! {
+    static ENCLOSING_AFTER_REAP_DELAY: std::cell::Cell<Option<Duration>> =
+        const { std::cell::Cell::new(None) };
+    static ENCLOSING_AFTER_TRY_WAIT_DELAY: std::cell::Cell<Option<Duration>> =
+        const { std::cell::Cell::new(None) };
+    static ENCLOSING_BEFORE_TRY_WAIT_DELAY: std::cell::Cell<Option<Duration>> =
+        const { std::cell::Cell::new(None) };
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn with_enclosing_after_reap_delay<T>(delay: Duration, work: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Duration>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ENCLOSING_AFTER_REAP_DELAY.with(|stored| stored.set(self.0));
+        }
+    }
+    let previous = ENCLOSING_AFTER_REAP_DELAY.with(|stored| stored.replace(Some(delay)));
+    let _restore = Restore(previous);
+    work()
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn with_enclosing_after_try_wait_delay<T>(delay: Duration, work: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Duration>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ENCLOSING_AFTER_TRY_WAIT_DELAY.with(|stored| stored.set(self.0));
+        }
+    }
+    let previous = ENCLOSING_AFTER_TRY_WAIT_DELAY.with(|stored| stored.replace(Some(delay)));
+    let _restore = Restore(previous);
+    work()
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn with_enclosing_before_try_wait_delay<T>(delay: Duration, work: impl FnOnce() -> T) -> T {
+    struct Restore(Option<Duration>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            ENCLOSING_BEFORE_TRY_WAIT_DELAY.with(|stored| stored.set(self.0));
+        }
+    }
+    let previous = ENCLOSING_BEFORE_TRY_WAIT_DELAY.with(|stored| stored.replace(Some(delay)));
+    let _restore = Restore(previous);
+    work()
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn enclosing_time(deadline: Instant) -> Result<(), String> {
+    if Instant::now() >= deadline {
+        Err("enclosing failure disposition reached its admitted ceiling".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+fn enclosing_disposal_grace() -> Duration {
+    FALLBACK_REAP_BUDGET
 }
 
 impl OwnedProcess {
@@ -140,6 +281,10 @@ impl OwnedProcess {
             Ok(Self {
                 child,
                 bounded_drop: false,
+                #[cfg(target_os = "linux")]
+                bounded_drop_until: None,
+                #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+                enclosing_observed_reap: None,
             })
         }
     }
@@ -163,6 +308,169 @@ impl OwnedProcess {
         {
             Ok(owned)
         }
+    }
+
+    /// Bind direct-child fallback to an already admitted absolute ceiling.
+    /// This remains cooperative; a blocked syscall cannot be preempted here.
+    #[cfg(target_os = "linux")]
+    pub(crate) fn spawn_with_bounded_drop_until(
+        command: Command,
+        deadline: Instant,
+    ) -> Result<Self, OwnedSpawnFailure> {
+        if Instant::now() >= deadline {
+            return Err(OwnedSpawnFailure::before_spawn(std::io::Error::other(
+                "owned process held deadline expired before spawn",
+            )));
+        }
+        let mut owned = Self::spawn(command).map_err(OwnedSpawnFailure::before_spawn)?;
+        // Store the original ceiling before any fallible post-spawn observation.
+        owned.bounded_drop = true;
+        owned.bounded_drop_until = Some(deadline);
+        #[cfg(test)]
+        if POST_SPAWN_DEADLINE_BARRIER.with(|barrier| barrier.replace(false)) {
+            // A real finite clock barrier after real spawn, not a synthetic clock.
+            while Instant::now() < deadline {
+                std::thread::yield_now();
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err(OwnedSpawnFailure {
+                error: std::io::Error::other("owned process spawn crossed its held deadline"),
+                child: Some(owned),
+            });
+        }
+        Ok(owned)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn reap_until(&mut self, deadline: Instant) -> bool {
+        let mut backoff = PollBackoff::new();
+        loop {
+            if Instant::now() >= deadline {
+                return false;
+            }
+            let observed = self.child.try_wait();
+            if Instant::now() >= deadline {
+                return false;
+            }
+            match observed {
+                Ok(Some(_)) => return true,
+                Ok(None) => backoff.sleep(Some(deadline)),
+                Err(_) => return false,
+            }
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn drop_until(&mut self, held_deadline: Instant) {
+        let deadline = Instant::now()
+            .checked_add(FALLBACK_REAP_BUDGET)
+            .map_or(held_deadline, |phase| phase.min(held_deadline));
+        if Instant::now() >= deadline {
+            return;
+        }
+        let observed = self.child.try_wait();
+        if Instant::now() >= deadline || observed.is_ok_and(|status| status.is_some()) {
+            return;
+        }
+        let kill_result = self.request_kill();
+        if Instant::now() >= deadline {
+            return;
+        }
+        if kill_result.is_ok() {
+            let _reaped = self.reap_until(deadline);
+        }
+        // Failure/expiry leaves cleanup unconfirmed; Drop grants no receipt.
+    }
+
+    // Enclosing failure disposition is separately admitted before capture.
+    // It never changes the failed capture's stored drop ceiling or grants a
+    // capture/group/EOF observation.
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn enclosing_kill_until(&mut self, deadline: Instant) -> Result<(), String> {
+        enclosing_time(deadline)?;
+        let kill_result = self.request_kill();
+        enclosing_time(deadline)?;
+        kill_result.map_err(|error| format!("enclosing direct kill: {error}"))
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn enclosing_reap_until(
+        &mut self,
+        deadline: Instant,
+        status: &mut Option<ExitStatus>,
+    ) -> Result<(), String> {
+        let mut backoff = PollBackoff::new();
+        loop {
+            enclosing_time(deadline)?;
+            let observed = self.child.try_wait();
+            if let Ok(Some(actual)) = observed.as_ref() {
+                // Preserve actual progress even when the following check is late.
+                *status = Some(*actual);
+                self.enclosing_observed_reap
+                    .get_or_insert((*actual, Instant::now()));
+                if let Some(delay) = ENCLOSING_AFTER_REAP_DELAY.with(|stored| stored.take()) {
+                    std::thread::sleep(delay);
+                }
+            }
+            enclosing_time(deadline)?;
+            match observed {
+                Ok(Some(_)) => return Ok(()),
+                Ok(None) => backoff.sleep(Some(deadline)),
+                Err(error) => return Err(format!("enclosing direct reap: {error}")),
+            }
+        }
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn enclosing_dispose_helper_until(
+        &mut self,
+        deadline: Instant,
+        status: &mut Option<ExitStatus>,
+    ) -> Result<(), String> {
+        enclosing_time(deadline)?;
+        let observed = self.child.try_wait();
+        if let Ok(Some(actual)) = observed.as_ref() {
+            *status = Some(*actual);
+            self.enclosing_observed_reap
+                .get_or_insert((*actual, Instant::now()));
+        }
+        enclosing_time(deadline)?;
+        match observed {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => {
+                self.enclosing_kill_until(deadline)?;
+                self.enclosing_reap_until(deadline, status)
+            }
+            Err(error) => Err(format!("enclosing helper probe: {error}")),
+        }
+    }
+
+    // Physical closeout is mandatory owned-handle work. It makes no timely
+    // observation and never changes the failed capture's original ceilings.
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn physical_poll_reap(&mut self) -> std::io::Result<Option<ExitStatus>> {
+        let observed = self.child.try_wait();
+        if let Ok(Some(status)) = observed.as_ref() {
+            self.enclosing_observed_reap
+                .get_or_insert((*status, Instant::now()));
+        }
+        observed
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn physical_request_kill(&mut self) -> std::io::Result<()> {
+        self.request_kill()
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    fn physical_spawn_prepared(
+        command: Command,
+        original_deadline: Instant,
+    ) -> std::io::Result<Self> {
+        let mut child = Self::spawn_with_bounded_drop(command)?;
+        child.bounded_drop_until = Some(original_deadline);
+        Ok(child)
     }
 
     /// The child's process id.
@@ -208,7 +516,27 @@ impl OwnedProcess {
 
     /// Non-blocking exit check for the direct child.
     pub fn try_wait(&mut self) -> std::io::Result<Option<ExitStatus>> {
-        self.child.try_wait()
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        {
+            if let Some(delay) = ENCLOSING_BEFORE_TRY_WAIT_DELAY.with(|stored| stored.take()) {
+                std::thread::sleep(delay);
+            }
+            let observed = self.child.try_wait();
+            if let Ok(Some(status)) = observed.as_ref() {
+                // Preserve the actual reap even if a following caller clock
+                // check fails before its own settled status can be stored.
+                self.enclosing_observed_reap
+                    .get_or_insert((*status, Instant::now()));
+                if let Some(delay) = ENCLOSING_AFTER_TRY_WAIT_DELAY.with(|stored| stored.take()) {
+                    std::thread::sleep(delay);
+                }
+            }
+            observed
+        }
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
+        {
+            self.child.try_wait()
+        }
     }
 
     /// Reap the direct child to completion.
@@ -365,6 +693,11 @@ pub(crate) fn forbid_rustup_auto_install(command: &mut Command) {
 
 impl Drop for OwnedProcess {
     fn drop(&mut self) {
+        #[cfg(target_os = "linux")]
+        if let Some(deadline) = self.bounded_drop_until {
+            self.drop_until(deadline);
+            return;
+        }
         // Kill-on-close semantics live at this boundary: whichever path
         // releases the owner — normal completion, timeout, cancellation,
         // wait failure, or panic unwinding — terminates the owned tree and

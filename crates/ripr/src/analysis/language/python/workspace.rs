@@ -1,5 +1,6 @@
 use super::source_utils::normalized_path;
 use super::{ChangedFile, LanguageAdapter, PythonAdapter, PythonOwner};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::config::{is_detectable_generated_python_path, is_python_excluded_dir_everywhere};
 use std::{
     ops::RangeInclusive,
@@ -27,7 +28,7 @@ pub(super) fn collect_workspace_python_files(root: &Path) -> Vec<PathBuf> {
 }
 
 pub(super) fn visit_workspace(root: &Path, dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
+    let Ok(entries) = frozen_fs::read_dir(dir) else {
         #[cfg(test)]
         if crate::analysis::source_calibration::active() {
             crate::analysis::source_calibration::read_attempt("python_discovery_io");
@@ -111,4 +112,51 @@ pub(super) fn reconstruct_old_source(new_source: &str, changed: &ChangedFile) ->
 
 pub(super) fn line_is_in_ranges(line: usize, ranges: &[RangeInclusive<usize>]) -> bool {
     ranges.iter().any(|range| range.contains(&line))
+}
+
+#[cfg(test)]
+#[test]
+fn frozen_discovery_keeps_snapshot_membership_and_logical_paths() -> Result<(), String> {
+    use crate::analysis::committed_source::frozen;
+    use crate::analysis::git_candidate_execution::prepare_named_tree;
+    use crate::analysis::source_calibration::OwnedFixture;
+    use crate::testing::fixture_git::fixture_git_ok;
+
+    let fixture = OwnedFixture::new()?;
+    let snapshot_path = std::path::PathBuf::from("src/snapshot.py");
+    let live_path = std::path::PathBuf::from("src/live.py");
+    fixture.seed("src/snapshot.py", b"snapshot = 1\n")?;
+    fixture_git_ok(&fixture.root, &["init", "--initial-branch=main"])?;
+    fixture_git_ok(&fixture.root, &["add", "."])?;
+    fixture_git_ok(
+        &fixture.root,
+        &[
+            "-c",
+            "user.name=ripr fixture",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qm",
+            "frozen discovery",
+        ],
+    )?;
+    let prepared =
+        prepare_named_tree(&fixture.root, "HEAD", None).map_err(|error| error.to_string())?;
+    let authority = prepared
+        .frozen_source_authority(&fixture.root)
+        .map_err(|error| error.to_string())?;
+    std::fs::remove_file(fixture.root.join(&snapshot_path)).map_err(|error| error.to_string())?;
+    fixture.seed("src/live.py", b"live = 2\n")?;
+    let ordinary = frozen::with_context(None, || collect_workspace_python_files(&fixture.root));
+    assert_eq!(ordinary, vec![live_path.clone()]);
+    let actual = frozen::with_context(Some(authority.clone()), || {
+        collect_workspace_python_files(&fixture.root)
+    });
+    assert_eq!(actual, vec![snapshot_path]);
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
+    let recovered = frozen::with_context(None, || collect_workspace_python_files(&fixture.root));
+    assert_eq!(recovered, vec![live_path]);
+    Ok(())
 }

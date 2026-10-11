@@ -43,8 +43,7 @@ pub fn build_index_with_test_harnesses(
     // evidence-only `CfgTestModule`, never the reverse. The workspace root
     // anchors crate-root identity for default module resolution.
     index_phase("index_role_composition", || {
-        role_composition::compose_index_source_roles(&mut index, root);
-        Ok(())
+        role_composition::compose_index_source_roles(&mut index, root)
     })?;
     // Explicit harness registrations are the most specific authority, so
     // they run after composition and a composed generic grant can never
@@ -116,8 +115,7 @@ fn build_cached_index_with_test_harnesses(
         cached.index.refresh_memberships()
     })?;
     index_phase("index_role_composition", || {
-        role_composition::compose_index_source_roles(&mut cached.index, root);
-        Ok(())
+        role_composition::compose_index_source_roles(&mut cached.index, root)
     })?;
     // Explicit harness registrations are the most specific authority, so
     // they run after composition and a composed generic grant can never

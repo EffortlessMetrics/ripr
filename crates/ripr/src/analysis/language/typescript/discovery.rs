@@ -1,6 +1,7 @@
 //! Workspace discovery for the TypeScript preview adapter.
 
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 
 const TEST_FILE_STEM_SUFFIXES: &[&str] = &[".test", "-test", "_test", ".spec"];
 const TEST_DIRECTORY_NAMES: &[&str] = &["test", "tests", "__tests__"];
@@ -169,7 +170,7 @@ pub(crate) fn visit_workspace(root: &Path, max_entries: usize) -> WorkspaceScan 
     let mut skipped_links = 0usize;
     let mut stack: Vec<PathBuf> = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
+        let Ok(entries) = frozen_fs::read_dir(&dir) else {
             #[cfg(test)]
             if crate::analysis::source_calibration::active() {
                 crate::analysis::source_calibration::read_attempt("typescript_discovery_io");
@@ -734,4 +735,54 @@ mod tests {
             );
         }
     }
+}
+
+#[cfg(test)]
+#[test]
+fn frozen_discovery_keeps_snapshot_membership_and_logical_paths() -> Result<(), String> {
+    use crate::analysis::committed_source::frozen;
+    use crate::analysis::git_candidate_execution::prepare_named_tree;
+    use crate::analysis::source_calibration::OwnedFixture;
+    use crate::testing::fixture_git::fixture_git_ok;
+
+    let fixture = OwnedFixture::new()?;
+    let snapshot_path = std::path::PathBuf::from("src/snapshot.ts");
+    let live_path = std::path::PathBuf::from("src/live.ts");
+    fixture.seed("src/snapshot.ts", b"export const snapshot = 1;\n")?;
+    fixture_git_ok(&fixture.root, &["init", "--initial-branch=main"])?;
+    fixture_git_ok(&fixture.root, &["add", "."])?;
+    fixture_git_ok(
+        &fixture.root,
+        &[
+            "-c",
+            "user.name=ripr fixture",
+            "-c",
+            "user.email=ripr@example.invalid",
+            "commit",
+            "-qm",
+            "frozen discovery",
+        ],
+    )?;
+    let prepared =
+        prepare_named_tree(&fixture.root, "HEAD", None).map_err(|error| error.to_string())?;
+    let authority = prepared
+        .frozen_source_authority(&fixture.root)
+        .map_err(|error| error.to_string())?;
+    std::fs::remove_file(fixture.root.join(&snapshot_path)).map_err(|error| error.to_string())?;
+    fixture.seed("src/live.ts", b"export const live = 2;\n")?;
+    let ordinary = frozen::with_context(None, || visit_workspace(&fixture.root, 100));
+    assert_eq!(ordinary.files, vec![live_path.clone()]);
+    assert!(!ordinary.truncated);
+    let actual = frozen::with_context(Some(authority.clone()), || {
+        visit_workspace(&fixture.root, 100)
+    });
+    assert_eq!(actual.files, vec![snapshot_path]);
+    assert!(!actual.truncated);
+    assert_eq!(actual.skipped_links, 0);
+    authority
+        .ensure_clean()
+        .map_err(|error| error.to_string())?;
+    let recovered = frozen::with_context(None, || visit_workspace(&fixture.root, 100));
+    assert_eq!(recovered.files, vec![live_path]);
+    Ok(())
 }

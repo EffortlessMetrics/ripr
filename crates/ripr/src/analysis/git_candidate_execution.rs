@@ -19,11 +19,16 @@
 //!   traversal, materialization error) fails closed naming the exact
 //!   identity — never an empty analysis.
 
+#[cfg(test)]
+pub(crate) mod staged;
+
 use crate::domain::{
-    GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError,
+    GitCandidateBase, GitCandidateSubject, GitCandidateSubjectError as SubjectError, GitObjectId,
 };
+use sha2::Digest;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Duration;
 
 /// Bounded invocation deadline for each plumbing call.
@@ -57,9 +62,57 @@ pub(crate) struct ResolvedGitCandidate {
     pub(crate) _cleanup: TempRootGuard,
 }
 
-pub(crate) struct TempRootGuard(PathBuf);
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+mod requested_root;
+
+enum GuardStorage {
+    Legacy,
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    Requested(Box<requested_root::CleanupOwner>),
+}
+
+/// Legacy roots use the original cleanup. Requested Linux roots are removed
+/// only after their retained ownership and closed membership are checked.
+pub(crate) struct TempRootGuard(PathBuf, GuardStorage);
 
 impl TempRootGuard {
+    fn legacy(path: PathBuf) -> Self {
+        Self(path, GuardStorage::Legacy)
+    }
+
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    fn requested_owner(&self) -> Result<&requested_root::CleanupOwner, SubjectError> {
+        match &self.1 {
+            GuardStorage::Requested(owner) => Ok(owner),
+            GuardStorage::Legacy => Err(failed("Requested cleanup ownership is missing".into())),
+        }
+    }
+
+    pub(crate) fn checked_cleanup(&self) -> std::io::Result<()> {
+        match &self.1 {
+            GuardStorage::Legacy => remove_temp_root(&self.0),
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            GuardStorage::Requested(owner) => owner.checked_cleanup(),
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(path: PathBuf) -> Self {
+        Self::legacy(path)
+    }
+
     /// Remove the root and, if that fails, report it to `sink`.
     ///
     /// `Drop` delegates here in full so the warning is assertable. Asserting
@@ -72,14 +125,26 @@ impl TempRootGuard {
         // disk. Discarding it would make an unbounded, invisible disk leak
         // indistinguishable from a clean run, so name the path an operator
         // has to remove.
-        if let Err(error) = remove_temp_root(&self.0) {
+        if let Err(error) = self.checked_cleanup() {
             // Report fallibly, discarding the write result. `eprintln!` panics
             // when the stderr write fails (a closed descriptor, a non-blocking
             // pipe), and this runs in `Drop` — possibly while a panic is
             // already unwinding, where a second panic aborts the process.
             // Losing a warning is strictly better than turning a disk-cleanup
             // problem into an abort.
-            let _ = writeln!(sink, "{}", cleanup_failure_report(&self.0, &error));
+            let report = match &self.1 {
+                GuardStorage::Legacy => cleanup_failure_report(&self.0, &error),
+                #[cfg(all(
+                    target_os = "linux",
+                    any(target_arch = "x86_64", target_arch = "aarch64")
+                ))]
+                GuardStorage::Requested(_) => format!(
+                    "ripr: Requested candidate namespace retained after cleanup refusal: {} ({error}); \
+                     inspect retained identities before removing any path",
+                    self.0.display()
+                ),
+            };
+            let _ = writeln!(sink, "{report}");
         }
     }
 }
@@ -228,6 +293,176 @@ fn derive_diff(
     )
 }
 
+#[derive(Clone, Copy)]
+enum ConfigurationCapture {
+    NotRequested,
+    Requested { limit: u64 },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum CapturedConfiguration {
+    NotRequested,
+    Absent,
+    Present { blob_oid: GitObjectId, text: String },
+}
+
+pub(crate) struct PreparedNamedTree {
+    pub(crate) tree: GitObjectId,
+    pub(crate) configuration: CapturedConfiguration,
+    _root: PathBuf,
+    _cleanup: Arc<TempRootGuard>,
+    inventory: Arc<super::committed_source::frozen::FrozenInventory>,
+}
+
+impl PreparedNamedTree {
+    #[cfg(test)]
+    pub(crate) fn physical_root(&self) -> &Path {
+        &self._root
+    }
+
+    /// Carry authenticated source inventory and cleanup into scoped workers.
+    /// This alone does not install a source context or complete admission.
+    pub(crate) fn frozen_source_authority(
+        self,
+        logical_root: &Path,
+    ) -> std::io::Result<Arc<super::committed_source::frozen::FrozenSourceAuthority>> {
+        super::committed_source::frozen::FrozenSourceAuthority::new(
+            logical_root,
+            &self._root,
+            self.tree,
+            self.configuration,
+            self.inventory,
+            self._cleanup,
+        )
+    }
+}
+
+/// Prepare one named tree and its configuration through the same object stream.
+/// This does not change the analyzer's source root or freeze effective defaults.
+pub(crate) fn prepare_named_tree(
+    root: &Path,
+    head: &str,
+    deadline: Option<Duration>,
+) -> Result<PreparedNamedTree, SubjectError> {
+    let output = crate::git::run_git_output_with_deadline_and_limit_strict(
+        root,
+        &["rev-parse", "--verify", &format!("{head}^{{tree}}")],
+        deadline.or(GIT_DEADLINE).unwrap_or(Duration::from_mins(1)),
+        16 * 1024,
+    )
+    .map_err(|error| failed(format!("named-tree identity capture failed: {error}")))?;
+    if !output.status.success() {
+        return Err(failed("named-tree identity did not resolve".into()));
+    }
+    let tree = std::str::from_utf8(&output.stdout)
+        .map_err(|error| failed(format!("named-tree identity is not UTF-8: {error}")))?;
+    let tree = GitObjectId::parse(tree.trim()).map_err(|error| failed(error.to_string()))?;
+    let (materialized, cleanup, configuration, inventory) = materialize_with_configuration(
+        root,
+        tree.as_str(),
+        deadline,
+        ConfigurationCapture::Requested {
+            limit: crate::bounded_input::MAX_CLI_INPUT_BYTES,
+        },
+    )?;
+    Ok(PreparedNamedTree {
+        tree,
+        configuration,
+        _root: materialized,
+        _cleanup: Arc::new(cleanup),
+        inventory: Arc::new(
+            inventory.ok_or_else(|| failed("named-tree source inventory is missing".into()))?,
+        ),
+    })
+}
+
+fn validate_configuration_inventory(listing: &[u8]) -> Result<(), SubjectError> {
+    validate_configuration_inventory_with(listing, |_, _, _, _| Ok(()))
+}
+
+/// The existing inventory grammar, with a synchronous caller admission before
+/// retaining each borrowed path in the duplicate detector. Ordinary capture
+/// supplies a no-op observer and keeps its error ordering and messages.
+fn validate_configuration_inventory_with<'a>(
+    listing: &'a [u8],
+    mut observe: impl FnMut(&'a str, &'a str, &'a str, &'a str) -> Result<(), SubjectError>,
+) -> Result<(), SubjectError> {
+    if !listing.is_empty() && listing.last() != Some(&0) {
+        return Err(failed(
+            "configuration inventory is not NUL-terminated".into(),
+        ));
+    }
+    let mut paths = std::collections::BTreeSet::new();
+    if listing.is_empty() {
+        return Ok(());
+    }
+    for record in listing[..listing.len() - 1].split(|byte| *byte == 0) {
+        if record.is_empty() {
+            return Err(failed(
+                "configuration inventory contains an empty record".into(),
+            ));
+        }
+        let text = std::str::from_utf8(record)
+            .map_err(|error| failed(format!("configuration inventory is not UTF-8: {error}")))?;
+        let (metadata, path) = text
+            .split_once('\t')
+            .ok_or_else(|| failed("configuration inventory entry has no TAB".into()))?;
+        let mut fields = metadata.split_whitespace();
+        let (Some(mode), Some(kind), Some(object)) = (fields.next(), fields.next(), fields.next())
+        else {
+            return Err(failed(
+                "configuration inventory metadata is malformed".into(),
+            ));
+        };
+        if fields.next().is_some() {
+            return Err(failed(
+                "configuration inventory metadata is malformed".into(),
+            ));
+        }
+        GitObjectId::parse(object)
+            .map_err(|error| failed(format!("configuration inventory object ID: {error}")))?;
+        if path.is_empty()
+            || Path::new(path)
+                .components()
+                .any(|part| !matches!(part, std::path::Component::Normal(_)))
+        {
+            return Err(failed("configuration inventory path is malformed".into()));
+        }
+        observe(mode, kind, object, path)?;
+        if !paths.insert(path) {
+            return Err(failed(format!(
+                "configuration inventory duplicates path {path}"
+            )));
+        }
+        if (path == "ripr.toml" && kind == "tree") || path.starts_with("ripr.toml/") {
+            return Err(failed(
+                "configuration inventory ripr.toml is a directory".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn append_captured_configuration(
+    bytes: &mut Vec<u8>,
+    chunk: &[u8],
+    limit: u64,
+) -> Result<(), SubjectError> {
+    let next = (bytes.len() as u64)
+        .checked_add(chunk.len() as u64)
+        .ok_or_else(|| failed("configuration capture length overflowed".into()))?;
+    if next > limit {
+        return Err(failed(format!(
+            "configuration capture exceeds the {limit}-byte input limit"
+        )));
+    }
+    bytes
+        .try_reserve_exact(chunk.len())
+        .map_err(|error| failed(format!("configuration capture reservation failed: {error}")))?;
+    bytes.extend_from_slice(chunk);
+    Ok(())
+}
+
 /// Materialize the candidate tree into a fresh temp directory through ONE
 /// streaming `git cat-file --batch` process (#5015; before this, one
 /// sequential `git cat-file` subprocess per file, each carrying the full
@@ -239,6 +474,40 @@ fn materialize(
     candidate_tree: &str,
     deadline: Option<Duration>,
 ) -> Result<(PathBuf, TempRootGuard), SubjectError> {
+    let (root, cleanup, _, _) = materialize_with_configuration(
+        root,
+        candidate_tree,
+        deadline,
+        ConfigurationCapture::NotRequested,
+    )?;
+    Ok((root, cleanup))
+}
+
+fn materialize_with_configuration(
+    root: &Path,
+    candidate_tree: &str,
+    deadline: Option<Duration>,
+    capture: ConfigurationCapture,
+) -> Result<
+    (
+        PathBuf,
+        TempRootGuard,
+        CapturedConfiguration,
+        Option<super::committed_source::frozen::FrozenInventory>,
+    ),
+    SubjectError,
+> {
+    if let ConfigurationCapture::Requested { limit } = capture {
+        return materialize_requested_configuration(
+            root,
+            candidate_tree,
+            deadline,
+            limit,
+            RequestedTreeLimits::STANDARD,
+            #[cfg(test)]
+            |_, _, _, _| Ok(()),
+        );
+    }
     // Unique per invocation: concurrent runs (or racing tests) never
     // share a materialization directory, and a stale directory from a
     // crashed run can never be silently reused.
@@ -259,7 +528,7 @@ fn materialize(
     // bounded-read overrun) must not cost a permanent temp directory; only
     // the success path hands the guard to the caller, who holds it for as
     // long as the materialization is in use.
-    let cleanup = TempRootGuard(base_dir.clone());
+    let cleanup = TempRootGuard::legacy(base_dir.clone());
     if target.exists() {
         // A stale directory from a crashed run must not be reused: its
         // bytes are unverified. Remove and re-create deterministically.
@@ -283,12 +552,22 @@ fn materialize(
     // batch stream still cannot exceed one deadline.
     let budget = deadline.unwrap_or(Duration::from_mins(1));
     let budget_started = std::time::Instant::now();
-    let listing = crate::git::run_git_output_with_deadline_and_limit(
-        root,
-        &["ls-tree", "-r", "-z", candidate_tree],
-        budget.saturating_sub(budget_started.elapsed()),
-        MAX_ARCHIVE_BYTES,
-    )
+    let listing = match capture {
+        ConfigurationCapture::NotRequested => crate::git::run_git_output_with_deadline_and_limit(
+            root,
+            &["ls-tree", "-r", "-z", candidate_tree],
+            budget.saturating_sub(budget_started.elapsed()),
+            MAX_ARCHIVE_BYTES,
+        ),
+        ConfigurationCapture::Requested { .. } => {
+            crate::git::run_git_output_with_deadline_and_limit_strict(
+                root,
+                &["ls-tree", "-r", "-t", "-z", candidate_tree],
+                budget.saturating_sub(budget_started.elapsed()),
+                MAX_ARCHIVE_BYTES,
+            )
+        }
+    }
     .map_err(|error| failed(format!("git ls-tree failed: {error}")))?;
     if !listing.status.success() {
         return Err(failed(
@@ -299,7 +578,23 @@ fn materialize(
     // and traversal attempts fail closed with the existing named errors
     // before any byte is materialized, so a partially written tree can
     // never be mistaken for a complete one.
+    if matches!(capture, ConfigurationCapture::Requested { .. }) {
+        validate_configuration_inventory(&listing.stdout)?;
+    }
+    let mut configuration = match capture {
+        ConfigurationCapture::NotRequested => CapturedConfiguration::NotRequested,
+        ConfigurationCapture::Requested { .. } => CapturedConfiguration::Absent,
+    };
+    let mut inventory = matches!(capture, ConfigurationCapture::Requested { .. })
+        .then(super::committed_source::frozen::FrozenInventory::new);
+    let mut directories = Vec::new();
+    let mut pending_configuration: Option<(GitObjectId, Vec<u8>)> = None;
     let mut entries: Vec<(String, String)> = Vec::new();
+    // Only Requested capture retains one closed mode value per admitted blob.
+    // Ordinary entries and blob requests keep their original representation.
+    let mut original_modes = inventory
+        .as_ref()
+        .map(|_| Vec::<super::committed_source::frozen::FrozenFileMode>::new());
     for entry in listing.stdout.split(|byte| *byte == 0) {
         if entry.is_empty() {
             continue;
@@ -322,6 +617,17 @@ fn materialize(
         let mode = meta_parts.next().unwrap_or_default();
         let kind = meta_parts.next().unwrap_or_default();
         let object = meta_parts.next().unwrap_or_default();
+        if matches!(capture, ConfigurationCapture::Requested { .. })
+            && kind == "tree"
+            && mode == "040000"
+        {
+            let destination = safe_join(&target, path)?;
+            if let Some(inventory) = &mut inventory {
+                inventory.insert_directory(Path::new(path));
+            }
+            directories.push(destination);
+            continue;
+        }
         if kind != "blob" || !(mode == "100644" || mode == "100755") {
             return Err(failed(format!(
                 "unsupported tree entry mode `{mode}` (`{kind}`) for `{path}`: the candidate tree contains a non-file object ripr cannot faithfully materialize"
@@ -330,10 +636,30 @@ fn materialize(
         // Validate the join up front so a traversal attempt fails before
         // any byte is materialized.
         let _destination = safe_join(&target, path)?;
+        if let Some(modes) = &mut original_modes {
+            use super::committed_source::frozen::FrozenFileMode;
+            let original_mode = match mode {
+                "100644" => FrozenFileMode::Regular,
+                "100755" => FrozenFileMode::Executable,
+                _ => return Err(failed("named-tree original mode is unsupported".into())),
+            };
+            modes.try_reserve(1).map_err(|error| {
+                failed(format!(
+                    "named-tree mode inventory allocation failed: {error}"
+                ))
+            })?;
+            modes.push(original_mode);
+        }
         entries.push((path.to_string(), object.to_string()));
     }
+    // Requested inventory includes empty directories; the ordinary -r listing
+    // and materialization path remain unchanged.
+    for directory in directories {
+        std::fs::create_dir_all(directory)
+            .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
+    }
     if entries.is_empty() {
-        return Ok((target.clone(), cleanup));
+        return Ok((target.clone(), cleanup, configuration, inventory));
     }
     // The batch session gets only the budget left after listing and
     // validation.
@@ -342,7 +668,7 @@ fn materialize(
         .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
     let mut total_bytes: u64 = 0;
     let mut chunk = vec![0_u8; 64 * 1024];
-    for (path, object) in &entries {
+    for (entry_index, (path, object)) in entries.iter().enumerate() {
         let destination = safe_join(&target, path)?;
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent)
@@ -362,14 +688,39 @@ fn materialize(
                 "candidate tree materialization exceeded the {MAX_ARCHIVE_BYTES}-byte total limit"
             )));
         }
+        let capture_limit = match capture {
+            ConfigurationCapture::Requested { limit } if path == "ripr.toml" => {
+                if size > limit {
+                    return Err(failed(format!(
+                        "configuration capture exceeds the {limit}-byte input limit"
+                    )));
+                }
+                pending_configuration = Some((
+                    GitObjectId::parse(object).map_err(|error| failed(error.to_string()))?,
+                    Vec::new(),
+                ));
+                Some(limit)
+            }
+            _ => None,
+        };
         let mut file = std::fs::File::create(&destination)
             .map_err(|error| failed(format!("materialization write failed: {error}")))?;
+        let mut source_hash = inventory.as_ref().map(|_| sha2::Sha256::new());
         let mut remaining = size;
         while remaining > 0 {
             let take = (remaining as usize).min(chunk.len()) as u64;
             session
                 .read_blob_bytes(&mut chunk[..take as usize])
                 .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+            if let Some(hash) = &mut source_hash {
+                hash.update(&chunk[..take as usize]);
+            }
+            if let Some(limit) = capture_limit {
+                let (_, bytes) = pending_configuration
+                    .as_mut()
+                    .ok_or_else(|| failed("configuration capture state is missing".into()))?;
+                append_captured_configuration(bytes, &chunk[..take as usize], limit)?;
+            }
             // The budget is enforced on every git stream read above and by
             // `finish` below. One residual limitation, unchanged from the
             // per-blob path: a single stalled OS-level `write_all` is
@@ -383,17 +734,906 @@ fn materialize(
         session
             .end_blob()
             .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+        if let (Some(inventory), Some(hash)) = (&mut inventory, source_hash) {
+            // Preserve the original mode validation even when its stored
+            // inventory DATA is deferred from the product build.
+            let _validated_original_mode = original_modes
+                .as_ref()
+                .and_then(|modes| modes.get(entry_index))
+                .copied()
+                .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?;
+            inventory.insert_file(
+                PathBuf::from(path),
+                super::committed_source::frozen::FrozenFile {
+                    #[cfg(test)]
+                    mode: _validated_original_mode,
+                    blob_oid: GitObjectId::parse(object)
+                        .map_err(|error| failed(error.to_string()))?,
+                    size,
+                    sha256: hash.finalize().into(),
+                },
+            );
+        }
     }
     session
         .finish()
         .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
-    Ok((target.clone(), cleanup))
+    if let Some((blob_oid, bytes)) = pending_configuration {
+        let text = String::from_utf8(bytes)
+            .map_err(|error| failed(format!("captured configuration is not UTF-8: {error}")))?;
+        configuration = CapturedConfiguration::Present { blob_oid, text };
+    }
+    Ok((target.clone(), cleanup, configuration, inventory))
+}
+
+// These execution guards apply only to authenticated configuration capture.
+// Count includes the three possible wrapper directories and every distinct
+// non-root source directory/file. Path bytes charge deduplicated repository-
+// relative namespace keys, including implicit ancestors. Physical root-prefix
+// PathBuf copies, allocator overhead, quota and resident memory are not bounded
+// by these two counters.
+const MAX_REQUESTED_ENTRIES: usize = 65_536;
+const MAX_REQUESTED_PATH_BYTES: usize = 16 * 1024 * 1024;
+const REQUESTED_WRAPPER_DIRECTORIES: usize = 3;
+
+#[derive(Clone, Copy)]
+struct RequestedTreeLimits {
+    entries: usize,
+    path_bytes: usize,
+}
+
+impl RequestedTreeLimits {
+    const STANDARD: Self = Self {
+        entries: MAX_REQUESTED_ENTRIES,
+        path_bytes: MAX_REQUESTED_PATH_BYTES,
+    };
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum RequestedEntryKind {
+    ImplicitDirectory,
+    Directory,
+    File,
+}
+
+struct RequestedNamespace<'a> {
+    entries: std::collections::BTreeMap<&'a str, RequestedEntryKind>,
+    total_entries: usize,
+    path_bytes: usize,
+    limits: RequestedTreeLimits,
+}
+
+impl<'a> RequestedNamespace<'a> {
+    fn new(limits: RequestedTreeLimits) -> Result<Self, SubjectError> {
+        if limits.entries < REQUESTED_WRAPPER_DIRECTORIES {
+            return Err(failed(
+                "named-tree entry limit cannot admit its three wrapper directories".into(),
+            ));
+        }
+        Ok(Self {
+            entries: std::collections::BTreeMap::new(),
+            total_entries: REQUESTED_WRAPPER_DIRECTORIES,
+            path_bytes: 0,
+            limits,
+        })
+    }
+
+    fn admit_path(
+        &mut self,
+        target: &Path,
+        path: &'a str,
+        kind: RequestedEntryKind,
+    ) -> Result<(), SubjectError> {
+        let mut next_entries = self.total_entries;
+        let mut next_bytes = self.path_bytes;
+        let mut check =
+            |name: &'a str, entry_kind: RequestedEntryKind| -> Result<(), SubjectError> {
+                if let Some(previous) = self.entries.get(name) {
+                    if (*previous == RequestedEntryKind::File)
+                        != (entry_kind == RequestedEntryKind::File)
+                    {
+                        return Err(failed(format!(
+                            "named-tree file/directory overlap at {name}"
+                        )));
+                    }
+                    return Ok(());
+                }
+                next_entries = next_entries
+                    .checked_add(1)
+                    .ok_or_else(|| failed("named-tree entry count overflowed".into()))?;
+                next_bytes = next_bytes.checked_add(name.len()).ok_or_else(|| {
+                    failed("named-tree retained path byte count overflowed".into())
+                })?;
+                if next_entries > self.limits.entries {
+                    return Err(failed(format!(
+                        "named-tree entry count exceeds the {}-entry limit",
+                        self.limits.entries
+                    )));
+                }
+                if next_bytes > self.limits.path_bytes {
+                    return Err(failed(format!(
+                        "named-tree retained paths exceed the {}-byte limit",
+                        self.limits.path_bytes
+                    )));
+                }
+                Ok(())
+            };
+        check(path, kind)?;
+        for (offset, _) in path.match_indices('/') {
+            check(&path[..offset], RequestedEntryKind::ImplicitDirectory)?;
+        }
+        // All distinct names and ancestors are admitted before safe_join's
+        // temporary PathBuf or either parser/namespace node allocation.
+        safe_join(target, path)?;
+        self.total_entries = next_entries;
+        self.path_bytes = next_bytes;
+        self.entries
+            .entry(path)
+            .and_modify(|previous| {
+                if kind == RequestedEntryKind::Directory {
+                    *previous = kind;
+                }
+            })
+            .or_insert(kind);
+        for (offset, _) in path.match_indices('/') {
+            self.entries
+                .entry(&path[..offset])
+                .or_insert(RequestedEntryKind::ImplicitDirectory);
+        }
+        Ok(())
+    }
+}
+
+fn requested_checkpoint(started: std::time::Instant, budget: Duration) -> Result<(), SubjectError> {
+    super::cancellation::checkpoint().map_err(failed)?;
+    if started.elapsed() >= budget {
+        return Err(failed(
+            "named-tree materialization deadline exceeded".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn requested_namespace<'a>(
+    listing: &'a [u8],
+    target: &Path,
+    started: std::time::Instant,
+    budget: Duration,
+    limits: RequestedTreeLimits,
+) -> Result<RequestedNamespace<'a>, SubjectError> {
+    requested_checkpoint(started, budget)?;
+    let mut namespace = RequestedNamespace::new(limits)?;
+    validate_configuration_inventory_with(listing, |mode, kind, _, path| {
+        requested_checkpoint(started, budget)?;
+        let entry_kind = match (mode, kind) {
+            ("040000", "tree") => RequestedEntryKind::Directory,
+            ("100644" | "100755", "blob") => RequestedEntryKind::File,
+            _ => {
+                return Err(failed(format!(
+                    "unsupported tree entry mode `{mode}` (`{kind}`) for `{path}`: the candidate tree contains a non-file object ripr cannot faithfully materialize"
+                )));
+            }
+        };
+        // Path::components normalizes repeated separators and ".". Refuse
+        // those aliases before charging a distinct physical namespace.
+        if path
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+        {
+            return Err(failed(
+                "named-tree relative path has an empty or dot component".into(),
+            ));
+        }
+        namespace.admit_path(target, path, entry_kind)?;
+        requested_checkpoint(started, budget)
+    })?;
+    requested_checkpoint(started, budget)?;
+    Ok(namespace)
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum RequestedMaterializationEvent {
+    ListingCaptured,
+    BeforeMkdir,
+    AfterMkdir,
+    BeforeReturn,
+}
+
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
+fn requested_mkdir(
+    path: &Path,
+    shared_wrapper: bool,
+    started: std::time::Instant,
+    budget: Duration,
+    #[cfg(test)] observe: &mut impl FnMut(
+        RequestedMaterializationEvent,
+        &Path,
+        std::time::Instant,
+        Duration,
+    ) -> Result<(), SubjectError>,
+) -> Result<(), SubjectError> {
+    requested_checkpoint(started, budget)?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    match std::fs::create_dir(path) {
+        Ok(()) => {}
+        Err(error) if shared_wrapper && error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let metadata = std::fs::metadata(path).map_err(|error| {
+                failed(format!(
+                    "materialization shared dir metadata failed: {error}"
+                ))
+            })?;
+            if !metadata.is_dir() {
+                return Err(failed(
+                    "materialization shared wrapper is not a directory".into(),
+                ));
+            }
+        }
+        Err(error) => return Err(failed(format!("materialization mkdir failed: {error}"))),
+    }
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)
+}
+
+/// A created Requested base whose cleanup ownership has not been handed off.
+///
+/// Reporting never removes a path: a postcreation failure or unwind may have
+/// left an incomplete or replaced namespace whose cleanup is not established.
+struct RequestedBaseRetention<'a> {
+    path: &'a Path,
+    report_to: &'a mut dyn Write,
+    pending: bool,
+}
+
+impl Drop for RequestedBaseRetention<'_> {
+    fn drop(&mut self) {
+        if self.pending {
+            let _ = writeln!(
+                self.report_to,
+                "ripr: candidate materialization root was created but acquisition did not finish: {}; \
+                 retained without cleanup",
+                self.path.display()
+            );
+        }
+    }
+}
+
+#[cfg(any(
+    test,
+    not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))
+))]
+fn requested_base_dir(
+    path: &Path,
+    started: std::time::Instant,
+    budget: Duration,
+    report_to: &mut dyn Write,
+    #[cfg(test)] observe: &mut impl FnMut(
+        RequestedMaterializationEvent,
+        &Path,
+        std::time::Instant,
+        Duration,
+    ) -> Result<(), SubjectError>,
+) -> Result<TempRootGuard, SubjectError> {
+    requested_checkpoint(started, budget)?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    std::fs::create_dir(path)
+        .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
+    let mut retention = RequestedBaseRetention {
+        path,
+        report_to,
+        pending: true,
+    };
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    let cleanup = TempRootGuard::legacy(path.to_path_buf());
+    retention.pending = false;
+    Ok(cleanup)
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn requested_owned_mkdir(
+    owner: &requested_root::CleanupOwner,
+    path: &Path,
+    source_index: Option<usize>,
+    shared: bool,
+    started: std::time::Instant,
+    budget: Duration,
+    #[cfg(test)] observe: &mut impl FnMut(
+        RequestedMaterializationEvent,
+        &Path,
+        std::time::Instant,
+        Duration,
+    ) -> Result<(), SubjectError>,
+) -> Result<(), SubjectError> {
+    requested_checkpoint(started, budget)?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    let result = if shared {
+        owner.create_shared(started, budget)
+    } else if let Some(index) = source_index {
+        owner.create_directory(index, started, budget)
+    } else {
+        owner.create_target(started, budget)
+    };
+    result.map_err(|error| {
+        failed(format!(
+            "materialization mkdir failed: {error} (logical path {})",
+            path.display()
+        ))
+    })?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    owner.verify(started, budget).map_err(|error| {
+        failed(format!(
+            "materialization directory ownership failed: {error}"
+        ))
+    })
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
+fn requested_owned_base_dir(
+    path: &Path,
+    owner: Box<requested_root::CleanupOwner>,
+    started: std::time::Instant,
+    budget: Duration,
+    report_to: &mut dyn Write,
+    #[cfg(test)] observe: &mut impl FnMut(
+        RequestedMaterializationEvent,
+        &Path,
+        std::time::Instant,
+        Duration,
+    ) -> Result<(), SubjectError>,
+) -> Result<TempRootGuard, SubjectError> {
+    requested_checkpoint(started, budget)?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::BeforeMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    owner
+        .create_base_entry(started, budget)
+        .map_err(|error| failed(format!("materialization mkdir failed: {error}")))?;
+    let mut retention = RequestedBaseRetention {
+        path,
+        report_to,
+        pending: true,
+    };
+    owner
+        .pin_base(started, budget)
+        .map_err(|error| failed(format!("materialization base ownership failed: {error}")))?;
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::AfterMkdir,
+        path,
+        started,
+        budget,
+    )?;
+    requested_checkpoint(started, budget)?;
+    owner
+        .verify(started, budget)
+        .map_err(|error| failed(format!("materialization base ownership failed: {error}")))?;
+    let cleanup = TempRootGuard(path.to_path_buf(), GuardStorage::Requested(owner));
+    retention.pending = false;
+    Ok(cleanup)
+}
+
+fn materialize_requested_configuration(
+    root: &Path,
+    candidate_tree: &str,
+    deadline: Option<Duration>,
+    configuration_limit: u64,
+    limits: RequestedTreeLimits,
+    #[cfg(test)] mut observe: impl FnMut(
+        RequestedMaterializationEvent,
+        &Path,
+        std::time::Instant,
+        Duration,
+    ) -> Result<(), SubjectError>,
+) -> Result<
+    (
+        PathBuf,
+        TempRootGuard,
+        CapturedConfiguration,
+        Option<super::committed_source::frozen::FrozenInventory>,
+    ),
+    SubjectError,
+> {
+    let budget_started = std::time::Instant::now();
+    let budget = deadline.unwrap_or(Duration::from_mins(1));
+    requested_checkpoint(budget_started, budget)?;
+    let temporary = std::env::temp_dir();
+    // With an existing temp root, shared/unique/tree are the only possible
+    // wrapper creations. Never create uncounted temp-root ancestors.
+    let metadata = std::fs::metadata(&temporary).map_err(|error| {
+        failed(format!(
+            "materialization temp root metadata failed: {error}"
+        ))
+    })?;
+    if !metadata.is_dir() {
+        return Err(failed(
+            "materialization temp root is not an existing directory".into(),
+        ));
+    }
+    requested_checkpoint(budget_started, budget)?;
+    let unique = format!(
+        "{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|since| since.as_nanos())
+            .unwrap_or(0)
+    );
+    let shared = temporary.join("ripr-git-candidate");
+    let base_dir = shared.join(unique);
+    let target = base_dir.join(candidate_tree);
+    requested_checkpoint(budget_started, budget)?;
+    let listing = crate::git::run_git_output_with_deadline_and_limit_strict(
+        root,
+        &["ls-tree", "-r", "-t", "-z", candidate_tree],
+        budget.saturating_sub(budget_started.elapsed()),
+        MAX_ARCHIVE_BYTES,
+    )
+    .map_err(|error| failed(format!("git ls-tree failed: {error}")))?;
+    requested_checkpoint(budget_started, budget)?;
+    if !listing.status.success() {
+        return Err(failed("git ls-tree of the candidate tree failed".into()));
+    }
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::ListingCaptured,
+        &target,
+        budget_started,
+        budget,
+    )?;
+    let namespace = requested_namespace(&listing.stdout, &target, budget_started, budget, limits)?;
+    requested_checkpoint(budget_started, budget)?;
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    let owner = requested_root::CleanupOwner::prepare(
+        &temporary,
+        &shared,
+        &base_dir,
+        &target,
+        &namespace,
+        budget_started,
+        budget,
+    )
+    .map_err(|error| {
+        failed(format!(
+            "materialization private namespace admission failed: {error}"
+        ))
+    })?;
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    requested_owned_mkdir(
+        &owner,
+        &shared,
+        None,
+        true,
+        budget_started,
+        budget,
+        #[cfg(test)]
+        &mut observe,
+    )?;
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    requested_mkdir(
+        &shared,
+        true,
+        budget_started,
+        budget,
+        #[cfg(test)]
+        &mut observe,
+    )?;
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    let cleanup = requested_owned_base_dir(
+        &base_dir,
+        owner,
+        budget_started,
+        budget,
+        &mut std::io::stderr(),
+        #[cfg(test)]
+        &mut observe,
+    )?;
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    let cleanup = requested_base_dir(
+        &base_dir,
+        budget_started,
+        budget,
+        &mut std::io::stderr(),
+        #[cfg(test)]
+        &mut observe,
+    )?;
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    requested_owned_mkdir(
+        cleanup.requested_owner()?,
+        &target,
+        None,
+        false,
+        budget_started,
+        budget,
+        #[cfg(test)]
+        &mut observe,
+    )?;
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    requested_mkdir(
+        &target,
+        false,
+        budget_started,
+        budget,
+        #[cfg(test)]
+        &mut observe,
+    )?;
+    let mut inventory = Some(super::committed_source::frozen::FrozenInventory::new());
+    for (path, kind) in &namespace.entries {
+        requested_checkpoint(budget_started, budget)?;
+        if *kind != RequestedEntryKind::File {
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let source_index = cleanup
+                .requested_owner()?
+                .key_index(path)
+                .map_err(|error| failed(error.to_string()))?;
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let path = cleanup
+                .requested_owner()?
+                .key(source_index)
+                .map_err(|error| failed(error.to_string()))?;
+            let destination = safe_join(&target, path)?;
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            requested_owned_mkdir(
+                cleanup.requested_owner()?,
+                &destination,
+                Some(source_index),
+                false,
+                budget_started,
+                budget,
+                #[cfg(test)]
+                &mut observe,
+            )?;
+            #[cfg(not(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )))]
+            requested_mkdir(
+                &destination,
+                false,
+                budget_started,
+                budget,
+                #[cfg(test)]
+                &mut observe,
+            )?;
+            if let Some(inventory) = &mut inventory {
+                inventory.insert_directory(Path::new(path));
+            }
+        }
+    }
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    let mut entries: Vec<(usize, String)> = Vec::new();
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    let mut entries: Vec<(String, String)> = Vec::new();
+    let mut original_modes = Some(Vec::<super::committed_source::frozen::FrozenFileMode>::new());
+    // All source paths, ancestors, types, duplicates and budgets were admitted
+    // before any mkdir or retained inventory/string expansion.
+    validate_configuration_inventory_with(&listing.stdout, |mode, kind, object, path| {
+        requested_checkpoint(budget_started, budget)?;
+        if kind == "blob" {
+            entries
+                .try_reserve(1)
+                .map_err(|error| failed(format!("named-tree entry allocation failed: {error}")))?;
+            let modes = original_modes
+                .as_mut()
+                .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?;
+            modes.try_reserve(1).map_err(|error| {
+                failed(format!(
+                    "named-tree mode inventory allocation failed: {error}"
+                ))
+            })?;
+            modes.push(match mode {
+                "100644" => super::committed_source::frozen::FrozenFileMode::Regular,
+                "100755" => super::committed_source::frozen::FrozenFileMode::Executable,
+                _ => return Err(failed("named-tree original mode is unsupported".into())),
+            });
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let path = cleanup
+                .requested_owner()?
+                .key_index(path)
+                .map_err(|error| failed(error.to_string()))?;
+            #[cfg(not(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            )))]
+            let path = path.to_string();
+            entries.push((path, object.to_string()));
+        }
+        requested_checkpoint(budget_started, budget)
+    })?;
+    drop(namespace);
+    let mut configuration = CapturedConfiguration::Absent;
+    let mut pending_configuration: Option<(GitObjectId, Vec<u8>)> = None;
+    if entries.is_empty() {
+        #[cfg(test)]
+        observe(
+            RequestedMaterializationEvent::BeforeReturn,
+            &target,
+            budget_started,
+            budget,
+        )?;
+        requested_checkpoint(budget_started, budget)?;
+        return Ok((target, cleanup, configuration, inventory));
+    }
+    requested_checkpoint(budget_started, budget)?;
+    let session_budget = budget.saturating_sub(budget_started.elapsed());
+    let mut session = crate::git::CatFileBatch::spawn(root, session_budget)
+        .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
+    let mut total_bytes: u64 = 0;
+    #[cfg(not(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    )))]
+    let mut chunk = vec![0_u8; 64 * 1024];
+    for (entry_index, (path, object)) in entries.iter().enumerate() {
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let source_index = *path;
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let path = cleanup
+            .requested_owner()?
+            .key(source_index)
+            .map_err(|error| failed(error.to_string()))?;
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
+        let path = path.as_str();
+        requested_checkpoint(budget_started, budget)?;
+        let destination = safe_join(&target, path)?;
+        requested_checkpoint(budget_started, budget)?;
+        let Some(size) = session
+            .request_blob(object)
+            .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?
+        else {
+            return Err(failed(format!("git cat-file blob {object} is missing")));
+        };
+        total_bytes = total_bytes.checked_add(size).ok_or_else(|| {
+            failed("candidate tree materialization byte total overflowed".to_string())
+        })?;
+        if total_bytes > MAX_ARCHIVE_BYTES as u64 {
+            return Err(failed(format!(
+                "candidate tree materialization exceeded the {MAX_ARCHIVE_BYTES}-byte total limit"
+            )));
+        }
+        let capture_limit = match path {
+            "ripr.toml" => {
+                let limit = configuration_limit;
+                if size > limit {
+                    return Err(failed(format!(
+                        "configuration capture exceeds the {limit}-byte input limit"
+                    )));
+                }
+                pending_configuration = Some((
+                    GitObjectId::parse(object).map_err(|error| failed(error.to_string()))?,
+                    Vec::new(),
+                ));
+                Some(limit)
+            }
+            _ => None,
+        };
+        requested_checkpoint(budget_started, budget)?;
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let mut file = cleanup
+            .requested_owner()?
+            .create_file(source_index, budget_started, budget)
+            .map_err(|error| {
+                failed(format!(
+                    "materialization write failed: {error} (logical path {})",
+                    destination.display()
+                ))
+            })?;
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
+        let mut file = std::fs::File::create(&destination)
+            .map_err(|error| failed(format!("materialization write failed: {error}")))?;
+        requested_checkpoint(budget_started, budget)?;
+        let mut source_hash = inventory.as_ref().map(|_| sha2::Sha256::new());
+        let mut remaining = size;
+        while remaining > 0 {
+            requested_checkpoint(budget_started, budget)?;
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            let mut chunk = cleanup.requested_owner()?.blob_chunk().map_err(|error| {
+                failed(format!("materialization shared scratch failed: {error}"))
+            })?;
+            let take = (remaining as usize).min(chunk.len()) as u64;
+            session
+                .read_blob_bytes(&mut chunk[..take as usize])
+                .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+            requested_checkpoint(budget_started, budget)?;
+            if let Some(hash) = &mut source_hash {
+                hash.update(&chunk[..take as usize]);
+            }
+            if let Some(limit) = capture_limit {
+                let (_, bytes) = pending_configuration
+                    .as_mut()
+                    .ok_or_else(|| failed("configuration capture state is missing".into()))?;
+                append_captured_configuration(bytes, &chunk[..take as usize], limit)?;
+            }
+            // Cooperative checks do not preempt a stalled OS file write.
+            requested_checkpoint(budget_started, budget)?;
+            file.write_all(&chunk[..take as usize])
+                .map_err(|error| failed(format!("materialization write failed: {error}")))?;
+            requested_checkpoint(budget_started, budget)?;
+            remaining -= take;
+        }
+        requested_checkpoint(budget_started, budget)?;
+        session
+            .end_blob()
+            .map_err(|error| failed(format!("git cat-file blob {object} failed: {error}")))?;
+        requested_checkpoint(budget_started, budget)?;
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        cleanup
+            .requested_owner()?
+            .seal_file(source_index, &file, size, budget_started, budget)
+            .map_err(|error| {
+                failed(format!(
+                    "materialization written file ownership failed: {error}"
+                ))
+            })?;
+        if let (Some(inventory), Some(hash)) = (&mut inventory, source_hash) {
+            // Preserve the original mode validation even when its stored
+            // inventory DATA is deferred from the product build.
+            let _validated_original_mode = original_modes
+                .as_ref()
+                .and_then(|modes| modes.get(entry_index))
+                .copied()
+                .ok_or_else(|| failed("named-tree mode inventory is missing".into()))?;
+            inventory.insert_file(
+                PathBuf::from(path),
+                super::committed_source::frozen::FrozenFile {
+                    #[cfg(test)]
+                    mode: _validated_original_mode,
+                    blob_oid: GitObjectId::parse(object)
+                        .map_err(|error| failed(error.to_string()))?,
+                    size,
+                    sha256: hash.finalize().into(),
+                },
+            );
+        }
+    }
+    requested_checkpoint(budget_started, budget)?;
+    session
+        .finish()
+        .map_err(|error| failed(format!("git cat-file --batch failed: {error}")))?;
+    requested_checkpoint(budget_started, budget)?;
+    if let Some((blob_oid, bytes)) = pending_configuration {
+        let text = String::from_utf8(bytes)
+            .map_err(|error| failed(format!("captured configuration is not UTF-8: {error}")))?;
+        configuration = CapturedConfiguration::Present { blob_oid, text };
+    }
+    #[cfg(test)]
+    observe(
+        RequestedMaterializationEvent::BeforeReturn,
+        &target,
+        budget_started,
+        budget,
+    )?;
+    requested_checkpoint(budget_started, budget)?;
+    Ok((target, cleanup, configuration, inventory))
 }
 
 /// Join a tree entry path under the target, rejecting traversal.
 fn safe_join(target: &Path, name: &str) -> Result<PathBuf, SubjectError> {
     let relative = Path::new(name);
-    if relative.is_absolute() || name.contains("..") || name.contains('\\') || name.starts_with('/')
+    if name
+        .split('/')
+        .any(|part| part.is_empty() || part == "." || part == "..")
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+        || (cfg!(windows) && name.contains('\\'))
     {
         return Err(failed(format!(
             "candidate tree entry `{name}` escapes the materialization root"
@@ -554,6 +1794,2003 @@ mod tests {
         run(&["commit", "-m", "candidate"])?;
         let candidate = run(&["rev-parse", "HEAD"])?;
         Ok((RepoGuard(root), base, candidate))
+    }
+
+    fn requested_fixture_tree(root: &Path, entries: &[(&str, &str)]) -> Result<String, String> {
+        let mut bytes = Vec::new();
+        for (name, tree) in entries {
+            bytes.extend_from_slice(format!("40000 {name}\0").as_bytes());
+            let tree = GitObjectId::parse(tree).map_err(|error| error.to_string())?;
+            for pair in tree.as_str().as_bytes().chunks_exact(2) {
+                let hex = std::str::from_utf8(pair).map_err(|error| error.to_string())?;
+                bytes.push(u8::from_str_radix(hex, 16).map_err(|error| error.to_string())?);
+            }
+        }
+        let input = root.join("requested-directory-tree-input");
+        std::fs::write(&input, bytes).map_err(|error| error.to_string())?;
+        git(
+            root,
+            &[
+                "hash-object",
+                "-w",
+                "-t",
+                "tree",
+                input.to_str().ok_or("fixture input is not UTF-8")?,
+            ],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())
+    }
+
+    fn requested_directory_fixture(name: &str) -> Result<(RepoGuard, String), String> {
+        let (guard, _, _) = fixture_repo(name)?;
+        let empty = git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let children = requested_fixture_tree(&guard.0, &[("a", &empty), ("b", &empty)])?;
+        let tree = requested_fixture_tree(&guard.0, &[("empty", &empty), ("shared", &children)])?;
+        Ok((guard, tree))
+    }
+
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    #[test]
+    fn requested_linux_actual_materialization_uses_private_owner_cleanup() -> Result<(), String> {
+        use std::os::unix::fs::{DirBuilderExt, MetadataExt};
+        let (fixture, _, candidate) = fixture_repo("requested-private-owner")?;
+        let (target, cleanup, configuration, inventory) = materialize_requested_configuration(
+            &fixture.0,
+            &candidate,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |_, _, _, _| Ok(()),
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(
+            std::fs::metadata(&target)
+                .map_err(|error| error.to_string())?
+                .mode()
+                & 0o777,
+            0o700
+        );
+        assert_eq!(
+            std::fs::metadata(target.join("src/lib.rs"))
+                .map_err(|error| error.to_string())?
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::read(target.join("src/lib.rs")).map_err(|error| error.to_string())?,
+            candidate_blob(&fixture.0, &candidate, "src/lib.rs")?
+        );
+        assert!(
+            matches!(configuration, CapturedConfiguration::Present { .. }),
+            "actual candidate configuration was not captured"
+        );
+        assert!(inventory.is_some(), "actual source inventory was lost");
+        let base = target.parent().ok_or("base path is missing")?.to_path_buf();
+        cleanup
+            .checked_cleanup()
+            .map_err(|error| error.to_string())?;
+        assert!(
+            !base.exists(),
+            "checked Requested root cleanup did not remove the root"
+        );
+        std::fs::DirBuilder::new()
+            .mode(0o700)
+            .create(&base)
+            .map_err(|error| error.to_string())?;
+        let replacement = RepoGuard(base.clone());
+        std::fs::write(base.join("sentinel"), b"after checked cleanup")
+            .map_err(|error| error.to_string())?;
+        drop(cleanup);
+        assert_eq!(
+            std::fs::read(base.join("sentinel")).map_err(|error| error.to_string())?,
+            b"after checked cleanup"
+        );
+        drop(replacement);
+        Ok(())
+    }
+
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    #[test]
+    fn requested_linux_source_directory_link_swap_refuses_before_blob_write() -> Result<(), String>
+    {
+        use std::os::unix::fs::symlink;
+        let (fixture, _, candidate) = fixture_repo("requested-source-link-swap")?;
+        let outside = fixture.0.join("outside");
+        std::fs::create_dir(&outside).map_err(|error| error.to_string())?;
+        std::fs::write(outside.join("sentinel"), b"outside").map_err(|error| error.to_string())?;
+        let mut target = None;
+        let mut retained = None;
+        let mut moved = None;
+        let error = materialize_requested_configuration(
+            &fixture.0,
+            &candidate,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                    retained = path.parent().map(|base| RepoGuard(base.to_path_buf()));
+                }
+                if event == RequestedMaterializationEvent::AfterMkdir
+                    && target
+                        .as_ref()
+                        .is_some_and(|target| target.join("src") == path)
+                {
+                    let original = path.with_file_name("original-src");
+                    std::fs::rename(path, &original).map_err(|error| failed(error.to_string()))?;
+                    symlink(&outside, path).map_err(|error| failed(error.to_string()))?;
+                    moved = Some(original);
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("source-directory link was followed")?;
+        assert!(
+            error.to_string().contains("type is not admitted"),
+            "{error}"
+        );
+        assert_eq!(
+            std::fs::read(outside.join("sentinel")).map_err(|error| error.to_string())?,
+            b"outside"
+        );
+        assert!(
+            !outside.join("lib.rs").exists(),
+            "wrote a blob through the swapped source directory"
+        );
+        let moved = moved.ok_or("actual source-directory callback did not run")?;
+        assert!(
+            moved.is_dir(),
+            "refused cleanup deleted the original directory"
+        );
+        assert!(
+            !moved.join("lib.rs").exists(),
+            "blob write preceded its parent identity check"
+        );
+        let target = target.ok_or("actual listing callback did not run")?;
+        assert!(
+            std::fs::symlink_metadata(target.join("src"))
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_symlink(),
+            "refused cleanup deleted the replacement link"
+        );
+        drop(retained);
+        Ok(())
+    }
+
+    #[test]
+    fn requested_occupied_base_refusal_preserves_unowned_sentinel() -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-occupied-base")?;
+        let mut target = None;
+        let mut occupied = None;
+        let mut after_base = false;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if target.as_deref().and_then(Path::parent) == Some(path) {
+                    if event == RequestedMaterializationEvent::BeforeMkdir {
+                        std::fs::create_dir(path).map_err(|error| failed(error.to_string()))?;
+                        occupied = Some(RepoGuard(path.to_path_buf()));
+                        std::fs::write(path.join("sentinel"), b"unowned occupied base")
+                            .map_err(|error| failed(error.to_string()))?;
+                    } else if event == RequestedMaterializationEvent::AfterMkdir {
+                        after_base = true;
+                    }
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("occupied base was accepted")?;
+        assert!(
+            failure.to_string().contains("materialization mkdir failed"),
+            "{failure}"
+        );
+        assert!(!after_base, "occupied base reached postcreation");
+        let occupied = occupied.ok_or("occupied base fixture was not created")?;
+        assert_eq!(
+            std::fs::read(occupied.0.join("sentinel")).map_err(|error| error.to_string())?,
+            b"unowned occupied base"
+        );
+        assert!(!target.ok_or("listing was not reached")?.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_listing_refusal_never_acquires_precreated_base_cleanup() -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-listing-refusal-base")?;
+        let mut occupied = None;
+        let mut mkdir_calls = 0;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::BeforeMkdir {
+                    mkdir_calls += 1;
+                }
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    let base = path.parent().ok_or_else(|| failed("base missing".into()))?;
+                    std::fs::create_dir_all(base).map_err(|error| failed(error.to_string()))?;
+                    occupied = Some(RepoGuard(base.to_path_buf()));
+                    std::fs::write(base.join("sentinel"), b"listing refusal sentinel")
+                        .map_err(|error| failed(error.to_string()))?;
+                    return Err(failed("fixture listing refused before creation".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("listing refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture listing refused before creation".into()).to_string()
+        );
+        assert_eq!(mkdir_calls, 0, "listing refusal reached mkdir");
+        let occupied = occupied.ok_or("listing fixture was not reached")?;
+        assert_eq!(
+            std::fs::read(occupied.0.join("sentinel")).map_err(|error| error.to_string())?,
+            b"listing refusal sentinel"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_postcreation_error_reports_retention_without_cleanup() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-base-postcreation-error")?;
+        let base = guard.0.join("created-base");
+        let mut report = Vec::new();
+        let failure = requested_base_dir(
+            &base,
+            std::time::Instant::now(),
+            Duration::from_secs(2),
+            &mut report,
+            &mut |event, path, _, _| {
+                if event == RequestedMaterializationEvent::AfterMkdir {
+                    std::fs::write(path.join("sentinel"), b"retained partial base")
+                        .map_err(|error| failed(error.to_string()))?;
+                    return Err(failed("fixture postcreation refusal".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("postcreation refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture postcreation refusal".into()).to_string()
+        );
+        assert_eq!(
+            std::fs::read(base.join("sentinel")).map_err(|error| error.to_string())?,
+            b"retained partial base"
+        );
+        let report = String::from_utf8(report).map_err(|error| error.to_string())?;
+        assert!(
+            report.contains("retained without cleanup"),
+            "actual retention report missing: {report}"
+        );
+        assert!(
+            report.contains(&base.display().to_string()),
+            "actual retained path missing: {report}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_postcreation_unwind_reports_and_retains_created_root() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-base-postcreation-unwind")?;
+        let base = guard.0.join("created-base");
+        let mut report = Vec::new();
+        let unwind = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            requested_base_dir(
+                &base,
+                std::time::Instant::now(),
+                Duration::from_secs(2),
+                &mut report,
+                &mut |event, path, _, _| {
+                    if event == RequestedMaterializationEvent::AfterMkdir {
+                        std::fs::write(path.join("sentinel"), b"retained during unwind")
+                            .map_err(|error| failed(error.to_string()))?;
+                        std::panic::resume_unwind(Box::new("fixture postcreation unwind"));
+                    }
+                    Ok(())
+                },
+            )
+        }))
+        .err()
+        .ok_or("postcreation callback did not unwind")?;
+        assert_eq!(
+            unwind.downcast_ref::<&str>(),
+            Some(&"fixture postcreation unwind")
+        );
+        assert_eq!(
+            std::fs::read(base.join("sentinel")).map_err(|error| error.to_string())?,
+            b"retained during unwind"
+        );
+        let report = String::from_utf8(report).map_err(|error| error.to_string())?;
+        assert!(
+            report.contains("retained without cleanup"),
+            "actual unwind retention report missing: {report}"
+        );
+        assert!(
+            report.contains(&base.display().to_string()),
+            "actual unwind retained path missing: {report}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_swap_then_error_keeps_created_and_replacement_roots() -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-base-swap-refusal")?;
+        let moved = guard.0.join("retained-created-base");
+        let mut target = None;
+        let mut replacement = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::AfterMkdir
+                    && target.as_deref().and_then(Path::parent) == Some(path)
+                {
+                    std::fs::write(path.join("sentinel"), b"original created base")
+                        .map_err(|error| failed(error.to_string()))?;
+                    std::fs::rename(path, &moved).map_err(|error| failed(error.to_string()))?;
+                    std::fs::create_dir(path).map_err(|error| failed(error.to_string()))?;
+                    replacement = Some(RepoGuard(path.to_path_buf()));
+                    std::fs::write(path.join("sentinel"), b"replacement base")
+                        .map_err(|error| failed(error.to_string()))?;
+                    return Err(failed("fixture swapped base refusal".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("swapped base refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture swapped base refusal".into()).to_string()
+        );
+        assert_eq!(
+            std::fs::read(moved.join("sentinel")).map_err(|error| error.to_string())?,
+            b"original created base"
+        );
+        let replacement = replacement.ok_or("actual base swap was not reached")?;
+        assert_eq!(
+            std::fs::read(replacement.0.join("sentinel")).map_err(|error| error.to_string())?,
+            b"replacement base"
+        );
+        assert!(!target.ok_or("listing was not reached")?.exists());
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn requested_base_link_swap_then_error_preserves_link_and_outside_sentinel()
+    -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-base-link-refusal")?;
+        let moved = guard.0.join("retained-created-base");
+        let outside = guard.0.join("outside-source");
+        std::fs::create_dir(&outside).map_err(|error| error.to_string())?;
+        std::fs::write(outside.join("sentinel"), b"outside retained sentinel")
+            .map_err(|error| error.to_string())?;
+        let mut target = None;
+        let mut replacement = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::AfterMkdir
+                    && target.as_deref().and_then(Path::parent) == Some(path)
+                {
+                    std::fs::write(path.join("sentinel"), b"original before link swap")
+                        .map_err(|error| failed(error.to_string()))?;
+                    std::fs::rename(path, &moved).map_err(|error| failed(error.to_string()))?;
+                    std::os::unix::fs::symlink(&outside, path)
+                        .map_err(|error| failed(error.to_string()))?;
+                    replacement = Some(RepoGuard(path.to_path_buf()));
+                    return Err(failed("fixture linked base refusal".into()));
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("linked base refusal returned success")?;
+        assert_eq!(
+            failure.to_string(),
+            failed("fixture linked base refusal".into()).to_string()
+        );
+        assert_eq!(
+            std::fs::read(moved.join("sentinel")).map_err(|error| error.to_string())?,
+            b"original before link swap"
+        );
+        let replacement = replacement.ok_or("actual link swap was not reached")?;
+        assert!(
+            std::fs::symlink_metadata(&replacement.0)
+                .map_err(|error| error.to_string())?
+                .file_type()
+                .is_symlink(),
+            "refused acquisition removed the replacement link"
+        );
+        assert_eq!(
+            std::fs::read(outside.join("sentinel")).map_err(|error| error.to_string())?,
+            b"outside retained sentinel"
+        );
+        assert!(!target.ok_or("listing was not reached")?.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_base_success_hands_off_existing_checked_cleanup() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-base-success-handoff")?;
+        let base = guard.0.join("created-base");
+        let mut report = Vec::new();
+        let mut postcreation = false;
+        let cleanup = requested_base_dir(
+            &base,
+            std::time::Instant::now(),
+            Duration::from_secs(2),
+            &mut report,
+            &mut |event, path, _, _| {
+                if event == RequestedMaterializationEvent::AfterMkdir {
+                    postcreation = path.is_dir();
+                }
+                Ok(())
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(
+            postcreation,
+            "actual exclusive base creation was not reached"
+        );
+        assert_eq!(cleanup.0, base);
+        assert!(report.is_empty(), "successful handoff reported retention");
+        std::fs::write(base.join("sentinel"), b"owned successful base")
+            .map_err(|error| error.to_string())?;
+        cleanup
+            .checked_cleanup()
+            .map_err(|error| error.to_string())?;
+        assert!(
+            !base.exists(),
+            "existing checked cleanup did not remove base"
+        );
+        drop(cleanup);
+        assert!(!base.exists(), "existing Drop recreated a removed base");
+        Ok(())
+    }
+
+    #[test]
+    fn requested_empty_tree_preserves_ordinary_bytes_and_exact_directory_inventory()
+    -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("requested-empty-tree-bounds")?;
+        let empty = git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let (ordinary, ordinary_cleanup) =
+            materialize(&guard.0, &empty, None).map_err(|error| error.to_string())?;
+        let prepared =
+            prepare_named_tree(&guard.0, &empty, None).map_err(|error| error.to_string())?;
+        assert_eq!(prepared.configuration, CapturedConfiguration::Absent);
+        assert_eq!(prepared.inventory.files().len(), 0);
+        assert_eq!(
+            prepared.inventory.directories().collect::<Vec<_>>(),
+            vec![Path::new("")]
+        );
+        assert_eq!(
+            std::fs::read_dir(&ordinary)
+                .map_err(|error| error.to_string())?
+                .count(),
+            std::fs::read_dir(&prepared._root)
+                .map_err(|error| error.to_string())?
+                .count()
+        );
+        let ordinary_root = ordinary_cleanup.0.clone();
+        let requested_root = prepared._cleanup.0.clone();
+        drop(ordinary_cleanup);
+        drop(prepared);
+        assert!(!ordinary_root.exists());
+        assert!(!requested_root.exists());
+
+        let (directory_guard, tree) = requested_directory_fixture("requested-directory-exact")?;
+        let prepared = prepare_named_tree(&directory_guard.0, &tree, None)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(prepared.inventory.files().len(), 0);
+        assert_eq!(
+            prepared
+                .inventory
+                .directories()
+                .map(Path::to_path_buf)
+                .collect::<Vec<_>>(),
+            ["", "empty", "shared", "shared/a", "shared/b"].map(PathBuf::from)
+        );
+        for path in ["empty", "shared/a", "shared/b"] {
+            assert!(prepared._root.join(path).is_dir());
+            assert_eq!(
+                std::fs::read_dir(prepared._root.join(path))
+                    .map_err(|error| error.to_string())?
+                    .count(),
+                0
+            );
+        }
+        let root = prepared._cleanup.0.clone();
+        drop(prepared);
+        assert!(!root.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_directory_count_admits_wrappers_and_shared_ancestors_before_mkdir()
+    -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-directory-count")?;
+        let limits = RequestedTreeLimits {
+            entries: 6,
+            path_bytes: 27,
+        };
+        let mut target = None;
+        let mut mkdir_calls = 0;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            limits,
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::BeforeMkdir {
+                    mkdir_calls += 1;
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("lowered directory entry cap was accepted")?;
+        assert!(failure.to_string().contains("6-entry limit"), "{failure}");
+        assert_eq!(mkdir_calls, 0, "count refusal must precede every mkdir");
+        let target = target.ok_or("actual Git listing callback was not reached")?;
+        let base = target.parent().ok_or("target has no unique wrapper")?;
+        assert!(!base.exists());
+
+        let (physical, cleanup, configuration, inventory) = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits {
+                entries: 7,
+                path_bytes: 27,
+            },
+            |_, _, _, _| Ok(()),
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(configuration, CapturedConfiguration::Absent);
+        let inventory = inventory.ok_or("directory inventory missing")?;
+        assert_eq!(inventory.directories().len(), 5);
+        assert_eq!(inventory.files().len(), 0);
+        assert!(physical.join("shared/b").is_dir());
+        let base = cleanup.0.clone();
+        drop(cleanup);
+        assert!(!base.exists());
+
+        let started = std::time::Instant::now();
+        let oid = "a".repeat(40);
+        let listing = format!("040000 tree {oid}\ta/b/c\0");
+        let namespace = requested_namespace(
+            listing.as_bytes(),
+            Path::new(""),
+            started,
+            Duration::from_secs(10),
+            RequestedTreeLimits {
+                entries: 6,
+                path_bytes: 9,
+            },
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(namespace.total_entries, 6);
+        assert_eq!(namespace.path_bytes, 9);
+        assert_eq!(namespace.entries.len(), 3);
+        Ok(())
+    }
+
+    #[test]
+    fn requested_directory_path_cap_overflow_and_namespace_errors_fail_closed() -> Result<(), String>
+    {
+        let (guard, tree) = requested_directory_fixture("requested-directory-path-cap")?;
+        let mut target = None;
+        let mut mkdir_calls = 0;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits {
+                entries: 7,
+                path_bytes: 26,
+            },
+            |event, path, _, _| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::BeforeMkdir {
+                    mkdir_calls += 1;
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("lowered retained path cap was accepted")?;
+        assert!(failure.to_string().contains("26-byte limit"), "{failure}");
+        assert_eq!(mkdir_calls, 0);
+        assert!(!target.ok_or("actual listing was not reached")?.exists());
+
+        let started = std::time::Instant::now();
+        let oid = "a".repeat(40);
+        let cases = [
+            (
+                format!("100644 blob {oid}\ta\0040000 tree {oid}\ta/b\0"),
+                "overlap",
+            ),
+            (
+                format!("040000 tree {oid}\ta\0100644 blob {oid}\ta\0"),
+                "overlap",
+            ),
+            (
+                format!("040000 tree {oid}\ta\0040000 tree {oid}\ta\0"),
+                "duplicates path",
+            ),
+            (
+                format!("120000 blob {oid}\tlink\0"),
+                "unsupported tree entry mode",
+            ),
+            (
+                format!("040000 tree {oid}\ta//b\0"),
+                "empty or dot component",
+            ),
+            (format!("040000 tree {oid}\ta/../b\0"), "path is malformed"),
+            (format!("040000 tree {oid}\ta"), "not NUL-terminated"),
+        ];
+        for (listing, category) in cases {
+            let failure = requested_namespace(
+                listing.as_bytes(),
+                Path::new(""),
+                started,
+                Duration::from_secs(10),
+                RequestedTreeLimits::STANDARD,
+            )
+            .err()
+            .ok_or_else(|| format!("namespace accepted {category}"))?;
+            assert!(failure.to_string().contains(category), "{failure}");
+        }
+        let mut namespace = RequestedNamespace::new(RequestedTreeLimits {
+            entries: usize::MAX,
+            path_bytes: usize::MAX,
+        })
+        .map_err(|error| error.to_string())?;
+        namespace.total_entries = usize::MAX;
+        let failure = namespace
+            .admit_path(Path::new(""), "a", RequestedEntryKind::File)
+            .err()
+            .ok_or("entry count overflow was accepted")?;
+        assert!(failure.to_string().contains("entry count overflowed"));
+        assert!(namespace.entries.is_empty());
+        namespace.total_entries = REQUESTED_WRAPPER_DIRECTORIES;
+        namespace.path_bytes = usize::MAX;
+        let failure = namespace
+            .admit_path(Path::new(""), "a", RequestedEntryKind::File)
+            .err()
+            .ok_or("retained path count overflow was accepted")?;
+        assert!(failure.to_string().contains("path byte count overflowed"));
+        assert!(namespace.entries.is_empty());
+        Ok(())
+    }
+
+    fn expire_requested_clock(
+        started: std::time::Instant,
+        budget: Duration,
+    ) -> Result<(), SubjectError> {
+        if started.elapsed().is_zero() || started.elapsed() >= budget {
+            return Err(failed(
+                "fixture did not reach an elapsed but live original clock".into(),
+            ));
+        }
+        std::thread::sleep(budget.saturating_sub(started.elapsed()) + Duration::from_millis(2));
+        Ok(())
+    }
+
+    #[test]
+    fn requested_directory_mkdir_observes_original_elapsed_clock_and_cleans_failure()
+    -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-directory-mkdir-clock")?;
+        let mut reached = false;
+        let mut target = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            Some(Duration::from_secs(2)),
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, started, budget| {
+                if event == RequestedMaterializationEvent::ListingCaptured {
+                    target = Some(path.to_path_buf());
+                }
+                if event == RequestedMaterializationEvent::AfterMkdir
+                    && path.file_name() == Some(std::ffi::OsStr::new("empty"))
+                {
+                    if !path.is_dir() {
+                        return Err(failed("actual source mkdir did not occur".into()));
+                    }
+                    reached = true;
+                    expire_requested_clock(started, budget)?;
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("mkdir crossed the original clock and returned success")?;
+        assert!(reached, "actual source mkdir callback was not reached");
+        assert_eq!(
+            failure.to_string(),
+            failed("named-tree materialization deadline exceeded".into()).to_string()
+        );
+        let target = target.ok_or("actual listing was not reached")?;
+        assert!(!target.parent().ok_or("target wrapper missing")?.exists());
+        let (physical, cleanup, _, _) = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            None,
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |_, _, _, _| Ok(()),
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(physical.join("empty").is_dir());
+        let base = cleanup.0.clone();
+        drop(cleanup);
+        assert!(!base.exists());
+        Ok(())
+    }
+
+    #[test]
+    fn requested_all_directory_final_check_cannot_reset_or_bypass_original_clock()
+    -> Result<(), String> {
+        let (guard, tree) = requested_directory_fixture("requested-directory-final-clock")?;
+        let mut reached = false;
+        let mut target = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            Some(Duration::from_secs(2)),
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, started, budget| {
+                if event == RequestedMaterializationEvent::BeforeReturn {
+                    if !path.join("shared/a").is_dir() || !path.join("shared/b").is_dir() {
+                        return Err(failed("all-directory fixture was not materialized".into()));
+                    }
+                    target = Some(path.to_path_buf());
+                    reached = true;
+                    expire_requested_clock(started, budget)?;
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("all-directory return bypassed the original clock")?;
+        assert!(
+            reached,
+            "actual all-directory final callback was not reached"
+        );
+        assert_eq!(
+            failure.to_string(),
+            failed("named-tree materialization deadline exceeded".into()).to_string()
+        );
+        assert!(
+            !target
+                .ok_or("final path missing")?
+                .parent()
+                .ok_or("wrapper missing")?
+                .exists()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_empty_tree_final_check_observes_original_clock_and_cleanup() -> Result<(), String>
+    {
+        let (guard, _, _) = fixture_repo("requested-empty-final-clock")?;
+        let tree = git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let mut reached = false;
+        let mut target = None;
+        let failure = materialize_requested_configuration(
+            &guard.0,
+            &tree,
+            Some(Duration::from_secs(2)),
+            crate::bounded_input::MAX_CLI_INPUT_BYTES,
+            RequestedTreeLimits::STANDARD,
+            |event, path, started, budget| {
+                if event == RequestedMaterializationEvent::BeforeReturn {
+                    if !path.is_dir()
+                        || std::fs::read_dir(path)
+                            .map_err(|error| failed(error.to_string()))?
+                            .next()
+                            .is_some()
+                    {
+                        return Err(failed(
+                            "empty tree fixture did not reach actual empty return".into(),
+                        ));
+                    }
+                    target = Some(path.to_path_buf());
+                    reached = true;
+                    expire_requested_clock(started, budget)?;
+                }
+                Ok(())
+            },
+        )
+        .err()
+        .ok_or("empty tree return bypassed the original clock")?;
+        assert!(reached, "actual empty-tree final callback was not reached");
+        assert_eq!(
+            failure.to_string(),
+            failed("named-tree materialization deadline exceeded".into()).to_string()
+        );
+        assert!(
+            !target
+                .ok_or("final path missing")?
+                .parent()
+                .ok_or("wrapper missing")?
+                .exists()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn requested_directory_cancellation_refuses_after_mkdir_and_allows_fresh_recovery()
+    -> Result<(), String> {
+        use super::super::cancellation::{self, AnalysisAbortKind, AnalysisCancellationToken};
+        let (guard, tree) = requested_directory_fixture("requested-directory-cancel")?;
+        let token = AnalysisCancellationToken::new();
+        let mut target = None;
+        let mut reached = false;
+        let failure = cancellation::with_token(&token, || {
+            materialize_requested_configuration(
+                &guard.0,
+                &tree,
+                None,
+                crate::bounded_input::MAX_CLI_INPUT_BYTES,
+                RequestedTreeLimits::STANDARD,
+                |event, path, _, _| {
+                    if event == RequestedMaterializationEvent::ListingCaptured {
+                        target = Some(path.to_path_buf());
+                    }
+                    if event == RequestedMaterializationEvent::AfterMkdir
+                        && path.file_name() == Some(std::ffi::OsStr::new("empty"))
+                    {
+                        reached = token.cancel(AnalysisAbortKind::Cancelled);
+                    }
+                    Ok(())
+                },
+            )
+        })
+        .err()
+        .ok_or("directory-only capture ignored cancellation")?;
+        assert!(reached);
+        assert!(
+            failure
+                .to_string()
+                .contains("analysis cancelled: Cancelled"),
+            "{failure}"
+        );
+        assert!(
+            !target
+                .ok_or("actual listing missing")?
+                .parent()
+                .ok_or("wrapper missing")?
+                .exists()
+        );
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert!(prepared._root.join("empty").is_dir());
+        Ok(())
+    }
+
+    fn named_filename_round_trip(fixture_name: &str, name: &str) -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        use crate::testing::fixture_git::fixture_git_ok;
+
+        let (guard, _, _) = fixture_repo(fixture_name)?;
+        let bytes = b"pub fn literal_filename() -> u8 { 7 }\n";
+        std::fs::write(guard.0.join(name), bytes).map_err(|error| error.to_string())?;
+        fixture_git_ok(&guard.0, &["add", "--all"])?;
+        fixture_git_ok(&guard.0, &["commit", "-m", "literal filename"])?;
+        let tree = git(&guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let oid = git(
+            &guard.0,
+            &["rev-parse", &format!("HEAD:{name}")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(candidate_blob(&guard.0, "HEAD", name)?, bytes);
+
+        let (ordinary, _ordinary_cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert_eq!(
+            std::fs::read(ordinary.join(name)).map_err(|error| error.to_string())?,
+            bytes
+        );
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        let (_, file) = prepared
+            .inventory
+            .files()
+            .find(|(path, _)| *path == Path::new(name))
+            .ok_or_else(|| format!("named inventory lost literal path {name}"))?;
+        assert_eq!(file.mode, frozen::FrozenFileMode::Regular);
+        assert_eq!(file.blob_oid.as_str(), oid);
+        assert_eq!(file.size, bytes.len() as u64);
+        let digest: [u8; 32] = sha2::Sha256::digest(bytes).into();
+        assert_eq!(file.sha256, digest);
+        assert_eq!(
+            std::fs::read(prepared.physical_root().join(name)).map_err(|error| error.to_string())?,
+            bytes
+        );
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(guard.0.join(name)).map_err(|error| error.to_string())?;
+        let missing = std::fs::read(guard.0.join(name))
+            .err()
+            .ok_or("deleted live literal filename was still readable")?;
+        assert_eq!(missing.kind(), std::io::ErrorKind::NotFound);
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            assert_eq!(
+                frozen::fs::read(guard.0.join(name)).map_err(|error| error.to_string())?,
+                bytes
+            );
+            authority.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        authority.finalize().map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn safe_join_refuses_raw_aliases_and_platform_escape_components() -> Result<(), String> {
+        let target = Path::new("literal-path-target");
+        for name in [
+            "",
+            "/outside.rs",
+            "../outside.rs",
+            "src/../outside.rs",
+            ".",
+            "..",
+            "./file.rs",
+            "src/./file.rs",
+            "src/.",
+            "src/",
+            "src//file.rs",
+        ] {
+            let failure = safe_join(target, name)
+                .err()
+                .ok_or_else(|| format!("safe_join admitted raw alias {name:?}"))?;
+            assert!(
+                failure
+                    .to_string()
+                    .contains("escapes the materialization root"),
+                "{failure}"
+            );
+        }
+        #[cfg(windows)]
+        {
+            let drive_absolute = Path::new("C:").join("/absolute.rs");
+            assert!(drive_absolute.is_absolute());
+            let drive_absolute_name = drive_absolute
+                .to_str()
+                .ok_or("synthetic drive-absolute path is not UTF-8")?;
+            for name in [
+                "C:relative.rs",
+                drive_absolute_name,
+                r"\\server\share\file.rs",
+                r"src\file.rs",
+                r"src\..\outside.rs",
+            ] {
+                let failure = safe_join(target, name)
+                    .err()
+                    .ok_or_else(|| format!("safe_join admitted Windows escape {name:?}"))?;
+                assert!(
+                    failure
+                        .to_string()
+                        .contains("escapes the materialization root"),
+                    "{failure}"
+                );
+            }
+        }
+        for name in ["foo..rs", "src/foo..rs"] {
+            assert_eq!(
+                safe_join(target, name).map_err(|error| error.to_string())?,
+                target.join(name)
+            );
+        }
+        #[cfg(unix)]
+        assert_eq!(
+            safe_join(target, r"src/back\slash.rs").map_err(|error| error.to_string())?,
+            target.join(r"src/back\slash.rs")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn named_dot_substring_filename_preserves_ordinary_and_frozen_blob_identity()
+    -> Result<(), String> {
+        named_filename_round_trip("literal-dot-substring", "src/foo..rs")
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn named_unix_backslash_filename_preserves_ordinary_and_frozen_blob_identity()
+    -> Result<(), String> {
+        named_filename_round_trip("literal-unix-backslash", r"src/back\slash.rs")
+    }
+
+    #[test]
+    fn named_inventory_retains_original_modes_and_order_with_ordinary_blob_parity()
+    -> Result<(), String> {
+        use super::super::committed_source::frozen::{self, FrozenFileMode};
+        let (guard, _, _) = fixture_repo("frozen-original-modes")?;
+        let bytes = b"pub fn shared() -> u8 { 7 }\n";
+        for name in ["regular.rs", "executable.rs"] {
+            std::fs::write(guard.0.join(name), bytes).map_err(|error| error.to_string())?;
+        }
+        for args in [
+            &["add", "regular.rs", "executable.rs"][..],
+            &["update-index", "--chmod=-x", "regular.rs"][..],
+            &["update-index", "--chmod=+x", "executable.rs"][..],
+        ] {
+            crate::testing::fixture_git::fixture_git_ok(&guard.0, args)?;
+        }
+        let tree =
+            git(&guard.0, &["write-tree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{tree}:regular.rs")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let executable_oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{tree}:executable.rs")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert_eq!(
+            oid, executable_oid,
+            "the mode discriminator must share one blob"
+        );
+        let listing = crate::git::run_git_output_with_deadline(
+            &guard.0,
+            &["ls-tree", "-r", "-z", &tree],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(listing.status.success(), "actual mode listing failed");
+        for (name, mode) in [("regular.rs", "100644"), ("executable.rs", "100755")] {
+            let expected = format!("{mode} blob {oid}\t{name}");
+            assert!(
+                listing
+                    .stdout
+                    .split(|byte| *byte == 0)
+                    .any(|row| row == expected.as_bytes()),
+                "actual Git tree did not contain {expected}"
+            );
+        }
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(authority.head_tree().as_str(), tree);
+        for (name, expected, git_mode) in [
+            ("regular.rs", FrozenFileMode::Regular, "100644"),
+            ("executable.rs", FrozenFileMode::Executable, "100755"),
+        ] {
+            let (_, file) = authority
+                .inventory()
+                .files()
+                .find(|(path, _)| *path == Path::new(name))
+                .ok_or_else(|| format!("mode inventory lost {name}"))?;
+            assert_eq!(file.mode, expected, "original Git mode was lost for {name}");
+            assert_eq!(file.mode.git_mode(), git_mode);
+            assert_eq!(file.blob_oid.as_str(), oid);
+            assert_eq!(file.size, bytes.len() as u64);
+        }
+        let records = |authority: &frozen::FrozenSourceAuthority| {
+            authority
+                .inventory()
+                .files()
+                .map(|(path, file)| {
+                    (
+                        path.to_path_buf(),
+                        file.mode,
+                        file.blob_oid.clone(),
+                        file.size,
+                        file.sha256,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
+        let first = records(&authority);
+        assert!(
+            !first.is_empty(),
+            "fixture must yield authenticated file records"
+        );
+        assert!(first.windows(2).all(|pair| pair[0].0 < pair[1].0));
+        let directories = authority
+            .inventory()
+            .directories()
+            .map(Path::to_path_buf)
+            .collect::<Vec<_>>();
+        assert!(directories.windows(2).all(|pair| pair[0] < pair[1]));
+        let repeated = prepare_named_tree(&guard.0, &tree, None)
+            .map_err(|error| error.to_string())?
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            records(&repeated),
+            first,
+            "physical roots must not enter records"
+        );
+        assert_eq!(
+            repeated
+                .inventory()
+                .directories()
+                .map(Path::to_path_buf)
+                .collect::<Vec<_>>(),
+            directories
+        );
+        std::fs::write(guard.0.join("regular.rs"), b"live decoy")
+            .map_err(|error| error.to_string())?;
+        let (ordinary, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            for (path, file) in authority.inventory().files() {
+                let snapshot =
+                    frozen::fs::read(guard.0.join(path)).map_err(|error| error.to_string())?;
+                let legacy =
+                    std::fs::read(ordinary.join(path)).map_err(|error| error.to_string())?;
+                assert_eq!(
+                    snapshot,
+                    legacy,
+                    "ordinary bytes changed for {}",
+                    path.display()
+                );
+                assert_eq!(snapshot.len() as u64, file.size);
+                let digest: [u8; 32] = sha2::Sha256::digest(&snapshot).into();
+                assert_eq!(digest, file.sha256);
+            }
+            authority.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        Ok(())
+    }
+
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    mod retained_snapshot_fixture {
+        use std::ffi::{OsStr, OsString};
+        use std::fs::{File, Metadata, OpenOptions};
+        use std::io::{Read, Seek, SeekFrom};
+        use std::os::fd::AsRawFd;
+        use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+        use std::path::{Component, Path, PathBuf};
+
+        #[cfg(target_arch = "x86_64")]
+        const NOFOLLOW: i32 = 0x20000;
+        #[cfg(target_arch = "aarch64")]
+        const NOFOLLOW: i32 = 0x8000;
+        #[cfg(target_arch = "x86_64")]
+        const DIRECTORY: i32 = 0x10000;
+        #[cfg(target_arch = "aarch64")]
+        const DIRECTORY: i32 = 0x4000;
+        const NONBLOCK: i32 = 0x800;
+
+        #[derive(Clone, Copy)]
+        struct Identity {
+            dev: u64,
+            ino: u64,
+            uid: u32,
+            mode: u32,
+            directory: bool,
+            nlink: u64,
+            len: u64,
+            mtime: i64,
+            mtime_nsec: i64,
+            ctime: i64,
+            ctime_nsec: i64,
+        }
+
+        impl Identity {
+            fn capture(metadata: &Metadata, directory: bool) -> Result<Self, String> {
+                if metadata.is_dir() != directory
+                    || (!directory && (!metadata.is_file() || metadata.nlink() != 1))
+                {
+                    return Err("fixture member type or link count differs".into());
+                }
+                Ok(Self {
+                    dev: metadata.dev(),
+                    ino: metadata.ino(),
+                    uid: metadata.uid(),
+                    mode: metadata.mode() & 0o7777,
+                    directory,
+                    nlink: metadata.nlink(),
+                    len: metadata.len(),
+                    mtime: metadata.mtime(),
+                    mtime_nsec: metadata.mtime_nsec(),
+                    ctime: metadata.ctime(),
+                    ctime_nsec: metadata.ctime_nsec(),
+                })
+            }
+
+            fn same_object(&self, metadata: &Metadata) -> bool {
+                metadata.dev() == self.dev
+                    && metadata.ino() == self.ino
+                    && metadata.uid() == self.uid
+                    && metadata.mode() & 0o7777 == self.mode
+                    && metadata.is_dir() == self.directory
+                    && (self.directory || (metadata.is_file() && metadata.nlink() == 1))
+            }
+
+            fn unchanged(&self, metadata: &Metadata) -> bool {
+                self.same_object(metadata)
+                    && metadata.nlink() == self.nlink
+                    && metadata.len() == self.len
+                    && metadata.mtime() == self.mtime
+                    && metadata.mtime_nsec() == self.mtime_nsec
+                    && metadata.ctime() == self.ctime
+                    && metadata.ctime_nsec() == self.ctime_nsec
+            }
+        }
+
+        struct Pinned {
+            file: File,
+            identity: Identity,
+        }
+
+        fn normal(name: &OsStr) -> Result<(), String> {
+            let mut parts = Path::new(name).components();
+            if !matches!(parts.next(), Some(Component::Normal(_))) || parts.next().is_some() {
+                return Err("fixture child is not one Normal component".into());
+            }
+            Ok(())
+        }
+
+        fn child(parent: &File, name: &OsStr) -> Result<PathBuf, String> {
+            normal(name)?;
+            Ok(PathBuf::from(format!("/proc/self/fd/{}", parent.as_raw_fd())).join(name))
+        }
+
+        fn open(path: &Path, directory: bool) -> Result<Pinned, String> {
+            let file = OpenOptions::new()
+                .read(true)
+                .custom_flags(NOFOLLOW | NONBLOCK | if directory { DIRECTORY } else { 0 })
+                .open(path)
+                .map_err(|error| error.to_string())?;
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            let identity = Identity::capture(&metadata, directory)?;
+            Ok(Pinned { file, identity })
+        }
+
+        fn pin(parent: &Pinned, name: &OsStr, directory: bool) -> Result<Pinned, String> {
+            let pinned = open(&child(&parent.file, name)?, directory)?;
+            if pinned.identity.uid != parent.identity.uid && !directory {
+                return Err("fixture file UID differs from its directory".into());
+            }
+            Ok(pinned)
+        }
+
+        fn current(
+            parent: &Pinned,
+            name: &OsStr,
+            pinned: &Pinned,
+            full: bool,
+        ) -> Result<(), String> {
+            let held = pinned.file.metadata().map_err(|error| error.to_string())?;
+            let named = open(&child(&parent.file, name)?, pinned.identity.directory)?;
+            let named = named.file.metadata().map_err(|error| error.to_string())?;
+            let matches = |metadata: &Metadata| {
+                if full {
+                    pinned.identity.unchanged(metadata)
+                } else {
+                    pinned.identity.same_object(metadata)
+                }
+            };
+            if !matches(&held) || !matches(&named) {
+                return Err("fixture retained member identity or attributes changed".into());
+            }
+            Ok(())
+        }
+
+        fn members(directory: &Pinned, expected: &[&str]) -> Result<(), String> {
+            if expected.len() > 4 {
+                return Err("fixture membership admission differs".into());
+            }
+            let mut seen = [false; 4];
+            let mut count = 0_usize;
+            let path = PathBuf::from(format!("/proc/self/fd/{}", directory.file.as_raw_fd()));
+            for entry in std::fs::read_dir(path).map_err(|error| error.to_string())? {
+                count += 1;
+                if count > expected.len() {
+                    return Err("fixture directory contains excess membership".into());
+                }
+                let name = entry.map_err(|error| error.to_string())?.file_name();
+                normal(&name)?;
+                let index = expected
+                    .iter()
+                    .position(|expected| name == OsStr::new(expected))
+                    .ok_or("fixture directory contains unknown membership")?;
+                if seen[index] {
+                    return Err("fixture directory repeats a member".into());
+                }
+                seen[index] = true;
+            }
+            if count != expected.len() || seen[..expected.len()].iter().any(|seen| !seen) {
+                return Err("fixture directory lacks an expected member".into());
+            }
+            Ok(())
+        }
+
+        fn contents(file: &File, expected: &[u8]) -> Result<(), String> {
+            if expected.len() > 4096 {
+                return Err("fixture content admission exceeds its fixed bound".into());
+            }
+            let mut input = file.try_clone().map_err(|error| error.to_string())?;
+            input
+                .seek(SeekFrom::Start(0))
+                .map_err(|error| error.to_string())?;
+            let mut bytes = [0_u8; 4097];
+            let mut used = 0;
+            while used <= expected.len() {
+                let read = input
+                    .read(&mut bytes[used..expected.len() + 1])
+                    .map_err(|error| error.to_string())?;
+                if read == 0 {
+                    break;
+                }
+                used += read;
+            }
+            if used != expected.len() || &bytes[..used] != expected {
+                return Err("fixture changed file bytes differ".into());
+            }
+            Ok(())
+        }
+
+        /// Independent cooperating-fixture disposal, never Requested cleanup.
+        /// No Drop removes anything, and unknown or replaced entries refuse.
+        pub(super) struct Teardown {
+            temporary: Pinned,
+            shared: Pinned,
+            base: Pinned,
+            target: Pinned,
+            source: Pinned,
+            tests: Pinned,
+            files: [Pinned; 4],
+            base_name: OsString,
+            target_name: OsString,
+        }
+
+        impl Teardown {
+            pub(super) fn pin(target: &Path) -> Result<Self, String> {
+                let base = target.parent().ok_or("fixture target lacks a base")?;
+                let shared = base.parent().ok_or("fixture base lacks a shared parent")?;
+                let temporary = shared
+                    .parent()
+                    .ok_or("fixture shared parent lacks a temp root")?;
+                if shared.file_name() != Some(OsStr::new("ripr-git-candidate")) {
+                    return Err("fixture shared parent differs".into());
+                }
+                let base_name = base
+                    .file_name()
+                    .ok_or("fixture base name is missing")?
+                    .to_owned();
+                let target_name = target
+                    .file_name()
+                    .ok_or("fixture target name is missing")?
+                    .to_owned();
+                normal(&base_name)?;
+                normal(&target_name)?;
+                let temporary = open(temporary, true)?;
+                let shared = pin(&temporary, OsStr::new("ripr-git-candidate"), true)?;
+                let base = pin(&shared, &base_name, true)?;
+                let target = pin(&base, &target_name, true)?;
+                let source = pin(&target, OsStr::new("src"), true)?;
+                let tests = pin(&target, OsStr::new("tests"), true)?;
+                let files = [
+                    pin(&target, OsStr::new("ripr.toml"), false)?,
+                    pin(&source, OsStr::new("lib.rs"), false)?,
+                    pin(&source, OsStr::new("renamed.rs"), false)?,
+                    pin(&tests, OsStr::new("it.rs"), false)?,
+                ];
+                if shared.identity.uid != base.identity.uid
+                    || base.identity.uid != target.identity.uid
+                    || target.identity.uid != source.identity.uid
+                    || target.identity.uid != tests.identity.uid
+                {
+                    return Err("fixture directory UIDs differ".into());
+                }
+                let fixture = Self {
+                    temporary,
+                    shared,
+                    base,
+                    target,
+                    source,
+                    tests,
+                    files,
+                    base_name,
+                    target_name,
+                };
+                fixture.audit()?;
+                Ok(fixture)
+            }
+
+            fn anchors(&self) -> Result<(), String> {
+                let temporary = self
+                    .temporary
+                    .file
+                    .metadata()
+                    .map_err(|error| error.to_string())?;
+                if !self.temporary.identity.same_object(&temporary) {
+                    return Err("fixture temp directory identity changed".into());
+                }
+                current(
+                    &self.temporary,
+                    OsStr::new("ripr-git-candidate"),
+                    &self.shared,
+                    false,
+                )?;
+                current(&self.shared, &self.base_name, &self.base, false)?;
+                current(&self.base, &self.target_name, &self.target, false)
+            }
+
+            fn audit(&self) -> Result<(), String> {
+                self.anchors()?;
+                current(&self.shared, &self.base_name, &self.base, true)?;
+                current(&self.base, &self.target_name, &self.target, true)?;
+                current(&self.target, OsStr::new("src"), &self.source, true)?;
+                current(&self.target, OsStr::new("tests"), &self.tests, true)?;
+                for (parent, name, file) in [
+                    (&self.target, "ripr.toml", &self.files[0]),
+                    (&self.source, "lib.rs", &self.files[1]),
+                    (&self.source, "renamed.rs", &self.files[2]),
+                    (&self.tests, "it.rs", &self.files[3]),
+                ] {
+                    current(parent, OsStr::new(name), file, true)?;
+                }
+                members(
+                    &self.base,
+                    &[self
+                        .target_name
+                        .to_str()
+                        .ok_or("fixture target is not UTF-8")?],
+                )?;
+                members(&self.target, &["ripr.toml", "src", "tests"])?;
+                members(&self.source, &["lib.rs", "renamed.rs"])?;
+                members(&self.tests, &["it.rs"])
+            }
+
+            pub(super) fn record_intentional_change(
+                &mut self,
+                expected: &[u8],
+            ) -> Result<(), String> {
+                let metadata = self.files[1]
+                    .file
+                    .metadata()
+                    .map_err(|error| error.to_string())?;
+                if !self.files[1].identity.same_object(&metadata)
+                    || metadata.len() != self.files[1].identity.len
+                {
+                    return Err("fixture corruption replaced the pinned file".into());
+                }
+                contents(&self.files[1].file, expected)?;
+                // Only the independent fixture observation changes. The actual
+                // Requested owner keeps its original sealed metadata and refusal.
+                self.files[1].identity = Identity::capture(&metadata, false)?;
+                self.audit()
+            }
+
+            pub(super) fn finish(self) -> Result<(), String> {
+                // Validate every known object and complete bounded membership
+                // before the first removal; never enumerate a recursive tree.
+                self.audit()?;
+                for (parent, parent_name, name, file) in [
+                    (&self.source, Some("src"), "lib.rs", &self.files[1]),
+                    (&self.source, Some("src"), "renamed.rs", &self.files[2]),
+                    (&self.tests, Some("tests"), "it.rs", &self.files[3]),
+                    (&self.target, None, "ripr.toml", &self.files[0]),
+                ] {
+                    self.anchors()?;
+                    if let Some(parent_name) = parent_name {
+                        current(&self.target, OsStr::new(parent_name), parent, false)?;
+                    }
+                    current(parent, OsStr::new(name), file, true)?;
+                    std::fs::remove_file(child(&parent.file, OsStr::new(name))?)
+                        .map_err(|error| error.to_string())?;
+                }
+                for (parent, name, directory) in [
+                    (&self.target, OsStr::new("src"), &self.source),
+                    (&self.target, OsStr::new("tests"), &self.tests),
+                    (&self.base, self.target_name.as_os_str(), &self.target),
+                ] {
+                    self.anchors()?;
+                    current(parent, name, directory, false)?;
+                    members(directory, &[])?;
+                    std::fs::remove_dir(child(&parent.file, name)?)
+                        .map_err(|error| error.to_string())?;
+                }
+                current(
+                    &self.temporary,
+                    OsStr::new("ripr-git-candidate"),
+                    &self.shared,
+                    false,
+                )?;
+                current(&self.shared, &self.base_name, &self.base, false)?;
+                members(&self.base, &[])?;
+                let base = child(&self.shared.file, &self.base_name)?;
+                std::fs::remove_dir(&base).map_err(|error| error.to_string())?;
+                match std::fs::symlink_metadata(base) {
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                    Err(error) => Err(error.to_string()),
+                    Ok(_) => Err("fixture base remained after exact removal".into()),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn named_tree_authority_last_arc_removes_a_healthy_snapshot() -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        let (guard, _, candidate) = fixture_repo("healthy-frozen-source-authority")?;
+        let expected = candidate_blob(&guard.0, &candidate, "src/lib.rs")?;
+        let prepared =
+            prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
+        let physical = prepared.physical_root().to_path_buf();
+        let base = physical
+            .parent()
+            .ok_or("healthy snapshot lacks a base")?
+            .to_path_buf();
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        let retained = Arc::clone(&authority);
+        drop(authority);
+        assert!(
+            physical.is_dir(),
+            "a retained authority Arc must keep the healthy tree"
+        );
+        frozen::with_context(Some(Arc::clone(&retained)), || -> Result<(), String> {
+            assert_eq!(
+                frozen::fs::read(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?,
+                expected
+            );
+            retained.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        drop(retained);
+        assert!(
+            !physical.exists(),
+            "the last authority Arc must remove a healthy tree"
+        );
+        assert!(
+            !base.exists(),
+            "healthy cleanup must also remove its unique base"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn named_tree_authority_reads_bound_blobs_and_owns_snapshot_after_preparation_drop()
+    -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        let (guard, _, candidate) = fixture_repo("frozen-source-authority")?;
+        let expected = candidate_blob(&guard.0, &candidate, "src/lib.rs")?;
+        let prepared =
+            prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
+        let physical = prepared.physical_root().to_path_buf();
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        let mut fixture_teardown = retained_snapshot_fixture::Teardown::pin(&physical)?;
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?;
+        std::fs::write(guard.0.join("live-only.rs"), b"untracked")
+            .map_err(|error| error.to_string())?;
+        assert!(
+            physical.is_dir(),
+            "the worker Arc must retain materialization cleanup"
+        );
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            assert_eq!(
+                frozen::fs::read(guard.0.join("src/lib.rs")).map_err(|error| error.to_string())?,
+                expected
+            );
+            assert!(!frozen::fs::exists(guard.0.join("live-only.rs")));
+            authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
+            let entries =
+                frozen::fs::read_dir(guard.0.join("src")).map_err(|error| error.to_string())?;
+            for entry in entries {
+                let entry = entry.map_err(|error| error.to_string())?;
+                assert!(entry.path().starts_with(&guard.0));
+                assert!(!entry.path().starts_with(&physical));
+            }
+            // A same-length physical replacement must fail even though its
+            // metadata still matches the materialized blob.
+            let mut changed = expected.clone();
+            let first = changed.first_mut().ok_or("fixture source is empty")?;
+            *first ^= 1;
+            std::fs::write(physical.join("src/lib.rs"), &changed)
+                .map_err(|error| error.to_string())?;
+            #[cfg(all(
+                target_os = "linux",
+                any(target_arch = "x86_64", target_arch = "aarch64")
+            ))]
+            fixture_teardown.record_intentional_change(&changed)?;
+            let failure = frozen::fs::read(guard.0.join("src/lib.rs"))
+                .err()
+                .ok_or("a same-length snapshot replacement must fail")?;
+            assert_eq!(failure.kind(), std::io::ErrorKind::InvalidData);
+            let failure = authority
+                .ensure_clean()
+                .err()
+                .ok_or("snapshot replacement must remain fatal")?;
+            assert_eq!(failure.kind(), std::io::ErrorKind::InvalidData);
+            Ok(())
+        })?;
+        drop(authority);
+        #[cfg(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ))]
+        {
+            assert!(
+                physical.is_dir(),
+                "tampered Requested source must remain after cleanup refusal"
+            );
+            fixture_teardown.finish()?;
+            assert!(
+                !physical.exists(),
+                "independent fixture teardown must remove its exact tree"
+            );
+        }
+        #[cfg(not(all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )))]
+        assert!(
+            !physical.exists(),
+            "the last authority Arc must remove the owned tree"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn named_configuration_is_captured_from_the_materialized_blob() -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-config")?;
+        let expected = candidate_blob(&guard.0, &candidate, "ripr.toml")?;
+        let expected_oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{candidate}:ripr.toml")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(guard.0.join("ripr.toml"), "[analysis]\nmode = \"fast\"\n")
+            .map_err(|error| error.to_string())?;
+        let prepared =
+            prepare_named_tree(&guard.0, &candidate, None).map_err(|error| error.to_string())?;
+        let CapturedConfiguration::Present { blob_oid, text } = &prepared.configuration else {
+            return Err("committed configuration was not captured".into());
+        };
+        assert_eq!(blob_oid.as_str(), expected_oid);
+        assert_eq!(text.as_bytes(), expected);
+        assert_eq!(
+            std::fs::read(prepared._root.join("ripr.toml")).map_err(|error| error.to_string())?,
+            expected
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn captured_empty_and_absent_configuration_remain_distinct() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("capture-empty-absent")?;
+        std::fs::write(guard.0.join("ripr.toml"), "").map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "empty config"])?;
+        let empty =
+            prepare_named_tree(&guard.0, "HEAD", None).map_err(|error| error.to_string())?;
+        assert!(matches!(
+            &empty.configuration,
+            CapturedConfiguration::Present { text, .. } if text.is_empty()
+        ));
+        std::fs::remove_file(guard.0.join("ripr.toml")).map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["commit", "-qm", "absent config"])?;
+        let absent =
+            prepare_named_tree(&guard.0, "HEAD", None).map_err(|error| error.to_string())?;
+        assert_eq!(absent.configuration, CapturedConfiguration::Absent);
+        assert!(!absent._root.join("ripr.toml").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn capture_rejects_invalid_utf8_without_changing_ordinary_blob_materialization()
+    -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("capture-invalid-config")?;
+        std::fs::write(guard.0.join("ripr.toml"), [0xff_u8, 0xfe])
+            .map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &guard.0,
+            &["commit", "-qm", "invalid config"],
+        )?;
+        let tree = git(&guard.0, &["rev-parse", "HEAD^{tree}"], GIT_DEADLINE)
+            .map_err(|error| error.to_string())?;
+        let failure = prepare_named_tree(&guard.0, "HEAD", None)
+            .err()
+            .ok_or("invalid UTF-8 config was accepted")?;
+        assert!(failure.to_string().contains("not UTF-8"), "{failure}");
+        let (root, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert_eq!(
+            std::fs::read(root.join("ripr.toml")).map_err(|error| error.to_string())?,
+            [0xff_u8, 0xfe]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn capture_refuses_a_config_directory_and_missing_config_object() -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-missing-object")?;
+        let oid = git(
+            &guard.0,
+            &["rev-parse", &format!("{candidate}:ripr.toml")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let parsed = GitObjectId::parse(&oid).map_err(|error| error.to_string())?;
+        let (prefix, suffix) = parsed.as_str().split_at(2);
+        std::fs::remove_file(guard.0.join(".git/objects").join(prefix).join(suffix))
+            .map_err(|error| format!("remove fixture's loose config blob: {error}"))?;
+        let failure = prepare_named_tree(&guard.0, &candidate, None)
+            .err()
+            .ok_or("missing config blob became absent")?;
+        assert!(failure.to_string().contains("git cat-file"), "{failure}");
+
+        let (directory_guard, _, _) = fixture_repo("capture-config-directory")?;
+        std::fs::remove_file(directory_guard.0.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+        std::fs::create_dir(directory_guard.0.join("ripr.toml"))
+            .map_err(|error| error.to_string())?;
+        std::fs::write(directory_guard.0.join("ripr.toml/nested"), b"alias")
+            .map_err(|error| error.to_string())?;
+        crate::testing::fixture_git::fixture_git_ok(&directory_guard.0, &["add", "-A"])?;
+        crate::testing::fixture_git::fixture_git_ok(
+            &directory_guard.0,
+            &["commit", "-qm", "config directory"],
+        )?;
+        let failure = prepare_named_tree(&directory_guard.0, "HEAD", None)
+            .err()
+            .ok_or("config directory alias became absent")?;
+        assert!(
+            failure.to_string().contains("ripr.toml is a directory"),
+            "{failure}"
+        );
+        let tree = git(
+            &directory_guard.0,
+            &["rev-parse", "HEAD^{tree}"],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let (ordinary, _cleanup) =
+            materialize(&directory_guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert!(ordinary.join("ripr.toml/nested").is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn frozen_inventory_keeps_an_actual_empty_nonconfiguration_subtree() -> Result<(), String> {
+        use super::super::committed_source::frozen;
+        let (guard, _, _) = fixture_repo("frozen-empty-directory")?;
+        let empty_tree =
+            git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let empty_tree = GitObjectId::parse(&empty_tree).map_err(|error| error.to_string())?;
+        let mut record = b"40000 empty\0".to_vec();
+        for pair in empty_tree.as_str().as_bytes().chunks_exact(2) {
+            let hex = std::str::from_utf8(pair).map_err(|error| error.to_string())?;
+            record.push(u8::from_str_radix(hex, 16).map_err(|error| error.to_string())?);
+        }
+        let input = guard.0.join("empty-source-tree-input");
+        std::fs::write(&input, record).map_err(|error| error.to_string())?;
+        let input_name = input
+            .to_str()
+            .ok_or("fixture tree-input path is not UTF-8")?;
+        let tree = git(
+            &guard.0,
+            &["hash-object", "-w", "-t", "tree", input_name],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let prepared =
+            prepare_named_tree(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        let authority = prepared
+            .frozen_source_authority(&guard.0)
+            .map_err(|error| error.to_string())?;
+        assert_eq!(authority.inventory().files().len(), 0);
+        assert_eq!(
+            authority
+                .inventory()
+                .directories()
+                .map(Path::to_path_buf)
+                .collect::<Vec<_>>(),
+            vec![PathBuf::new(), PathBuf::from("empty")]
+        );
+        frozen::with_context(Some(authority.clone()), || -> Result<(), String> {
+            assert!(frozen::fs::is_dir(guard.0.join("empty")));
+            assert_eq!(
+                frozen::fs::read_dir(guard.0.join("empty"))
+                    .map_err(|error| error.to_string())?
+                    .count(),
+                0
+            );
+            authority.ensure_clean().map_err(|error| error.to_string())
+        })?;
+        let (ordinary, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert!(
+            !ordinary.join("empty").exists(),
+            "ordinary -r behavior remains unchanged"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn capture_refuses_an_actual_empty_configuration_subtree() -> Result<(), String> {
+        let (guard, _, _) = fixture_repo("capture-empty-config-tree")?;
+        let empty_tree =
+            git(&guard.0, &["mktree"], GIT_DEADLINE).map_err(|error| error.to_string())?;
+        let empty_tree = GitObjectId::parse(&empty_tree).map_err(|error| error.to_string())?;
+        let mut record = b"40000 ripr.toml\0".to_vec();
+        for pair in empty_tree.as_str().as_bytes().chunks_exact(2) {
+            let hex = std::str::from_utf8(pair).map_err(|error| error.to_string())?;
+            record.push(u8::from_str_radix(hex, 16).map_err(|error| error.to_string())?);
+        }
+        let input_path = guard.0.join("empty-config-tree-input");
+        std::fs::write(&input_path, &record).map_err(|error| error.to_string())?;
+        let input_name = input_path
+            .to_str()
+            .ok_or("fixture tree-input path is not UTF-8")?;
+        let tree = git(
+            &guard.0,
+            &["hash-object", "-w", "-t", "tree", input_name],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let recursive = crate::git::run_git_output_with_deadline(
+            &guard.0,
+            &["ls-tree", "-r", "-z", &tree],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(recursive.status.success());
+        assert!(
+            recursive.stdout.is_empty(),
+            "fixture is not an empty subtree"
+        );
+        let failure = prepare_named_tree(&guard.0, &tree, None)
+            .err()
+            .ok_or("empty config subtree became Absent")?;
+        assert!(
+            failure.to_string().contains("ripr.toml is a directory"),
+            "{failure}"
+        );
+        let (ordinary, _cleanup) =
+            materialize(&guard.0, &tree, None).map_err(|error| error.to_string())?;
+        assert!(!ordinary.join("ripr.toml").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn capture_inventory_refuses_truncation_duplicates_and_malformed_object_ids()
+    -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-inventory")?;
+        let listing = crate::git::run_git_output_with_deadline(
+            &guard.0,
+            &["ls-tree", "-r", "-z", &candidate],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(listing.status.success());
+        validate_configuration_inventory(&listing.stdout).map_err(|error| error.to_string())?;
+        let truncated = &listing.stdout[..listing.stdout.len() - 1];
+        assert!(validate_configuration_inventory(truncated).is_err());
+        let mut duplicate = listing.stdout.clone();
+        let first = listing
+            .stdout
+            .split(|byte| *byte == 0)
+            .next()
+            .ok_or("no tree record")?;
+        duplicate.extend_from_slice(first);
+        duplicate.push(0);
+        let failure = validate_configuration_inventory(&duplicate)
+            .err()
+            .ok_or("duplicate path was accepted")?;
+        assert!(failure.to_string().contains("duplicates path"), "{failure}");
+        let malformed = b"100644 blob invalid\tripr.toml\0";
+        assert!(validate_configuration_inventory(malformed).is_err());
+        let oid = "a".repeat(40);
+        let extra = format!("100644 blob {oid} extra\tripr.toml\0");
+        assert!(validate_configuration_inventory(extra.as_bytes()).is_err());
+        let empty_record = [listing.stdout.as_slice(), &[0]].concat();
+        assert!(validate_configuration_inventory(&empty_record).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn configuration_capture_cap_refuses_before_growth() -> Result<(), String> {
+        let (guard, _, candidate) = fixture_repo("capture-cap")?;
+        let tree = git(
+            &guard.0,
+            &["rev-parse", &format!("{candidate}^{{tree}}")],
+            GIT_DEADLINE,
+        )
+        .map_err(|error| error.to_string())?;
+        let failure = materialize_with_configuration(
+            &guard.0,
+            &tree,
+            None,
+            ConfigurationCapture::Requested { limit: 8 },
+        )
+        .err()
+        .ok_or("oversize configuration was captured")?;
+        assert!(
+            failure.to_string().contains("8-byte input limit"),
+            "{failure}"
+        );
+        let mut bytes = b"12".to_vec();
+        assert!(append_captured_configuration(&mut bytes, b"3", 2).is_err());
+        assert_eq!(bytes, b"12");
+        append_captured_configuration(&mut bytes, b"3", 3).map_err(|error| error.to_string())?;
+        assert_eq!(bytes, b"123");
+        assert_eq!(crate::bounded_input::MAX_CLI_INPUT_BYTES, 256 * 1024 * 1024);
+        Ok(())
     }
 
     #[test]
@@ -962,7 +4199,7 @@ mod tests {
         std::fs::write(&unremovable, "not a directory\n").map_err(|error| error.to_string())?;
 
         let mut reported = Vec::new();
-        TempRootGuard(unremovable.clone()).clean_up_reporting_to(&mut reported);
+        TempRootGuard::legacy(unremovable.clone()).clean_up_reporting_to(&mut reported);
         let reported = String::from_utf8(reported).map_err(|error| error.to_string())?;
         assert!(
             reported.contains(&unremovable.display().to_string()),
@@ -982,7 +4219,7 @@ mod tests {
         let removable = base.join("tree");
         std::fs::create_dir_all(removable.join("nested")).map_err(|error| error.to_string())?;
         let mut quiet = Vec::new();
-        TempRootGuard(removable.clone()).clean_up_reporting_to(&mut quiet);
+        TempRootGuard::legacy(removable.clone()).clean_up_reporting_to(&mut quiet);
         assert!(
             quiet.is_empty(),
             "a successful cleanup must not warn: {:?}",

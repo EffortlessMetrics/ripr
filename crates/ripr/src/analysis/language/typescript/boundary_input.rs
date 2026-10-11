@@ -35,6 +35,7 @@
 //! keeps the packet non-delegatable.
 
 use super::*;
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use oxc_parser::Kind;
 use oxc_parser::config::TokensParserConfig;
 
@@ -106,7 +107,7 @@ pub(crate) fn ts_boundary_fact_for_change(
         return None;
     }
     let root = workspace_root?;
-    let source = std::fs::read_to_string(root.join(&owner.file)).ok()?;
+    let source = frozen_fs::read_to_string(root.join(&owner.file)).ok()?;
     ts_boundary_input_in_source(&source, line, line_text, owner)
         .map(|input| input.evidence_line())
         .or_else(|| {

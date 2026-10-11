@@ -1,4 +1,5 @@
 use super::{ResolvedIncludeParent, RustIncludeLimitation, RustIndex};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::analysis::syntax::rust_include_directives;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
@@ -12,7 +13,7 @@ pub(super) fn resolve_repository_local_includes(root: &Path, index: &mut RustInd
     let mut edges = Vec::new();
     let mut directive_count = 0;
     let mut edge_limit_exceeded = false;
-    let canonical_root = std::fs::canonicalize(root).ok();
+    let canonical_root = frozen_fs::canonicalize(root).ok();
 
     'files: for (parent, facts) in &index.files {
         if facts.used_lexical_fallback || !might_contain_include_macro(&facts.source) {
@@ -62,7 +63,7 @@ pub(super) fn resolve_repository_local_includes(root: &Path, index: &mut RustInd
                 continue;
             };
             let full = root.join(&candidate);
-            let canonical_target = match std::fs::canonicalize(&full) {
+            let canonical_target = match frozen_fs::canonicalize(&full) {
                 Ok(path) => path,
                 Err(_) => {
                     limitations.push(limitation(

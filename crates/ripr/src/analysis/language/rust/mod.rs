@@ -27,11 +27,14 @@ use super::super::{
 };
 use super::{LanguageAdapter, LanguageDiffResult, LanguageId, LanguageRepoResult, route};
 use crate::analysis::cancellation;
+use crate::analysis::committed_source::frozen::{self, fs as frozen_fs};
 use crate::analysis::committed_source::{self, CommittedSourceRead};
 use crate::analysis::diagnostic_origin::{OriginBuildContext, origins_for_rust_findings};
 use crate::analysis::facts::RustIndex;
 use crate::analysis::path_glob::{path_glob_matches, segment_glob_matches};
 use crate::analysis::workspace::limitations_for_absent_changed_files;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::OraclePolicy;
 use crate::domain::{
     ExposureClass, Finding, Probe, SourceCurrentness, StaticLimitKind, StopReason,
@@ -598,6 +601,464 @@ fn partial_budget_from_env(
         ))
     } else {
         Ok((parsed, None))
+    }
+}
+
+/// Effective Rust diff-selection policy data. Construction reads the existing
+/// parsers; this value grants no execution, scope or resource permission.
+#[cfg(test)]
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) struct CompleteRustPolicySnapshot {
+    changed_rust_lines: usize,
+    diff_index_files: usize,
+    narrow_index_files: usize,
+    partial_budgets: PartialDiffBudgets,
+    dependent_scope: CompleteDependentScopePolicy,
+    partial_selection_version: &'static str,
+    partial_language_tier_version: &'static str,
+}
+
+/// Closed data projection of the existing dependent-scope mode. Selection
+/// remains owned by `DependentScopeMode`, including its contextual conditions.
+#[cfg(test)]
+#[derive(Debug, Eq, PartialEq)]
+pub(crate) enum CompleteDependentScopePolicy {
+    Auto,
+    NameAdmitted,
+    Full,
+}
+
+#[cfg(test)]
+impl CompleteDependentScopePolicy {
+    pub(crate) const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::NameAdmitted => "named",
+            Self::Full => "full",
+        }
+    }
+}
+
+#[cfg(test)]
+impl CompleteRustPolicySnapshot {
+    pub(crate) const fn changed_rust_line_limit(&self) -> usize {
+        self.changed_rust_lines
+    }
+
+    pub(crate) const fn diff_index_file_limit(&self) -> usize {
+        self.diff_index_files
+    }
+
+    pub(crate) const fn diff_narrow_index_limit(&self) -> usize {
+        self.narrow_index_files
+    }
+
+    pub(crate) const fn partial_diff_file_budget(&self) -> usize {
+        self.partial_budgets.file_budget
+    }
+
+    pub(crate) const fn partial_diff_line_budget(&self) -> usize {
+        self.partial_budgets.line_budget
+    }
+
+    pub(crate) fn partial_budget_disclosures(&self) -> &[String] {
+        &self.partial_budgets.disclosures
+    }
+
+    pub(crate) const fn dependent_scope_mode(&self) -> &CompleteDependentScopePolicy {
+        &self.dependent_scope
+    }
+
+    pub(crate) const fn partial_selection_version(&self) -> &'static str {
+        self.partial_selection_version
+    }
+
+    pub(crate) const fn partial_language_tier_version(&self) -> &'static str {
+        self.partial_language_tier_version
+    }
+}
+
+/// Capture data in the diff adapter's existing policy encounter order. Helper
+/// re-reads, parsing errors and clamps are retained. These ordered environment
+/// reads are not an atomic environment snapshot; the complete caller must
+/// compare fresh captures at its execution checkpoints in its owned worker.
+#[cfg(test)]
+pub(crate) fn capture_complete_rust_policy() -> Result<CompleteRustPolicySnapshot, String> {
+    let changed_rust_lines = diff_changed_rust_line_limit()?;
+    let partial_budgets = partial_diff_budgets()?;
+    let diff_index_files = diff_index_file_limit()?;
+    let narrow_index_files = diff_narrow_index_files(diff_index_files)?;
+    let dependent_scope = match dependent_scope::DependentScopeMode::from_env()? {
+        dependent_scope::DependentScopeMode::Auto => CompleteDependentScopePolicy::Auto,
+        dependent_scope::DependentScopeMode::NameAdmitted => {
+            CompleteDependentScopePolicy::NameAdmitted
+        }
+        dependent_scope::DependentScopeMode::Full => CompleteDependentScopePolicy::Full,
+        #[cfg(test)]
+        dependent_scope::DependentScopeMode::CoreOnly => {
+            return Err("complete Rust policy refuses test-only core-only dependent scope".into());
+        }
+    };
+    Ok(CompleteRustPolicySnapshot {
+        changed_rust_lines,
+        diff_index_files,
+        narrow_index_files,
+        partial_budgets,
+        dependent_scope,
+        partial_selection_version: PARTIAL_DIFF_SELECTION_VERSION,
+        partial_language_tier_version: PARTIAL_DIFF_LANGUAGE_TIER_VERSION,
+    })
+}
+
+#[cfg(test)]
+mod complete_rust_policy_tests {
+    use super::dependent_scope::DependentScopeMode;
+    use super::*;
+    use std::env::VarError;
+
+    const VALID: &[(&str, &str)] = &[
+        (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "5400"),
+        (DIFF_INDEX_FILE_LIMIT_ENV, "10000"),
+        (DIFF_NARROW_INDEX_FILES_ENV, "1200"),
+        (PARTIAL_DIFF_FILE_BUDGET_ENV, "200"),
+        (PARTIAL_DIFF_LINE_BUDGET_ENV, "1000"),
+    ];
+
+    fn capture(
+        values: &[(&'static str, &str)],
+        mode: DependentScopeMode,
+    ) -> Result<CompleteRustPolicySnapshot, String> {
+        with_forced_diff_limit_env(values, || {
+            dependent_scope::with_forced_mode(mode, capture_complete_rust_policy)
+        })
+    }
+
+    fn refusal<T>(result: Result<T, String>, detail: &str) -> Result<String, String> {
+        match result {
+            Ok(_) => Err(format!("{detail} was accepted")),
+            Err(message) => Ok(message),
+        }
+    }
+
+    fn numeric_value(name: &'static str, value: Result<String, VarError>) -> Result<usize, String> {
+        match name {
+            DIFF_CHANGED_RUST_LINE_LIMIT_ENV => diff_changed_rust_line_limit_from_env(value),
+            DIFF_INDEX_FILE_LIMIT_ENV => diff_index_file_limit_from_env(value),
+            DIFF_NARROW_INDEX_FILES_ENV => diff_narrow_index_files_from_env(value, 10_000),
+            PARTIAL_DIFF_FILE_BUDGET_ENV => partial_budget_from_env(
+                PARTIAL_DIFF_FILE_BUDGET_ENV,
+                PARTIAL_DIFF_FILE_BUDGET_DEFAULT,
+                10_000,
+                value,
+            )
+            .map(|(budget, _)| budget),
+            PARTIAL_DIFF_LINE_BUDGET_ENV => partial_budget_from_env(
+                PARTIAL_DIFF_LINE_BUDGET_ENV,
+                PARTIAL_DIFF_LINE_BUDGET_DEFAULT,
+                2_000,
+                value,
+            )
+            .map(|(budget, _)| budget),
+            other => Err(format!("unexpected numeric policy name {other}")),
+        }
+    }
+
+    #[test]
+    fn capture_retains_clamps_and_versions() -> Result<(), String> {
+        for (index, lines, narrow, files, partial_lines) in [
+            ("3", "7", "11", "9", "11"),
+            ("12000", "5400", "13000", "20000", "10000"),
+        ] {
+            let values = [
+                (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, lines),
+                (DIFF_INDEX_FILE_LIMIT_ENV, index),
+                (DIFF_NARROW_INDEX_FILES_ENV, narrow),
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, files),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, partial_lines),
+            ];
+            let snapshot = capture(&values, DependentScopeMode::Auto)?;
+            let index = index.parse::<usize>().map_err(|error| error.to_string())?;
+            let lines = lines.parse::<usize>().map_err(|error| error.to_string())?;
+            assert_eq!(snapshot.diff_index_file_limit(), index);
+            assert_eq!(snapshot.changed_rust_line_limit(), lines);
+            assert_eq!(snapshot.diff_narrow_index_limit(), index);
+            assert_eq!(snapshot.partial_diff_file_budget(), index);
+            assert_eq!(snapshot.partial_diff_line_budget(), lines);
+            let disclosures = [
+                format!(
+                    "{PARTIAL_DIFF_FILE_BUDGET_ENV}={files} exceeds the effective analysis-cost limit ({index}); clamped to {index}"
+                ),
+                format!(
+                    "{PARTIAL_DIFF_LINE_BUDGET_ENV}={partial_lines} exceeds the effective analysis-cost limit ({lines}); clamped to {lines}"
+                ),
+            ];
+            assert_eq!(
+                snapshot.partial_budget_disclosures(),
+                disclosures.as_slice()
+            );
+            assert_eq!(snapshot.partial_selection_version(), "partial-diff-v1");
+            assert_eq!(snapshot.partial_language_tier_version(), "lang-tier-v1");
+            assert_eq!(
+                snapshot.dependent_scope_mode(),
+                &CompleteDependentScopePolicy::Auto
+            );
+        }
+        let snapshot = capture(
+            &[
+                (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "7"),
+                (DIFF_INDEX_FILE_LIMIT_ENV, "3"),
+                (DIFF_NARROW_INDEX_FILES_ENV, "3"),
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, "3"),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, "7"),
+            ],
+            DependentScopeMode::Full,
+        )?;
+        assert!(snapshot.partial_budget_disclosures().is_empty());
+        assert_eq!(snapshot.dependent_scope_mode().as_str(), "full");
+        let snapshot = capture(
+            &[
+                (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "7"),
+                (DIFF_INDEX_FILE_LIMIT_ENV, "3"),
+                (DIFF_NARROW_INDEX_FILES_ENV, "99"),
+                (PARTIAL_DIFF_FILE_BUDGET_ENV, "2"),
+                (PARTIAL_DIFF_LINE_BUDGET_ENV, "5"),
+            ],
+            DependentScopeMode::NameAdmitted,
+        )?;
+        assert_eq!(snapshot.diff_narrow_index_limit(), 3);
+        assert_eq!(snapshot.partial_diff_file_budget(), 2);
+        assert_eq!(snapshot.partial_diff_line_budget(), 5);
+        assert!(snapshot.partial_budget_disclosures().is_empty());
+        assert_eq!(snapshot.dependent_scope_mode().as_str(), "named");
+        Ok(())
+    }
+
+    #[test]
+    fn numeric_parsers_keep_all_refusals() -> Result<(), String> {
+        let overflow = format!("{}0", usize::MAX);
+        for (name, _) in VALID {
+            for invalid in ["", "0", "lots", overflow.as_str()] {
+                let message = refusal(
+                    numeric_value(name, Ok(invalid.to_string())),
+                    &format!("{name}={invalid:?}"),
+                )?;
+                assert!(
+                    message.contains(name) && message.contains("positive integer"),
+                    "existing parser changed refusal: {message}"
+                );
+                if matches!(
+                    *name,
+                    PARTIAL_DIFF_FILE_BUDGET_ENV | PARTIAL_DIFF_LINE_BUDGET_ENV
+                ) {
+                    assert!(
+                        message.starts_with("partial_budget_invalid: "),
+                        "partial parser lost its typed prefix: {message}"
+                    );
+                }
+                let values = VALID
+                    .iter()
+                    .map(|(candidate, value)| {
+                        (*candidate, if candidate == name { invalid } else { *value })
+                    })
+                    .collect::<Vec<_>>();
+                let actual = refusal(capture(&values, DependentScopeMode::Auto), name)?;
+                assert_eq!(actual, message, "capture changed {name} refusal");
+            }
+            let message = refusal(
+                numeric_value(name, Err(VarError::NotUnicode("non-unicode".into()))),
+                name,
+            )?;
+            let expected = if matches!(
+                *name,
+                PARTIAL_DIFF_FILE_BUDGET_ENV | PARTIAL_DIFF_LINE_BUDGET_ENV
+            ) {
+                format!("partial_budget_invalid: {name} must be valid UTF-8")
+            } else {
+                format!("{name} must be valid UTF-8")
+            };
+            assert_eq!(message, expected);
+        }
+        for (name, expected) in [
+            (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, 2_000),
+            (DIFF_INDEX_FILE_LIMIT_ENV, 10_000),
+            (DIFF_NARROW_INDEX_FILES_ENV, 1_200),
+            (PARTIAL_DIFF_FILE_BUDGET_ENV, 200),
+            (PARTIAL_DIFF_LINE_BUDGET_ENV, 1_000),
+        ] {
+            assert_eq!(numeric_value(name, Err(VarError::NotPresent))?, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn capture_keeps_competing_error_order() -> Result<(), String> {
+        let cases = [
+            (
+                DIFF_CHANGED_RUST_LINE_LIMIT_ENV,
+                vec![
+                    (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "0"),
+                    (DIFF_INDEX_FILE_LIMIT_ENV, "0"),
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, "0"),
+                ],
+            ),
+            (
+                DIFF_INDEX_FILE_LIMIT_ENV,
+                vec![
+                    (DIFF_INDEX_FILE_LIMIT_ENV, "0"),
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, "0"),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "0"),
+                ],
+            ),
+            (
+                PARTIAL_DIFF_FILE_BUDGET_ENV,
+                vec![
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, "0"),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "0"),
+                    (DIFF_NARROW_INDEX_FILES_ENV, "0"),
+                ],
+            ),
+            (
+                PARTIAL_DIFF_LINE_BUDGET_ENV,
+                vec![
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "0"),
+                    (DIFF_NARROW_INDEX_FILES_ENV, "0"),
+                ],
+            ),
+            (
+                DIFF_NARROW_INDEX_FILES_ENV,
+                vec![(DIFF_NARROW_INDEX_FILES_ENV, "0")],
+            ),
+        ];
+        for (first, invalid) in cases {
+            let values = VALID
+                .iter()
+                .map(|(name, value)| {
+                    let value = invalid
+                        .iter()
+                        .find(|(candidate, _)| candidate == name)
+                        .map_or(*value, |(_, value)| *value);
+                    (*name, value)
+                })
+                .collect::<Vec<_>>();
+            let actual = refusal(capture(&values, DependentScopeMode::CoreOnly), first)?;
+            let expected = refusal(numeric_value(first, Ok("0".into())), first)?;
+            assert_eq!(actual, expected, "wrong first competing refusal");
+        }
+        assert_eq!(
+            refusal(capture(VALID, DependentScopeMode::CoreOnly), "core-only")?,
+            "complete Rust policy refuses test-only core-only dependent scope"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fresh_capture_binds_effective_policy() -> Result<(), String> {
+        let baseline = capture(VALID, DependentScopeMode::Auto)?;
+        assert_eq!(capture(VALID, DependentScopeMode::Auto)?, baseline);
+        for (changed, value) in [
+            (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "5401"),
+            (DIFF_INDEX_FILE_LIMIT_ENV, "9999"),
+            (DIFF_NARROW_INDEX_FILES_ENV, "1199"),
+            (PARTIAL_DIFF_FILE_BUDGET_ENV, "199"),
+            (PARTIAL_DIFF_LINE_BUDGET_ENV, "999"),
+        ] {
+            let values = VALID
+                .iter()
+                .map(|(name, original)| (*name, if *name == changed { value } else { *original }))
+                .collect::<Vec<_>>();
+            assert_ne!(
+                capture(&values, DependentScopeMode::Auto)?,
+                baseline,
+                "fresh capture ignored {changed}"
+            );
+        }
+        assert_ne!(capture(VALID, DependentScopeMode::NameAdmitted)?, baseline);
+        let values = VALID
+            .iter()
+            .map(|(name, value)| {
+                (
+                    *name,
+                    if *name == DIFF_CHANGED_RUST_LINE_LIMIT_ENV {
+                        " 05400 "
+                    } else {
+                        *value
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(capture(&values, DependentScopeMode::Auto)?, baseline);
+        let raised = |files: &str, narrow: &str| {
+            capture(
+                &[
+                    (DIFF_CHANGED_RUST_LINE_LIMIT_ENV, "5400"),
+                    (DIFF_INDEX_FILE_LIMIT_ENV, "10000"),
+                    (DIFF_NARROW_INDEX_FILES_ENV, narrow),
+                    (PARTIAL_DIFF_FILE_BUDGET_ENV, files),
+                    (PARTIAL_DIFF_LINE_BUDGET_ENV, "1000"),
+                ],
+                DependentScopeMode::Auto,
+            )
+        };
+        let first = raised("20000", "12000")?;
+        let different_disclosure = raised("20001", "12000")?;
+        assert_eq!(
+            first.partial_diff_file_budget(),
+            different_disclosure.partial_diff_file_budget()
+        );
+        assert_ne!(first, different_disclosure, "clamp disclosure was omitted");
+        assert_eq!(
+            first,
+            raised("20000", "13000")?,
+            "silent narrowing clamps must bind effective values"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn dependent_parser_and_threshold_stay_owned() -> Result<(), String> {
+        for (raw, expected, key) in [
+            ("", DependentScopeMode::Auto, "auto"),
+            (" auto ", DependentScopeMode::Auto, "auto"),
+            (" named ", DependentScopeMode::NameAdmitted, "named"),
+            ("full", DependentScopeMode::Full, "full"),
+        ] {
+            let actual = DependentScopeMode::from_env_value(Ok(raw.into()))?;
+            assert_eq!(actual, expected);
+            let snapshot = capture(VALID, actual)?;
+            assert_eq!(snapshot.dependent_scope_mode().as_str(), key);
+        }
+        assert_eq!(
+            DependentScopeMode::from_env_value(Err(VarError::NotPresent))?,
+            DependentScopeMode::Auto
+        );
+        let overflow = format!("{}0", usize::MAX);
+        for invalid in ["0", "lots", "AUTO", overflow.as_str()] {
+            let message = refusal(
+                DependentScopeMode::from_env_value(Ok(invalid.into())),
+                invalid,
+            )?;
+            assert_eq!(
+                message,
+                format!(
+                    "{} must be `auto`, `named` or `full`, got `{invalid}`",
+                    dependent_scope::DEPENDENT_SCOPE_ENV
+                )
+            );
+        }
+        assert_eq!(
+            refusal(
+                DependentScopeMode::from_env_value(Err(VarError::NotUnicode("x".into()))),
+                "dependent non-unicode",
+            )?,
+            "RIPR_DIFF_DEPENDENT_SCOPE must be valid UTF-8"
+        );
+        let auto = DependentScopeMode::from_env_value(Ok("auto".into()))?;
+        assert!(!auto.narrows(99, 100));
+        assert!(!auto.narrows(100, 100));
+        assert!(auto.narrows(101, 100));
+        assert!(DependentScopeMode::from_env_value(Ok("named".into()))?.narrows(100, 100));
+        assert!(!DependentScopeMode::from_env_value(Ok("full".into()))?.narrows(101, 100));
+        Ok(())
     }
 }
 
@@ -1236,6 +1697,9 @@ impl<'a> GeneratedRustSources<'a> {
     }
 
     fn subject_file_exists(&self, relative: &Path) -> bool {
+        if frozen::current().is_some() {
+            return frozen_fs::is_file(self.root.join(relative));
+        }
         match committed_source::lookup(self.root, relative) {
             CommittedSourceRead::Worktree => self.root.join(relative).is_file(),
             CommittedSourceRead::Committed(_) => true,
@@ -1244,6 +1708,10 @@ impl<'a> GeneratedRustSources<'a> {
     }
 
     fn has_generated_header(&self, path: &Path) -> bool {
+        if frozen::current().is_some() {
+            return frozen_fs::read_prefix(self.root.join(path), GENERATED_HEADER_BYTES)
+                .is_ok_and(|bytes| has_generated_rust_header(bytes.as_slice()));
+        }
         match committed_source::lookup(self.root, path) {
             CommittedSourceRead::Worktree => std::fs::File::open(self.root.join(path))
                 .is_ok_and(|file| has_generated_rust_header(std::io::BufReader::new(file))),
@@ -1304,6 +1772,14 @@ fn generated_pattern_matches(pattern: &str, path: &Path) -> bool {
 }
 
 impl RustAdapter {
+    #[cfg(test)]
+    pub(crate) fn with_forced_diff_limits_for_test<T>(
+        values: &[(&'static str, &str)],
+        work: impl FnOnce() -> T,
+    ) -> T {
+        with_forced_diff_limit_env(values, work)
+    }
+
     /// Diff analysis with the enabled-language set the pipeline will
     /// dispatch, so the partial-diff partition (RIPR-PROP-0019) never selects
     /// a file no enabled adapter will inspect (#2142 review).
@@ -1331,6 +1807,54 @@ impl RustAdapter {
         enabled_languages: &[LanguageId],
         rust_config: &crate::config::RustLanguageConfig,
     ) -> Result<LanguageDiffResult, String> {
+        self.analyze_diff_for_languages_with_rust_config_and_verified_whole(
+            options,
+            oracle_policy,
+            changed_files,
+            enabled_languages,
+            rust_config,
+            #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+            None,
+        )
+    }
+
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    pub(crate) fn analyze_diff_for_languages_with_verified_whole(
+        &self,
+        options: &AnalysisOptions,
+        oracle_policy: &OraclePolicy,
+        changed_files: &[ChangedFile],
+        enabled_languages: &[LanguageId],
+        rust_config: &crate::config::RustLanguageConfig,
+        whole: &VerifiedWholeInput,
+    ) -> Result<LanguageDiffResult, String> {
+        self.analyze_diff_for_languages_with_rust_config_and_verified_whole(
+            options,
+            oracle_policy,
+            changed_files,
+            enabled_languages,
+            rust_config,
+            Some(whole),
+        )
+    }
+
+    fn analyze_diff_for_languages_with_rust_config_and_verified_whole(
+        &self,
+        options: &AnalysisOptions,
+        oracle_policy: &OraclePolicy,
+        changed_files: &[ChangedFile],
+        enabled_languages: &[LanguageId],
+        rust_config: &crate::config::RustLanguageConfig,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+            &VerifiedWholeInput,
+        >,
+    ) -> Result<LanguageDiffResult, String> {
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_analysis(options, oracle_policy, enabled_languages, rust_config)?;
+            whole.validate_rust_subject(changed_files)?;
+            whole.validate_rust_policy(&capture_complete_rust_policy()?)?;
+        }
         // Exclude conventional generated surfaces before hard line limits and
         // partial-diff budgeting so machine output cannot consume the budget
         // that protects actionable source analysis.
@@ -1355,6 +1879,15 @@ impl RustAdapter {
                 "paths_identity": crate::analysis::source_calibration::paths_identity(analyzable_changed_files.iter().map(|file| file.path.as_path()))}),
             );
         }
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        match whole {
+            Some(whole) => whole.validate_changed_line_limit(changed_line_limit)?,
+            None => enforce_changed_rust_line_limit(
+                analyzable_changed_files.iter().copied(),
+                changed_line_limit,
+            )?,
+        }
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         enforce_changed_rust_line_limit(
             analyzable_changed_files.iter().copied(),
             changed_line_limit,
@@ -1366,6 +1899,24 @@ impl RustAdapter {
         // failing closed with zero findings. A malformed override fails closed
         // as `partial_budget_invalid`.
         let partial_budgets = partial_diff_budgets()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let partial_scope = match whole {
+            Some(whole) => {
+                whole.validate_partial_budgets(
+                    partial_budgets.file_budget,
+                    partial_budgets.line_budget,
+                    &partial_budgets.disclosures,
+                )?;
+                None
+            }
+            None => select_partial_diff_partition_with_identity(
+                &analyzable_changed_files,
+                changed_files,
+                &partial_budgets,
+                enabled_languages,
+            ),
+        };
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         let partial_scope = select_partial_diff_partition_with_identity(
             &analyzable_changed_files,
             changed_files,
@@ -1542,11 +2093,19 @@ impl RustAdapter {
         let mut dependent_scope = None;
         let mut withheld_macro_bindings = classify::WithheldMacroBindings::default();
         let scope_limit = diff_index_file_limit()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_index_limit(scope_limit)?;
+        }
         #[cfg(test)]
         if crate::analysis::source_calibration::active() {
             crate::analysis::source_calibration::limit(DIFF_INDEX_FILE_LIMIT_ENV, scope_limit);
         }
         let narrow_limit = diff_narrow_index_files(scope_limit)?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_narrow_limit(narrow_limit)?;
+        }
         // Open saved Rust documents are index-only inputs. They do not seed
         // changed-file probes, package expansion, or findings. Admit only
         // discovered, analyzable files, then apply the ordinary index budget.
@@ -1574,6 +2133,16 @@ impl RustAdapter {
         }
         // Parsed before any guard so an invalid override always names itself.
         let scope_mode = dependent_scope::DependentScopeMode::from_env()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        if let Some(whole) = whole {
+            whole.validate_dependent_scope(match scope_mode {
+                dependent_scope::DependentScopeMode::Auto => "auto",
+                dependent_scope::DependentScopeMode::NameAdmitted => "named",
+                dependent_scope::DependentScopeMode::Full => "full",
+                #[cfg(test)]
+                dependent_scope::DependentScopeMode::CoreOnly => "test-core-only",
+            })?;
+        }
         if !dependent_package_roots.is_empty()
             && full_selection < analyzable_rust_files.len()
             && scope_mode.narrows(full_selection, narrow_limit)
@@ -2293,7 +2862,7 @@ impl RustAdapter {
             .iter()
             .map(|file| {
                 let full = options.root.join(file);
-                let bytes = std::fs::read(&full)
+                let bytes = frozen_fs::read(&full)
                     .map_err(|err| format!("failed to read {}: {err}", full.display()))?;
                 rust_consumed_sources.record(file, Some(&bytes));
                 Ok((file.clone(), bytes))
@@ -7653,6 +8222,564 @@ fn absent_delimiter_boundary_returns_head() {
             Some(StaticLimitKind::CrossLanguageOracleVisibilityUnresolved),
             "cross-language must replace a Rust-gap wrapper-error limitation"
         );
+    }
+
+    mod frozen_consumers {
+        use super::*;
+        use crate::analysis::committed_source::frozen::{self, FrozenSourceAuthority};
+        use crate::analysis::git_candidate_execution::{TempRootGuard, prepare_named_tree};
+        use crate::analysis::seam_cache::{
+            PathDependencyResolution, WorkspaceGraphProvenance, workspace_graph_provenance,
+            workspace_manifest_dir_prefixes,
+        };
+        use crate::testing::fixture_git::fixture_git_ok;
+        use std::error::Error;
+        use std::sync::Arc;
+
+        type TestResult = Result<(), Box<dyn Error>>;
+        type CapturedSource = (PathBuf, Arc<FrozenSourceAuthority>);
+
+        fn commit_fixture(root: &Path) -> Result<(), String> {
+            for args in [
+                &[
+                    "-c",
+                    "init.templateDir=",
+                    "init",
+                    "-q",
+                    "--initial-branch=main",
+                ][..],
+                &["config", "user.email", "ripr@example.invalid"][..],
+                &["config", "user.name", "ripr frozen consumers"][..],
+                &["config", "commit.gpgsign", "false"][..],
+                &["config", "core.autocrlf", "false"][..],
+                &["add", "."][..],
+                &["commit", "-q", "-m", "frozen consumer input"][..],
+            ] {
+                fixture_git_ok(root, args)?;
+            }
+            Ok(())
+        }
+
+        fn capture(root: &Path) -> Result<CapturedSource, Box<dyn Error>> {
+            let prepared = prepare_named_tree(root, "HEAD", None)
+                .map_err(|error| std::io::Error::other(error.to_string()))?;
+            let physical = prepared.physical_root().to_path_buf();
+            Ok((physical, prepared.frozen_source_authority(root)?))
+        }
+
+        fn checked_analysis(
+            root: &Path,
+            changed: &[ChangedFile],
+            mode: AnalysisMode,
+        ) -> Result<Vec<Finding>, String> {
+            let authority = frozen::current().ok_or("consumer fixture lacks frozen context")?;
+            authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
+            let result = RustAdapter.analyze_diff(
+                &diff_options(root.to_path_buf(), mode),
+                &OraclePolicy::default(),
+                changed,
+            );
+            // This is the same sticky-source join as the frozen pipeline.
+            // No adapter value is accepted after an authenticated read failed.
+            match (result, authority.ensure_clean()) {
+                (Ok(result), Ok(())) => Ok(result.findings),
+                (Err(error), Ok(())) => Err(error),
+                (Ok(_), Err(error)) => Err(error.to_string()),
+                (Err(primary), Err(source)) => Err(format!("{primary}; {source}")),
+            }
+        }
+
+        #[derive(Debug, PartialEq)]
+        struct GraphObservation {
+            findings: serde_json::Value,
+            graph: WorkspaceGraphProvenance,
+            prefixes: Vec<String>,
+        }
+
+        fn graph_observation(root: &Path) -> Result<GraphObservation, Box<dyn Error>> {
+            let findings = checked_analysis(root, &changed_a_lib_diff(), AnalysisMode::Draft)?;
+            if findings.is_empty() {
+                return Err("path-dependency fixture produced no findings".into());
+            }
+            let graph = workspace_graph_provenance(root);
+            let prefixes = workspace_manifest_dir_prefixes(root);
+            frozen::current()
+                .ok_or("graph fixture lost source context")?
+                .ensure_clean()?;
+            Ok(GraphObservation {
+                findings: serde_json::to_value(findings)?,
+                graph,
+                prefixes,
+            })
+        }
+
+        #[test]
+        fn named_tree_dependency_graph_preserves_real_cross_crate_test_roles_during_live_drift()
+        -> TestResult {
+            let root = temp_root("frozen-dependency-roles")?;
+            let _repo = TempRootGuard::for_test(root.clone());
+            write_path_dep_workspace(&root, true)?;
+            commit_fixture(&root)?;
+            let (_, authority) = capture(&root)?;
+            frozen::with_context(Some(authority.clone()), || -> TestResult {
+                let findings = checked_analysis(&root, &changed_a_lib_diff(), AnalysisMode::Draft)?;
+                assert!(!findings.is_empty());
+                assert!(has_related_test_in_b(&findings));
+                let baseline = graph_observation(&root)?;
+                assert_eq!(baseline.graph.package_graph_status, "complete");
+                assert!(baseline.graph.path_dependency_edges.iter().any(|edge| {
+                    edge.from_manifest == "b/Cargo.toml"
+                        && edge.resolved_path.as_deref() == Some("a")
+                        && edge.resolution == PathDependencyResolution::Resolved
+                }));
+                assert_eq!(baseline.prefixes, ["", "a/", "b/", "c/"]);
+
+                write_path_dep_workspace(&root, false)?;
+                assert_eq!(graph_observation(&root)?, baseline);
+                fixture_git_ok(&root, &["add", "."])?;
+                assert_eq!(graph_observation(&root)?, baseline);
+                fs::remove_file(root.join("Cargo.toml"))?;
+                fs::remove_file(root.join("b/Cargo.toml"))?;
+                fs::rename(root.join("a"), root.join("ambient_a"))?;
+                assert!(!root.join("a").is_dir());
+                assert_eq!(graph_observation(&root)?, baseline);
+                authority.ensure_clean()?;
+                Ok(())
+            })?;
+            authority.finalize()?;
+            Ok(())
+        }
+
+        #[test]
+        fn named_tree_without_dependency_edge_refuses_an_opposite_live_graph() -> TestResult {
+            let root = temp_root("frozen-dependency-decoy")?;
+            let _repo = TempRootGuard::for_test(root.clone());
+            write_path_dep_workspace(&root, false)?;
+            commit_fixture(&root)?;
+            let (_, authority) = capture(&root)?;
+            frozen::with_context(Some(authority.clone()), || -> TestResult {
+                let findings = checked_analysis(&root, &changed_a_lib_diff(), AnalysisMode::Draft)?;
+                assert!(!findings.is_empty());
+                assert!(!has_related_test_in_b(&findings));
+                let baseline = graph_observation(&root)?;
+                assert!(!baseline.graph.path_dependency_edges.iter().any(|edge| {
+                    edge.from_manifest == "b/Cargo.toml"
+                        && edge.resolved_path.as_deref() == Some("a")
+                }));
+                write_path_dep_workspace(&root, true)?;
+                fixture_git_ok(&root, &["add", "."])?;
+                assert_eq!(graph_observation(&root)?, baseline);
+                authority.ensure_clean()?;
+                Ok(())
+            })?;
+            // Outside the frozen context, the original live dependency still
+            // expands the same ordinary consumer.
+            let live = RustAdapter.analyze_diff(
+                &diff_options(root.clone(), AnalysisMode::Draft),
+                &OraclePolicy::default(),
+                &changed_a_lib_diff(),
+            )?;
+            assert!(has_related_test_in_b(&live.findings));
+            authority.finalize()?;
+            Ok(())
+        }
+
+        #[test]
+        fn frozen_graph_faults_remain_sticky_and_fresh_capture_recovers() -> TestResult {
+            for fault in ["tamper", "missing", "wrong-root"] {
+                let root = temp_root(&format!("frozen-graph-{fault}"))?;
+                let _repo = TempRootGuard::for_test(root.clone());
+                write_path_dep_workspace(&root, true)?;
+                commit_fixture(&root)?;
+                let (physical, authority) = capture(&root)?;
+                let manifest = physical.join("b/Cargo.toml");
+                let original = fs::read(&manifest)?;
+                match fault {
+                    "tamper" => {
+                        let mut changed = original.clone();
+                        let first = changed.first_mut().ok_or("empty captured manifest")?;
+                        *first ^= 1;
+                        fs::write(&manifest, changed)?;
+                    }
+                    "missing" => fs::remove_file(&manifest)?,
+                    "wrong-root" => {}
+                    _ => return Err("unknown graph fault".into()),
+                }
+                frozen::with_context(Some(authority.clone()), || -> TestResult {
+                    let requested = if fault == "wrong-root" {
+                        root.join("b")
+                    } else {
+                        root.clone()
+                    };
+                    let refused = workspace_graph_provenance(&requested);
+                    assert_eq!(refused.package_graph_status, "unavailable");
+                    let first = authority
+                        .ensure_clean()
+                        .err()
+                        .ok_or("graph fault was not sticky")?;
+                    assert!(workspace_manifest_dir_prefixes(&root).is_empty());
+                    fs::write(&manifest, &original)?;
+                    assert_eq!(
+                        authority
+                            .ensure_clean()
+                            .err()
+                            .ok_or("graph fault reset")?
+                            .to_string(),
+                        first.to_string()
+                    );
+                    let refused =
+                        checked_analysis(&root, &changed_a_lib_diff(), AnalysisMode::Draft)
+                            .err()
+                            .ok_or("sticky graph fault admitted analysis")?;
+                    assert!(refused.contains("frozen source"));
+                    Ok(())
+                })?;
+                let (_, fresh) = capture(&root)?;
+                frozen::with_context(Some(fresh.clone()), || -> TestResult {
+                    assert!(has_related_test_in_b(&checked_analysis(
+                        &root,
+                        &changed_a_lib_diff(),
+                        AnalysisMode::Draft,
+                    )?));
+                    fresh.ensure_clean()?;
+                    Ok(())
+                })?;
+                fresh.finalize()?;
+                let final_error = authority
+                    .finalize()
+                    .err()
+                    .ok_or("faulted snapshot finalization was accepted")?;
+                assert!(final_error.to_string().contains("frozen source"));
+            }
+            Ok(())
+        }
+
+        const DIRECT_SOURCE: &str = r#"pub fn relation(request_match: bool, task_match: bool) -> &'static str {
+    match (request_match, task_match) {
+        (true, true) => "request_and_task_identity",
+        (true, false) => "request_identity_v2",
+        (false, true) => "task_identity",
+        (false, false) => "none",
+    }
+}
+"#;
+
+        const DIRECT_TEST: &str = r#"use match_arm_tuple_identity::relation;
+
+#[test]
+fn exact_request_only_tuple_is_observed() {
+    assert_eq!(relation(true, false), "request_identity_v2");
+}
+"#;
+
+        const DERIVED_SOURCE: &str = r#"use std::collections::{BTreeMap, BTreeSet};
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Receipt {
+    pub id: String,
+}
+
+pub fn terminalize_proof<'a>(
+    receipts: &'a [Receipt],
+    receipt_request_ids: &BTreeMap<String, Vec<String>>,
+    request_set: &BTreeSet<String>,
+    task_id: &str,
+) -> Vec<(&'a Receipt, &'static str)> {
+    receipts
+        .iter()
+        .filter_map(|receipt| {
+            let request_identity_matches = receipt_request_ids
+                .get(&receipt.id)
+                .is_some_and(|receipt_requests| {
+                    receipt_requests
+                        .iter()
+                        .any(|request_id| request_set.contains(request_id.as_str()))
+                });
+            let task_identity_matches = receipt.id == task_id;
+            let relation = match (request_identity_matches, task_identity_matches) {
+                (true, true) => "request_and_task_identity",
+                (true, false) => "request_identity_v2",
+                (false, true) => "task_identity",
+                (false, false) => return None,
+            };
+            Some((receipt, relation))
+        })
+        .collect()
+}
+"#;
+
+        const DERIVED_TEST: &str = r#"use match_arm_tuple_derived_local::{Receipt, terminalize_proof};
+use std::collections::{BTreeMap, BTreeSet};
+
+#[test]
+fn request_only_projection_observes_join() {
+    let receipts = vec![Receipt { id: "receipt-1".to_string() }];
+    let mut receipt_request_ids = BTreeMap::new();
+    receipt_request_ids.insert(
+        "receipt-1".to_string(),
+        vec!["request-1".to_string()],
+    );
+    let request_set = BTreeSet::from(["request-1".to_string()]);
+
+    let terminal = terminalize_proof(
+        &receipts,
+        &receipt_request_ids,
+        &request_set,
+        "different-task",
+    );
+
+    assert_eq!(terminal.len(), 1);
+    assert_eq!(terminal[0].0.id, "receipt-1");
+    assert_eq!(terminal[0].1, "request_identity_v2");
+}
+"#;
+
+        fn tuple_diff(source: &str) -> Result<String, String> {
+            let lines: Vec<_> = source.lines().collect();
+            let position = lines
+                .iter()
+                .position(|line| line.trim() == "(true, false) => \"request_identity_v2\",")
+                .ok_or("tuple fixture lacks its current arm")?;
+            if position < 3 || position + 3 >= lines.len() {
+                return Err("tuple fixture lacks exact hunk context".to_string());
+            }
+            let mut patch = format!(
+                "diff --git a/src/lib.rs b/src/lib.rs\n\
+                 index 1111111..2222222 100644\n\
+                 --- a/src/lib.rs\n\
+                 +++ b/src/lib.rs\n\
+                 @@ -{},7 +{},7 @@\n",
+                position - 2,
+                position - 2,
+            );
+            for line in &lines[position - 3..position] {
+                patch.push_str(&format!(" {line}\n"));
+            }
+            patch.push_str(&format!(
+                "-{}\n+{}\n",
+                lines[position].replace("request_identity_v2", "request_identity_v1"),
+                lines[position],
+            ));
+            for line in &lines[position + 1..position + 4] {
+                patch.push_str(&format!(" {line}\n"));
+            }
+            Ok(patch)
+        }
+
+        fn tuple_fixture(derived: bool) -> Result<(PathBuf, TempRootGuard), Box<dyn Error>> {
+            let root = temp_root(if derived {
+                "frozen-derived-tuple"
+            } else {
+                "frozen-direct-tuple"
+            })?;
+            let guard = TempRootGuard::for_test(root.clone());
+            let name = if derived {
+                "match-arm-tuple-derived-local"
+            } else {
+                "match-arm-tuple-identity"
+            };
+            write(
+                &root.join("Cargo.toml"),
+                &format!(
+                    "[package]\nname = \"{name}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n\n[workspace]\n"
+                ),
+            )?;
+            write(
+                &root.join("src/lib.rs"),
+                if derived {
+                    DERIVED_SOURCE
+                } else {
+                    DIRECT_SOURCE
+                },
+            )?;
+            write(
+                &root.join("tests/tuple.rs"),
+                if derived { DERIVED_TEST } else { DIRECT_TEST },
+            )?;
+            commit_fixture(&root)?;
+            Ok((root, guard))
+        }
+
+        fn current_tuple_arm(text: &str) -> bool {
+            // Fixture literals have no whitespace. This compares only the
+            // parser's accepted full-arm or arrow-boundary subject spellings.
+            let compact: String = text
+                .trim()
+                .trim_end_matches(',')
+                .chars()
+                .filter(|character| !character.is_whitespace())
+                .collect();
+            compact == "(true,false)=>\"request_identity_v2\"" || compact == "(true,false)=>"
+        }
+
+        fn tuple_observation(
+            root: &Path,
+            derived: bool,
+        ) -> Result<serde_json::Value, Box<dyn Error>> {
+            let source = if derived {
+                DERIVED_SOURCE
+            } else {
+                DIRECT_SOURCE
+            };
+            let paths = [PathBuf::from("src/lib.rs"), PathBuf::from("tests/tuple.rs")];
+            let index = crate::analysis::rust_index::build_index(root, &paths)?;
+            assert!(crate::analysis::rust_index::find_file_facts(&index, &paths[0]).is_some());
+            assert!(
+                crate::analysis::rust_index::find_file_facts(&index, &root.join(&paths[0]))
+                    .is_none(),
+                "the root-prefixed probe must miss the pointer-equality shortcut"
+            );
+            let findings = checked_analysis(
+                root,
+                &diff::parse_unified_diff(&tuple_diff(source)?),
+                AnalysisMode::Ready,
+            )?;
+            let current: Vec<_> = findings
+                .iter()
+                .filter(|finding| {
+                    finding.probe.family == ProbeFamily::MatchArm
+                        && current_tuple_arm(&finding.probe.expression)
+                        && finding
+                            .probe
+                            .after
+                            .as_deref()
+                            .is_some_and(current_tuple_arm)
+                })
+                .collect();
+            let [finding] = current.as_slice() else {
+                return Err(
+                    format!("expected one current tuple arm, found {}", current.len()).into(),
+                );
+            };
+            assert_eq!(finding.probe.location.file, root.join(&paths[0]));
+            let discriminator = &finding.ripr.reveal.discriminate;
+            assert_eq!(discriminator.state, StageState::Yes);
+            assert_eq!(discriminator.confidence, Confidence::High);
+            let summary = if derived {
+                "Exact derived Boolean tuple selects this current arm and the returned projection observes its unique literal result"
+            } else {
+                "Exact boolean tuple input selects this current arm; equality observes its current literal result"
+            };
+            assert_eq!(discriminator.summary, summary);
+            let test_name = if derived {
+                "request_only_projection_observes_join"
+            } else {
+                "exact_request_only_tuple_is_observed"
+            };
+            assert!(
+                finding
+                    .related_tests
+                    .iter()
+                    .any(|test| test.name == test_name)
+            );
+            Ok(serde_json::to_value(findings)?)
+        }
+
+        fn assert_tuple_live_drift(derived: bool) -> TestResult {
+            let (root, _repo) = tuple_fixture(derived)?;
+            let (_, authority) = capture(&root)?;
+            frozen::with_context(Some(authority.clone()), || -> TestResult {
+                let baseline = tuple_observation(&root, derived)?;
+                fs::rename(root.join("src/lib.rs"), root.join("src/renamed.rs"))?;
+                let absent = root
+                    .join("src/lib.rs")
+                    .canonicalize()
+                    .err()
+                    .ok_or("live owner still resolves after rename")?;
+                assert_eq!(absent.kind(), std::io::ErrorKind::NotFound);
+                assert_eq!(tuple_observation(&root, derived)?, baseline);
+                fs::remove_file(root.join("tests/tuple.rs"))?;
+                fs::remove_file(root.join("Cargo.toml"))?;
+                assert_eq!(tuple_observation(&root, derived)?, baseline);
+                authority.ensure_clean()?;
+                Ok(())
+            })?;
+            authority.finalize()?;
+            Ok(())
+        }
+
+        #[test]
+        fn named_tree_direct_tuple_fallback_survives_deleted_and_renamed_live_paths() -> TestResult
+        {
+            assert_tuple_live_drift(false)
+        }
+
+        #[test]
+        fn named_tree_derived_tuple_fallback_survives_deleted_and_renamed_live_paths() -> TestResult
+        {
+            assert_tuple_live_drift(true)
+        }
+
+        #[test]
+        fn frozen_tuple_corruption_refuses_and_independent_capture_recovers() -> TestResult {
+            for derived in [false, true] {
+                for fault in ["tamper", "missing", "wrong-root"] {
+                    let (root, _repo) = tuple_fixture(derived)?;
+                    let (physical, authority) = capture(&root)?;
+                    frozen::with_context(Some(authority.clone()), || -> TestResult {
+                        tuple_observation(&root, derived)?;
+                        Ok(())
+                    })?;
+                    let source = physical.join("src/lib.rs");
+                    let original = fs::read(&source)?;
+                    match fault {
+                        "tamper" => {
+                            let mut changed = original.clone();
+                            let first = changed.first_mut().ok_or("empty captured tuple source")?;
+                            *first ^= 1;
+                            fs::write(&source, changed)?;
+                        }
+                        "missing" => fs::remove_file(&source)?,
+                        "wrong-root" => {}
+                        _ => return Err("unknown tuple fault".into()),
+                    }
+                    frozen::with_context(Some(authority.clone()), || -> TestResult {
+                        let requested = if fault == "wrong-root" {
+                            root.join("../outside")
+                        } else {
+                            root.clone()
+                        };
+                        let refused = tuple_observation(&requested, derived)
+                            .err()
+                            .ok_or("faulted tuple snapshot was accepted")?;
+                        assert!(refused.to_string().contains("frozen source"));
+                        let first = authority
+                            .ensure_clean()
+                            .err()
+                            .ok_or("tuple fault was clean")?;
+                        fs::write(&source, &original)?;
+                        let refused = tuple_observation(&root, derived)
+                            .err()
+                            .ok_or("restored tuple reset the sticky fault")?;
+                        assert!(refused.to_string().contains("frozen source"));
+                        assert_eq!(
+                            authority
+                                .ensure_clean()
+                                .err()
+                                .ok_or("tuple fault reset")?
+                                .to_string(),
+                            first.to_string()
+                        );
+                        Ok(())
+                    })?;
+                    let (_, fresh) = capture(&root)?;
+                    frozen::with_context(Some(fresh.clone()), || -> TestResult {
+                        tuple_observation(&root, derived)?;
+                        fresh.ensure_clean()?;
+                        Ok(())
+                    })?;
+                    fresh.finalize()?;
+                    let final_error = authority
+                        .finalize()
+                        .err()
+                        .ok_or("faulted snapshot finalization was accepted")?;
+                    assert!(final_error.to_string().contains("frozen source"));
+                }
+            }
+            Ok(())
+        }
     }
 }
 

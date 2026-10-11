@@ -67,6 +67,7 @@ use super::super::{PythonOwner, PythonTest};
 use super::roles::PythonFileRole;
 use super::run_status::{PartialRunReason, PythonRepoRunStatus};
 use super::{CapRecoveryRoute, DiscoveryCounts, PythonRepoInput, RepoWorkingSetLimit};
+use crate::analysis::committed_source::frozen::fs as frozen_fs;
 use crate::domain::{
     DeltaKind, Finding, FindingCanonicalGap, OracleKind, OracleStrength, ProbeFamily, RelatedTest,
     StaticLimitKind,
@@ -546,7 +547,8 @@ fn load_facts_with_source(
     relative: &Path,
 ) -> Result<(PythonSourceFacts, String), String> {
     let absolute = root.join(relative);
-    let source = std::fs::read_to_string(&absolute).map_err(|err| format!("read_error: {err}"))?;
+    let source =
+        frozen_fs::read_to_string(&absolute).map_err(|err| format!("read_error: {err}"))?;
     let facts = extract_source_facts(relative, &source);
     debug_assert!(source_fact_snapshot_observation(&facts) > 0);
     match source_facts_parse_error(&facts) {

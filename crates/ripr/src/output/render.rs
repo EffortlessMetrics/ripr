@@ -54,10 +54,10 @@ pub(crate) fn render_check_with_config_and_progress(
             // Fail-closed budget resolution (#5203): an unparseable
             // `RIPR_CHECK_FINDINGS_BYTES` aborts the run, never rendering.
             let findings_budget = json::check_findings_byte_budget()?;
-            Ok(stamp_check_json(
+            stamp_check_json_checked(
                 json::render_with_config(output, config, findings_budget),
                 &output.root,
-            ))
+            )
         }
         OutputFormat::Github => Ok(github::render_with_config(output, config)),
         OutputFormat::Sarif => {
@@ -253,10 +253,41 @@ pub(crate) fn render_check_json_unbounded(output: &CheckOutput, config: &RiprCon
     stamp_check_json(json::render_with_config(output, config, None), &output.root)
 }
 
+/// Same full renderer for PR evidence, propagating active frozen stamp failures.
+/// This does not establish a bounded serialization or aggregate resource claim.
+pub(crate) fn render_check_json_for_pr_evidence(
+    output: &CheckOutput,
+    config: &RiprConfig,
+) -> Result<String, String> {
+    stamp_check_json_checked(json::render_with_config(output, config, None), &output.root)
+}
+
+fn stamp_check_json_checked(rendered: String, root: &std::path::Path) -> Result<String, String> {
+    let Some(authority) = super::gap_source_subject::frozen_stamp_context(root)? else {
+        return Ok(stamp_check_json(rendered, root));
+    };
+    let paths = super::gap_decision_ledger::check_output_subject_paths(&rendered, root);
+    super::gap_source_subject::require_frozen_stamp_context(root, &authority)?;
+    let paths = paths?;
+    let stamped =
+        super::gap_source_subject::append_source_subject_member_checked(rendered, root, &paths)?;
+    super::gap_source_subject::require_frozen_stamp_context(root, &authority)?;
+    Ok(stamped)
+}
+
 /// #4544: stamp the check JSON with the content digests of every file a gap
 /// ledger derived from it would name, read in this analysis run, so the
 /// ledger writer can copy them instead of hashing the workspace later.
 fn stamp_check_json(rendered: String, root: &std::path::Path) -> String {
+    if let Some(authority) = crate::analysis::committed_source::frozen::current() {
+        return match stamp_check_json_checked(rendered.clone(), root) {
+            Ok(stamped) => stamped,
+            Err(error) => {
+                authority.refuse_external_effect(&error);
+                rendered
+            }
+        };
+    }
     match super::gap_decision_ledger::check_output_subject_paths(&rendered, root) {
         Ok(paths) => {
             super::gap_source_subject::append_source_subject_member(rendered, root, &paths)
@@ -891,6 +922,138 @@ mod tests {
 
         remove_temp_root(&output.root)?;
         Ok(())
+    }
+
+    #[cfg(all(target_os = "linux", feature = "lang-rust"))]
+    #[test]
+    fn frozen_check_rendering_stamps_named_head_and_propagates_snapshot_failures()
+    -> Result<(), String> {
+        use crate::analysis::committed_source::frozen;
+        let root = temp_root("ripr-render-frozen-stamp")?;
+        std::fs::create_dir_all(root.join("src")).map_err(|error| error.to_string())?;
+        std::fs::create_dir_all(root.join("tests")).map_err(|error| error.to_string())?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            "pub const HELP_TEXT: &str = \"named help\";\n",
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(root.join("tests/check.rs"), "fn named_test() {}\n")
+            .map_err(|error| error.to_string())?;
+        for args in [
+            &["-c", "init.templateDir=", "init", "-q"][..],
+            &["config", "user.email", "render-stamp@example.invalid"][..],
+            &["config", "user.name", "render stamp fixture"][..],
+            &["add", "."][..],
+            &["commit", "-qm", "named rendering head"][..],
+        ] {
+            crate::testing::fixture_git::fixture_git_ok(&root, args)?;
+        }
+        let prepared =
+            crate::analysis::git_candidate_execution::prepare_named_tree(&root, "HEAD", None)
+                .map_err(|error| error.to_string())?;
+        let physical = prepared.physical_root().to_path_buf();
+        let authority = prepared
+            .frozen_source_authority(&root)
+            .map_err(|error| error.to_string())?;
+        let mut finding = sample_finding("src/lib.rs", 1);
+        // The actual CHECK ledger accepts Rust presentation-text alignment;
+        // an arbitrary ErrorPath expression does not produce a stamp record.
+        finding.probe.family = ProbeFamily::FieldConstruction;
+        finding.probe.expression = "pub const HELP_TEXT: &str = \"named help\";".into();
+        finding.related_tests[0].file = "tests/check.rs".into();
+        let mut output = check_output_with(vec![finding]);
+        output.root = root.clone();
+        let config = RiprConfig::default();
+        let ordinary = super::render_check_json_unbounded(&output, &config);
+        assert_eq!(
+            super::render_check_json_for_pr_evidence(&output, &config)?,
+            ordinary
+        );
+        let ordinary_value: serde_json::Value =
+            serde_json::from_str(&ordinary).map_err(|error| error.to_string())?;
+        assert_eq!(
+            ordinary_value["finding_alignment"]["items"][0]["evidence_class"],
+            "presentation_text",
+        );
+        let projected =
+            super::super::gap_decision_ledger::check_output_subject_paths(&ordinary, &root)?;
+        assert!(projected.contains("src/lib.rs"));
+        let stamped = ordinary_value["source_subject"]["files"]
+            .as_array()
+            .ok_or("ordinary render lacks source subject files")?;
+        assert!(stamped.iter().any(|file| file["path"] == "src/lib.rs"));
+        std::fs::write(root.join("src/lib.rs"), "dirty live replacement\n")
+            .map_err(|error| error.to_string())?;
+        std::fs::remove_file(root.join("tests/check.rs")).map_err(|error| error.to_string())?;
+        frozen::with_context(Some(authority.clone()), || {
+            assert_eq!(
+                super::render_check_json_for_pr_evidence(&output, &config)?,
+                ordinary
+            );
+            let external = render_check_with_config(&output, &OutputFormat::Json, &config)?;
+            let external: serde_json::Value =
+                serde_json::from_str(&external).map_err(|error| error.to_string())?;
+            assert_eq!(external["source_subject"], ordinary_value["source_subject"]);
+            std::fs::remove_file(physical.join("src/lib.rs")).map_err(|error| error.to_string())?;
+            let failure = expect_err(super::render_check_json_for_pr_evidence(&output, &config))?;
+            assert!(failure.contains("src/lib.rs"), "{failure}");
+            let public_failure = expect_err(render_check_with_config(
+                &output,
+                &OutputFormat::Json,
+                &config,
+            ))?;
+            assert_eq!(public_failure, failure);
+            Ok::<_, String>(())
+        })?;
+        drop(authority);
+        remove_temp_root(&root)
+    }
+
+    #[cfg(all(target_os = "linux", feature = "lang-rust"))]
+    #[test]
+    fn frozen_checked_json_stamp_refuses_projection_errors_even_without_named_paths()
+    -> Result<(), String> {
+        use crate::analysis::committed_source::frozen;
+        let root = temp_root("ripr-render-empty-frozen-stamp")?;
+        std::fs::write(root.join("empty.rs"), "named\n").map_err(|error| error.to_string())?;
+        for args in [
+            &["-c", "init.templateDir=", "init", "-q"][..],
+            &["config", "user.email", "render-stamp@example.invalid"][..],
+            &["config", "user.name", "render stamp fixture"][..],
+            &["add", "."][..],
+            &["commit", "-qm", "named rendering head"][..],
+        ] {
+            crate::testing::fixture_git::fixture_git_ok(&root, args)?;
+        }
+        let prepared =
+            crate::analysis::git_candidate_execution::prepare_named_tree(&root, "HEAD", None)
+                .map_err(|error| error.to_string())?;
+        let authority = prepared
+            .frozen_source_authority(&root)
+            .map_err(|error| error.to_string())?;
+        frozen::with_context(Some(authority.clone()), || {
+            let parse = expect_err(super::stamp_check_json_checked("not JSON".into(), &root))?;
+            assert!(parse.contains("invalid JSON"), "{parse}");
+            let nonobject = expect_err(super::stamp_check_json_checked("[]".into(), &root))?;
+            assert!(
+                nonobject.contains("expected check output object"),
+                "{nonobject}"
+            );
+            authority
+                .ensure_clean()
+                .map_err(|error| error.to_string())?;
+            let empty = std::collections::BTreeSet::<String>::new();
+            let failure = super::super::gap_source_subject::append_source_subject_member_checked(
+                "{}".into(),
+                &root.join("empty.rs"),
+                &empty,
+            );
+            let failure = expect_err(failure)?;
+            assert!(failure.contains("exact logical root"), "{failure}");
+            Ok::<_, String>(())
+        })?;
+        drop(authority);
+        remove_temp_root(&root)
     }
 
     #[test]

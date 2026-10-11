@@ -42,11 +42,27 @@ pub(crate) fn bounded_observed_values(facts: &[ValueFact]) -> Vec<&ValueFact> {
     if facts.len() <= MAX_OBSERVED_VALUES_PER_FINDING {
         return facts.iter().collect();
     }
-    let mut ranked = facts.iter().enumerate().collect::<Vec<_>>();
-    ranked.sort_by_key(|(index, fact)| (context_rank(&fact.context), *index));
-    ranked.truncate(MAX_OBSERVED_VALUES_PER_FINDING);
-    ranked.sort_by_key(|(index, _)| *index);
-    ranked.into_iter().map(|(_, fact)| fact).collect()
+    // After each input, this prefix holds the best min(seen, 32) distinct
+    // ordinals, sorted by the legacy (context rank, original ordinal) key.
+    // Inserting a better key and dropping the worst preserves that invariant.
+    // Only selector scratch is bounded here; the full facts and renderer
+    // allocations remain outside this fixed 32-usize array.
+    let mut ranked = [0usize; MAX_OBSERVED_VALUES_PER_FINDING];
+    let mut retained = 0;
+    for (index, fact) in facts.iter().enumerate() {
+        let key = (context_rank(&fact.context), index);
+        let position = ranked[..retained]
+            .partition_point(|&ordinal| (context_rank(&facts[ordinal].context), ordinal) < key);
+        if position == MAX_OBSERVED_VALUES_PER_FINDING {
+            continue;
+        }
+        let end = retained.min(MAX_OBSERVED_VALUES_PER_FINDING - 1);
+        ranked.copy_within(position..end, position + 1);
+        ranked[position] = index;
+        retained = (retained + 1).min(MAX_OBSERVED_VALUES_PER_FINDING);
+    }
+    ranked.sort_unstable();
+    ranked.into_iter().map(|index| &facts[index]).collect()
 }
 
 /// The pre-cap count to disclose, or `None` when nothing was dropped.
@@ -115,5 +131,197 @@ mod tests {
             &lines[..MAX_OBSERVED_VALUES_PER_FINDING - 3],
             (1..=29).collect::<Vec<_>>().as_slice()
         );
+    }
+
+    // Retain the full-sort algorithm and comparator from baseline blob
+    // 2fdb84596c655f7a85d65325fdc0904747ea5363 independently of production.
+    // Literal 32 and the separate rank table also catch cap/ranking mutants.
+    fn legacy_full_sort(facts: &[ValueFact]) -> Vec<&ValueFact> {
+        if facts.len() <= 32 {
+            return facts.iter().collect();
+        }
+        let mut ranked = facts.iter().enumerate().collect::<Vec<_>>();
+        ranked.sort_by_key(|(index, fact)| (legacy_context_rank(&fact.context), *index));
+        ranked.truncate(32);
+        ranked.sort_by_key(|(index, _)| *index);
+        ranked.into_iter().map(|(_, fact)| fact).collect()
+    }
+
+    fn legacy_context_rank(context: &ValueContext) -> u8 {
+        match context {
+            ValueContext::FunctionArgument => 0,
+            ValueContext::TableRow => 1,
+            ValueContext::BuilderMethod => 2,
+            ValueContext::EnumVariant => 3,
+            ValueContext::ReturnValue => 4,
+            ValueContext::AssertionArgument => 5,
+            ValueContext::Unknown => 6,
+        }
+    }
+
+    fn all_contexts() -> [ValueContext; 7] {
+        [
+            ValueContext::FunctionArgument,
+            ValueContext::TableRow,
+            ValueContext::BuilderMethod,
+            ValueContext::EnumVariant,
+            ValueContext::ReturnValue,
+            ValueContext::AssertionArgument,
+            ValueContext::Unknown,
+        ]
+    }
+
+    fn same_objects_in_order(left: &[&ValueFact], right: &[&ValueFact]) -> bool {
+        left.len() == right.len() && left.iter().zip(right).all(|(a, b)| std::ptr::eq(*a, *b))
+    }
+
+    fn assert_legacy_equivalent(facts: &[ValueFact]) {
+        let original = facts.to_vec();
+        let expected = legacy_full_sort(facts);
+        let actual = bounded_observed_values(facts);
+        assert_eq!(actual.len(), facts.len().min(32));
+        assert!(same_objects_in_order(&actual, &expected));
+        assert_eq!(facts, original.as_slice());
+        assert_eq!(
+            elided_observed_values_total(facts),
+            (facts.len() > 32).then_some(facts.len())
+        );
+    }
+
+    #[test]
+    fn legacy_equivalence_at_cap_boundaries_and_large_inputs() {
+        for len in [0, 1, 31, 32, 33, 65, 5001, 10017] {
+            for context in all_contexts() {
+                let facts = (0..len)
+                    .map(|ordinal| fact(len - ordinal, context.clone()))
+                    .collect::<Vec<_>>();
+                assert_legacy_equivalent(&facts);
+            }
+        }
+        // A scan cutoff beyond the small cases must still lose to late inputs.
+        let mut late_best = (0..6000)
+            .map(|ordinal| fact(ordinal, ValueContext::Unknown))
+            .collect::<Vec<_>>();
+        late_best.extend((6000..6033).map(|ordinal| fact(ordinal, ValueContext::FunctionArgument)));
+        assert_legacy_equivalent(&late_best);
+    }
+
+    #[test]
+    fn every_context_tier_and_adversarial_input_order_match_legacy() {
+        let contexts = all_contexts();
+        for cutoff_rank in 0..contexts.len() {
+            let mut facts = Vec::new();
+            for rank in (0..contexts.len()).rev() {
+                let count = if rank < cutoff_rank {
+                    3
+                } else if rank == cutoff_rank {
+                    40
+                } else {
+                    41
+                };
+                for _ in 0..count {
+                    facts.push(fact(1000 - facts.len(), contexts[rank].clone()));
+                }
+            }
+            // Worst contexts arrive first; every tier competes at the cutoff.
+            assert_legacy_equivalent(&facts);
+            facts.reverse();
+            assert_legacy_equivalent(&facts);
+            facts.rotate_left(31);
+            assert_legacy_equivalent(&facts);
+            facts.rotate_right(32);
+            assert_legacy_equivalent(&facts);
+        }
+    }
+
+    #[test]
+    fn same_line_provenance_and_equal_content_distinct_objects_are_preserved() {
+        let mut facts = (0..96)
+            .map(|ordinal| ValueFact {
+                line: 7,
+                text: format!("different source {ordinal}"),
+                value: "same value".to_owned(),
+                context: ValueContext::FunctionArgument,
+            })
+            .collect::<Vec<_>>();
+        assert_legacy_equivalent(&facts);
+        facts.fill(fact(7, ValueContext::FunctionArgument));
+        // Equal contents are separate input objects: value equality alone
+        // would miss a replacement, deduplication or reconstructed reference.
+        assert_legacy_equivalent(&facts);
+    }
+
+    #[test]
+    fn exhaustive_four_context_patterns_match_legacy() {
+        let contexts = all_contexts();
+        for pattern in 0..7usize.pow(4) {
+            let mut digits = [0; 4];
+            let mut remaining = pattern;
+            for digit in &mut digits {
+                *digit = remaining % 7;
+                remaining /= 7;
+            }
+            let mut facts = (0..33)
+                .map(|ordinal| fact(ordinal % 5, contexts[digits[ordinal % 4]].clone()))
+                .collect::<Vec<_>>();
+            assert_legacy_equivalent(&facts);
+            facts.reverse();
+            assert_legacy_equivalent(&facts);
+        }
+    }
+
+    #[test]
+    fn generated_lengths_contexts_and_provenance_match_legacy() {
+        let contexts = all_contexts();
+        let mut state = 0x6a09_e667_f3bc_c909u64;
+        for case in 0..256 {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            let len = if case >= 252 {
+                [31, 32, 33, 6001][case - 252]
+            } else {
+                (state % 129) as usize
+            };
+            let mut facts = (0..len)
+                .map(|ordinal| {
+                    state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                    ValueFact {
+                        line: (state % 13) as usize,
+                        text: format!("source {}", ordinal % 9),
+                        value: (state % 5).to_string(),
+                        context: contexts[(state % 7) as usize].clone(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            assert_legacy_equivalent(&facts);
+            facts.reverse();
+            assert_legacy_equivalent(&facts);
+        }
+    }
+
+    #[test]
+    fn oracle_rejects_truncation_rank_order_late_ties_and_line_dedup_mutants() {
+        let mut late_best = (0..32)
+            .map(|ordinal| fact(ordinal, ValueContext::Unknown))
+            .collect::<Vec<_>>();
+        late_best.extend([
+            fact(32, ValueContext::FunctionArgument),
+            fact(33, ValueContext::FunctionArgument),
+        ]);
+        let expected = legacy_full_sort(&late_best);
+        let truncated = late_best.iter().take(32).collect::<Vec<_>>();
+        assert!(!same_objects_in_order(&truncated, &expected));
+        let mut rank_order = expected.clone();
+        rank_order.sort_by_key(|fact| legacy_context_rank(&fact.context));
+        assert!(!same_objects_in_order(&rank_order, &expected));
+        assert_legacy_equivalent(&late_best);
+
+        let ties = vec![fact(7, ValueContext::TableRow); 64];
+        let expected = legacy_full_sort(&ties);
+        let late_ties = ties.iter().skip(32).collect::<Vec<_>>();
+        assert!(!same_objects_in_order(&late_ties, &expected));
+        let mut deduplicated = expected.clone();
+        deduplicated.dedup_by_key(|fact| fact.line);
+        assert!(!same_objects_in_order(&deduplicated, &expected));
+        assert_legacy_equivalent(&ties);
     }
 }

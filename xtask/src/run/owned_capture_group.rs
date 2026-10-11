@@ -5,8 +5,8 @@
 use super::*;
 
 pub(super) const ENV: &str = "RIPR_XTASK_OWNED_FILE_POLICY_CAPTURE";
+#[cfg(test)]
 const PROC_BYTES: u64 = 4096;
-const PROC_ENTRIES: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Identity {
@@ -27,6 +27,7 @@ impl Identity {
         !matches!(self.state, 'Z' | 'X' | 'x')
     }
 }
+#[cfg(test)]
 fn parse_identity(text: &str, pid: u32) -> Result<Identity, String> {
     let (number, _) = text
         .split_once(' ')
@@ -68,23 +69,23 @@ fn parse_identity(text: &str, pid: u32) -> Result<Identity, String> {
     })
 }
 fn identity(pid: u32) -> Result<Identity, String> {
-    let mut text = String::new();
-    fs::File::open(format!("/proc/{pid}/stat"))
-        .map_err(|err| format!("owned capture process {pid} unavailable: {err}"))?
-        .take(PROC_BYTES + 1)
-        .read_to_string(&mut text)
-        .map_err(|err| format!("owned capture process {pid} stat: {err}"))?;
-    if text.len() as u64 > PROC_BYTES {
-        return Err("owned capture process stat exceeds its bound".to_string());
-    }
-    parse_identity(&text, pid)
+    let observed = ripr::process_owner::ObservedProcessIdentity::read(pid)?;
+    Ok(Identity {
+        pid: observed.pid(),
+        parent: observed.parent(),
+        group: observed.group(),
+        start: observed.start(),
+        state: observed.state(),
+    })
 }
+#[cfg(test)]
 fn require_owner(expected: &Identity, observed: &Identity) -> Result<(), String> {
     if !expected.same_owner(observed) || expected.pid != expected.group {
         return Err("owned capture leader identity mismatch; group signal refused".to_string());
     }
     Ok(())
 }
+#[cfg(test)]
 fn signal_authority(
     expected: &Identity,
     observed: Result<Identity, String>,
@@ -93,6 +94,7 @@ fn signal_authority(
     require_owner(expected, &observed?)?;
     members
 }
+#[cfg(test)]
 fn read_scanned_identity(reader: impl Read, pid: u32) -> Result<Option<Identity>, String> {
     // An opened /proc task descriptor can return ESRCH after that task exits.
     // Keep raw partial bytes: read_to_string can discard invalid UTF-8 while
@@ -114,40 +116,6 @@ fn read_scanned_identity(reader: impl Read, pid: u32) -> Result<Option<Identity>
     }
     parse_identity(text, pid).map(Some)
 }
-fn scan_group(group: u32, deadline: Instant) -> Result<Vec<u32>, String> {
-    let entries = fs::read_dir("/proc")
-        .map_err(|err| format!("owned capture complete group scan unavailable: {err}"))?;
-    let mut live = Vec::new();
-    for (index, entry) in entries.enumerate() {
-        if Instant::now() >= deadline {
-            return Err("owned capture complete group scan exceeded settlement bound".to_string());
-        }
-        if index >= PROC_ENTRIES {
-            return Err("owned capture complete group scan exceeded entry bound".to_string());
-        }
-        let entry = entry.map_err(|err| format!("owned capture /proc entry: {err}"))?;
-        let name = entry.file_name();
-        let Some(pid) = name.to_str().and_then(|value| value.parse::<u32>().ok()) else {
-            continue;
-        };
-        // Disappeared tasks are not survivors. Every other unavailable numeric
-        // entry prevents a complete scan and therefore prevents group signals.
-        match fs::File::open(entry.path().join("stat")) {
-            Ok(file) => {
-                if let Some(process) = read_scanned_identity(file, pid)?
-                    && process.group == group
-                    && process.live()
-                {
-                    live.push(pid);
-                }
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
-            Err(err) => return Err(format!("owned capture complete group scan refused: {err}")),
-        }
-    }
-    Ok(live)
-}
-
 fn parse_handoff(value: &str) -> Result<(u32, u64, Duration), String> {
     if value.len() > 128 {
         return Err("owned file-policy handoff exceeds its bound".to_string());
@@ -270,190 +238,15 @@ impl FilePolicyScope {
     }
 }
 
-pub(super) struct OwnedCaptureGuard {
-    child: OwnedProcess,
-    leader: Identity,
-    settled: bool,
-    refused: bool,
-}
-impl OwnedCaptureGuard {
-    pub(super) fn new(child: OwnedProcess) -> Result<Self, String> {
-        let leader = identity(child.id())?;
-        if leader.pid != leader.group || leader.parent != std::process::id() {
-            return Err("owned capture did not create its own direct-child group".to_string());
-        }
-        Ok(Self {
-            child,
-            leader,
-            settled: false,
-            refused: false,
-        })
-    }
-    pub(super) fn child(&mut self) -> &mut OwnedProcess {
-        &mut self.child
-    }
-    fn qualified(&mut self) -> Result<Identity, String> {
-        if self.refused {
-            return Err("owned capture group settlement previously refused".to_string());
-        }
-        let result = identity(self.leader.pid).and_then(|observed| {
-            require_owner(&self.leader, &observed)?;
-            Ok(observed)
-        });
-        if result.is_err() {
-            self.refused = true;
-        }
-        result
-    }
-    fn members(&mut self, deadline: Instant) -> Result<Vec<u32>, String> {
-        let result = scan_group(self.leader.group, deadline);
-        if result.is_err() {
-            self.refused = true;
-        }
-        result
-    }
-    fn signal(&mut self, deadline: Instant) -> Result<(), String> {
-        if self.refused {
-            return Err("owned capture group settlement previously refused".to_string());
-        }
-        let observed = self.qualified();
-        let members = self.members(deadline);
-        signal_authority(&self.leader, observed, members)?;
-        self.qualified()?;
-        bounded_group_signal(self.leader.group, deadline)
-    }
-    fn settle(&mut self, terminate: bool) -> Result<(ExitStatus, bool), String> {
-        let result = self.settle_qualified(terminate);
-        if result.is_err() && !self.settled {
-            self.refused = true;
-        }
-        result
-    }
-    fn settle_qualified(&mut self, terminate: bool) -> Result<(ExitStatus, bool), String> {
-        if self.refused {
-            return Err("owned capture group settlement refused; cleanup unconfirmed".to_string());
-        }
-        let deadline = Instant::now() + POST_KILL_GROUP_CONFIRM_GRACE;
-        let initial = self.qualified()?;
-        let initial_members = self.members(deadline)?;
-        let unexpected_survivor = !initial.live() && !initial_members.is_empty();
-        let mut signaled = false;
-        if (terminate || unexpected_survivor) && !initial_members.is_empty() {
-            self.signal(deadline)?;
-            signaled = true;
-        }
-        loop {
-            self.qualified()?;
-            if self.members(deadline)?.is_empty() {
-                break;
-            }
-            if Instant::now() >= deadline {
-                return Err("owned capture group remains live; cleanup unconfirmed".to_string());
-            }
-            self.signal(deadline)?;
-            signaled = true;
-            thread::sleep(Duration::from_millis(10));
-        }
-        // The numeric group lease remains pinned by this actual unreaped child
-        // until all live members are gone. Only now may try_wait reap it.
-        let status = loop {
-            if let Some(status) = self
-                .child
-                .try_wait()
-                .map_err(|err| format!("owned capture bounded reap: {err}"))?
-            {
-                break status;
-            }
-            if Instant::now() >= deadline {
-                return Err("owned capture primary reap exceeded settlement bound".to_string());
-            }
-            thread::sleep(Duration::from_millis(10));
-        };
-        self.settled = true;
-        if unexpected_survivor {
-            return Err("owned capture primary exited with live group members; cleanup failure despite settlement".to_string());
-        }
-        Ok((status, signaled))
-    }
-    pub(super) fn wait(
-        &mut self,
-        started: Instant,
-        timeout: Duration,
-    ) -> Result<WaitOutcome, String> {
-        self.wait_supervised(started, timeout, || Ok(()))
-    }
+pub(super) use ripr::process_owner::QualifiedGroupOwner as OwnedCaptureGuard;
 
-    pub(super) fn wait_supervised(
-        &mut self,
-        started: Instant,
-        timeout: Duration,
-        mut monitor: impl FnMut() -> Result<(), String>,
-    ) -> Result<WaitOutcome, String> {
-        loop {
-            monitor()?;
-            let leader = self.qualified()?;
-            if !leader.live() || started.elapsed() >= timeout {
-                let expired = leader.live() && started.elapsed() >= timeout;
-                let (status, signaled) = self.settle(expired)?;
-                return Ok(WaitOutcome {
-                    status,
-                    duration: started.elapsed(),
-                    timed_out: expired && signaled,
-                    peak_rss_bytes: None,
-                });
-            }
-            thread::sleep(poll_interval(false));
-        }
-    }
-    pub(super) fn abort(&mut self) -> Result<(), String> {
-        if self.settled {
-            return Ok(());
-        }
-        self.settle(true).map(|_| ())
-    }
-}
-impl Drop for OwnedCaptureGuard {
-    fn drop(&mut self) {
-        if !self.settled && !self.refused {
-            let _ = self.abort();
-        }
-        // Unconfirmed scope is never retried as a numeric group kill. The
-        // underlying OwnedProcess performs direct-handle bounded fallback only.
-    }
-}
-
-fn bounded_group_signal(group: u32, deadline: Instant) -> Result<(), String> {
-    if Instant::now() >= deadline {
-        return Err("owned group signal has no remaining settlement budget".to_string());
-    }
-    let mut command = Command::new("/usr/bin/kill");
-    command
-        .args(["-KILL", "--", &format!("-{group}")])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
-    let mut child = OwnedProcess::spawn_with_bounded_drop(command)
-        .map_err(|err| format!("owned group signal launch: {err}"))?;
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|err| format!("owned group signal poll: {err}"))?
-        {
-            return if status.success() {
-                Ok(())
-            } else {
-                Err(format!(
-                    "owned group signal exited {status}; cleanup unconfirmed"
-                ))
-            };
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            return Err(
-                "owned group signal exceeded settlement bound; cleanup unconfirmed".to_string(),
-            );
-        }
-        thread::sleep(Duration::from_millis(5));
+pub(super) fn legacy_wait(outcome: ripr::process_owner::QualifiedGroupWait) -> WaitOutcome {
+    let (status, duration, timed_out) = outcome.into_parts();
+    WaitOutcome {
+        status,
+        duration,
+        timed_out,
+        peak_rss_bytes: None,
     }
 }
 
@@ -1223,24 +1016,6 @@ wait
             }
             require_not_live(pid)?;
         }
-        // An altered lease makes the actual live guard refuse without group kill.
-        let child = OwnedProcess::spawn_with_bounded_drop(test_command("sleep", &["30"], true))
-            .map_err(|err| format!("fault-injected lease owner: {err}"))?;
-        let mut guard = OwnedCaptureGuard::new(child)?;
-        let pid = guard.child().id();
-        guard.leader.start += 1;
-        let started = Instant::now();
-        require_error(guard.abort(), "identity mismatch")?;
-        if !identity(pid)?.live() {
-            return Err("invalid lease dispatched a group kill".to_string());
-        }
-        // A refused guard cannot retry its numeric group on drop. Direct-handle
-        // fallback remains separate, bounded, and makes no family certificate.
-        drop(guard);
-        if started.elapsed() > Duration::from_secs(6) {
-            return Err("refusal fallback exceeded existing direct reap budget".to_string());
-        }
-        require_not_live(pid)?;
         Ok(())
     }
 

@@ -25,6 +25,11 @@ use std::time::{Duration, Instant};
 use crate::core_error::CoreError;
 use crate::process_owner::OwnedProcess;
 
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+mod complete_capture_restriction;
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) use complete_capture_restriction::with_restriction as with_complete_capture_restriction;
+
 /// Grace period for draining stdout/stderr after owned process-tree cleanup.
 ///
 /// A descendant can briefly retain an inherited pipe handle after the parent
@@ -540,6 +545,119 @@ pub(crate) fn run_git_output_with_deadline_and_limit_strict(
     )
 }
 
+/// Request-only repository authority. This selects environment checks; it is
+/// data and grants no analyzer execution or process-group authority.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum CompleteGitEnvironment {
+    Selector,
+    WholeInput,
+}
+
+#[cfg(test)]
+const COMPLETE_GIT_REDIRECTS: &[&str] = &[
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_REPLACE_REF_BASE",
+];
+#[cfg(test)]
+const COMPLETE_GIT_CONFIGURATION: &[&str] = &[
+    "GIT_CONFIG",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_NOSYSTEM",
+];
+
+#[cfg(test)]
+fn validate_complete_git_environment(
+    environment: CompleteGitEnvironment,
+    mut present: impl FnMut(&str) -> bool,
+) -> Result<(), CoreError> {
+    for name in COMPLETE_GIT_REDIRECTS.iter().copied().chain(
+        COMPLETE_GIT_CONFIGURATION
+            .iter()
+            .copied()
+            .filter(|_| matches!(environment, CompleteGitEnvironment::WholeInput)),
+    ) {
+        if present(name) {
+            return Err(CoreError::message(format!(
+                "complete Git authority refuses inherited {name}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Uses the same command constructor, ownership, finite stream limit and strict
+/// clean-EOF collector. Environment changes apply to this command only.
+/// Callers share an aggregate deadline including the collector's drain grace.
+#[cfg(test)]
+pub(crate) fn run_git_complete_output_with_deadline_and_limit(
+    root: &Path,
+    args: &[&str],
+    timeout: Duration,
+    max_output_bytes: usize,
+    environment: CompleteGitEnvironment,
+) -> Result<Output, CoreError> {
+    if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
+        return Err(CoreError::message(
+            "complete Git capture requires a positive limit within 256 MiB",
+        ));
+    }
+    validate_complete_git_environment(environment, |name| std::env::var_os(name).is_some())?;
+    let describe = format!("complete git -C {} {:?}", root.display(), args);
+    let mut command = git_command(root, args);
+    command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    collect_output_with_reader_policy(command, Some(timeout), max_output_bytes, &describe, true)
+}
+
+/// Cooperative complete-worker capture under the caller's original clock.
+/// This helper belongs inside the externally supervised finite whole worker.
+/// Its return value grants no parent settlement, cleanup or publication proof.
+#[cfg(test)]
+pub(crate) fn run_git_complete_output_with_held_deadline_and_limit(
+    root: &Path,
+    args: &[&str],
+    held_deadline: Instant,
+    max_output_bytes: usize,
+    environment: CompleteGitEnvironment,
+) -> Result<Output, CoreError> {
+    if max_output_bytes == 0 || max_output_bytes > 256 * 1024 * 1024 {
+        return Err(CoreError::message(
+            "complete Git capture requires a positive limit within 256 MiB",
+        ));
+    }
+    let describe = format!("complete git -C {} {:?}", root.display(), args);
+    // Preserve the existing canonical bounded loader's five-minute execution
+    // ceiling as a nested phase; it cannot reset or extend the held lifetime.
+    let entry = Instant::now();
+    let canonical_ceiling = entry
+        .checked_add(Duration::from_mins(5))
+        .ok_or_else(|| CoreError::git_invocation_timeout(&describe, 0, false))?;
+    let execution_deadline = held_deadline
+        .checked_sub(POST_KILL_DRAIN_GRACE)
+        .map(|deadline| deadline.min(canonical_ceiling))
+        .filter(|deadline| *deadline > Instant::now())
+        .ok_or_else(|| CoreError::git_invocation_timeout(&describe, 0, false))?;
+    validate_complete_git_environment(environment, |name| std::env::var_os(name).is_some())?;
+    let mut command = git_command(root, args);
+    command.env("GIT_NO_REPLACE_OBJECTS", "1");
+    collect_output_with_reader_policy_and_held_deadline(
+        command,
+        Some(execution_deadline.saturating_duration_since(Instant::now())),
+        max_output_bytes,
+        &describe,
+        true,
+        Some((execution_deadline, held_deadline)),
+    )
+}
+
 fn collect_output_with_optional_deadline_and_limit(
     command: Command,
     timeout: Option<Duration>,
@@ -550,11 +668,58 @@ fn collect_output_with_optional_deadline_and_limit(
 }
 
 fn collect_output_with_reader_policy(
+    command: Command,
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+    describe: &str,
+    require_piped_readers: bool,
+) -> Result<Output, CoreError> {
+    collect_output_with_reader_policy_and_held_deadline(
+        command,
+        timeout,
+        max_output_bytes,
+        describe,
+        require_piped_readers,
+        None,
+    )
+}
+
+fn collect_output_with_reader_policy_and_held_deadline(
+    command: Command,
+    timeout: Option<Duration>,
+    max_output_bytes: usize,
+    describe: &str,
+    require_piped_readers: bool,
+    held_deadlines: Option<(Instant, Instant)>,
+) -> Result<Output, CoreError> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(restriction) = complete_capture_restriction::current() {
+        return complete_capture_restriction::collect(
+            &restriction,
+            command,
+            timeout,
+            Some(max_output_bytes),
+            describe,
+            held_deadlines,
+        );
+    }
+    collect_output_with_reader_policy_and_held_deadline_direct(
+        command,
+        timeout,
+        max_output_bytes,
+        describe,
+        require_piped_readers,
+        held_deadlines,
+    )
+}
+
+fn collect_output_with_reader_policy_and_held_deadline_direct(
     mut command: Command,
     timeout: Option<Duration>,
     max_output_bytes: usize,
     describe: &str,
     require_piped_readers: bool,
+    held_deadlines: Option<(Instant, Instant)>,
 ) -> Result<Output, CoreError> {
     if timeout.is_some_and(|timeout| timeout.is_zero()) {
         return Err(CoreError::git_invocation_timeout(describe, 0, false));
@@ -562,13 +727,28 @@ fn collect_output_with_reader_policy(
     // A recorded abort is authoritative before spawn, even when the child
     // would exit before the first poll. Keep the zero-timeout preflight above.
     crate::analysis::cancellation::checkpoint_typed().map_err(CoreError::from)?;
+    if held_deadlines.is_some_and(|(execution, _)| Instant::now() >= execution) {
+        return Err(CoreError::git_invocation_timeout(describe, 0, false));
+    }
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let spawn_site = SpawnSite::of(&command);
+    if held_deadlines.is_some_and(|(execution, _)| Instant::now() >= execution) {
+        return Err(CoreError::git_invocation_timeout(describe, 0, false));
+    }
     let mut child =
         OwnedProcess::spawn(command).map_err(|err| spawn_site.failure_message(describe, &err))?;
+    #[cfg(test)]
+    if held_deadlines.is_some()
+        && HELD_CAPTURE_OBSERVATIONS.with(|observations| observations.borrow().is_some())
+    {
+        observe_held_capture(HeldCaptureObservation::SpawnedLive(matches!(
+            child.try_wait(),
+            Ok(None)
+        )));
+    }
     let stdout_reader = child
         .stdout_pipe()
         .take()
@@ -578,9 +758,17 @@ fn collect_output_with_reader_policy(
         .take()
         .map(|pipe| spawn_bounded_pipe_reader(pipe, max_output_bytes));
 
-    let wait = poll_child(&mut child, timeout, describe);
+    let wait = poll_child_with_held_deadline(
+        &mut child,
+        timeout,
+        describe,
+        held_deadlines.map(|(execution, _)| execution),
+    );
     let timed_out = !matches!(&wait, ChildWait::Exited(_));
-    let drain_deadline = Some(Instant::now() + POST_KILL_DRAIN_GRACE);
+    let drain_deadline = Some(held_deadlines.map_or_else(
+        || Instant::now() + POST_KILL_DRAIN_GRACE,
+        |(_, held)| (Instant::now() + POST_KILL_DRAIN_GRACE).min(held),
+    ));
     let stdout_result = drain_bounded_pipe_reader_with_policy(
         stdout_reader,
         timed_out,
@@ -610,17 +798,47 @@ fn collect_output_with_reader_policy(
                 "git_output_limit_exceeded: {describe} exceeded the {max_output_bytes}-byte per-stream capture limit"
             )))
         }
-        ChildWait::Exited(status) => Ok(Output {
-            status,
-            stdout: stdout.bytes,
-            stderr: stderr.bytes,
-        }),
+        ChildWait::Exited(status) => {
+            if held_deadlines.is_some_and(|(_, held)| Instant::now() >= held) {
+                return Err(CoreError::git_invocation_timeout(describe, 0, true));
+            }
+            Ok(Output {
+                status,
+                stdout: stdout.bytes,
+                stderr: stderr.bytes,
+            })
+        }
         ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => Err(error),
         ChildWait::CleanupFailed(message) => Err(CoreError::message(message)),
         ChildWait::WaitFailed(err) => Err(CoreError::message(format!(
             "failed while waiting on {describe}: {err}"
         ))),
     }
+}
+
+#[cfg(test)]
+#[derive(Debug)]
+enum HeldCaptureObservation {
+    SpawnedLive(bool),
+    Drain {
+        stdout: bool,
+        deadline: Option<Instant>,
+    },
+}
+
+#[cfg(test)]
+thread_local! {
+    static HELD_CAPTURE_OBSERVATIONS: std::cell::RefCell<Option<Vec<HeldCaptureObservation>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(test)]
+fn observe_held_capture(value: HeldCaptureObservation) {
+    HELD_CAPTURE_OBSERVATIONS.with(|observations| {
+        if let Some(values) = observations.borrow_mut().as_mut() {
+            values.push(value);
+        }
+    });
 }
 
 struct BoundedPipeOutput {
@@ -680,6 +898,13 @@ fn drain_bounded_pipe_reader_with_policy(
     describe: &str,
     require_reader: bool,
 ) -> Result<BoundedPipeOutput, String> {
+    #[cfg(test)]
+    if require_reader {
+        observe_held_capture(HeldCaptureObservation::Drain {
+            stdout: stream_name == "stdout",
+            deadline,
+        });
+    }
     if require_reader && reader.is_none() {
         return Err(format!(
             "{stream_name} piped capture reader is unavailable for {describe}; EOF was not observed"
@@ -767,6 +992,22 @@ pub(crate) struct CatFileBatch {
     started: Instant,
     budget: Duration,
     describe: String,
+    // Complete mode is an internal worker-only protocol. It provides no
+    // parent deadline, process settlement or stage cleanup capability.
+    complete: Option<CompleteBatchProtocol>,
+    stdout_join: Option<std::thread::JoinHandle<()>>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompleteBlobState {
+    Idle,
+    Body(u64),
+    Failed,
+}
+
+struct CompleteBatchProtocol {
+    deadline: Instant,
+    state: CompleteBlobState,
 }
 
 /// Reader-thread chunk size for the batch stdout stream. Bounds resident
@@ -787,12 +1028,42 @@ impl CatFileBatch {
     /// Spawn `git cat-file --batch` in `root`. `budget` is the single
     /// overall deadline for the whole session, enforced incrementally.
     pub(crate) fn spawn(root: &Path, budget: Duration) -> Result<Self, CoreError> {
+        Self::spawn_configured(root, budget, None)
+    }
+
+    /// Worker-contained strict stream only. The caller must own the actual
+    /// native resource profile and an externally enforced whole-worker deadline.
+    /// In particular, native thread joins below have no standalone hard bound.
+    #[cfg(test)]
+    pub(crate) fn spawn_complete(root: &Path, deadline: Instant) -> Result<Self, CoreError> {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(CoreError::git_invocation_timeout(
+                "complete git cat-file --batch",
+                0,
+                false,
+            ));
+        }
+        validate_complete_git_environment(CompleteGitEnvironment::WholeInput, |name| {
+            std::env::var_os(name).is_some()
+        })?;
+        Self::spawn_configured(root, remaining, Some(deadline))
+    }
+
+    fn spawn_configured(
+        root: &Path,
+        budget: Duration,
+        complete_deadline: Option<Instant>,
+    ) -> Result<Self, CoreError> {
         let describe = format!("git -C {} cat-file --batch", root.display());
         let mut command = git_command(root, &["cat-file", "--batch"]);
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        if complete_deadline.is_some() {
+            command.env("GIT_NO_REPLACE_OBJECTS", "1");
+        }
         let spawn_site = SpawnSite::of(&command);
         let mut child = OwnedProcess::spawn(command)
             .map_err(|err| spawn_site.failure_message(&describe, &err))?;
@@ -808,14 +1079,33 @@ impl CatFileBatch {
             .stderr_pipe()
             .take()
             .map(|pipe| spawn_bounded_pipe_reader(pipe, CAT_FILE_BATCH_STDERR_BYTES));
+        let (stdout_receiver, stdout_join) =
+            spawn_cat_file_batch_chunk_reader_with_eof(stdout_pipe, complete_deadline.is_some());
+        let stdout = if complete_deadline.is_some() {
+            CatFileBatchStream::with_explicit_eof(stdout_receiver)
+        } else {
+            CatFileBatchStream::new(stdout_receiver)
+        };
+        let stdout_join = if complete_deadline.is_some() {
+            Some(stdout_join)
+        } else {
+            // Preserve the compatibility reader's detached lifetime.
+            drop(stdout_join);
+            None
+        };
         Ok(Self {
             child,
             stdin,
-            stdout: CatFileBatchStream::new(spawn_cat_file_batch_chunk_reader(stdout_pipe)),
+            stdout,
             stderr,
             started: Instant::now(),
             budget,
             describe,
+            complete: complete_deadline.map(|deadline| CompleteBatchProtocol {
+                deadline,
+                state: CompleteBlobState::Idle,
+            }),
+            stdout_join,
         })
     }
 
@@ -831,7 +1121,16 @@ impl CatFileBatch {
     /// stream wait recomputes its allowance from this, so dribbling
     /// fragments cannot outlive the budget by resetting per-wait timeouts.
     fn deadline(&self) -> Instant {
-        self.started + self.budget
+        self.complete
+            .as_ref()
+            .map_or(self.started + self.budget, |protocol| protocol.deadline)
+    }
+
+    fn complete_refusal(&mut self, detail: impl Into<String>) -> CoreError {
+        if let Some(protocol) = &mut self.complete {
+            protocol.state = CompleteBlobState::Failed;
+        }
+        self.abort("complete stream refusal", detail.into())
     }
 
     /// Terminate the owned tree for an abortive outcome and keep the
@@ -840,6 +1139,9 @@ impl CatFileBatch {
     /// suppressed outcome, never as the outcome itself.
     fn abort(&mut self, trigger: &str, pending: impl Into<CoreError>) -> CoreError {
         let pending = pending.into();
+        if let Some(protocol) = &mut self.complete {
+            protocol.state = CompleteBlobState::Failed;
+        }
         match self.child.terminate_tree() {
             Ok(()) => pending,
             Err(cleanup) => format!(
@@ -864,6 +1166,7 @@ impl CatFileBatch {
                 self.abort("timeout", message)
             }
             CatFileBatchReadError::Failed(message) => self.abort("stream failure", message),
+            CatFileBatchReadError::Cancelled(error) => self.abort("cancellation", error),
         }
     }
 
@@ -871,6 +1174,24 @@ impl CatFileBatch {
     /// announced blob size in bytes, or `None` when git reports the object
     /// missing (the caller fails closed naming the identity).
     pub(crate) fn request_blob(&mut self, object: &str) -> Result<Option<u64>, CoreError> {
+        if let Some(protocol) = &self.complete {
+            if protocol.state != CompleteBlobState::Idle {
+                return Err(self.complete_refusal(
+                    "complete blob request overlaps an unfinished or failed response",
+                ));
+            }
+            let parsed = crate::domain::GitObjectId::parse(object).map_err(|error| {
+                self.complete_refusal(format!("complete blob request object ID: {error}"))
+            })?;
+            if parsed.as_str() != object {
+                return Err(
+                    self.complete_refusal("complete blob request object ID is not canonical")
+                );
+            }
+            if Instant::now() >= self.deadline() {
+                return Err(self.classify_read_error(CatFileBatchReadError::TimedOut));
+            }
+        }
         if let Err(cancelled) = crate::analysis::cancellation::checkpoint_typed() {
             return Err(self.abort("cancellation", cancelled));
         }
@@ -886,11 +1207,25 @@ impl CatFileBatch {
         let deadline = self.deadline();
         let header = self.stdout.read_line(deadline);
         let header = header.map_err(|error| self.classify_read_error(error))?;
+        if self.complete.is_some() {
+            if Instant::now() >= deadline {
+                return Err(self.classify_read_error(CatFileBatchReadError::TimedOut));
+            }
+            validate_complete_blob_header(object, &header)
+                .map_err(|error| self.complete_refusal(error))?;
+        }
         let header = String::from_utf8_lossy(&header);
         let mut fields = header.split(' ');
         let _echoed_object = fields.next().unwrap_or_default();
         match fields.next().unwrap_or_default() {
-            "missing" => Ok(None),
+            "missing" => {
+                if let Some(protocol) = &mut self.complete {
+                    // Missing is data for the legacy API, and permanently
+                    // prevents a complete session from qualifying.
+                    protocol.state = CompleteBlobState::Failed;
+                }
+                Ok(None)
+            }
             "blob" => {
                 let size = fields
                     .next()
@@ -902,6 +1237,9 @@ impl CatFileBatch {
                         );
                         self.abort("malformed stream", message)
                     })?;
+                if let Some(protocol) = &mut self.complete {
+                    protocol.state = CompleteBlobState::Body(size);
+                }
                 Ok(Some(size))
             }
             other => {
@@ -918,25 +1256,61 @@ impl CatFileBatch {
     /// of `buf` sized by the caller bound resident memory; the overall
     /// session deadline is enforced between chunk reads.
     pub(crate) fn read_blob_bytes(&mut self, buf: &mut [u8]) -> Result<(), CoreError> {
+        let next = if let Some(protocol) = &self.complete {
+            match protocol.state {
+                CompleteBlobState::Body(remaining) if buf.len() as u64 <= remaining => {
+                    Some(remaining - buf.len() as u64)
+                }
+                _ => {
+                    return Err(self.complete_refusal(
+                        "complete blob read exceeds or lacks its declared body",
+                    ));
+                }
+            }
+        } else {
+            None
+        };
         if let Err(cancelled) = crate::analysis::cancellation::checkpoint_typed() {
             return Err(self.abort("cancellation", cancelled));
         }
         let deadline = self.deadline();
         let read = self.stdout.read_exact(buf, deadline);
-        read.map_err(|error| self.classify_read_error(error))
+        read.map_err(|error| self.classify_read_error(error))?;
+        if self.complete.is_some() && Instant::now() >= deadline {
+            return Err(self.classify_read_error(CatFileBatchReadError::TimedOut));
+        }
+        if let (Some(protocol), Some(remaining)) = (&mut self.complete, next) {
+            protocol.state = CompleteBlobState::Body(remaining);
+        }
+        Ok(())
     }
 
     /// Consume one blob's trailing newline and fail closed on a corrupt
     /// stream framing.
     pub(crate) fn end_blob(&mut self) -> Result<(), CoreError> {
+        if self
+            .complete
+            .as_ref()
+            .is_some_and(|protocol| protocol.state != CompleteBlobState::Body(0))
+        {
+            return Err(self.complete_refusal(
+                "complete blob trailer precedes or lacks the full declared body",
+            ));
+        }
         let mut newline = [0_u8; 1];
         let deadline = self.deadline();
         let read = self.stdout.read_exact(&mut newline, deadline);
         read.map_err(|error| self.classify_read_error(error))?;
+        if self.complete.is_some() && Instant::now() >= deadline {
+            return Err(self.classify_read_error(CatFileBatchReadError::TimedOut));
+        }
         if newline[0] != b'\n' {
             let message = "malformed git cat-file --batch stream: blob not terminated by a newline"
                 .to_string();
             return Err(self.abort("malformed stream", message));
+        }
+        if let Some(protocol) = &mut self.complete {
+            protocol.state = CompleteBlobState::Idle;
         }
         Ok(())
     }
@@ -945,6 +1319,9 @@ impl CatFileBatch {
     /// the child to exit under whatever budget remains. Surfaces the bounded
     /// stderr capture when the child exits non-zero.
     pub(crate) fn finish(mut self) -> Result<(), CoreError> {
+        if self.complete.is_some() {
+            return self.finish_complete();
+        }
         // Budget first: dropping stdin partially moves `self`, after which
         // no whole-`self` method may run — both values are computed here and
         // only field accesses remain below.
@@ -1004,15 +1381,137 @@ impl CatFileBatch {
             ChildWait::CleanupFailed(message) => Err(message.into()),
         }
     }
+
+    /// Strict completion is deliberately inside the qualified worker. Actual
+    /// EOF and joins precede success; the outer owner enforces the native hard
+    /// deadline even if an OS wait or thread destructor does not return.
+    fn finish_complete(mut self) -> Result<(), CoreError> {
+        if self
+            .complete
+            .as_ref()
+            .is_none_or(|protocol| protocol.state != CompleteBlobState::Idle)
+        {
+            return Err(
+                self.complete_refusal("complete batch has unfinished or failed blob framing")
+            );
+        }
+        let deadline = self.deadline();
+        let budget = self.budget;
+        let describe = self.describe.clone();
+        drop(self.stdin);
+        // Drain before wait: even unsolicited output cannot fill the bounded
+        // queue and keep the child blocked while the controller waits for exit.
+        let stdout = self.stdout.require_actual_eof(deadline);
+        let cleanup = if stdout.is_err() {
+            self.child.terminate_tree().err()
+        } else {
+            None
+        };
+        // Release the receiver before joining on every outcome. A reader
+        // blocked sending a trailing chunk must see channel closure, rather
+        // than wait behind a full queue that the refusing caller will not read.
+        drop(self.stdout);
+        let wait = poll_child(
+            &mut self.child,
+            Some(deadline.saturating_duration_since(Instant::now())),
+            &describe,
+        );
+        let stderr = drain_bounded_pipe_reader_with_policy(
+            self.stderr.take(),
+            false,
+            Some(deadline),
+            "stderr",
+            &describe,
+            true,
+        );
+        let stdout_join = self
+            .stdout_join
+            .take()
+            .ok_or_else(|| CoreError::message("complete stdout reader handle is unavailable"))
+            .and_then(|handle| {
+                handle
+                    .join()
+                    .map_err(|_panic_payload| CoreError::message("complete stdout reader panicked"))
+            });
+        if let Some(cleanup) = cleanup {
+            return Err(format!(
+                "complete stdout refusal of {describe} did not complete tree cleanup; child may still be running: {cleanup}"
+            ).into());
+        }
+        let status = match wait {
+            ChildWait::Exited(status) => status,
+            ChildWait::TimedOut(error) | ChildWait::Cancelled(error) => return Err(error),
+            ChildWait::WaitFailed(error) => {
+                return Err(format!("failed while waiting on {describe}: {error}").into());
+            }
+            ChildWait::CleanupFailed(message) => return Err(message.into()),
+        };
+        // A successfully aborted child may exit nonzero because stdout was
+        // refused. Keep that original refusal after actual cleanup priority.
+        stdout.map_err(|error| match error {
+            CatFileBatchReadError::TimedOut => {
+                CoreError::git_invocation_timeout(&describe, budget.as_millis(), true)
+            }
+            CatFileBatchReadError::Failed(message) => CoreError::message(message),
+            CatFileBatchReadError::Cancelled(error) => error,
+        })?;
+        if !status.success() {
+            let detail = stderr
+                .as_ref()
+                .map(|output| String::from_utf8_lossy(&output.bytes).trim().to_string())
+                .unwrap_or_default();
+            return Err(format!("git cat-file --batch exited with {status}: {detail}").into());
+        }
+        let stderr = stderr.map_err(CoreError::message)?;
+        if stderr.exceeded {
+            return Err(CoreError::message(
+                "complete git cat-file stderr exceeded its unchanged byte cap",
+            ));
+        }
+        stdout_join?;
+        if Instant::now() >= deadline {
+            return Err(CoreError::git_invocation_timeout(
+                &describe,
+                budget.as_millis(),
+                true,
+            ));
+        }
+        Ok(())
+    }
 }
 
 /// Read failure classification for the batch stream, kept distinct so the
 /// session can map a deadline expiry onto the named timeout while passing
 /// stream errors through unchanged.
+fn validate_complete_blob_header(object: &str, header: &[u8]) -> Result<(), String> {
+    let header = std::str::from_utf8(header)
+        .map_err(|error| format!("complete blob header is not UTF-8: {error}"))?;
+    let mut fields = header.split(' ');
+    if fields.next() != Some(object) {
+        return Err("complete blob header echoes a different object".into());
+    }
+    match fields.next() {
+        Some("missing") if fields.next().is_none() => Ok(()),
+        Some("blob") => {
+            let size = fields.next().ok_or("complete blob header lacks its size")?;
+            if size.is_empty()
+                || !size.bytes().all(|byte| byte.is_ascii_digit())
+                || size.parse::<u64>().is_err()
+                || fields.next().is_some()
+            {
+                return Err("complete blob header has a malformed size or extra field".into());
+            }
+            Ok(())
+        }
+        _ => Err("complete blob header has an unsupported kind or framing".into()),
+    }
+}
+
 #[derive(Debug)]
 enum CatFileBatchReadError {
     TimedOut,
     Failed(String),
+    Cancelled(CoreError),
 }
 
 /// Incremental reader over the chunk channel fed by the stdout reader
@@ -1023,6 +1522,8 @@ struct CatFileBatchStream {
     receiver: mpsc::Receiver<Result<Vec<u8>, String>>,
     current: Vec<u8>,
     offset: usize,
+    explicit_eof: bool,
+    observed_eof: bool,
 }
 
 impl CatFileBatchStream {
@@ -1031,7 +1532,34 @@ impl CatFileBatchStream {
             receiver,
             current: Vec::new(),
             offset: 0,
+            explicit_eof: false,
+            observed_eof: false,
         }
+    }
+
+    fn with_explicit_eof(receiver: mpsc::Receiver<Result<Vec<u8>, String>>) -> Self {
+        let mut stream = Self::new(receiver);
+        stream.explicit_eof = true;
+        stream
+    }
+
+    fn require_actual_eof(&mut self, deadline: Instant) -> Result<(), CatFileBatchReadError> {
+        if self.offset != self.current.len() {
+            return Err(CatFileBatchReadError::Failed(
+                "complete batch has trailing stdout bytes".into(),
+            ));
+        }
+        if self.next_chunk(deadline)? {
+            return Err(CatFileBatchReadError::Failed(
+                "complete batch has trailing stdout bytes".into(),
+            ));
+        }
+        if !self.observed_eof {
+            return Err(CatFileBatchReadError::Failed(
+                "complete batch stdout EOF was not observed".into(),
+            ));
+        }
+        Ok(())
     }
 
     /// Pull the next chunk when the current one is exhausted.
@@ -1048,15 +1576,49 @@ impl CatFileBatchStream {
         if self.offset < self.current.len() {
             return Ok(true);
         }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        match self.receiver.recv_timeout(remaining) {
+        if self.explicit_eof && self.observed_eof {
+            return Ok(false);
+        }
+        let received = if self.explicit_eof {
+            loop {
+                crate::analysis::cancellation::checkpoint_typed()
+                    .map_err(|error| CatFileBatchReadError::Cancelled(error.into()))?;
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(CatFileBatchReadError::TimedOut);
+                }
+                let received = self
+                    .receiver
+                    .recv_timeout(remaining.min(Duration::from_millis(20)));
+                if Instant::now() >= deadline {
+                    return Err(CatFileBatchReadError::TimedOut);
+                }
+                if matches!(received, Err(mpsc::RecvTimeoutError::Timeout)) {
+                    continue;
+                }
+                break received;
+            }
+        } else {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            self.receiver.recv_timeout(remaining)
+        };
+        match received {
             Ok(Ok(chunk)) => {
+                if self.explicit_eof && chunk.is_empty() {
+                    self.observed_eof = true;
+                    return Ok(false);
+                }
                 self.current = chunk;
                 self.offset = 0;
                 Ok(true)
             }
             Ok(Err(read_error)) => Err(CatFileBatchReadError::Failed(read_error)),
             Err(mpsc::RecvTimeoutError::Timeout) => Err(CatFileBatchReadError::TimedOut),
+            Err(mpsc::RecvTimeoutError::Disconnected) if self.explicit_eof => {
+                Err(CatFileBatchReadError::Failed(
+                    "complete batch stdout disconnected without actual EOF".into(),
+                ))
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => Ok(false),
         }
     }
@@ -1072,9 +1634,29 @@ impl CatFileBatchStream {
                 .iter()
                 .position(|byte| *byte == b'\n')
             {
+                if self.explicit_eof
+                    && line
+                        .len()
+                        .checked_add(position)
+                        .is_none_or(|size| size > CAT_FILE_BATCH_HEADER_LINE_BYTES)
+                {
+                    return Err(CatFileBatchReadError::Failed(
+                        "complete blob header exceeds its unchanged line cap".into(),
+                    ));
+                }
                 line.extend_from_slice(&self.current[self.offset..self.offset + position]);
                 self.offset += position + 1;
                 return Ok(line);
+            }
+            if self.explicit_eof
+                && line
+                    .len()
+                    .checked_add(self.current.len() - self.offset)
+                    .is_none_or(|size| size > CAT_FILE_BATCH_HEADER_LINE_BYTES)
+            {
+                return Err(CatFileBatchReadError::Failed(
+                    "complete blob header exceeds its unchanged line cap".into(),
+                ));
             }
             line.extend_from_slice(&self.current[self.offset..]);
             self.offset = self.current.len();
@@ -1132,15 +1714,28 @@ const CAT_FILE_BATCH_QUEUED_CHUNKS: usize = 8;
 /// overall byte budget). The bounded channel provides backpressure: the send
 /// blocks while the consumer is busy, and a failed send means the consumer is
 /// gone, so the reader ends either way; dropping its handle detaches it.
-fn spawn_cat_file_batch_chunk_reader(
+/// At most eight queued chunks, one consumer chunk, one blocked sender chunk
+/// and the reader's fixed scratch are retained: eleven64KiB chunks. Complete
+/// callers additionally account for stderr, header, both native thread stacks
+/// and their full source/inventory/analysis lifetime under actual AS admission.
+fn spawn_cat_file_batch_chunk_reader_with_eof(
     mut pipe: impl std::io::Read + Send + 'static,
-) -> mpsc::Receiver<Result<Vec<u8>, String>> {
+    explicit_eof: bool,
+) -> (
+    mpsc::Receiver<Result<Vec<u8>, String>>,
+    std::thread::JoinHandle<()>,
+) {
     let (sender, receiver) = mpsc::sync_channel(CAT_FILE_BATCH_QUEUED_CHUNKS);
-    std::thread::spawn(move || {
+    let handle = std::thread::spawn(move || {
         let mut chunk = [0_u8; CAT_FILE_BATCH_CHUNK_BYTES];
         loop {
             match pipe.read(&mut chunk) {
-                Ok(0) => break,
+                Ok(0) => {
+                    if explicit_eof {
+                        let _ = sender.send(Ok(Vec::new()));
+                    }
+                    break;
+                }
                 Ok(read) => {
                     if sender.send(Ok(chunk[..read].to_vec())).is_err() {
                         break;
@@ -1156,7 +1751,7 @@ fn spawn_cat_file_batch_chunk_reader(
             }
         }
     });
-    receiver
+    (receiver, handle)
 }
 
 /// Spawn `command` with piped stdout/stderr, collect the full output under
@@ -1172,6 +1767,17 @@ fn collect_output_with_deadline(
     timeout: Option<Duration>,
     describe: &str,
 ) -> Result<Output, CoreError> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(restriction) = complete_capture_restriction::current() {
+        return complete_capture_restriction::collect(
+            &restriction,
+            command,
+            timeout,
+            None,
+            describe,
+            None,
+        );
+    }
     if let Some(deadline) = timeout
         && deadline.is_zero()
     {
@@ -1268,7 +1874,16 @@ pub(crate) fn poll_child(
     timeout: Option<Duration>,
     describe: &str,
 ) -> ChildWait {
-    let deadline = timeout.map(|limit| Instant::now() + limit);
+    poll_child_with_held_deadline(child, timeout, describe, None)
+}
+
+fn poll_child_with_held_deadline(
+    child: &mut OwnedProcess,
+    timeout: Option<Duration>,
+    describe: &str,
+    held_execution_deadline: Option<Instant>,
+) -> ChildWait {
+    let deadline = held_execution_deadline.or_else(|| timeout.map(|limit| Instant::now() + limit));
     let mut backoff = crate::process_owner::PollBackoff::new();
     loop {
         // Observe an abort before accepting an already-completed primary.
@@ -1282,16 +1897,50 @@ pub(crate) fn poll_child(
                 || child.terminate_tree(),
             );
         }
+        if held_execution_deadline.is_some_and(|held| Instant::now() >= held) {
+            return terminate_then_classify(
+                describe,
+                "timeout",
+                ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                    describe,
+                    timeout.map_or(0, |limit| limit.as_millis()),
+                    true,
+                )),
+                || child.terminate_tree(),
+            );
+        }
         match child.try_wait() {
             Ok(Some(status)) => {
                 // The primary may exit while a descendant still holds a pipe.
                 // Complete owned-tree cleanup before any caller waits for EOF.
-                return terminate_then_classify(
+                if held_execution_deadline.is_some_and(|held| Instant::now() >= held) {
+                    return terminate_then_classify(
+                        describe,
+                        "timeout",
+                        ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                            describe,
+                            timeout.map_or(0, |limit| limit.as_millis()),
+                            true,
+                        )),
+                        || child.terminate_tree(),
+                    );
+                }
+                let completed = terminate_then_classify(
                     describe,
                     "completion",
                     ChildWait::Exited(status),
                     || child.terminate_tree(),
                 );
+                if matches!(&completed, ChildWait::Exited(_))
+                    && held_execution_deadline.is_some_and(|held| Instant::now() >= held)
+                {
+                    return ChildWait::TimedOut(CoreError::git_invocation_timeout(
+                        describe,
+                        timeout.map_or(0, |limit| limit.as_millis()),
+                        true,
+                    ));
+                }
+                return completed;
             }
             Ok(None) => {
                 if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
@@ -1398,6 +2047,42 @@ mod tests {
 
     use super::*;
     #[test]
+    fn complete_git_authority_refuses_redirects_without_changing_ordinary_commands()
+    -> Result<(), String> {
+        let refusal = |result: Result<(), CoreError>| match result {
+            Ok(()) => Err("inherited Git control was accepted".to_string()),
+            Err(error) => Ok(error.to_string()),
+        };
+        for name in COMPLETE_GIT_REDIRECTS {
+            for environment in [
+                CompleteGitEnvironment::Selector,
+                CompleteGitEnvironment::WholeInput,
+            ] {
+                let error = refusal(validate_complete_git_environment(environment, |key| {
+                    key == *name
+                }))?;
+                assert!(error.contains(name));
+            }
+        }
+        for name in COMPLETE_GIT_CONFIGURATION {
+            validate_complete_git_environment(CompleteGitEnvironment::Selector, |key| key == *name)
+                .map_err(|error| error.to_string())?;
+            let error = refusal(validate_complete_git_environment(
+                CompleteGitEnvironment::WholeInput,
+                |key| key == *name,
+            ))?;
+            assert!(error.contains(name));
+        }
+        let ordinary = git_command(Path::new("."), &["status", "--porcelain"]);
+        assert!(
+            !ordinary
+                .get_envs()
+                .any(|(key, _)| key == "GIT_NO_REPLACE_OBJECTS")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn strict_capture_requires_both_readers_with_legacy_parity() -> Result<(), String> {
         for stream in ["stdout", "stderr"] {
             let compatibility = drain_bounded_pipe_reader_with_policy(
@@ -1462,6 +2147,254 @@ mod tests {
             error.to_string().contains("git_output_limit_exceeded"),
             "{error}"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn held_complete_git_capture_preserves_actual_output_and_refusals() -> Result<(), String> {
+        let root = std::env::current_dir().map_err(|error| error.to_string())?;
+        for args in [&["--version"][..], &["--ripr-invalid-option"][..]] {
+            let ordinary = run_git_output_with_deadline_and_limit_strict(
+                &root,
+                args,
+                Duration::from_secs(30),
+                4096,
+            )
+            .map_err(|error| error.to_string())?;
+            let complete = run_git_complete_output_with_held_deadline_and_limit(
+                &root,
+                args,
+                Instant::now() + Duration::from_secs(30),
+                4096,
+                CompleteGitEnvironment::WholeInput,
+            )
+            .map_err(|error| error.to_string())?;
+            assert_eq!(complete.status, ordinary.status);
+            assert_eq!(complete.stdout, ordinary.stdout);
+            assert_eq!(complete.stderr, ordinary.stderr);
+        }
+        let overflow = run_git_complete_output_with_held_deadline_and_limit(
+            &root,
+            &["--version"],
+            Instant::now() + Duration::from_secs(30),
+            4,
+            CompleteGitEnvironment::WholeInput,
+        )
+        .err()
+        .ok_or("held complete capture accepted output above its unchanged cap")?;
+        assert!(
+            overflow.to_string().contains("git_output_limit_exceeded"),
+            "{overflow}"
+        );
+        let token = AnalysisCancellationToken::new();
+        assert!(token.cancel(AnalysisAbortKind::Superseded));
+        let cancelled = with_token(&token, || {
+            run_git_complete_output_with_held_deadline_and_limit(
+                &root,
+                &["--version"],
+                Instant::now() + Duration::from_secs(30),
+                4096,
+                CompleteGitEnvironment::WholeInput,
+            )
+        })
+        .err()
+        .ok_or("held complete capture ignored existing cancellation")?;
+        assert!(cancelled.is_analysis_cancelled(), "{cancelled}");
+        Ok(())
+    }
+
+    #[test]
+    fn held_complete_git_clock_refuses_before_missing_root_spawn() -> Result<(), String> {
+        for deadline in [Instant::now(), Instant::now() + POST_KILL_DRAIN_GRACE] {
+            let error = run_git_complete_output_with_held_deadline_and_limit(
+                Path::new("/ripr-absent-complete-clock-fixture"),
+                &["--version"],
+                deadline,
+                4096,
+                CompleteGitEnvironment::WholeInput,
+            )
+            .err()
+            .ok_or("insufficient held clock reached the Git spawn")?;
+            assert!(error.is_git_invocation_timeout(), "{error}");
+            assert!(!error.to_string().contains("process terminated"), "{error}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn held_complete_capture_keeps_original_cutoff_and_large_byte_eof() -> Result<(), String> {
+        let output = collect_output_with_reader_policy_and_held_deadline(
+            self_reexec_command(FLOOD_ENV)?,
+            Some(Duration::from_secs(30)),
+            1024 * 1024,
+            "held-binary-fixture",
+            true,
+            Some((
+                Instant::now() + Duration::from_secs(25),
+                Instant::now() + Duration::from_secs(30),
+            )),
+        )
+        .map_err(|error| error.to_string())?;
+        assert!(output.status.success());
+        // The pinned libtest child prints this exact preface before the
+        // existing harness writes its payload and exits without a suffix.
+        let mut expected_stdout = b"\nrunning 1 test\n".to_vec();
+        expected_stdout.extend_from_slice(&b"0123456789abcdef".repeat(4096 * 8));
+        assert!(
+            output.stdout == expected_stdout,
+            "held flood whole-output mismatch: expected {} bytes, got {}",
+            expected_stdout.len(),
+            output.stdout.len()
+        );
+        assert!(output.stderr.is_empty());
+        let started = Instant::now();
+        let execution = started + Duration::from_secs(2);
+        let held = execution + POST_KILL_DRAIN_GRACE;
+        HELD_CAPTURE_OBSERVATIONS.with(|values| *values.borrow_mut() = Some(Vec::new()));
+        let result = collect_output_with_reader_policy_and_held_deadline(
+            hang_command()?,
+            Some(Duration::from_secs(30)),
+            4096,
+            "held-hung-fixture",
+            true,
+            Some((execution, held)),
+        );
+        let observations = HELD_CAPTURE_OBSERVATIONS
+            .with(|values| values.borrow_mut().take())
+            .ok_or("real collector trace absent")?;
+        let error = result
+            .err()
+            .ok_or("held cutoff restarted from the thirty-second timeout")?;
+        assert!(error.is_git_invocation_timeout(), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(10));
+        assert!(
+            matches!(
+                observations.first(),
+                Some(HeldCaptureObservation::SpawnedLive(true))
+            ),
+            "the actual hung primary must start and be live before the cutoff: {observations:?}"
+        );
+        let drains: Vec<_> = observations
+            .iter()
+            .filter_map(|value| match value {
+                HeldCaptureObservation::Drain { stdout, deadline } => Some((*stdout, *deadline)),
+                HeldCaptureObservation::SpawnedLive(_) => None,
+            })
+            .collect();
+        assert_eq!(
+            drains.len(),
+            2,
+            "both real collector drain calls must be observed"
+        );
+        assert!(drains[0].0);
+        assert!(!drains[1].0);
+        let stdout_deadline = drains[0].1.ok_or("real stdout drain was unbounded")?;
+        let stderr_deadline = drains[1].1.ok_or("real stderr drain was unbounded")?;
+        assert_eq!(
+            stdout_deadline, stderr_deadline,
+            "stderr must not renew the drain clock"
+        );
+        assert!(
+            stdout_deadline <= held,
+            "actual collector discarded the original held deadline"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn held_poll_rejects_an_actual_exited_primary_observed_after_cutoff() -> Result<(), String> {
+        let mut command = self_reexec_command(FLOOD_ENV)?;
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        let mut child = OwnedProcess::spawn(command).map_err(|error| error.to_string())?;
+        let observation_deadline = Instant::now() + Duration::from_secs(30);
+        let mut backoff = crate::process_owner::PollBackoff::new();
+        loop {
+            match child.try_wait().map_err(|error| error.to_string())? {
+                Some(status) => {
+                    assert!(status.success());
+                    break;
+                }
+                None if Instant::now() >= observation_deadline => {
+                    return Err("late-primary fixture did not finish".into());
+                }
+                None => backoff.sleep(Some(observation_deadline)),
+            }
+        }
+        let wait = poll_child_with_held_deadline(
+            &mut child,
+            Some(Duration::from_secs(30)),
+            "late-primary-fixture",
+            Some(Instant::now()),
+        );
+        assert!(matches!(wait, ChildWait::TimedOut(error) if error.is_git_invocation_timeout()));
+        Ok(())
+    }
+
+    #[test]
+    fn held_reader_deadline_does_not_renew_for_stderr_or_accept_read_errors() -> Result<(), String>
+    {
+        // Both outstanding readers use the SAME original drain deadline.
+        let held = Instant::now() + Duration::from_millis(30);
+        let (stdout_sender, stdout_receiver) = mpsc::channel();
+        let (release_stdout, held_stdout) = mpsc::channel();
+        let stdout_handle = std::thread::spawn(move || {
+            let _ = held_stdout.recv();
+            let _ = stdout_sender.send(BoundedPipeOutput {
+                bytes: vec![0, 255],
+                exceeded: false,
+                read_error: None,
+            });
+        });
+        let (stderr_sender, stderr_receiver) = mpsc::channel();
+        let (release_stderr, held_stderr) = mpsc::channel();
+        let stderr_handle = std::thread::spawn(move || {
+            let _ = held_stderr.recv();
+            let _ = stderr_sender.send(BoundedPipeOutput {
+                bytes: Vec::new(),
+                exceeded: false,
+                read_error: None,
+            });
+        });
+        for (reader, name) in [
+            ((stdout_handle, stdout_receiver), "stdout"),
+            ((stderr_handle, stderr_receiver), "stderr"),
+        ] {
+            let error = drain_bounded_pipe_reader_with_policy(
+                Some(reader),
+                false,
+                Some(held),
+                name,
+                "held-reader-fixture",
+                true,
+            )
+            .err()
+            .ok_or("incomplete reader supplied successful EOF")?;
+            assert!(error.contains("did not drain"), "{error}");
+        }
+        // Release fixture-only writers; a failed assertion also drops both gates.
+        let _ = release_stdout.send(());
+        let _ = release_stderr.send(());
+        // Read failures preserve their error even when the reader has closed.
+        struct FailedReader;
+        impl std::io::Read for FailedReader {
+            fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::other("held-reader-original-error"))
+            }
+        }
+        let error = drain_bounded_pipe_reader_with_policy(
+            Some(spawn_bounded_pipe_reader(FailedReader, 4096)),
+            false,
+            Some(Instant::now() + Duration::from_secs(30)),
+            "stdout",
+            "held-reader-error",
+            true,
+        )
+        .err()
+        .ok_or("held capture converted a read error into EOF")?;
+        assert!(error.contains("held-reader-original-error"), "{error}");
         Ok(())
     }
 
@@ -3231,6 +4164,342 @@ To add an exception for this directory, call:\n\n\tgit config --global --add saf
             return Err(format!(
                 "zero budget must classify as the named timeout: {error}"
             ));
+        }
+        Ok(())
+    }
+
+    // These exercise the actual strict Git protocol. They supply no native
+    // worker resource profile, analyzer admission or parent custody proof.
+    #[test]
+    fn complete_batch_header_binds_exact_object_and_closed_framing() -> Result<(), String> {
+        let object = "1".repeat(40);
+        validate_complete_blob_header(&object, format!("{object} blob 0").as_bytes())?;
+        validate_complete_blob_header(&object, format!("{object} missing").as_bytes())?;
+        for header in [
+            format!("{} blob 1", "2".repeat(40)).into_bytes(),
+            format!("{object} blob 1 extra").into_bytes(),
+            format!("{object} missing extra").into_bytes(),
+            format!("{object} blob -1").into_bytes(),
+            format!("{object} blob 18446744073709551616").into_bytes(),
+            format!("{object} blob ").into_bytes(),
+            format!("{object}  blob 1").into_bytes(),
+            format!("{object} tree 1").into_bytes(),
+            vec![0xff],
+        ] {
+            if validate_complete_blob_header(&object, &header).is_ok() {
+                return Err(format!("malformed complete header accepted: {header:?}"));
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn complete_batch_actual_eof_differs_from_channel_disconnect() -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let (receiver, handle) = spawn_cat_file_batch_chunk_reader_with_eof(
+            std::io::Cursor::new(Vec::<u8>::new()),
+            true,
+        );
+        let mut complete = CatFileBatchStream::with_explicit_eof(receiver);
+        complete
+            .require_actual_eof(deadline)
+            .map_err(|error| format!("{error:?}"))?;
+        handle
+            .join()
+            .map_err(|_panic_payload| "actual EOF reader panicked")?;
+
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let mut complete = CatFileBatchStream::with_explicit_eof(receiver);
+        if !matches!(
+            complete.require_actual_eof(deadline),
+            Err(CatFileBatchReadError::Failed(message)) if message.contains("without actual EOF")
+        ) {
+            return Err("disconnect became complete stdout EOF".into());
+        }
+        let (sender, receiver) = mpsc::channel();
+        drop(sender);
+        let mut compatibility = CatFileBatchStream::new(receiver);
+        if compatibility
+            .next_chunk(deadline)
+            .map_err(|error| format!("{error:?}"))?
+        {
+            return Err("ordinary disconnected EOF semantics changed".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn complete_batch_truncated_body_and_trailing_bytes_refuse() -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let (receiver, handle) =
+            spawn_cat_file_batch_chunk_reader_with_eof(std::io::Cursor::new(b"abc".to_vec()), true);
+        let mut complete = CatFileBatchStream::with_explicit_eof(receiver);
+        let mut wanted = [0_u8; 4];
+        if !matches!(
+            complete.read_exact(&mut wanted, deadline),
+            Err(CatFileBatchReadError::Failed(_))
+        ) {
+            return Err("truncated strict body was accepted".into());
+        }
+        handle
+            .join()
+            .map_err(|_panic_payload| "truncated reader panicked")?;
+        let (receiver, handle) = spawn_cat_file_batch_chunk_reader_with_eof(
+            std::io::Cursor::new(b"extra".to_vec()),
+            true,
+        );
+        let mut complete = CatFileBatchStream::with_explicit_eof(receiver);
+        if !matches!(
+            complete.require_actual_eof(deadline),
+            Err(CatFileBatchReadError::Failed(message)) if message.contains("trailing")
+        ) {
+            return Err("unsolicited stdout became batch success".into());
+        }
+        drop(complete);
+        handle
+            .join()
+            .map_err(|_panic_payload| "trailing reader panicked")?;
+        Ok(())
+    }
+
+    #[test]
+    fn complete_batch_header_cap_precedes_growth_without_changing_legacy() -> Result<(), String> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut bytes = vec![b'x'; CAT_FILE_BATCH_HEADER_LINE_BYTES + 1];
+        bytes.push(b'\n');
+        let (sender, receiver) = mpsc::channel();
+        sender
+            .send(Ok(bytes.clone()))
+            .map_err(|error| error.to_string())?;
+        drop(sender);
+        let mut strict = CatFileBatchStream::with_explicit_eof(receiver);
+        if !matches!(
+            strict.read_line(deadline),
+            Err(CatFileBatchReadError::Failed(_))
+        ) {
+            return Err("complete over-cap header was retained".into());
+        }
+        let (sender, receiver) = mpsc::channel();
+        sender.send(Ok(bytes)).map_err(|error| error.to_string())?;
+        drop(sender);
+        let mut ordinary = CatFileBatchStream::new(receiver);
+        let line = ordinary
+            .read_line(deadline)
+            .map_err(|error| format!("{error:?}"))?;
+        if line.len() != CAT_FILE_BATCH_HEADER_LINE_BYTES + 1 {
+            return Err("legacy newline-present header behavior changed".into());
+        }
+        Ok(())
+    }
+
+    struct CompleteBatchFixture(std::path::PathBuf);
+    impl Drop for CompleteBatchFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    type CompleteBatchInput = (CompleteBatchFixture, Vec<(String, Vec<u8>)>);
+
+    fn complete_batch_fixture() -> Result<CompleteBatchInput, String> {
+        let root = std::env::temp_dir().join(format!(
+            "ripr-complete-batch-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|error| error.to_string())?
+                .as_nanos(),
+        ));
+        std::fs::create_dir(&root).map_err(|error| error.to_string())?;
+        let fixture = CompleteBatchFixture(root);
+        crate::testing::fixture_git::fixture_git_ok(
+            &fixture.0,
+            &["init", "--initial-branch=main"],
+        )?;
+        let mut requested = Vec::new();
+        for (name, bytes) in [
+            ("binary.dat", vec![0, 0xff, b'\n', 0x80, 0]),
+            ("empty.dat", Vec::new()),
+            ("ripr.toml", b"[analysis]\nmode = \"draft\"\n".to_vec()),
+            ("large.dat", (0_u8..=250).cycle().take(1_000_000).collect()),
+        ] {
+            std::fs::write(fixture.0.join(name), &bytes).map_err(|error| error.to_string())?;
+            let output = run_git_output_with_deadline_and_limit_isolated(
+                &fixture.0,
+                &["hash-object", "-w", "--", name],
+                crate::testing::fixture_git::FIXTURE_GIT_DEADLINE,
+                4096,
+            )
+            .map_err(|error| error.to_string())?;
+            if !output.status.success() {
+                return Err(format!(
+                    "fixture hash-object failed: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                ));
+            }
+            let object = std::str::from_utf8(&output.stdout)
+                .map_err(|error| error.to_string())?
+                .trim()
+                .to_string();
+            requested.push((object, bytes));
+        }
+        Ok((fixture, requested))
+    }
+
+    #[test]
+    fn complete_batch_real_blobs_match_ordinary_and_keep_exact_held_deadline() -> Result<(), String>
+    {
+        let (fixture, requested) = complete_batch_fixture()?;
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let mut strict = CatFileBatch::spawn_complete(&fixture.0, deadline)
+            .map_err(|error| error.to_string())?;
+        if strict.deadline() != deadline {
+            return Err("strict batch reconstructed a later deadline".into());
+        }
+        let mut ordinary = CatFileBatch::spawn(&fixture.0, Duration::from_secs(30))
+            .map_err(|error| error.to_string())?;
+        for (object, expected) in requested {
+            for session in [&mut strict, &mut ordinary] {
+                let size = session
+                    .request_blob(&object)
+                    .map_err(|error| error.to_string())?
+                    .ok_or("real fixture object was missing")?;
+                if size != expected.len() as u64 {
+                    return Err("declared fixture length differed".into());
+                }
+                let mut bytes = vec![0; expected.len()];
+                for chunk in bytes.chunks_mut(17_003) {
+                    session
+                        .read_blob_bytes(chunk)
+                        .map_err(|error| error.to_string())?;
+                }
+                // Empty bodies still require and consume their one trailer.
+                session.end_blob().map_err(|error| error.to_string())?;
+                if bytes != expected {
+                    return Err("strict/ordinary blob differed from literal original bytes".into());
+                }
+            }
+        }
+        strict.finish().map_err(|error| error.to_string())?;
+        ordinary.finish().map_err(|error| error.to_string())
+    }
+
+    #[test]
+    fn complete_batch_overlap_missing_invalid_and_expired_refuse_then_recover() -> Result<(), String>
+    {
+        let (fixture, requested) = complete_batch_fixture()?;
+        let object = &requested[0].0;
+        let next = || {
+            CatFileBatch::spawn_complete(&fixture.0, Instant::now() + Duration::from_secs(10))
+                .map_err(|error| error.to_string())
+        };
+        let mut overlap = next()?;
+        overlap
+            .request_blob(object)
+            .map_err(|error| error.to_string())?;
+        if overlap.request_blob(object).is_ok() || overlap.finish().is_ok() {
+            return Err("overlap or poisoned session qualified".into());
+        }
+        let mut missing = next()?;
+        if missing
+            .request_blob("0123456789012345678901234567890123456789")
+            .map_err(|error| error.to_string())?
+            .is_some()
+            || missing.finish().is_ok()
+        {
+            return Err("missing response qualified complete session".into());
+        }
+        let mut invalid = next()?;
+        if invalid.request_blob("HEAD\nmalformed").is_ok() || invalid.finish().is_ok() {
+            return Err("invalid object or poisoned recovery qualified".into());
+        }
+        let expired =
+            CatFileBatch::spawn_complete(&fixture.0.join("does-not-exist"), Instant::now())
+                .err()
+                .ok_or("expired batch spawned")?;
+        if !expired.is_git_invocation_timeout() {
+            return Err(format!("expired batch lost typed timeout: {expired}"));
+        }
+        let mut recovered = next()?;
+        let size = recovered
+            .request_blob(object)
+            .map_err(|error| error.to_string())?
+            .ok_or("recovery object missing")?;
+        let mut bytes = vec![0; size as usize];
+        recovered
+            .read_blob_bytes(&mut bytes)
+            .map_err(|error| error.to_string())?;
+        recovered.end_blob().map_err(|error| error.to_string())?;
+        recovered.finish().map_err(|error| error.to_string())?;
+        if bytes != requested[0].1 {
+            return Err("fresh recovery changed real blob bytes".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn complete_batch_premature_trailer_and_stderr_failure_never_qualify() -> Result<(), String> {
+        let (fixture, requested) = complete_batch_fixture()?;
+        let next = || {
+            CatFileBatch::spawn_complete(&fixture.0, Instant::now() + Duration::from_secs(10))
+                .map_err(|error| error.to_string())
+        };
+        let mut premature = next()?;
+        premature
+            .request_blob(&requested[0].0)
+            .map_err(|error| error.to_string())?;
+        if premature.end_blob().is_ok() || premature.finish().is_ok() {
+            return Err("premature trailer qualified".into());
+        }
+        let mut no_reader = next()?;
+        drop(no_reader.stderr.take());
+        if no_reader.finish().is_ok() {
+            return Err("missing required stderr reader qualified".into());
+        }
+        let mut overflow = next()?;
+        drop(overflow.stderr.take());
+        overflow.stderr = Some(spawn_bounded_pipe_reader(
+            std::io::Cursor::new(vec![b'e'; CAT_FILE_BATCH_STDERR_BYTES + 1]),
+            CAT_FILE_BATCH_STDERR_BYTES,
+        ));
+        if overflow.finish().is_ok() {
+            return Err("stderr overflow qualified".into());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn complete_batch_whole_session_trailing_queue_refuses_without_join_deadlock()
+    -> Result<(), String> {
+        let (fixture, _) = complete_batch_fixture()?;
+        let mut session =
+            CatFileBatch::spawn_complete(&fixture.0, Instant::now() + Duration::from_secs(10))
+                .map_err(|error| error.to_string())?;
+        // Drive the actual finish path with a real reader and more than its
+        // eight-slot queue. This is a protocol counterexample, not a forged
+        // native-worker or stage-cleanup receipt.
+        let tail = vec![b'x'; 20 * CAT_FILE_BATCH_CHUNK_BYTES];
+        let (receiver, replacement_join) =
+            spawn_cat_file_batch_chunk_reader_with_eof(std::io::Cursor::new(tail), true);
+        let original_stream = std::mem::replace(
+            &mut session.stdout,
+            CatFileBatchStream::with_explicit_eof(receiver),
+        );
+        drop(original_stream);
+        let original_join = session
+            .stdout_join
+            .replace(replacement_join)
+            .ok_or("original complete reader handle missing")?;
+        let refusal = session
+            .finish()
+            .err()
+            .ok_or("trailing full-queue session qualified")?;
+        original_join
+            .join()
+            .map_err(|_panic_payload| "original reader panicked")?;
+        if !refusal.to_string().contains("trailing stdout bytes") {
+            return Err(format!("original stream refusal was replaced: {refusal}"));
         }
         Ok(())
     }

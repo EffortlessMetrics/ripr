@@ -79,6 +79,17 @@ pub(crate) use facts::validated_file_wide_harness_targets;
 pub(crate) use generated_rust_corpus::{
     CorpusPayloadSize, analyzable_corpus_payload_size, review_guidance_input_paths,
 };
+#[cfg(all(
+    test,
+    feature = "lang-rust",
+    feature = "lang-typescript",
+    feature = "lang-python"
+))]
+pub(crate) use language::RustAdapter;
+#[cfg(test)]
+pub(crate) use language::{
+    CompleteDependentScopePolicy, CompleteRustPolicySnapshot, capture_complete_rust_policy,
+};
 pub(crate) use language::{
     DIFF_SCOPE_OVERSIZED_PREFIX, JAVASCRIPT_SOURCE_EXTENSIONS, TYPESCRIPT_SOURCE_EXTENSIONS,
     TsJsSourceKind, is_diff_scope_oversized, is_generated_rust_file_with_patterns,
@@ -462,6 +473,8 @@ fn top_typescript_readiness_blocker(
     })
 }
 
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::OraclePolicy;
 use crate::core_error::CoreError;
 use crate::domain::{Finding, Summary};
@@ -835,6 +848,24 @@ pub(crate) fn run_analysis_with_oracle_policy_and_rust_config(
         oracle_policy,
         languages,
         rust_config,
+    )
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn run_analysis_with_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[language::LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    whole: &VerifiedWholeInput,
+) -> Result<AnalysisResult, CoreError> {
+    whole.validate_analysis(options, oracle_policy, languages, rust_config)?;
+    pipeline::run_diff_pipeline_with_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        whole,
     )
 }
 

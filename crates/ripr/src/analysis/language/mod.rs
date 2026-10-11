@@ -45,6 +45,10 @@ pub(crate) use router::{
     JAVASCRIPT_SOURCE_EXTENSIONS, TYPESCRIPT_SOURCE_EXTENSIONS, TsJsSourceKind, is_script_language,
     is_ts_js_source_extension, route, ts_js_source_kind, unanalyzed_source_language,
 };
+#[cfg(test)]
+pub(crate) use rust::{
+    CompleteDependentScopePolicy, CompleteRustPolicySnapshot, capture_complete_rust_policy,
+};
 pub(crate) use rust::{
     DIFF_SCOPE_OVERSIZED_PREFIX, GeneratedRustSources, RustAdapter, changed_let_binding,
     is_diff_scope_oversized, is_generated_rust_file_with_patterns, mask_rust_comments_and_strings,

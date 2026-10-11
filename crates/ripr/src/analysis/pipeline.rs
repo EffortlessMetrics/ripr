@@ -14,11 +14,14 @@ use super::{
 };
 use crate::analysis::cancellation;
 use crate::analysis::committed_source;
+use crate::analysis::committed_source::frozen;
 use crate::analysis_outcome::{
     AnalysisIdentity, AnalysisLimitation, AnalysisLimitationKind, AnalysisOutcome,
     AnalysisOutcomeCounts, AnalysisOutcomeKind, AnalysisRecovery, AnalysisRecoveryKind,
     AnalysisStage,
 };
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+use crate::app::pr_evidence::complete_input::VerifiedWholeInput;
 use crate::config::OraclePolicy;
 use crate::core_error::CoreError;
 use crate::domain::Finding;
@@ -57,6 +60,122 @@ pub(crate) fn run_diff_pipeline_with_oracle_policy_and_rust_config(
     languages: &[LanguageId],
     rust_config: &crate::config::RustLanguageConfig,
 ) -> Result<AnalysisResult, CoreError> {
+    run_diff_pipeline_with_optional_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        None,
+    )
+}
+
+#[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+pub(crate) fn run_diff_pipeline_with_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    whole: &VerifiedWholeInput,
+) -> Result<AnalysisResult, CoreError> {
+    run_diff_pipeline_with_optional_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        Some(whole),
+    )
+}
+
+fn run_diff_pipeline_with_optional_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+        &VerifiedWholeInput,
+    >,
+) -> Result<AnalysisResult, CoreError> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_analysis(options, oracle_policy, languages, rust_config)?;
+        let authority = frozen::current()
+            .ok_or_else(|| "verified whole diff has no frozen source authority".to_string())?;
+        if options.root.as_os_str() != authority.logical_root().as_os_str()
+            || options.git_candidate.is_some()
+            || options.resolved_subject_identity.is_some()
+        {
+            return Err(authority
+                .refuse_external_effect(
+                    "verified whole diff requires its exact logical root and no GitCandidate",
+                )
+                .to_string()
+                .into());
+        }
+        let Some(canonical_diff) = frozen::canonical_diff() else {
+            return Err(authority
+                .refuse_external_effect("verified whole diff has no owned canonical input")
+                .to_string()
+                .into());
+        };
+        whole.validate_canonical_diff(&authority, &canonical_diff)?;
+        let result = committed_source::with_overlay(None, || {
+            run_pipeline_for_diff_text_with_verified_whole(
+                options,
+                oracle_policy,
+                languages,
+                rust_config,
+                &canonical_diff,
+                Some(whole),
+            )
+        });
+        let clean = authority.ensure_clean();
+        return match (result, clean) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(primary), Ok(())) => Err(primary.into()),
+            (Ok(_), Err(fault)) => Err(fault.to_string().into()),
+            (Err(primary), Err(fault)) => {
+                Err(format!("{primary}; frozen source authority: {fault}").into())
+            }
+        };
+    }
+    if let Some(authority) = frozen::current() {
+        if options.root.as_os_str() != authority.logical_root().as_os_str()
+            || options.git_candidate.is_some()
+            || options.resolved_subject_identity.is_some()
+        {
+            return Err(authority
+                .refuse_external_effect(
+                    "frozen diff requires its exact logical root and no GitCandidate",
+                )
+                .to_string()
+                .into());
+        }
+        let Some(canonical_diff) = frozen::canonical_diff() else {
+            return Err(authority
+                .refuse_external_effect("frozen diff has no owned canonical input")
+                .to_string()
+                .into());
+        };
+        let result = committed_source::with_overlay(None, || {
+            run_pipeline_for_diff_text(
+                options,
+                oracle_policy,
+                languages,
+                rust_config,
+                &canonical_diff,
+            )
+        });
+        let clean = authority.ensure_clean();
+        return match (result, clean) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(primary), Ok(())) => Err(primary.into()),
+            (Ok(_), Err(fault)) => Err(fault.to_string().into()),
+            (Err(primary), Err(fault)) => {
+                Err(format!("{primary}; frozen source authority: {fault}").into())
+            }
+        };
+    }
     // Immutable Git candidate subject (#3237 / #3277): resolve the
     // bound identity through object plumbing, derive the exact
     // base→candidate diff, and analyze the materialized candidate root.
@@ -600,6 +719,32 @@ fn run_pipeline_for_diff_text(
     rust_config: &crate::config::RustLanguageConfig,
     diff_text: &str,
 ) -> Result<AnalysisResult, String> {
+    run_pipeline_for_diff_text_with_verified_whole(
+        options,
+        oracle_policy,
+        languages,
+        rust_config,
+        diff_text,
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        None,
+    )
+}
+
+fn run_pipeline_for_diff_text_with_verified_whole(
+    options: &AnalysisOptions,
+    oracle_policy: &OraclePolicy,
+    languages: &[LanguageId],
+    rust_config: &crate::config::RustLanguageConfig,
+    diff_text: &str,
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))] whole: Option<
+        &VerifiedWholeInput,
+    >,
+) -> Result<AnalysisResult, String> {
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_analysis(options, oracle_policy, languages, rust_config)?;
+        whole.validate_rust_policy(&super::capture_complete_rust_policy()?)?;
+    }
     #[cfg(test)]
     if super::source_calibration::active() {
         super::source_calibration::put(
@@ -609,6 +754,10 @@ fn run_pipeline_for_diff_text(
         );
     }
     let parsed_diff = diff::parse_unified_diff_bounded_with_metadata(diff_text)?;
+    #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+    if let Some(whole) = whole {
+        whole.validate_parsed_diff(&parsed_diff)?;
+    }
     #[cfg(test)]
     if super::source_calibration::active() {
         super::source_calibration::put(
@@ -667,6 +816,25 @@ fn run_pipeline_for_diff_text(
     // partial_budget_invalid), not a per-language advisory gap.
     if languages.contains(&LanguageId::Rust) {
         cancellation::checkpoint()?;
+        #[cfg(all(test, target_os = "linux", feature = "lang-rust"))]
+        let result = match whole {
+            Some(whole) => RustAdapter.analyze_diff_for_languages_with_verified_whole(
+                options,
+                oracle_policy,
+                &analysis_changed_files,
+                languages,
+                rust_config,
+                whole,
+            )?,
+            None => RustAdapter.analyze_diff_for_languages_with_rust_config(
+                options,
+                oracle_policy,
+                &analysis_changed_files,
+                languages,
+                rust_config,
+            )?,
+        };
+        #[cfg(not(all(test, target_os = "linux", feature = "lang-rust")))]
         let result = RustAdapter.analyze_diff_for_languages_with_rust_config(
             options,
             oracle_policy,
@@ -1906,6 +2074,53 @@ fn zero_file_diff_disclosure(diff_text: &str) -> &'static str {
     reason = "Tests assert an expected file-system error via `.expect_err(\"why\")`; the closure-style helper makes the expected failure mode part of the assertion message."
 )]
 mod tests {
+    #[test]
+    fn actual_frozen_diff_entry_refuses_missing_owned_input_and_root_alias()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = frozen::tests::Fixture::new(&[("src/lib.rs", b"pub fn owner() {}\n")])?;
+        let options = draft_diff_options(fixture.logical.clone());
+        let missing = frozen::with_context(Some(fixture.authority.clone()), || {
+            run_diff_pipeline_with_oracle_policy_and_rust_config(
+                &options,
+                &OraclePolicy::default(),
+                &[LanguageId::Rust],
+                &crate::config::RustLanguageConfig::default(),
+            )
+        })
+        .err()
+        .ok_or("frozen entry accepted missing owned canonical diff")?;
+        assert!(
+            missing.to_string().contains("no owned canonical input"),
+            "{missing}"
+        );
+        let retained = fixture
+            .authority
+            .ensure_clean()
+            .err()
+            .ok_or("missing canonical input did not poison authority")?;
+        assert_eq!(retained.kind(), std::io::ErrorKind::PermissionDenied);
+
+        let alias = frozen::tests::Fixture::new(&[("src/lib.rs", b"pub fn owner() {}\n")])?;
+        let options = draft_diff_options(alias.logical.join("."));
+        let mismatch = frozen::with_context(Some(alias.authority.clone()), || {
+            frozen::with_canonical_diff(std::sync::Arc::from(""), || {
+                run_diff_pipeline_with_oracle_policy_and_rust_config(
+                    &options,
+                    &OraclePolicy::default(),
+                    &[LanguageId::Rust],
+                    &crate::config::RustLanguageConfig::default(),
+                )
+            })
+        })
+        .err()
+        .ok_or("frozen entry accepted a different logical root spelling")?;
+        assert!(
+            mismatch.to_string().contains("exact logical root"),
+            "{mismatch}"
+        );
+        Ok(())
+    }
+
     use super::*;
     use std::fs;
     use std::path::PathBuf;

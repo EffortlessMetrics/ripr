@@ -264,7 +264,7 @@ fn parse_git_timeout_from(
     Ok((secs > 0).then_some(timeout))
 }
 
-fn git_timeout_from_env(
+pub(crate) fn git_timeout_from_env(
     explicit: bool,
     env_value: Result<String, std::env::VarError>,
 ) -> Result<Option<Option<std::time::Duration>>, String> {
@@ -466,7 +466,7 @@ pub(in crate::cli) fn check(args: &[String]) -> Result<(), String> {
     }
     // #2613: RIPR_GIT_TIMEOUT env var is a fallback when --git-timeout was
     // not passed on the command line. Seconds; 0 disables the deadline.
-    if let Some(timeout) = git_timeout_from_env(
+    if let Some(timeout) = super::git_timeout_from_env(
         git_timeout_explicitly_provided,
         std::env::var("RIPR_GIT_TIMEOUT"),
     )? {

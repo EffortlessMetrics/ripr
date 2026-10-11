@@ -1,5 +1,7 @@
+mod complete_byte_capture;
 mod hard_enforcement_readiness;
 mod trusted_storage;
+pub(crate) use complete_byte_capture::capture_complete_bytes_in_dir_with_budget;
 pub(crate) use trusted_storage::TrustedStorageMonitor;
 
 #[cfg(target_os = "linux")]
@@ -1765,21 +1767,16 @@ fn capture_owned_group_supervised(
     if let Some(handoff) = &handoff {
         command.env(owned_capture_group::ENV, handoff.value());
     }
-    let child = OwnedProcess::spawn_with_bounded_drop(command)
-        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
     // Establish the actual unreaped leader lease before callbacks or pipes.
-    let mut guard = owned_capture_group::OwnedCaptureGuard::new(child)?;
+    let mut guard = owned_capture_group::OwnedCaptureGuard::spawn(command)
+        .map_err(|err| format!("failed to run {error_context}: {err}"))?;
     let result = (|| {
-        spawned(guard.child().id())?;
+        spawned(guard.id())?;
         let stdout = guard
-            .child()
-            .stdout_pipe()
-            .take()
+            .take_stdout_pipe()
             .ok_or_else(|| format!("failed to capture stdout for {error_context}"))?;
         let stderr = guard
-            .child()
-            .stderr_pipe()
-            .take()
+            .take_stderr_pipe()
             .ok_or_else(|| format!("failed to capture stderr for {error_context}"))?;
         let overflow = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let (stdout_handle, stdout_rx) = if checker_handoff {
@@ -1793,19 +1790,34 @@ fn capture_owned_group_supervised(
             spawn_supervised_stream_reader(stderr, max_stream_bytes, overflow.clone())
         };
         let outcome = if checker_handoff {
-            guard.wait(started, timeout)
+            guard
+                .wait(started, timeout)
+                .map(owned_capture_group::legacy_wait)
         } else {
-            guard.wait_supervised(started, timeout, || {
-                refuse_preparation_overflow(&overflow)?;
-                monitor()
-            })
+            guard
+                .wait_supervised(started, timeout, || {
+                    refuse_preparation_overflow(&overflow)?;
+                    monitor()
+                })
+                .map(owned_capture_group::legacy_wait)
         };
         let retained_outcome = match outcome {
             Ok(outcome) => Ok((outcome, None)),
             Err(reason) => match guard.abort() {
-                Ok(()) => {
-                    retain_settled_observation_failure(guard.child(), started, reason, "qualified")
-                }
+                Ok(()) => guard
+                    .settled_status()
+                    .ok_or_else(|| format!("{reason}; qualified primary reap unavailable"))
+                    .map(|status| {
+                        (
+                            WaitOutcome {
+                                status,
+                                duration: started.elapsed(),
+                                timed_out: false,
+                                peak_rss_bytes: None,
+                            },
+                            Some(reason),
+                        )
+                    }),
                 Err(cleanup) => Err(format!(
                     "{reason}; qualified group cleanup unconfirmed: {cleanup}"
                 )),
