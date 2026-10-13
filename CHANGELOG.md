@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Reconcile 0.11 RC guidance with dated public tag/release state, historical
+  conditional RC1 authority and tentative next-cut intent. Require exact
+  candidate-bound authority and qualification; ordinary source integration
+  does not authorize a cut.
+
 - Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
 
 - Add `xtask release-final-server-subjects` to prepare the exact twelve existing
