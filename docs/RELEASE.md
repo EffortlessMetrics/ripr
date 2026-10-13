@@ -369,6 +369,17 @@ analysis, default blocking, or stable preview-language gate authority.
 
 ## Recovery
 
+The following recipe records historical stable-release recovery (including
+`v0.5.0`); it is not the public-RC resume contract. For an RC, preserve the
+exact tag and all published subject bytes. A candidate or subject change
+requires fresh qualification/ship evidence and a separately authorized exact
+RC ref through #1634; never rebuild mutable `main` into an existing RC or
+overlay its assets. A same-ref retry may proceed only when the existing
+transaction owner establishes unchanged candidate, authority, workflow and
+subject bytes under its reviewed resume contract. See the
+[RC reconciliation](release/0.11.0/rc-authority-reconciliation.md) and canonical
+transaction runbook before recovery.
+
 If a release workflow fails after the tag has been pushed, prefer
 fix-forward over retagging. Workflow reruns (`gh workflow run ...`) also
 belong to the source repository: run them with `--repo EffortlessMetrics/ripr`
