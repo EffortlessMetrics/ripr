@@ -112,18 +112,21 @@ ambiguous and missing inputs reject before producer filesystem changes.
 It then calls the unchanged archive/manifest producers with the product.
 This adapter is identity binding only; it grants no event or publication authority.
 
-For example, on a source checkout whose product version is `0.11.0`, the
-nonpublishing invocation shape is:
+On the exact source checkout whose suffix-free product agrees with the selected
+ship packet, the nonpublishing invocation shape is:
 
 ```text
-cargo xtask release-server-archive --release-version v0.11.0-rc.2 --target <target> --executable <name> --archive <zip|tar.gz>
-cargo xtask release-server-manifest --release-version v0.11.0-rc.2 --repository <owner/repo>
+cargo xtask release-server-archive --release-version <exact-authorized-placement> --target <target> --executable <name> --archive <zip|tar.gz>
+cargo xtask release-server-manifest --release-version <exact-authorized-placement> --repository <owner/repo>
 ```
 
-The names remain `ripr-server-v0.11.0-<target>.*` and
-`ripr-server-manifest-v0.11.0.json`. These are synthetic invocation examples,
-not an authorized or frozen RC. Current development `alpha.2` metadata cannot
-stand in for a final suffix-free product checkout.
+For product `0.11.0`, the names remain `ripr-server-v0.11.0-<target>.*` and
+`ripr-server-manifest-v0.11.0.json`. Resolve the placeholder from the exact
+candidate-bound ruling and ship packet; never derive it by incrementing an RC
+number. See the [dated RC authority reconciliation](release/0.11.0/rc-authority-reconciliation.md).
+Syntactic acceptance of a placement grants no authority or qualification.
+Current development `alpha.2` metadata cannot stand in for a final suffix-free
+product checkout.
 
 The legacy `release-upload-assets` CLI stops channel-suffixed inputs **before**
 calling GitHub. Repairing producer placement transport does not make that

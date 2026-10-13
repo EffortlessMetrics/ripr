@@ -25,9 +25,21 @@ fn source(root: &std::path::Path, version: &str) -> Result<(), String> {
 fn given_product_when_rc_placement_is_separate_then_identity_preserves_both() -> Result<(), String>
 {
     // #1466/#1631 product/ref contract; this fixture grants no publication authority.
-    let identity = ServerIdentity::from_source("0.11.0", "v0.11.0-rc.2")?;
-    assert_eq!(identity.product_version, "0.11.0");
-    assert_eq!(identity.placement_version, "0.11.0-rc.2");
+    // #1847: syntax admission preserves the supplied placement; it neither
+    // selects a next ordinal nor exercises the historical rc.1 ruling.
+    for placement in [
+        "v0.11.0-rc.1",
+        "v0.11.0-rc.2",
+        "v0.11.0-rc.7",
+        "0.11.0-rc.19",
+    ] {
+        let identity = ServerIdentity::from_source("0.11.0", placement)?;
+        assert_eq!(identity.product_version, "0.11.0");
+        assert_eq!(
+            identity.placement_version,
+            placement.strip_prefix('v').unwrap_or(placement)
+        );
+    }
     for placement in ["0.11.0", "v0.11.0"] {
         assert_eq!(
             ServerIdentity::from_source("0.11.0", placement)?.product_version,
@@ -138,7 +150,14 @@ fn given_source_when_placement_args_are_adapted_then_product_is_source_bound() -
 #[test]
 fn given_rc_input_when_legacy_upload_is_requested_then_it_stops_before_transport()
 -> Result<(), String> {
-    for version in ["v0.11.0-rc.2", "0.11.0-rc.2", "0.11.0-alpha.2"] {
+    // Even the historically ruled rc.1 must not reach this legacy transport.
+    // The real authorization/event/subject owner remains separate.
+    for version in [
+        "v0.11.0-rc.1",
+        "v0.11.0-rc.2",
+        "0.11.0-rc.7",
+        "0.11.0-alpha.2",
+    ] {
         let mut attempted = false;
         let error = upload_with(&arguments(&["--version", version]), |_| {
             attempted = true;

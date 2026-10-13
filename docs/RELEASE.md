@@ -33,6 +33,13 @@ the canonical operator sequence. This checklist remains the release-surface
 and packaging reference; the runbook owns exact pins, J/K expected-head guards,
 receipts, invalidation, publication authorization, and cleanup.
 
+Before selecting a 0.11 prerelease ref, read the
+[RC authority reconciliation](release/0.11.0/rc-authority-reconciliation.md).
+It separates dated public inventory, historical conditional `rc.1` authority,
+tentative next-placement intent, and the still-unselected frozen subject.
+Refresh live inventory and controller rulings before execution; this packet
+does not authorize a cut or qualify a package.
+
 For the 0.11.0 release train, and as the standard two-repository pattern for
 future releases, use this authority sequence:
 
@@ -67,9 +74,11 @@ only for an exact-candidate semantic or policy failure, or a source-preflight
 failure that prevents a required survivor or release contract. Main movement
 alone never repins.
 
-The ship packet is evidence, not authorization. Only source issue `#1470`
-authorizes tagging, publication, signing, marketplace mutation, or other
-external release operations. Re-baseline 0.11.1 only after 0.11.0 publication
+The ship packet is evidence, not authorization. GitHub-only public RC authority
+is the exact source `#1606` owner ruling consumed by `#1632/#1634`; a different
+ref requires a new explicit ruling. Source issue `#1470` separately owns stable
+channel and secret authorization. Neither grants authority for a cut or a
+different channel by implication. Re-baseline 0.11.1 only after 0.11.0 publication
 and closeout; merged current-head work belongs to 0.11.0 rather than 0.11.1.
 
 The release claims must be regenerated from the selected tree. Distinguish
