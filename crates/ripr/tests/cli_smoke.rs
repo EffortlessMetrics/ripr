@@ -6304,9 +6304,13 @@ fn doctor_commands_replay_selected_root_from_another_repository() -> Result<(), 
                 .find(|line| line.starts_with("- Safe next action: "))
                 .and_then(|line| line.split('`').nth(1))
                 .ok_or("doctor omitted first-pr command")?;
-            let packet =
-                run_command_with_env("bash", &caller, &["-c", first_pr], &[("PATH", command_path)])
-                    .map_err(|error| error.to_string())?;
+            let packet = run_command_with_env(
+                "bash",
+                &caller,
+                &["-c", first_pr],
+                &[("PATH", command_path)],
+            )
+            .map_err(|error| error.to_string())?;
             assert_success(&packet);
             let packet_path = selected.join("target/ripr/reports/start-here.json");
             let packet: serde_json::Value = serde_json::from_slice(
