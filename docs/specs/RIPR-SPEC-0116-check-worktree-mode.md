@@ -85,7 +85,7 @@ When `ripr doctor --root <repo>` sees staged or unstaged tracked changes, it
 recommends:
 
 ```text
-ripr check --base HEAD --worktree
+ripr check --base HEAD --worktree --root '<repo>'
 ```
 
 and names the boundary that untracked files remain out of scope until staged or
