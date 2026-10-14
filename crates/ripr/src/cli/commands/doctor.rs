@@ -5,6 +5,7 @@
 //! This module owns argv parsing, probe/report printing, and exit mapping
 //! for the doctor command family.
 
+use crate::agent::loop_commands::shell_arg;
 use crate::analysis;
 use crate::app::Mode;
 use crate::cli::help;
@@ -111,10 +112,16 @@ fn report_doctor_core_check(report: &output::doctor::DoctorReport, name: &str) -
 }
 
 fn print_doctor_start_here_guidance(root: &Path) {
+    let root_argument = shell_arg(&root.display().to_string());
+    let selected_root = if root == Path::new(".") {
+        String::new()
+    } else {
+        format!(" --root {root_argument}")
+    };
     println!("- Start-here packet: target/ripr/reports/start-here.md");
     println!(
         "- Safe next action: run `ripr first-pr --root {} --base origin/main --head HEAD` after setup passes",
-        root.display()
+        root_argument
     );
     println!(
         "- Recovery states: missing artifact, stale evidence, wrong root, malformed artifact, no actionable gap, preview-limited evidence"
@@ -129,12 +136,12 @@ fn print_doctor_start_here_guidance(root: &Path) {
     // one that looks clean while ignoring them. Reuses the same helper as the
     // check-time disclosure (reuse, don't fork).
     if analysis::working_tree_has_tracked_changes(root) {
-        println!("- Recommended first command: ripr check --base HEAD --worktree");
+        println!("- Recommended first command: ripr check --base HEAD --worktree{selected_root}");
         println!(
             "- Scope note: `--worktree` analyzes staged and unstaged tracked edits; untracked files remain out of scope until staged or supplied through `--diff`."
         );
     } else {
-        println!("- Recommended first command: ripr check --base origin/main");
+        println!("- Recommended first command: ripr check --base origin/main{selected_root}");
     }
 }
 

@@ -6174,6 +6174,157 @@ fn doctor_recommends_worktree_check_on_dirty_worktree() -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(unix)]
+#[test]
+fn doctor_commands_replay_selected_root_from_another_repository() -> Result<(), String> {
+    fn create_project(root: &Path, name: &str) -> Result<(), String> {
+        std::fs::create_dir_all(root.join("src")).map_err(|error| error.to_string())?;
+        std::fs::write(
+            root.join("Cargo.toml"),
+            format!("[package]\nname = \"{name}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n"),
+        )
+        .map_err(|error| error.to_string())?;
+        std::fs::write(
+            root.join("src/lib.rs"),
+            format!(
+                "pub fn {name}_price(amount: i32) -> i32 {{\n    if amount > 100 {{ amount - 10 }} else {{ amount }}\n}}\n\
+                 #[cfg(test)] mod tests {{\n    use super::*;\n\
+                 #[test] fn below_threshold() {{ assert_eq!({name}_price(90), 90); }}\n\
+                 #[test] fn above_threshold() {{ assert_eq!({name}_price(110), 100); }}\n}}\n"
+            ),
+        )
+        .map_err(|error| error.to_string())?;
+        run_git(root, &["init"])?;
+        run_git(root, &["config", "user.email", "fixture@example.invalid"])?;
+        run_git(root, &["config", "user.name", "RIPR Fixture"])?;
+        run_git(root, &["add", "."])?;
+        run_git(root, &["commit", "-m", "initial"])?;
+        run_git(root, &["update-ref", "refs/remotes/origin/main", "HEAD"])?;
+        Ok(())
+    }
+
+    fn change_predicate(root: &Path, committed: bool) -> Result<(), String> {
+        let path = root.join("src/lib.rs");
+        let source = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
+        std::fs::write(path, source.replace("amount > 100", "amount >= 100"))
+            .map_err(|error| error.to_string())?;
+        if committed {
+            run_git(root, &["add", "."])?;
+            run_git(root, &["commit", "-m", "changed boundary"])?;
+        }
+        Ok(())
+    }
+
+    let binary = Path::new(env!("CARGO_BIN_EXE_ripr"));
+    let binary_dir = binary.parent().ok_or("binary has no parent")?;
+    let mut paths = vec![binary_dir.to_path_buf()];
+    paths.extend(std::env::split_paths(
+        &std::env::var_os("PATH").unwrap_or_default(),
+    ));
+    let command_path = std::env::join_paths(paths).map_err(|error| error.to_string())?;
+    let command_path = command_path.to_str().ok_or("non-UTF8 test PATH")?;
+
+    for committed in [true, false] {
+        for (directory, relative) in [
+            ("plain", false),
+            ("project space's", false),
+            ("relative space's", true),
+        ] {
+            let parent = unique_external_workspace("doctor-root-replay")?;
+            let cleanup = IsolatedFixtureWorkspace(parent.clone());
+            let caller = parent.join("caller");
+            let selected = parent.join(directory);
+            create_project(&caller, "caller")?;
+            create_project(&selected, "selected")?;
+            change_predicate(&selected, committed)?;
+            // Opposing worktree states catch probing the caller's dirtiness.
+            change_predicate(&caller, !committed)?;
+            let root_arg = if relative {
+                format!("../{directory}")
+            } else {
+                selected.display().to_string()
+            };
+            let doctor = run_command(
+                binary.to_str().ok_or("non-UTF8 binary")?,
+                Some(&caller),
+                &["doctor", "--root", &root_arg],
+            )
+            .map_err(|error| error.to_string())?;
+            assert_success(&doctor);
+            let text = String::from_utf8(doctor.stdout).map_err(|error| error.to_string())?;
+            let recommendation = text
+                .lines()
+                .find_map(|line| line.strip_prefix("- Recommended first command: "))
+                .ok_or("doctor omitted recommendation")?;
+            // Replay the rendered command through a real shell, without rebuilding its arguments.
+            let replay = run_command_with_env(
+                "bash",
+                &caller,
+                &["-c", &format!("{recommendation} --format json")],
+                &[("PATH", command_path)],
+            )
+            .map_err(|error| error.to_string())?;
+            assert_success(&replay);
+            let report: serde_json::Value =
+                serde_json::from_slice(&replay.stdout).map_err(|error| error.to_string())?;
+            let findings = report["findings"].as_array().ok_or("missing findings")?;
+            let source_path = selected
+                .join("src/lib.rs")
+                .canonicalize()
+                .map_err(|error| error.to_string())?;
+            let source =
+                std::fs::read_to_string(&source_path).map_err(|error| error.to_string())?;
+            assert!(
+                source
+                    .lines()
+                    .nth(1)
+                    .is_some_and(|line| line.contains("amount >= 100"))
+            );
+            assert!(
+                !findings.is_empty(),
+                "copied command lost selected findings: {recommendation}"
+            );
+            for finding in findings {
+                let observed = finding["probe"]["file"]
+                    .as_str()
+                    .ok_or("missing probe file")?;
+                assert_eq!(
+                    caller
+                        .join(observed)
+                        .canonicalize()
+                        .map_err(|error| error.to_string())?,
+                    source_path
+                );
+            }
+            assert!(findings.iter().any(|finding| finding["probe"]["line"] == 2
+                && finding["probe"]["expression"] == "amount >= 100"));
+
+            let first_pr = text
+                .lines()
+                .find(|line| line.starts_with("- Safe next action: "))
+                .and_then(|line| line.split('`').nth(1))
+                .ok_or("doctor omitted first-pr command")?;
+            let packet = run_command_with_env(
+                "bash",
+                &caller,
+                &["-c", first_pr],
+                &[("PATH", command_path)],
+            )
+            .map_err(|error| error.to_string())?;
+            assert_success(&packet);
+            let packet_path = selected.join("target/ripr/reports/start-here.json");
+            let packet: serde_json::Value = serde_json::from_slice(
+                &std::fs::read(packet_path).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            assert_eq!(packet["root"], root_arg);
+            assert!(!caller.join("target/ripr/reports/start-here.json").exists());
+            drop(cleanup);
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn init_writes_conservative_config_and_doctor_loads_it() -> Result<(), String> {
     let workspace = make_temp_workspace(None)?;

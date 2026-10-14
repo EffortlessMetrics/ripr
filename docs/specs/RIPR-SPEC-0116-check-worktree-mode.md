@@ -85,11 +85,19 @@ When `ripr doctor --root <repo>` sees staged or unstaged tracked changes, it
 recommends:
 
 ```text
-ripr check --base HEAD --worktree
+ripr check --base HEAD --worktree --root '<repo>'
 ```
 
 and names the boundary that untracked files remain out of scope until staged or
 provided via `--diff`.
+
+When the selected root differs from `.`, both the clean committed-history and
+dirty tracked-worktree recommendations retain `--root <repo>`. The printed
+root argument uses the shared Bash argument quoting rule, including spaces and
+apostrophes; the sibling `first-pr` guidance uses the same rule. Copying these
+commands from the directory where doctor was invoked must keep the selected
+repository. Default-root guidance remains concise. This does not change diff
+selection or establish native Windows/PowerShell qualification (#1850).
 
 ### LSP saved-workspace contract
 
@@ -159,6 +167,10 @@ that untracked source was analyzed.
   disclosure.
 - `crates/ripr/tests/cli_smoke.rs::doctor_recommends_worktree_check_on_dirty_worktree`
   - dirty doctor guidance names the new command.
+- `crates/ripr/tests/cli_smoke.rs::doctor_commands_replay_selected_root_from_another_repository`
+  - actual Bash replay preserves selected-root findings and first-pr packet
+    identity across clean/dirty, absolute/relative, and quoted roots; opposing
+    caller worktree state cannot redirect the recommendation.
 - `crates/ripr/src/cli/commands.rs::tests::check_rejects_diff_file_plus_worktree_mode`
   - `--diff` and `--worktree` remain mutually exclusive.
 - `crates/ripr/src/analysis/diff/load.rs::tests::tracked_change_detector_ignores_untracked_only_files`
