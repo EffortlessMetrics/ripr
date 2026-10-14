@@ -203,20 +203,27 @@ fn docs_keep_the_canonical_role_vocabulary() -> Result<(), String> {
 /// provisioning success. Those require separate artifact/runtime observations.
 #[test]
 fn editor_onboarding_discloses_current_packaging_and_planned_bundles() -> Result<(), String> {
-    let mut missing = Vec::new();
-    for (surface, doc) in [
-        ("docs/QUICKSTART.md", QUICKSTART_DOC),
+    let mut violations = Vec::new();
+    for (surface, doc, retired_copy) in [
+        (
+            "docs/QUICKSTART.md",
+            QUICKSTART_DOC,
+            "bundled or cached assets",
+        ),
         (
             "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
             include_str!("../../../docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md"),
+            "`ripr.server.path`, a bundled server, a downloaded cached server",
         ),
         (
             "docs/EDITOR_INSTALL_TO_FIRST_PR.md",
             include_str!("../../../docs/EDITOR_INSTALL_TO_FIRST_PR.md"),
+            "2. bundled server binary, when present",
         ),
         (
             "docs/SERVER_PROVISIONING.md",
             include_str!("../../../docs/SERVER_PROVISIONING.md"),
+            "2. bundled server binary, if present",
         ),
     ] {
         let text = normalized(doc);
@@ -226,15 +233,23 @@ fn editor_onboarding_discloses_current_packaging_and_planned_bundles() -> Result
             "Bundled platform VSIXs are planned",
         ] {
             if !text.contains(required) {
-                missing.push(format!(
+                violations.push(format!(
                     "{surface}: missing packaging disclosure `{required}`"
                 ));
             }
         }
+        // A new disclosure must not hide the prior unqualified ordering copy
+        // elsewhere on the same page. This is a bounded regression check for
+        // those retired phrases, not a general semantic documentation parser.
+        if text.contains(retired_copy) {
+            violations.push(format!(
+                "{surface}: retained obsolete provisioning copy `{retired_copy}`"
+            ));
+        }
     }
-    if missing.is_empty() {
+    if violations.is_empty() {
         Ok(())
     } else {
-        Err(missing.join("\n"))
+        Err(violations.join("\n"))
     }
 }
