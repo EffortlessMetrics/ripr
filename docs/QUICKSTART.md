@@ -87,14 +87,14 @@ ripr agent repair --root . --attempt <repair-attempt-id> --phase after
 ```
 
 Normal editor install should not require `cargo install ripr`. The extension
-resolves the server from `ripr.server.path`, a bundled candidate if present,
+resolves the server from `ripr.server.path`, a bundled candidate (dormant today),
 an eligible downloaded cache, verified GitHub Release download, or PATH.
 
 The current extension is a universal VSIX and does not include a bundled server
 binary. Bundled platform VSIXs are planned; that resolver candidate is dormant
-today. First-run download requires matching published server assets. For an
-offline install, provide a compatible binary through `ripr.server.path` or PATH;
-see [Server provisioning](SERVER_PROVISIONING.md).
+today. The default first-run download requires matching published server assets.
+For offline first use without an eligible cache, provide a compatible binary
+through `ripr.server.path` or PATH; see [Server provisioning](SERVER_PROVISIONING.md).
 
 If no diagnostics appear, start with the status path:
 

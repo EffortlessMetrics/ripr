@@ -27,9 +27,9 @@ first-run download, `ripr` on `PATH`, or an actionable error.
 
 The current extension is a universal VSIX and does not include a bundled server
 binary. Bundled platform VSIXs are planned; that resolver candidate is dormant
-today. First-run download requires matching published server assets. For an
-offline install, provide a compatible binary through `ripr.server.path` or PATH;
-see [Server provisioning](SERVER_PROVISIONING.md).
+today. The default first-run download requires matching published server assets.
+For offline first use without an eligible cache, provide a compatible binary
+through `ripr.server.path` or PATH; see [Server provisioning](SERVER_PROVISIONING.md).
 
 For a first Rust loop, no `ripr.toml` is required. Missing config is a normal
 first-run state; Rust remains enabled by default.

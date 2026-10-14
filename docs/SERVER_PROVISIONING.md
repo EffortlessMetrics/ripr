@@ -7,9 +7,10 @@ running `cargo install ripr` first.
 The current extension is a universal VSIX and does not include a bundled server
 binary. Bundled platform VSIXs are planned; the resolver retains that candidate
 for future packages, but it is dormant today. Normal provisioning uses an
-eligible downloaded cache or a verified first-run download. First-run download
-requires matching published server assets; offline installs need a compatible
-binary through `ripr.server.path` or PATH.
+eligible downloaded cache or a verified first-run download. The default
+first-run download requires matching published server assets. Offline first use
+without an eligible cache needs a compatible binary through `ripr.server.path`
+or PATH.
 
 The source resolution order describes capability. Qualification of a local
 development VSIX does not establish that a final 0.11 package is published,

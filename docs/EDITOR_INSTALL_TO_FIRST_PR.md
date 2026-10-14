@@ -31,9 +31,10 @@ extension resolves the server in this order:
 6. actionable setup error
 
 The current extension is a universal VSIX and does not include a bundled server
-binary. Bundled platform VSIXs are planned. First-run download requires matching
-published server assets. For an offline install, provide a compatible binary
-through `ripr.server.path` or PATH; see [Server provisioning](SERVER_PROVISIONING.md).
+binary. Bundled platform VSIXs are planned. The default first-run download
+requires matching published server assets. For offline first use without an
+eligible cache, provide a compatible binary through `ripr.server.path` or PATH;
+see [Server provisioning](SERVER_PROVISIONING.md).
 
 For the first Rust loop, no config file is required. Rust is the default
 adapter. TypeScript, JavaScript, and Python are opt-in preview adapters and
