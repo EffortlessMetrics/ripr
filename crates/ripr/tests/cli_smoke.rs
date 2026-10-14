@@ -6258,7 +6258,7 @@ fn doctor_commands_replay_selected_root_from_another_repository() -> Result<(), 
                 .ok_or("doctor omitted recommendation")?;
             // Replay the rendered command through a real shell, without rebuilding its arguments.
             let replay = run_command_with_env(
-                "sh",
+                "bash",
                 &caller,
                 &["-c", &format!("{recommendation} --format json")],
                 &[("PATH", command_path)],
@@ -6305,7 +6305,7 @@ fn doctor_commands_replay_selected_root_from_another_repository() -> Result<(), 
                 .and_then(|line| line.split('`').nth(1))
                 .ok_or("doctor omitted first-pr command")?;
             let packet =
-                run_command_with_env("sh", &caller, &["-c", first_pr], &[("PATH", command_path)])
+                run_command_with_env("bash", &caller, &["-c", first_pr], &[("PATH", command_path)])
                     .map_err(|error| error.to_string())?;
             assert_success(&packet);
             let packet_path = selected.join("target/ripr/reports/start-here.json");
