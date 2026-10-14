@@ -26,6 +26,11 @@ the walk. `ripr` does not read global user config or hidden alternate config
 files. Environment variables are process-local tuning knobs and are documented
 separately from repo policy.
 
+When diagnosing another project with `ripr doctor --root PATH`, its printed
+check and first-pr commands retain that project and quote the path for Bash.
+Run them from the directory where doctor was invoked so relative roots retain
+their meaning.
+
 Configuration is for policy and tuning, not a prerequisite for first value.
 `ripr.toml` is optional, and missing config is the normal first-run state — it
 uses built-in defaults. `ripr init` is **only** for teams that want to commit

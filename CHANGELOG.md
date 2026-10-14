@@ -9,6 +9,9 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Preserve the selected project in doctor's copied check recommendations and
+  quote its path in first-pr guidance, including spaces and apostrophes.
+
 - Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
 
 - Add `xtask release-final-server-subjects` to prepare the exact twelve existing
