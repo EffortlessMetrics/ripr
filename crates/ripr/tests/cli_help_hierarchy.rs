@@ -198,3 +198,58 @@ fn docs_keep_the_canonical_role_vocabulary() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Pins the current packaging disclosure, not VSIX contents or installed
+/// provisioning success. Those require separate artifact/runtime observations.
+#[test]
+fn editor_onboarding_discloses_current_packaging_and_planned_bundles() -> Result<(), String> {
+    let mut violations = Vec::new();
+    for (surface, doc, retired_copy) in [
+        (
+            "docs/QUICKSTART.md",
+            QUICKSTART_DOC,
+            "bundled or cached assets",
+        ),
+        (
+            "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
+            include_str!("../../../docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md"),
+            "`ripr.server.path`, a bundled server, a downloaded cached server",
+        ),
+        (
+            "docs/EDITOR_INSTALL_TO_FIRST_PR.md",
+            include_str!("../../../docs/EDITOR_INSTALL_TO_FIRST_PR.md"),
+            "2. bundled server binary, when present",
+        ),
+        (
+            "docs/SERVER_PROVISIONING.md",
+            include_str!("../../../docs/SERVER_PROVISIONING.md"),
+            "2. bundled server binary, if present",
+        ),
+    ] {
+        let text = normalized(doc);
+        for required in [
+            "The current extension is a universal VSIX",
+            "does not include a bundled server binary.",
+            "Bundled platform VSIXs are planned",
+        ] {
+            if !text.contains(required) {
+                violations.push(format!(
+                    "{surface}: missing packaging disclosure `{required}`"
+                ));
+            }
+        }
+        // A new disclosure must not hide the prior unqualified ordering copy
+        // elsewhere on the same page. This is a bounded regression check for
+        // those retired phrases, not a general semantic documentation parser.
+        if text.contains(retired_copy) {
+            violations.push(format!(
+                "{surface}: retained obsolete provisioning copy `{retired_copy}`"
+            ));
+        }
+    }
+    if violations.is_empty() {
+        Ok(())
+    } else {
+        Err(violations.join("\n"))
+    }
+}

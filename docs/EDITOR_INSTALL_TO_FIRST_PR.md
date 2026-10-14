@@ -24,11 +24,17 @@ For normal editor use, you should not need to install the CLI separately. The
 extension resolves the server in this order:
 
 1. `ripr.server.path`
-2. bundled server binary, when present
+2. bundled server candidate, when present (dormant today)
 3. downloaded cached server binary
 4. verified first-run download
 5. `ripr` on `PATH`
 6. actionable setup error
+
+The current extension is a universal VSIX and does not include a bundled server
+binary. Bundled platform VSIXs are planned. The default first-run download
+requires matching published server assets. For offline first use without an
+eligible cache, provide a compatible binary through `ripr.server.path` or PATH;
+see [Server provisioning](SERVER_PROVISIONING.md).
 
 For the first Rust loop, no config file is required. Rust is the default
 adapter. TypeScript, JavaScript, and Python are opt-in preview adapters and

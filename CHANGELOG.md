@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Clarify editor onboarding: the current universal VSIX includes no bundled
+  server binary. Bundled platform VSIXs remain planned; cache/download and
+  configured/PATH provisioning retain their existing behavior and prerequisites.
+
 - Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
 
 - Add `xtask release-final-server-subjects` to prepare the exact twelve existing
