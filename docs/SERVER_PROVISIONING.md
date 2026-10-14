@@ -4,13 +4,25 @@ The editor extension owns server provisioning. Users should be able to install
 the extension, open a Rust/Cargo workspace, and get `ripr` diagnostics without
 running `cargo install ripr` first.
 
+The current extension is a universal VSIX and does not include a bundled server
+binary. Bundled platform VSIXs are planned; the resolver retains that candidate
+for future packages, but it is dormant today. Normal provisioning uses an
+eligible downloaded cache or a verified first-run download. First-run download
+requires matching published server assets; offline installs need a compatible
+binary through `ripr.server.path` or PATH.
+
+The source resolution order describes capability. Qualification of a local
+development VSIX does not establish that a final 0.11 package is published,
+that its server assets are available, or that an installed first-use journey
+has succeeded.
+
 ## Resolution Order
 
 The VS Code/Open VSX extension resolves the server in this order:
 
 ```text
 1. ripr.server.path
-2. bundled server binary, if present
+2. bundled server candidate, if present (dormant today)
 3. downloaded cached server binary
 4. verified first-run download from GitHub Releases
 5. ripr on PATH

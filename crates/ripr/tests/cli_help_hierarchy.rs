@@ -198,3 +198,43 @@ fn docs_keep_the_canonical_role_vocabulary() -> Result<(), String> {
     }
     Ok(())
 }
+
+/// Pins the current packaging disclosure, not VSIX contents or installed
+/// provisioning success. Those require separate artifact/runtime observations.
+#[test]
+fn editor_onboarding_discloses_current_packaging_and_planned_bundles() -> Result<(), String> {
+    let mut missing = Vec::new();
+    for (surface, doc) in [
+        ("docs/QUICKSTART.md", QUICKSTART_DOC),
+        (
+            "docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md",
+            include_str!("../../../docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md"),
+        ),
+        (
+            "docs/EDITOR_INSTALL_TO_FIRST_PR.md",
+            include_str!("../../../docs/EDITOR_INSTALL_TO_FIRST_PR.md"),
+        ),
+        (
+            "docs/SERVER_PROVISIONING.md",
+            include_str!("../../../docs/SERVER_PROVISIONING.md"),
+        ),
+    ] {
+        let text = normalized(doc);
+        for required in [
+            "The current extension is a universal VSIX",
+            "does not include a bundled server binary.",
+            "Bundled platform VSIXs are planned",
+        ] {
+            if !text.contains(required) {
+                missing.push(format!(
+                    "{surface}: missing packaging disclosure `{required}`"
+                ));
+            }
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(missing.join("\n"))
+    }
+}
