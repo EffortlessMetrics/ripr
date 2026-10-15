@@ -20,7 +20,7 @@ never move another worker's checkout. In this guide:
 - `B` is the swarm base before importing P;
 - `S` is the exact swarm candidate after integration and repairs;
 - `T` is the qualified tree `S^{tree}`;
-- `K` is the synthetic public merge preview;
+- `K` is the contained proposal's synthetic public merge preview;
 - `A` is the actual public-main commit after the return merge.
 
 1. Fetch both repositories and record P/B, their merge base and public-only
@@ -140,6 +140,8 @@ No workflow, branch protection or security setting change is authorized here.
 The following retained procedures describe the older direct-J interfaces and
 receipts. They are reference for reconciliation, not the default staged
 sequence above or evidence that current commands already accept it.
+Their K names post-publication back-sync, distinct from the staged proposal's
+preview K.
 
 ### Non-negotiable history contract
 
