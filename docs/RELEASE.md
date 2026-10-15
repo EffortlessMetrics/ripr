@@ -37,13 +37,12 @@ For the 0.11.0 release train, and as the standard two-repository pattern for
 future releases, use this authority sequence:
 
 ```text
-develop in ripr-swarm
-→ select exact ripr-swarm/main at the transaction boundary
-→ create an immutable swarm pin and hold ripr/main
-→ qualify that exact swarm head
-→ preflight the exact source/swarm pair
-→ construct and prove one ordered two-parent source join
-→ merge source with source parent 1 and swarm parent 2
+merge exact public main into ripr-swarm with history preserved
+→ resolve conflicts and repair through meaningful swarm PRs
+→ qualify the exact combined swarm candidate
+→ recheck current public main is the captured ancestor
+→ return that candidate through a protected ancestry-preserving source PR
+→ verify the actual source tree and currentness
 → establish metadata and build source artifacts
 → produce the immutable ship packet
 → explicitly authorize publication
@@ -51,6 +50,11 @@ develop in ripr-swarm
 → ancestry-preserving source-to-swarm back-sync
 → re-baseline the next release and resume swarm development
 ```
+
+Follow the [staged integration guide](SOURCE_PROMOTION.md#staged-integration)
+for this direction and the [existing-contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+for the older direct-J/pin/controller commands below. Public main movement
+requires returning to swarm and renewing affected proof before promotion.
 
 The selected swarm head includes all history reachable from that exact commit.
 Do not squash, rebase, cherry-pick, or reconstruct a tree-equivalent source
