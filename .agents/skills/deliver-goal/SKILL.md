@@ -39,6 +39,20 @@ The original goal is preserved, its current interpretation and acceptance predic
 
 The existence of several reasonable engineering choices does not require escalation. Research the governing sources, choose the strongest reversible option, document the rationale, and proceed. Return `NEEDS_OWNER_DECISION` only when materially different viable outcomes remain after safe research and reversible engineering are exhausted.
 
+# Repository sync route
+
+Use [the staged sync guide](../../../docs/SOURCE_PROMOTION.md#staged-integration)
+for public/swarm convergence. First merge exact public main into swarm, preserve
+public-only work, and resolve conflicts/repairs there through meaningful
+ancestry-preserving PRs. Qualify exact swarm S/tree T only after the affected
+repairs. Before returning S to public, re-read public main and require the same
+captured P plus `P` ancestor of `S`; a moved public head returns to swarm and
+affected qualification. Verify the actual public merge tree equals T and both
+histories remain reachable. Each stage is a coherent claim, not one forced
+monolithic PR. Historical direct-J controller/receipt and required-check
+contracts need explicit reconciliation; documentation never makes a refused,
+skipped or unavailable execution pass. Keep release publication separate.
+
 # Release-scope law
 
 When a release is pinned, the reviewed immutable pin receipt is the sole membership authority; qualification, source preflight, and finalization consume its exact ref, ancestry, ordered SHA digest, PR dispositions, and manifests unchanged. Ordinary `main` or swarm movement never repins or changes membership. Repin only after a release-invalidating exact-candidate qualification or source-preflight failure, with an explicit superseding receipt. Never close, draft, lock, relabel, retarget, or otherwise mutate an unrelated PR to freeze that scope; unrelated PRs stay open and may evolve. Later merges do not retarget the pinned release. Close only the selected PR for its own evidence-backed terminal disposition—never close it now to reopen it after release.

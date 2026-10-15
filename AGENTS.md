@@ -562,6 +562,14 @@ When reviewing or repairing code, read these files first:
 
 ## Goal delivery and candidate workflow
 
+For repository sync, route through
+`docs/SOURCE_PROMOTION.md#staged-integration`: public main into swarm first,
+conflicts/repairs and qualification there, then an ancestry-preserving return to
+current public main. Use `deliver-goal` for the staged claims; reconcile the
+historical direct-J runtime contracts rather than treating this route as a gate
+waiver. Integration PRs preserve foreign history; ordinary feature PR policy
+is unchanged.
+
 Preserve the user's original goal, constraints, non-goals, assumptions, and
 acceptance predicates. The durable issue, specification, plan, policy, receipt,
 and closeout graph is the repository's source of truth for long-running work.
