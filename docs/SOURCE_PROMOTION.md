@@ -72,6 +72,7 @@ rather than claiming this guide supplies a guard. After merge, observe A rather 
 transport succeeded:
 
 ```bash
+set -eu
 git fetch origin main
 A=$(git rev-parse refs/remotes/origin/main)
 git merge-base --is-ancestor "$P" "$A"
