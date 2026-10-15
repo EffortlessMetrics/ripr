@@ -34,16 +34,17 @@ and packaging reference; the runbook owns exact pins, J/K expected-head guards,
 receipts, invalidation, publication authorization, and cleanup.
 
 For the 0.11.0 release train, and as the standard two-repository pattern for
-future releases, use this authority sequence:
+future releases, the target authority sequence is below. Current promotion
+commands require the [contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+before they can admit the staged public return.
 
 ```text
-develop in ripr-swarm
-→ select exact ripr-swarm/main at the transaction boundary
-→ create an immutable swarm pin and hold ripr/main
-→ qualify that exact swarm head
-→ preflight the exact source/swarm pair
-→ construct and prove one ordered two-parent source join
-→ merge source with source parent 1 and swarm parent 2
+merge exact public main into ripr-swarm with history preserved
+→ resolve conflicts and repair through meaningful swarm PRs
+→ qualify the exact combined swarm candidate
+→ recheck current public main is the captured ancestor
+→ return that candidate through a protected ancestry-preserving source PR
+→ verify the actual source tree and currentness
 → establish metadata and build source artifacts
 → produce the immutable ship packet
 → explicitly authorize publication
@@ -52,10 +53,16 @@ develop in ripr-swarm
 → re-baseline the next release and resume swarm development
 ```
 
+Follow the [staged integration guide](SOURCE_PROMOTION.md#staged-integration)
+for this direction and the [existing-contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+for the older direct-J/pin/controller commands below. Public main movement
+requires returning to swarm and renewing affected proof before promotion.
+
 The selected swarm head includes all history reachable from that exact commit.
 Do not squash, rebase, cherry-pick, or reconstruct a tree-equivalent source
-join. The promotion PR head must itself be the reviewed join, with source as
-parent 1 and the selected swarm head as parent 2. The back-sync must preserve
+join. The staged target uses exact swarm S as the PR head, with separate
+preview and actual merge identities. Historical direct-J commands below still
+require explicit source-contract reconciliation. The back-sync must preserve
 the source release ancestry through a controlled merge exception or another
 explicitly reviewed ancestry-preserving path, even when swarm branch settings
 normally disable merge commits.
@@ -78,7 +85,10 @@ issuance. Never copy a historical blanket no-execution sentence, and never
 claim correctness, test adequacy, mutation adequacy, requirement satisfaction,
 or merge safety.
 
-The two history-preserving joins have separate identities and parent order:
+The following **historical direct-J/back-sync contract** still needs
+reconciliation before staged execution. Its `K` names post-publication
+back-sync, distinct from the contained proposal's preview K. These historical
+joins have separate identities and parent order:
 
 ```text
 J = source promotion
@@ -90,7 +100,7 @@ K.parent[0] = exact swarm main before back-sync
 K.parent[1] = exact released source main
 ```
 
-The promotion head must itself be `J`; an appended repair commit, squash,
+The historical promotion head must itself be `J`; an appended repair commit, squash,
 rebase, cherry-pick, or tree-equivalent reconstruction fails the promotion
 contract. After public verification, review and transport `K` under an
 expected-head guard. If swarm policy has merge commits disabled, use a
