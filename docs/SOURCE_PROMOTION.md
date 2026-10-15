@@ -23,6 +23,13 @@ never move another worker's checkout. In this guide:
 - `K` is the contained proposal's synthetic public merge preview;
 - `A` is the actual public-main commit after the return merge.
 
+Before the first-leg PR, verify that swarm admits a normal ancestry-preserving
+merge with its required checks. Reconcile conflicts between the
+[settings guidance](REPO_SETTINGS.md), tracked configuration and current policy
+with the existing owner. If no reviewed path is permitted, hold the inbound leg
+under #1768/#1627; do not squash the import or infer a settings exception from
+this guide. No settings change is authorized here.
+
 1. Fetch both repositories and record P/B, their merge base and public-only
    survivors. Retain a machine-safe NUL-framed raw Git inventory with object
    IDs, paths, status/modes, rename pairs, binary files and deletions; do not
