@@ -34,7 +34,9 @@ and packaging reference; the runbook owns exact pins, J/K expected-head guards,
 receipts, invalidation, publication authorization, and cleanup.
 
 For the 0.11.0 release train, and as the standard two-repository pattern for
-future releases, use this authority sequence:
+future releases, the target authority sequence is below. Current promotion
+commands require the [contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+before they can admit the staged public return.
 
 ```text
 merge exact public main into ripr-swarm with history preserved

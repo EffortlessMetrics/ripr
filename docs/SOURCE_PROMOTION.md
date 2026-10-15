@@ -8,6 +8,11 @@ it does not perform a sync or authorize publication.
 
 ## Staged integration
 
+**Execution status:** this is the target sequence. The current source-promotion
+verifier does not admit its public-ancestor graph. Complete the
+[existing-contract reconciliation](#existing-contract-reconciliation) before
+attempting the public return; the Git examples below do not supply admission.
+
 Use an owned checkout per writer. Record exact repository URLs and commit SHAs;
 never move another worker's checkout. In this guide:
 
