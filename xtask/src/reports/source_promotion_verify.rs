@@ -1769,6 +1769,10 @@ mod tests {
             )?;
             let swarm = test_git_output(&swarm_repo, &["rev-parse", "HEAD"])?;
             let swarm_tree = test_git_output(&swarm_repo, &["rev-parse", "HEAD^{tree}"])?;
+            let uppercase_swarm_tree = swarm_tree.to_ascii_uppercase();
+            if uppercase_swarm_tree == swarm_tree {
+                return Err("fixture tree has no hex letters to distinguish SHA spelling".into());
+            }
             let swarm_ref = format!("refs/tags/ripr-release-0.11.0-{swarm}");
             test_git(&swarm_repo, &["update-ref", &swarm_ref, &swarm])?;
             require_ancestor(&swarm_repo, &source, &swarm, "fixture lost source ancestry")?;
@@ -1791,6 +1795,11 @@ mod tests {
             for (label, reviewed, expected_mode) in [
                 ("resolved", Some(resolved_tree.as_str()), "two_parent_join"),
                 ("same-tree", Some(swarm_tree.as_str()), "fast_forward"),
+                (
+                    "same-tree-uppercase",
+                    Some(uppercase_swarm_tree.as_str()),
+                    "fast_forward",
+                ),
                 ("unsupplied", None, "fast_forward"),
                 ("commit-as-tree", Some(source.as_str()), "reject"),
                 (

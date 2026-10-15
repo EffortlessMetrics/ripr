@@ -318,7 +318,7 @@ fn build_receipt(options: &Options) -> Result<Receipt, String> {
         .reviewed_resolved_tree
         .as_ref()
         .zip(dry_merge.preview_tree.as_ref())
-        .is_some_and(|(reviewed, preview)| reviewed != preview);
+        .is_some_and(|(reviewed, preview)| !reviewed.eq_ignore_ascii_case(preview));
     Ok(Receipt {
         schema: SCHEMA.to_string(),
         mode: if merge_base == options.source_parent && !reviewed_tree_requires_join {
