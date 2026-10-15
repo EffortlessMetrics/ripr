@@ -37,6 +37,10 @@ never move another worker's checkout. In this guide:
    never squash, rebase, cherry-pick or reconstruct the imported range. Ordinary
    feature PR policy is unchanged. Do not append repairs to a qualified subject
    and keep claiming its old proof.
+   Account for newly reachable public ancestors across each swarm first-parent
+   transition, including an outer PR merge around an inner public import merge.
+   The outer second parent may be that inner merge rather than P; retain both
+   merge identities instead of classifying the import from that parent alone.
 4. Qualify exact S/T after the last affected repair: current independent
    semantic review, required product/policy/package tests and installed-user
    journeys. Retain actual executed counts, failures, limits and artifact
@@ -110,6 +114,10 @@ pin/handoff, reviewed-tree/controller, direct-J/no-repair-child rules and
 #1769–#1773 inputs therefore need explicit reconciliation under #1768/#1627
 before those historical commands can admit the staged flow. Do not edit
 receipt fields to impersonate another mode.
+
+First-leg accounting for public ancestors introduced through nested PR merges
+also requires reviewed source support. The transition rule above is target
+behavior; this guide does not implement a receipt or verifier for it.
 
 The routed command contract also fixes 22 propositions and exact argv
 (`xtask/src/main.rs`, `ROUTED_RUST_PROPOSITION_IDS` and
