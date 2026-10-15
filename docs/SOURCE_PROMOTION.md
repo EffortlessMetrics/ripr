@@ -18,8 +18,9 @@ never move another worker's checkout. In this guide:
 - `A` is the actual public-main commit after the return merge.
 
 1. Fetch both repositories and record P/B, their merge base and public-only
-   survivors. Review the complete path inventory, including binary files,
-   modes, renames and deletions; a clean automatic merge is not semantic review.
+   survivors. Retain a machine-safe NUL-framed raw Git inventory with object
+   IDs, paths, status/modes, rename pairs, binary files and deletions; do not
+   parse paths by newlines. A clean automatic merge is not semantic review.
 2. Branch from swarm B and merge P with preserved ancestry. Resolve conflicts
    on swarm, preserving public release/distribution work and swarm improvements.
    Review repository-specific workflows/policy explicitly: imported files do
@@ -49,8 +50,8 @@ never move another worker's checkout. In this guide:
    Any new source, metadata or package change receives the affected final-source
    proof; it is not silently covered by S's old package receipt.
 
-These read-only Git checks illustrate the return boundary. Run them in the
-owned public checkout with `origin` identifying `EffortlessMetrics/ripr`, S/T
+These Git checks illustrate the return boundary; fetching updates only owned
+local refs. Run them in the owned public checkout with `origin` identifying `EffortlessMetrics/ripr`, S/T
 set from the retained qualification, and all required objects fetched:
 
 ```bash
@@ -64,10 +65,10 @@ test "$(git rev-parse "$S^{tree}")" = "$T"
 
 Immediately before the normal protected merge, recheck the exact public base,
 reviewed PR head and qualification identities. A fetch/check is not an atomic
-base lease; a PR-head-only guard does not lock public main. Use the existing
-protected expected-base admission and coordinate the merge window with #1768.
-If that currentness cannot be established, stop rather than claiming this
-guide supplies a new guard. After merge, observe A rather than assuming the
+base lease; a PR-head-only guard does not lock public main. Identify and verify
+the actual protected expected-base enforcement with #1768/#1627 and coordinate
+the merge window. If it is absent or currentness cannot be established, stop
+rather than claiming this guide supplies a guard. After merge, observe A rather than assuming the
 transport succeeded:
 
 ```bash
