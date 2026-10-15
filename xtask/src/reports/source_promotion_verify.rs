@@ -1698,6 +1698,272 @@ mod tests {
     }
 
     #[test]
+    fn ancestor_preflight_distinguishes_reviewed_resolution_from_fast_forward() -> Result<(), String>
+    {
+        let _guard = CWD_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
+        let root = fixture_root("ancestor-preflight")?;
+        let source_repo = root.join("source");
+        let swarm_repo = root.join("swarm");
+        let result = (|| {
+            fs::create_dir_all(source_repo.join(".github/workflows"))
+                .map_err(|error| error.to_string())?;
+            test_git(&source_repo, &["init", "--quiet"])?;
+            test_git(
+                &source_repo,
+                &["config", "user.email", "test@example.invalid"],
+            )?;
+            test_git(&source_repo, &["config", "user.name", "test"])?;
+            write_release_metadata_fixture(&source_repo, "0.10.1", false)?;
+            let workflow = ".github/workflows/routed-rust.yml";
+            fs::write(source_repo.join(workflow), "name: source-fixture\n")
+                .map_err(|error| error.to_string())?;
+            test_git(&source_repo, &["add", "."])?;
+            test_git(&source_repo, &["commit", "--quiet", "-m", "source"])?;
+            let source = test_git_output(&source_repo, &["rev-parse", "HEAD"])?;
+            test_git(
+                &source_repo,
+                &[
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/EffortlessMetrics/ripr.git",
+                ],
+            )?;
+            test_git(
+                &source_repo,
+                &[
+                    "clone",
+                    "--quiet",
+                    ".",
+                    swarm_repo.to_string_lossy().as_ref(),
+                ],
+            )?;
+            test_git(
+                &swarm_repo,
+                &["config", "user.email", "test@example.invalid"],
+            )?;
+            test_git(&swarm_repo, &["config", "user.name", "test"])?;
+            test_git(
+                &swarm_repo,
+                &[
+                    "remote",
+                    "set-url",
+                    "origin",
+                    "https://github.com/EffortlessMetrics/ripr-swarm.git",
+                ],
+            )?;
+            fs::write(
+                swarm_repo.join("swarm.txt"),
+                "retained swarm contribution\n",
+            )
+            .map_err(|error| error.to_string())?;
+            fs::write(swarm_repo.join(workflow), "name: swarm-fixture\n")
+                .map_err(|error| error.to_string())?;
+            test_git(&swarm_repo, &["add", "."])?;
+            test_git(
+                &swarm_repo,
+                &["commit", "--quiet", "-m", "swarm descendant"],
+            )?;
+            let swarm = test_git_output(&swarm_repo, &["rev-parse", "HEAD"])?;
+            let swarm_tree = test_git_output(&swarm_repo, &["rev-parse", "HEAD^{tree}"])?;
+            let swarm_ref = format!("refs/tags/ripr-release-0.11.0-{swarm}");
+            test_git(&swarm_repo, &["update-ref", &swarm_ref, &swarm])?;
+            require_ancestor(&swarm_repo, &source, &swarm, "fixture lost source ancestry")?;
+            if source == swarm {
+                return Err("fixture requires distinct source and swarm parents".into());
+            }
+            fs::write(swarm_repo.join(workflow), "name: source-fixture\n")
+                .map_err(|error| error.to_string())?;
+            test_git(&swarm_repo, &["add", workflow])?;
+            let resolved_tree = test_git_output(&swarm_repo, &["write-tree"])?;
+            if resolved_tree == swarm_tree {
+                return Err("fixture resolution did not differ from fast-forward".into());
+            }
+            test_git(&swarm_repo, &["reset", "--quiet", "--hard", &swarm])?;
+            let source_before =
+                test_git_output(&source_repo, &["status", "--porcelain=v2", "--branch"])?;
+            let swarm_before =
+                test_git_output(&swarm_repo, &["status", "--porcelain=v2", "--branch"])?;
+            let mut resolved_preflight = None;
+            for (label, reviewed, expected_mode) in [
+                ("resolved", Some(resolved_tree.as_str()), "two_parent_join"),
+                ("same-tree", Some(swarm_tree.as_str()), "fast_forward"),
+                ("unsupplied", None, "fast_forward"),
+                ("commit-as-tree", Some(source.as_str()), "reject"),
+                (
+                    "missing-tree",
+                    Some("0000000000000000000000000000000000000000"),
+                    "reject",
+                ),
+                ("malformed-tree", Some("deadbeef"), "reject"),
+            ] {
+                let out = root.join(label);
+                let mut args = vec![
+                    "preflight".into(),
+                    "--source-parent".into(),
+                    source.clone(),
+                    "--swarm-parent".into(),
+                    swarm.clone(),
+                    "--swarm-ref".into(),
+                    swarm_ref.clone(),
+                    "--source-repo".into(),
+                    source_repo.display().to_string(),
+                    "--swarm-repo".into(),
+                    swarm_repo.display().to_string(),
+                    "--source-main".into(),
+                    "HEAD".into(),
+                    "--swarm-main".into(),
+                    "HEAD".into(),
+                    "--version".into(),
+                    "0.11.0".into(),
+                    "--out".into(),
+                    out.display().to_string(),
+                ];
+                if let Some(tree) = reviewed {
+                    args.extend(["--resolved-tree".into(), tree.to_string()]);
+                }
+                let emitted = super::super::source_promotion::source_promotion(&args);
+                let path = out.join("source-promotion-preflight.json");
+                if expected_mode == "reject" {
+                    if emitted.is_ok() || path.exists() {
+                        return Err(format!("invalid reviewed tree emitted a receipt: {label}"));
+                    }
+                    continue;
+                }
+                emitted?;
+                let bytes = fs::read(&path).map_err(|error| error.to_string())?;
+                let receipt: Value =
+                    serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+                if receipt["mode"] != expected_mode
+                    || receipt["merge_base"] != source
+                    || receipt.pointer("/dry_merge/preview_tree")
+                        != Some(&Value::String(swarm_tree.clone()))
+                    || receipt.pointer("/dry_merge/reviewed_resolved_tree")
+                        != Some(&reviewed.map_or(Value::Null, |tree| Value::String(tree.into())))
+                    || receipt.pointer("/dry_merge/reviewed_resolved_tree_verified")
+                        != Some(&Value::Bool(reviewed.is_some()))
+                {
+                    return Err(format!("actual producer misclassified {label}: {receipt}"));
+                }
+                if label == "resolved" {
+                    resolved_preflight = Some((path, bytes, receipt));
+                }
+            }
+            let (preflight_path, preflight_bytes, preflight) =
+                resolved_preflight.ok_or("resolved producer receipt was not observed")?;
+            let mut dispositions = Vec::new();
+            for (field, kind) in [
+                ("conflicts", "conflict"),
+                ("source_survivor_candidates", "source_survivor"),
+                ("swarm_authority_resolution_candidates", "swarm_exclusion"),
+            ] {
+                let values = if field == "conflicts" {
+                    preflight.pointer("/dry_merge/conflicts")
+                } else {
+                    preflight.get(field)
+                }
+                .and_then(Value::as_array)
+                .ok_or("actual producer inventory is missing")?;
+                for key in values {
+                    dispositions.push(serde_json::json!({
+                        "kind": kind, "key": key, "disposition": "integrated",
+                        "rationale": "fixture retains source workflow and swarm contribution",
+                        "evidence": "ancestor_preflight_distinguishes_reviewed_resolution_from_fast_forward"
+                    }));
+                }
+            }
+            let manifest = serde_json::json!({
+                "schema": RESOLUTION_SCHEMA,
+                "preflight_sha256": digest_bytes(&preflight_bytes),
+                "source_parent": source, "swarm_parent": swarm, "merge_base": source,
+                "reviewed_join_tree": resolved_tree, "dispositions": dispositions
+            });
+            let manifest_path = root.join("manifest.json");
+            fs::write(
+                &manifest_path,
+                serde_json::to_vec(&manifest).map_err(|error| error.to_string())?,
+            )
+            .map_err(|error| error.to_string())?;
+            let join = test_git_output_with_input(
+                &swarm_repo,
+                &["commit-tree", &resolved_tree, "-p", &source, "-p", &swarm],
+                "resolved ancestor join\n",
+            )?;
+            let options = Options {
+                repo: swarm_repo.clone(),
+                preflight: preflight_path,
+                manifest: manifest_path,
+                join: join.clone(),
+                source_main: source.clone(),
+                main: None,
+                out: root.join("verification"),
+            };
+            let report = verify_geometry(&options)?;
+            if report["tree"] != resolved_tree
+                || report["parents"] != serde_json::json!([source, swarm])
+            {
+                return Err(
+                    "retained verifier lost resolved tree or ancestor-first parents".into(),
+                );
+            }
+            // Geometry is not live native handoff authority. The actual producer
+            // still emits v1, and no fixture may promote it by editing its mode/schema.
+            if !verify(&options).is_err_and(|error| error.contains("requires preflight v2")) {
+                return Err(
+                    "historical producer geometry bypassed current native admission".into(),
+                );
+            }
+            let wrong_tree = test_git_output_with_input(
+                &swarm_repo,
+                &["commit-tree", &swarm_tree, "-p", &source, "-p", &swarm],
+                "wrong automatic tree\n",
+            )?;
+            let swapped = test_git_output_with_input(
+                &swarm_repo,
+                &["commit-tree", &resolved_tree, "-p", &swarm, "-p", &source],
+                "wrong parent order\n",
+            )?;
+            let squashed = test_git_output_with_input(
+                &swarm_repo,
+                &["commit-tree", &resolved_tree, "-p", &source],
+                "squashed\n",
+            )?;
+            let repair = test_git_output_with_input(
+                &swarm_repo,
+                &["commit-tree", &resolved_tree, "-p", &join],
+                "repair child\n",
+            )?;
+            for (head, reason) in [
+                (wrong_tree, "reviewed resolved tree"),
+                (swapped, "ordered parents"),
+                (squashed, "exactly two parents"),
+                (repair, "exactly two parents"),
+            ] {
+                let mut invalid = options.clone();
+                invalid.join = head;
+                if !verify_geometry(&invalid).is_err_and(|error| error.contains(reason)) {
+                    return Err(format!("graph control did not refuse {reason}"));
+                }
+            }
+            if test_git_output(&source_repo, &["status", "--porcelain=v2", "--branch"])?
+                != source_before
+                || test_git_output(&swarm_repo, &["status", "--porcelain=v2", "--branch"])?
+                    != swarm_before
+            {
+                return Err(
+                    "producer or verifier changed authoritative fixture checkout state".into(),
+                );
+            }
+            Ok(())
+        })();
+        let cleanup = fs::remove_dir_all(&root).map_err(|error| error.to_string());
+        result.and(cleanup)
+    }
+
+    #[test]
     fn parse_failures_write_rejection_receipts_when_output_is_known() -> Result<(), String> {
         let root = fixture_root("parse-receipt")?;
         let result = (|| {

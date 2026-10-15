@@ -312,9 +312,16 @@ fn build_receipt(options: &Options) -> Result<Receipt, String> {
         .cloned()
         .collect::<Vec<_>>();
     swarm_authority_resolution_candidates.sort();
+    // An ancestor source permits fast-forward only to the automatic tree.
+    // A separately verified resolution with different bytes needs a join.
+    let reviewed_tree_requires_join = dry_merge
+        .reviewed_resolved_tree
+        .as_ref()
+        .zip(dry_merge.preview_tree.as_ref())
+        .is_some_and(|(reviewed, preview)| reviewed != preview);
     Ok(Receipt {
         schema: SCHEMA.to_string(),
-        mode: if merge_base == options.source_parent {
+        mode: if merge_base == options.source_parent && !reviewed_tree_requires_join {
             "fast_forward".to_string()
         } else {
             "two_parent_join".to_string()
