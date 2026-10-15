@@ -56,12 +56,13 @@ never move another worker's checkout. In this guide:
    proof; it is not silently covered by S's old package receipt.
 
 These Git checks illustrate the return boundary; fetching updates only owned
-local refs. Run them in the owned public checkout with `origin` identifying `EffortlessMetrics/ripr`, S/T
-set from the retained qualification, and all required objects fetched:
+local refs. Run them in the owned public checkout with `origin` identifying
+`EffortlessMetrics/ripr`, P set to the captured public main commit, S/T set from
+the retained qualification, and all required objects fetched:
 
 ```bash
 set -eu
-git fetch origin main
+git fetch origin +refs/heads/main:refs/remotes/origin/main
 CURRENT_PUBLIC=$(git rev-parse refs/remotes/origin/main)
 test "$CURRENT_PUBLIC" = "$P"
 git merge-base --is-ancestor "$P" "$S"
@@ -78,7 +79,7 @@ transport succeeded:
 
 ```bash
 set -eu
-git fetch origin main
+git fetch origin +refs/heads/main:refs/remotes/origin/main
 A=$(git rev-parse refs/remotes/origin/main)
 git merge-base --is-ancestor "$P" "$A"
 git merge-base --is-ancestor "$S" "$A"
