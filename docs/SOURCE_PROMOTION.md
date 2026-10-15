@@ -20,6 +20,7 @@ never move another worker's checkout. In this guide:
 - `B` is the swarm base before importing P;
 - `S` is the exact swarm candidate after integration and repairs;
 - `T` is the qualified tree `S^{tree}`;
+- `K` is the synthetic public merge preview;
 - `A` is the actual public-main commit after the return merge.
 
 1. Fetch both repositories and record P/B, their merge base and public-only
@@ -49,13 +50,14 @@ never move another worker's checkout. In this guide:
    and P must be an ancestor of S. If either check fails, merge the new public
    head into swarm, review its effects and renew affected qualification. Merely
    replacing the recorded P cannot repair missing ancestry.
-6. Return exact S through a reviewed public PR using ancestry-preserving merge
-   transport allowed by the repository. Fast-forward is technically possible
-   when P is an ancestor, but is not permission to bypass protected PR checks.
-   A merge wrapper `J = [P, S]` may retain readable public first-parent history;
-   its tree must equal T. No fresh conflict resolution belongs in that wrapper.
+6. Target the public return PR at exact S as its head. The
+   [contained proposal](https://github.com/EffortlessMetrics/ripr/issues/1627#issuecomment-6183107417)
+   gives preview K and actual merge A separate identities, each with ordered
+   parents `[P, S]` and tree T. This proposal still needs source implementation
+   and protected admission. Do not add a wrapper or resolve fresh conflicts on
+   that return head.
 7. Re-read the published result A and prove both P and S are ancestors and
-   `A^{tree} == T`. Record the actual outer PR merge separately from J/S.
+   `A^{tree} == T`. Record A separately from preview K and PR head S.
    Any new source, metadata or package change receives the affected final-source
    proof; it is not silently covered by S's old package receipt.
 
@@ -118,6 +120,12 @@ receipt fields to impersonate another mode.
 First-leg accounting for public ancestors introduced through nested PR merges
 also requires reviewed source support. The transition rule above is target
 behavior; this guide does not implement a receipt or verifier for it.
+
+The [production plan](https://github.com/EffortlessMetrics/ripr/issues/1627#issuecomment-6183107417)
+also leaves public/swarm workflow and runner-policy compatibility and
+cross-repository qualification consumption unresolved. Passing swarm jobs alone
+does not supply public required-result admission. No new source contract has
+landed; the existing production owner retains that implementation.
 
 The routed command contract also fixes 22 propositions and exact argv
 (`xtask/src/main.rs`, `ROUTED_RUST_PROPOSITION_IDS` and

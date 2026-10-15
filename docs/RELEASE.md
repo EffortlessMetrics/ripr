@@ -60,8 +60,9 @@ requires returning to swarm and renewing affected proof before promotion.
 
 The selected swarm head includes all history reachable from that exact commit.
 Do not squash, rebase, cherry-pick, or reconstruct a tree-equivalent source
-join. The promotion PR head must itself be the reviewed join, with source as
-parent 1 and the selected swarm head as parent 2. The back-sync must preserve
+join. The staged target uses exact swarm S as the PR head, with separate
+preview and actual merge identities. Historical direct-J commands below still
+require explicit source-contract reconciliation. The back-sync must preserve
 the source release ancestry through a controlled merge exception or another
 explicitly reviewed ancestry-preserving path, even when swarm branch settings
 normally disable merge commits.
