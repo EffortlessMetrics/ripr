@@ -8351,7 +8351,23 @@ fn create_zip_archive_writes_flat_package_contents() -> Result<(), String> {
             let entry = archive
                 .by_index(index)
                 .map_err(|err| format!("zip entry {index}: {err}"))?;
-            names.push(entry.name().to_string());
+            let name = entry
+                .name()
+                .map_err(|err| format!("zip entry {index} name: {err}"))?
+                .into_owned();
+            assert_eq!(entry.system(), zip::System::Unix, "{name}");
+            assert_eq!(
+                entry.compression(),
+                zip::CompressionMethod::Deflated,
+                "{name}"
+            );
+            let expected_mode = if name == "ripr.exe" { 0o755 } else { 0o644 };
+            assert_eq!(
+                entry.unix_mode().map(|mode| mode & 0o777),
+                Some(expected_mode),
+                "{name}"
+            );
+            names.push(name);
         }
         names.sort();
         assert_eq!(
