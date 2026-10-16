@@ -114,12 +114,18 @@ flow resolves that divergence and performs repairs **in swarm before S is
 qualified**. It preserves history, exact identities, independent review and
 real tests without requiring one monolithic integration PR.
 
-Existing automation is not changed by this guide. In particular, source
-preflight emits `fast_forward` when P is the merge base
-(`xtask/src/reports/source_promotion.rs`, receipt construction), while
-`source_promotion_verify::validate_preflight` requires `two_parent_join`.
-Creating a wrapper J does not change that preflight mode. The protected swarm
-pin/handoff, reviewed-tree/controller, direct-J/no-repair-child rules and
+Existing automation is not changed by this guide. When P is the merge base,
+source preflight retains `fast_forward` if `--resolved-tree` is omitted or
+names the same object as the automatic preview tree. A separately supplied,
+object-verified reviewed tree that differs from that preview selects
+`two_parent_join` (`xtask/src/reports/source_promotion.rs`, receipt construction).
+`source_promotion_verify::validate_preflight` still requires `two_parent_join`.
+Selecting that mode does not supply [current native acceptance](SOURCE_PROMOTION_PREFLIGHT.md#current-native-acceptance):
+preflight v2 and handoff acceptance v2 remain required, and historical v1
+geometry grants no current selection or qualification authority.
+Creating a wrapper J does not change the mode or supply native acceptance.
+The protected swarm pin/handoff, reviewed-tree/controller,
+direct-J/no-repair-child rules and
 #1769–#1773 inputs therefore need explicit reconciliation under #1768/#1627
 before those historical commands can admit the staged flow. Do not edit
 receipt fields to impersonate another mode.
