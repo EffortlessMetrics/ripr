@@ -22,6 +22,11 @@ wheel without Rust or a source checkout, reject a planted PATH replacement,
 run useful no-config Python preview analysis and a fresh-shell explanation, exercise
 explicit disablement, reinstall, and uninstall without removing the project.
 
+Staging also requires a single well-formed `Wheel-Version` in the supported
+1.x format family before creating an admitted directory. Missing, malformed,
+duplicate or unsupported major versions fail with a format diagnostic;
+compatible newer minor versions remain eligible for the installer's warning.
+
 A build artifact alone is not qualification. The complete run, including both
 consumer jobs, must pass. The attempt-specific artifact retains the exact wheel
 and `qualification.json` for five days. PR qualification is rehearsal; publication

@@ -127,7 +127,8 @@ class AdmissionTests(unittest.TestCase):
         wheel = wheelhouse / "ripr_rs-0.11.0rc1-py3-none-manylinux_2_34_x86_64.whl"
         with zipfile.ZipFile(wheel, "w") as z:
             z.writestr("ripr_rs-0.11.0rc1.dist-info/METADATA", "Name: ripr-rs\nVersion: 0.11.0rc1\n")
-            z.writestr("ripr_rs-0.11.0rc1.dist-info/WHEEL", "Tag: py3-none-manylinux_2_34_x86_64\n")
+            z.writestr("ripr_rs-0.11.0rc1.dist-info/WHEEL",
+                       "Wheel-Version: 1.0\nRoot-Is-Purelib: false\nTag: py3-none-manylinux_2_34_x86_64\n")
         self.identity["wheel_sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
         receipt = dict(schema_version=1, repository=admission.REPOSITORY, run_id=123, run_attempt=2, native_version="0.11.0-rc.1",
                        source_sha=self.identity["source_sha"], source_tree=self.identity["source_tree"],
@@ -136,6 +137,16 @@ class AdmissionTests(unittest.TestCase):
                        platform_tag=admission.PLATFORM_TAG)
         (root / "qualification.json").write_text(json.dumps(receipt))
         return wheel, receipt
+
+    def replace_wheel_member(self, wheel, receipt, member, content):
+        with zipfile.ZipFile(wheel) as archive:
+            entries = {name: archive.read(name) for name in archive.namelist()}
+        entries[f"ripr_rs-{self.identity['version']}.dist-info/{member}"] = content.encode()
+        with zipfile.ZipFile(wheel, "w") as archive:
+            for name, data in entries.items():
+                archive.writestr(name, data)
+        receipt["wheel_sha256"] = self.identity["wheel_sha256"] = hashlib.sha256(wheel.read_bytes()).hexdigest()
+        (wheel.parent.parent / "qualification.json").write_text(json.dumps(receipt))
 
     def test_exact_wheel_staged_alone(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -155,7 +166,8 @@ class AdmissionTests(unittest.TestCase):
             new_wheel = wheel.with_name(wheel.name.replace("rc1", "a1"))
             with zipfile.ZipFile(new_wheel, "w") as archive:
                 archive.writestr("ripr_rs-0.11.0a1.dist-info/METADATA", "Name: ripr-rs\nVersion: 0.11.0a1\n")
-                archive.writestr("ripr_rs-0.11.0a1.dist-info/WHEEL", "Tag: py3-none-manylinux_2_34_x86_64\n")
+                archive.writestr("ripr_rs-0.11.0a1.dist-info/WHEEL",
+                                 "Wheel-Version: 1.0\nRoot-Is-Purelib: false\nTag: py3-none-manylinux_2_34_x86_64\n")
             wheel.unlink()
             receipt["wheel_filename"] = new_wheel.name
             receipt["wheel_sha256"] = self.identity["wheel_sha256"] = hashlib.sha256(new_wheel.read_bytes()).hexdigest()
@@ -186,21 +198,41 @@ class AdmissionTests(unittest.TestCase):
     def test_rejects_metadata_even_with_matching_digest(self):
         for member, content in [("METADATA", "Name: other\nVersion: 0.11.0rc1\n"),
                                 ("METADATA", "Name: ripr-rs\nVersion: 9.0.0rc1\n"),
-                                ("WHEEL", "Tag: py3-none-any\n")]:
+                                ("WHEEL", "Wheel-Version: 1.0\nTag: py3-none-any\n")]:
             with self.subTest(member=member, content=content), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 wheel, receipt = self.fixture(root)
-                with zipfile.ZipFile(wheel) as archive:
-                    entries = {name: archive.read(name) for name in archive.namelist()}
-                entries[f"ripr_rs-0.11.0rc1.dist-info/{member}"] = content.encode()
-                with zipfile.ZipFile(wheel, "w") as archive:
-                    for name, data in entries.items():
-                        archive.writestr(name, data)
-                digest = hashlib.sha256(wheel.read_bytes()).hexdigest()
-                receipt["wheel_sha256"] = self.identity["wheel_sha256"] = digest
-                (root / "qualification.json").write_text(json.dumps(receipt))
+                self.replace_wheel_member(wheel, receipt, member, content)
                 with self.assertRaises(ValueError):
                     admission.stage_wheel(root, root / "dist", self.identity, 2)
+
+    def test_accepts_compatible_wheel_format_minor_version(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            wheel, receipt = self.fixture(root)
+            self.replace_wheel_member(wheel, receipt, "WHEEL",
+                                      "Wheel-Version: 1.1\nRoot-Is-Purelib: false\n"
+                                      "Tag: py3-none-manylinux_2_34_x86_64\n")
+            admission.stage_wheel(root, root / "dist", self.identity, 2)
+            self.assertEqual((root / "dist" / wheel.name).read_bytes(), wheel.read_bytes())
+
+    def test_rejects_unusable_wheel_format_before_staging(self):
+        # Keep the receipt and bytes consistent, so only WHEEL's format header
+        # discriminates. These fixtures never execute a native payload.
+        for headers in ["", "Wheel-Version: invalid\n", "Wheel-Version: 2.0\n",
+                        "Wheel-Version: 0.0\n", "Wheel-Version: 1.0.0\n",
+                        "Wheel-Version: 1.0\nWheel-Version: 1.0\n",
+                        "Wheel-Version: 1.0\nWheel-Version: 2.0\n"]:
+            with self.subTest(headers=headers), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                wheel, receipt = self.fixture(root)
+                self.replace_wheel_member(wheel, receipt, "WHEEL",
+                                          headers + "Root-Is-Purelib: false\n"
+                                          "Tag: py3-none-manylinux_2_34_x86_64\n")
+                destination = root / "dist"
+                with self.assertRaisesRegex(ValueError, "Wheel-Version"):
+                    admission.stage_wheel(root, destination, self.identity, 2)
+                self.assertFalse(destination.exists(), "rejection must precede staging")
 
     def test_rejects_extra_wheels_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
