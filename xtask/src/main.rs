@@ -15073,6 +15073,7 @@ fn check_output_contracts() -> Result<(), String> {
     let swarm_ingest = read_text_lossy(Path::new("crates/ripr/src/output/swarm_ingest.rs"))?;
     let mut source_promotion_resolved_tree = String::new();
     for path in [
+        "xtask/src/policy/file_policy_producer.rs",
         "xtask/src/reports/source_promotion_validate_resolved_tree.rs",
         "xtask/src/reports/source_promotion_validate_resolved_tree/core.rs",
         "xtask/src/reports/source_promotion_validate_resolved_tree/validation.rs",
@@ -15226,7 +15227,7 @@ fn check_output_contracts() -> Result<(), String> {
             | "source_promotion_command_state"
             | "source_promotion_path_role" => {
                 require_contract_value(
-                    "xtask/src/reports/source_promotion_validate_resolved_tree/",
+                    "xtask resolved-tree validator and file-policy producer sources",
                     &source_promotion_resolved_tree,
                     value,
                     kind,
