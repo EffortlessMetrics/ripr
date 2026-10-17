@@ -1487,7 +1487,10 @@ fn read_vsix_inventory(vsix_path: &Path) -> Result<Vec<VsixEntry>, String> {
             )
         })?;
         entries.push(VsixEntry {
-            name: member.name().to_string(),
+            name: member
+                .name()
+                .map_err(|err| format!("failed to read archive member name: {err}"))?
+                .into_owned(),
             size: member.size(),
             compressed_size: member.compressed_size(),
         });
@@ -1574,7 +1577,10 @@ fn read_vsix_catalog(vsix_path: &Path) -> Result<Vec<u8>, String> {
                 vsix_path.display()
             )
         })?;
-        let name = member.name().to_string();
+        let name = member
+            .name()
+            .map_err(|err| format!("failed to read archive member name: {err}"))?
+            .into_owned();
         if name == "extension/distribution.json" {
             if found.is_some() {
                 return Err(format!(
@@ -1712,10 +1718,13 @@ fn stage_vscode_test_server_archive(
     let mut member = zip
         .by_index(0)
         .map_err(|err| format!("failed to read archive member: {err}"))?;
-    if Path::new(member.name()).file_name() != Some(executable_name) {
+    let member_name = member
+        .name()
+        .map_err(|err| format!("failed to read archive member name: {err}"))?
+        .into_owned();
+    if Path::new(&member_name).file_name() != Some(executable_name) {
         return Err(format!(
-            "VS Code server proof archive member `{}` did not match the built executable",
-            member.name()
+            "VS Code server proof archive member `{member_name}` did not match the built executable"
         ));
     }
     let executable = extracted.join(executable_name);
