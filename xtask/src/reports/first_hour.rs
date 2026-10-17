@@ -128,25 +128,34 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     Ok(sha256_hex(&bytes))
 }
 
-/// Base directory for harness-owned staging: the process temp directory
-/// unless it sits inside the enclosing Cargo workspace (observed when
-/// `TMPDIR` points at a repo-local target dir), in which case the user's
-/// home cache. An extracted candidate staged inside the workspace would
-/// be discovered as a member and refused by `cargo install`.
+/// Prefer the configured process temp directory. Cargo installation must not
+/// discover an enclosing workspace, so a temp inside one uses the existing
+/// parent above the outermost workspace instead. Only an exclusively created
+/// child of that base is owned/cleaned by the harness; the base is never adopted.
+/// Resolve symlinks before membership checks and refuse invalid temp roots.
+/// HOME is not a staging authority, and no fallback changes its permissions.
 fn staging_base() -> Result<PathBuf, String> {
     let temp = std::env::temp_dir();
-    let workspace = std::env::current_dir()
-        .ok()
-        .and_then(|cwd| enclosing_workspace_root(&cwd));
-    match workspace {
-        Some(root) if temp.starts_with(&root) => std::env::var_os("HOME")
-            .map(PathBuf::from)
-            .map(|home| home.join(".cache").join("ripr-first-hour"))
-            .ok_or_else(|| {
-                "temp dir sits inside the cargo workspace and HOME is unset".to_string()
-            }),
-        _ => Ok(temp),
+    let mut base = std::fs::canonicalize(&temp)
+        .map_err(|error| format!("canonicalize staging temp `{}`: {error}", temp.display()))?;
+    if !base.is_dir() {
+        return Err(format!(
+            "staging temp `{}` is not a directory",
+            temp.display()
+        ));
     }
+    while let Some(workspace) = enclosing_workspace_root(&base)? {
+        base = workspace
+            .parent()
+            .ok_or_else(|| {
+                format!(
+                    "workspace `{}` has no outside staging parent",
+                    workspace.display()
+                )
+            })?
+            .to_path_buf();
+    }
+    Ok(base)
 }
 
 fn unix_epoch_secs() -> u64 {
@@ -178,8 +187,9 @@ struct Harness {
 }
 
 /// Workspace root enclosing `dir`, if any: the nearest ancestor holding a
-/// manifest that declares `[workspace]`.
-fn enclosing_workspace_root(dir: &Path) -> Option<PathBuf> {
+/// manifest with a workspace table, including implicit tables and comments.
+/// An unreadable or malformed manifest is not evidence of safe isolation.
+fn enclosing_workspace_root(dir: &Path) -> Result<Option<PathBuf>, String> {
     let mut current = if dir.is_file() {
         dir.parent().map(Path::to_path_buf)
     } else {
@@ -187,15 +197,32 @@ fn enclosing_workspace_root(dir: &Path) -> Option<PathBuf> {
     };
     while let Some(candidate) = current {
         let manifest = candidate.join("Cargo.toml");
-        if manifest.is_file()
-            && let Ok(text) = std::fs::read_to_string(&manifest)
-            && text.lines().any(|line| line.trim() == "[workspace]")
-        {
-            return Some(candidate);
+        match std::fs::read_to_string(&manifest) {
+            Ok(text) => {
+                let document: toml::Table = toml::from_str(&text).map_err(|error| {
+                    format!("parse staging ancestor `{}`: {error}", manifest.display())
+                })?;
+                if let Some(workspace) = document.get("workspace") {
+                    if !workspace.is_table() {
+                        return Err(format!(
+                            "staging ancestor `{}` has a non-table workspace",
+                            manifest.display()
+                        ));
+                    }
+                    return Ok(Some(candidate));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(format!(
+                    "read staging ancestor `{}`: {error}",
+                    manifest.display()
+                ));
+            }
         }
         current = candidate.parent().map(Path::to_path_buf);
     }
-    None
+    Ok(None)
 }
 
 /// Absolute, lexically normalized form of a caller-supplied path for
@@ -249,14 +276,11 @@ impl Harness {
         Self::owned_staging_in(self, &base, label)
     }
 
-    /// Staging creation under an explicit base, so tests can prove a
-    /// not-yet-existing base (the home-cache fallback on a fresh runner) is
-    /// created, not assumed.
+    /// Staging creation under an explicit base. The caller never adopts the
+    /// base itself; cleanup owns only the exclusively created child.
     fn owned_staging_in(harness: &mut Self, base: &Path, label: &str) -> Result<PathBuf, String> {
-        // The base itself (temp dir or home cache fallback) may not exist
-        // yet — the fallback is only constructed, never created. Creating
-        // it is safe: create_dir_all never deletes, and exclusivity below
-        // still applies to the candidate, never the base.
+        // Explicit callers may supply a missing base. Creating it never
+        // deletes anything; exclusivity and cleanup apply only to the child.
         std::fs::create_dir_all(base)
             .map_err(|error| format!("create {label} staging base: {error}"))?;
         for attempt in 0..100 {
@@ -3174,12 +3198,15 @@ mod tests {
         assert!(first != second);
         // A squatter the harness did not create is never removed: occupy a
         // neighbouring path and prove it survives staging creation.
-        let squatter = first
-            .parent()
-            .ok_or_else(|| "staging has no parent".to_string())?
-            .join("ripr-first-hour-squatter");
-        let _ = std::fs::remove_dir_all(&squatter);
-        std::fs::create_dir_all(&squatter).map_err(|error| format!("squatter: {error}"))?;
+        let mut other_owner = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let squatter = Harness::owned_staging_in(
+            &mut other_owner,
+            first.parent().ok_or("staging has no parent")?,
+            "squatter",
+        )?;
         let sentinel = squatter.join("keep.txt");
         std::fs::write(&sentinel, b"not-ours").map_err(|error| format!("sentinel: {error}"))?;
         let _third = harness.owned_staging("exclusive")?;
@@ -3191,16 +3218,15 @@ mod tests {
         assert!(!first.exists());
         assert!(!second.exists());
         assert!(squatter.exists());
-        let _ = std::fs::remove_dir_all(&squatter);
+        drop(other_owner);
+        assert!(!squatter.exists());
         Ok(())
     }
 
     #[test]
     fn staging_creates_a_missing_base_instead_of_assuming_it() -> Result<(), String> {
-        // The home-cache fallback on a fresh runner does not exist yet;
-        // exclusive creation must build the base, or every later step fails
-        // with a staging error that masks the real work (observed on the
-        // hosted lane: hostile-archive test failed with a staging error).
+        // Explicit fixture callers can supply a missing base. Exclusive
+        // creation must build it without adopting the shared base for cleanup.
         let missing = std::env::temp_dir().join(format!(
             "ripr-first-hour-missing-base-{}",
             std::process::id()
@@ -3222,12 +3248,251 @@ mod tests {
     fn staging_base_never_sits_inside_the_enclosing_workspace() -> Result<(), String> {
         let base = staging_base()?;
         let cwd = std::env::current_dir().map_err(|error| format!("current dir: {error}"))?;
-        if let Some(root) = enclosing_workspace_root(&cwd) {
+        if let Some(root) = enclosing_workspace_root(&cwd)? {
             assert!(
                 !base.starts_with(&root),
                 "staging `{}` sits inside workspace `{}`",
                 base.display(),
                 root.display()
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn staging_environment_preserves_workspace_isolation_without_home() -> Result<(), String> {
+        const PROBE: &str = "RIPR_FIRST_HOUR_STAGING_PROBE";
+        if let Some(root) = std::env::var_os(PROBE) {
+            let root = PathBuf::from(root);
+            let expected_error = std::env::var("RIPR_FIRST_HOUR_STAGING_ERROR")
+                .map_err(|error| format!("probe error expectation: {error}"))?;
+            let mut harness = Harness {
+                roots: Vec::new(),
+                ledger: Vec::new(),
+            };
+            if expected_error.is_empty() {
+                let expected = std::env::var_os("RIPR_FIRST_HOUR_STAGING_BASE")
+                    .ok_or("probe staging expectation missing")?;
+                let expected = std::fs::canonicalize(expected)
+                    .map_err(|error| format!("canonical probe expectation: {error}"))?;
+                assert_eq!(staging_base()?, expected);
+                let owned = harness.owned_staging("environment-probe")?;
+                assert_eq!(owned.parent(), Some(expected.as_path()));
+                assert!(enclosing_workspace_root(&owned)?.is_none());
+                std::fs::write(owned.join("owned.txt"), b"disposable")
+                    .map_err(|error| format!("write owned marker: {error}"))?;
+                drop(harness);
+                assert!(!owned.exists());
+                assert!(expected.is_dir());
+
+                // Exercise normal command dispatch through archive admission,
+                // without a Cargo install or a substituted product binary.
+                let args = [
+                    "first-hour".to_string(),
+                    "--crate".to_string(),
+                    root.join("split.crate").to_string_lossy().into_owned(),
+                    "--prefix".to_string(),
+                    root.join("prefix").to_string_lossy().into_owned(),
+                    "--out".to_string(),
+                    root.join("receipt").to_string_lossy().into_owned(),
+                    "--fixture-root".to_string(),
+                    root.join("fixtures").to_string_lossy().into_owned(),
+                ];
+                let error = refusal_of(crate::dispatch::execute(crate::XtaskCommand::parse(args)))?;
+                assert!(error.contains("outside expected root"), "{error}");
+                for name in ["prefix", "receipt", "fixtures"] {
+                    assert!(!root.join(name).exists());
+                }
+            } else {
+                let error = refusal_of(staging_base())?;
+                assert!(error.contains(&expected_error), "{error}");
+                let error = refusal_of(harness.owned_staging("invalid-temp"))?;
+                assert!(error.contains(&expected_error), "{error}");
+            }
+            println!("first-hour staging environment observed");
+            return Ok(());
+        }
+
+        let _cwd_guard = crate::acquire_test_cwd_read_guard();
+        let mut base = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        while let Some(workspace) = enclosing_workspace_root(&base)? {
+            base = workspace
+                .parent()
+                .ok_or("test workspace has no outside parent")?
+                .to_path_buf();
+        }
+        let mut harness = Harness {
+            roots: Vec::new(),
+            ledger: Vec::new(),
+        };
+        let root = Harness::owned_staging_in(&mut harness, &base, "environment-fixture")?;
+        let outer = root.join("outer-workspace");
+        let nested = outer.join("nested-workspace");
+        let inside = nested.join("target").join("check-pr");
+        let external = root.join("external-temp");
+        let caller = root.join("caller");
+        let commented = root.join("comment-workspace").join("target");
+        let malformed = root.join("malformed-workspace").join("target");
+        let invalid_workspace = root.join("invalid-workspace").join("target");
+        for dir in [
+            &inside,
+            &external,
+            &caller,
+            &commented,
+            &malformed,
+            &invalid_workspace,
+        ] {
+            std::fs::create_dir_all(dir).map_err(|error| format!("probe directory: {error}"))?;
+        }
+        std::fs::write(outer.join("Cargo.toml"), "[workspace]\n")
+            .map_err(|error| format!("outer workspace: {error}"))?;
+        std::fs::write(
+            root.join("comment-workspace").join("Cargo.toml"),
+            "[workspace] # enclosing workspace\n",
+        )
+        .map_err(|error| format!("commented workspace: {error}"))?;
+        std::fs::write(
+            nested.join("Cargo.toml"),
+            "[workspace.metadata]\nprobe = true\n",
+        )
+        .map_err(|error| format!("nested workspace: {error}"))?;
+        std::fs::write(
+            root.join("malformed-workspace").join("Cargo.toml"),
+            "[workspace\n",
+        )
+        .map_err(|error| format!("malformed workspace: {error}"))?;
+        std::fs::write(
+            root.join("invalid-workspace").join("Cargo.toml"),
+            "workspace = false\n",
+        )
+        .map_err(|error| format!("invalid workspace: {error}"))?;
+        let unavailable_home = root.join("home-is-a-file");
+        std::fs::write(&unavailable_home, b"not a home directory")
+            .map_err(|error| format!("nonusable home fixture: {error}"))?;
+        let invalid_temp = root.join("temp-is-a-file");
+        std::fs::write(&invalid_temp, b"not a temporary directory")
+            .map_err(|error| format!("invalid temp fixture: {error}"))?;
+        let file = std::fs::File::create(root.join("split.crate"))
+            .map_err(|error| format!("create split archive: {error}"))?;
+        let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+        let mut archive = tar::Builder::new(encoder);
+        for name in ["first/Cargo.toml", "second/member"] {
+            let bytes = b"fixture";
+            let mut header = tar::Header::new_gnu();
+            header.set_size(bytes.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            archive
+                .append_data(&mut header, name, &bytes[..])
+                .map_err(|error| format!("split archive member: {error}"))?;
+        }
+        archive
+            .into_inner()
+            .map_err(|error| format!("finish split tar: {error}"))?
+            .finish()
+            .map_err(|error| format!("finish split gzip: {error}"))?;
+        let mut cases = vec![
+            (external.clone(), nested.clone(), external.clone(), ""),
+            (inside.clone(), nested.clone(), root.clone(), ""),
+            (inside.clone(), caller.clone(), root.clone(), ""),
+            (commented, caller.clone(), root.clone(), ""),
+            (
+                malformed,
+                caller.clone(),
+                root.clone(),
+                "parse staging ancestor",
+            ),
+            (
+                invalid_workspace,
+                caller.clone(),
+                root.clone(),
+                "non-table workspace",
+            ),
+            (
+                invalid_temp,
+                caller.clone(),
+                root.clone(),
+                "not a directory",
+            ),
+            (
+                root.join("missing-temp"),
+                caller.clone(),
+                root.clone(),
+                "canonicalize staging temp",
+            ),
+        ];
+        #[cfg(unix)]
+        {
+            let alias = root.join("workspace-temp-alias");
+            std::os::unix::fs::symlink(&inside, &alias)
+                .map_err(|error| format!("temp symlink: {error}"))?;
+            cases.push((alias, caller, root.clone(), ""));
+        }
+        // Keep the vector mutable on every platform without a platform-specific
+        // lint exception; the final case also pins a valid temp containing dots.
+        cases.push((
+            external.join("..").join("external-temp"),
+            nested,
+            external,
+            "",
+        ));
+        let executable = std::env::current_exe()
+            .map_err(|error| format!("locate staging test process: {error}"))?;
+        let args = [
+            "--exact".to_string(),
+            "reports::first_hour::tests::staging_environment_preserves_workspace_isolation_without_home".to_string(),
+            "--nocapture".to_string(),
+            "--test-threads=1".to_string(),
+        ];
+        for (temp, cwd, expected, error) in cases {
+            let env = [
+                (PROBE, root.to_string_lossy().into_owned()),
+                (
+                    "RIPR_FIRST_HOUR_STAGING_BASE",
+                    expected.to_string_lossy().into_owned(),
+                ),
+                ("RIPR_FIRST_HOUR_STAGING_ERROR", error.to_string()),
+                ("TMPDIR", temp.to_string_lossy().into_owned()),
+                ("TEMP", temp.to_string_lossy().into_owned()),
+                ("TMP", temp.to_string_lossy().into_owned()),
+                ("HOME", unavailable_home.to_string_lossy().into_owned()),
+            ];
+            let env_refs = env
+                .iter()
+                .map(|(name, value)| (*name, value.as_str()))
+                .collect::<Vec<_>>();
+            let output = run::capture_output_in_dir_with_envs(
+                &executable.to_string_lossy(),
+                &args,
+                &cwd,
+                "first-hour staging environment",
+                &env_refs,
+                &[],
+            )?;
+            assert!(
+                output.status.success(),
+                "temp={} cwd={}\n{}\n{}",
+                temp.display(),
+                cwd.display(),
+                output.stdout,
+                output.stderr
+            );
+            assert!(
+                output
+                    .stdout
+                    .contains("first-hour staging environment observed"),
+                "{}",
+                output.stdout
+            );
+            assert!(
+                output.stdout.contains("1 passed; 0 failed"),
+                "{}",
+                output.stdout
+            );
+            assert_eq!(
+                std::fs::read(&unavailable_home)
+                    .map_err(|error| format!("home fixture survives: {error}"))?,
+                b"not a home directory"
             );
         }
         Ok(())

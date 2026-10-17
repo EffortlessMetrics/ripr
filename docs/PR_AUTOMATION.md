@@ -24,6 +24,16 @@ reading raw logs.
 
 ## Current Commands
 
+The installed first-hour harness stages package extraction under the configured
+existing temporary directory when it is outside Cargo workspaces. If that temp
+directory is inside a workspace, it selects the existing parent above the
+outermost enclosing workspace. Paths are resolved before selection, including
+symlinks. Only a fresh, exclusively created child is owned and cleaned; the
+shared base is retained. A missing or non-directory temp, unreadable or malformed
+ancestor manifest, or unwritable staging base is refused explicitly. Staging
+does not fall back to `HOME` or change permissions. This also applies when normal
+`check-pr`/`ci-full` commands configure a repository-local temp directory.
+
 The current repo automation surface is:
 
 ```bash
