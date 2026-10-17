@@ -170,7 +170,11 @@ fn run_required_command(
     index: usize,
     logs_dir: &Path,
     source_parent: &str,
+    producer: &mut Option<Value>,
 ) -> Value {
+    let deadline = Instant::now() + COMMAND_TIMEOUT;
+    let producer_path = logs_dir.join("file-policy-test-producer.json");
+    let producer_path_text = producer_path.to_string_lossy();
     let args = vec![command.to_string()];
     let output = capture_output_in_dir_with_timeout_bounded(
         checker,
@@ -179,6 +183,7 @@ fn run_required_command(
             ("GIT_NO_REPLACE_OBJECTS", "1"),
             ("RIPR_SOURCE_PROMOTION_TRUSTED_CHECKER_SHA", source_parent),
             ("RIPR_SOURCE_PROMOTION_VALIDATION", "1"),
+            (crate::policy::file_policy_producer::PRODUCER_OUTPUT_ENV, producer_path_text.as_ref()),
         ],
         root,
         COMMAND_TIMEOUT,
@@ -217,6 +222,17 @@ fn run_required_command(
                 .as_ref()
                 .is_some_and(|status| status.success())
             {
+                if command == "check-file-policy" {
+                    let verified = (|| {
+                        let policy_path = root.join("policy/non-rust-allowlist.toml");
+                        let commands = crate::read_file_policy_test_commands(policy_path.to_str().ok_or("file-policy path is not UTF-8")?)?;
+                        crate::policy::file_policy_producer::verify(&producer_path, root, source_parent, &crate::policy::file_policy_producer::checker_digest(checker, deadline)?, &commands, deadline)
+                    })();
+                    match verified {
+                        Ok(summary) => *producer = Some(summary),
+                        Err(reason) => return command_receipt(command, "unavailable", exit_code, Some(&evidence), Some(&reason)),
+                    }
+                }
                 command_receipt(command, "passed", exit_code, Some(&evidence), None)
             } else {
                 command_receipt(

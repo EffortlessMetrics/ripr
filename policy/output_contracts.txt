@@ -101,6 +101,7 @@ value_context|function_argument|Activation value context.
 value_context|return_value|Activation value context.
 value_context|table_row|Activation value context.
 value_context|unknown|Activation value context.
+source_promotion_resolved_tree_schema|ripr.file_policy_test_producer.v1|Indexed source-owned Cargo enumeration producer attestation.
 source_promotion_resolved_tree_schema|ripr.source_promotion_resolved_tree_validation.v1|Canonical source-trusted reviewed-tree validation receipt schema.
 source_promotion_resolved_tree_status|rejected|Reviewed tree is ineligible for direct-J construction.
 source_promotion_resolved_tree_status|validated|Every required source-governed command passed for the exact bound tree and sidecars.

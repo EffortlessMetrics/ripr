@@ -17,7 +17,12 @@ const TEST_COVERED_BY_ENUMERATION_TIMEOUT: Duration = Duration::from_mins(5);
 pub(crate) fn check_file_policy() -> Result<(), String> {
     let policy_path = "policy/non-rust-allowlist.toml";
     let allowlist = read_file_policy_allowlist(policy_path)?;
-    validate_test_covered_by(policy_path, &read_file_policy_test_commands(policy_path)?)?;
+    let commands = read_file_policy_test_commands(policy_path)?;
+    if std::env::var("RIPR_SOURCE_PROMOTION_VALIDATION").as_deref() == Ok("1") {
+        super::file_policy_producer::enumerate(&commands)?;
+    } else {
+        validate_test_covered_by(policy_path, &commands)?;
+    }
     let mut violations = Vec::new();
 
     for path in collect_files(Path::new("."))? {
@@ -96,7 +101,7 @@ fn map_test_covered_by_enumeration_output(output: TimedOutput) -> (bool, String,
     )
 }
 
-fn validate_test_covered_by_with(
+pub(super) fn validate_test_covered_by_with(
     path: &str,
     commands: &[(usize, String)],
     mut enumerate: impl FnMut(&[String]) -> Result<(bool, String, String), String>,

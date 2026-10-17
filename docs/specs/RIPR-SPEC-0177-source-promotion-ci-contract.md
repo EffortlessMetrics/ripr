@@ -465,7 +465,32 @@ control.
 No automatic merge, publication, release, tag, signing, secret use, settings,
 branch-protection mutation, ref mutation, or product-correctness claim.
 
+### File-policy enumeration producer identity
+
+The governed file-policy command retains all ordered test-valued ledger
+references and runs every original Cargo test/list invocation inside its
+existing 180-second bound. A clean live compile-time checker checkout at the
+exact source parent and complete reviewed tree may supply Cargo's physical
+source root. An initially ineligible source anchor uses the materialized
+reviewed tree. Selection is made once; source, lock, configuration, tool or
+artifact movement rejects the complete producer without merging fallback
+results. No preparation stage or timeout transfer is permitted.
+
+The indexed `ripr.file_policy_test_producer.v1` sidecar records real Cargo
+output, actual arguments, nonzero selected tests, producer/subject identity,
+compiler records, executable and dependency-file digests, and bounded logs.
+Its environment-specific physical root is explicit. The parent independently
+checks the allowed root, exact references, current Cargo metadata and tools,
+listing/graph consistency, and all evidence bytes within the same deadline.
+`test_enumeration_producer` binds the verified sidecar in the primary receipt;
+missing, stale or mismatched evidence rejects construction eligibility.
+Cold/hybrid compilation can still reject at the unchanged bound. Builds using
+the producer target directory are serial.
+
 ## Test Mapping
+
+Producer identity and stale/missing/mismatched controls live in
+`xtask/src/policy/file_policy_producer_tests.rs`.
 
 Executable proof lives in
 `xtask/src/command.rs::tests::source_promotion_workflow_is_exact_head_and_read_only`,

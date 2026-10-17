@@ -337,6 +337,20 @@ fn read_indexed_packet(
         );
     }
 
+    if expected_schema == RESOLVED_TREE_PACKET_SCHEMA && expected_status == Some("validated") {
+        let receipt: Value = serde_json::from_slice(&files.get(required_report).ok_or("missing validation receipt")?.contents)
+            .map_err(|error| format!("malformed validation receipt: {error}"))?;
+        let summary = &receipt["test_enumeration_producer"];
+        let path = summary["path"].as_str().ok_or("missing file-policy producer path")?;
+        let producer = files.get(path).ok_or("validation packet omitted its indexed file-policy producer")?;
+        if summary["sha256"].as_str() != Some(producer.sha256.as_str()) {
+            return Err("indexed file-policy producer differs from validation receipt".to_string());
+        }
+        crate::policy::file_policy_producer::verify_retained(summary, &producer.contents, |path| {
+            files.get(path).map(|file| file.contents.clone()).ok_or_else(|| format!("producer evidence is not indexed: {path}"))
+        })?;
+    }
+
     if !files.contains_key(required_report) {
         return Err(format!(
             "packet is missing required report {required_report}"

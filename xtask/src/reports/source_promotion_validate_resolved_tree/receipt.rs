@@ -55,6 +55,7 @@ const RECEIPT_FIELDS: &[&str] = &[
     "materialization",
     "required_command_catalog",
     "commands",
+    "test_enumeration_producer",
     "repository_observation",
     "packet_contract",
     "disposable_git_object_write_attempted",
@@ -171,6 +172,13 @@ pub(crate) fn validate_resolved_tree_receipt_contract(
             .is_some_and(|value| string_catalog_is_exact(value, NON_CLAIMS))
     {
         return Err("resolved-tree receipt has non-canonical claim catalogs".to_string());
+    }
+    let producer = &report["test_enumeration_producer"];
+    if !producer.is_null() && !crate::policy::file_policy_producer::summary_is_valid(producer, report) {
+        return Err("resolved-tree receipt has an incompatible test enumeration producer".to_string());
+    }
+    if expected_status == "validated" && producer.is_null() {
+        return Err("resolved-tree receipt is missing its test enumeration producer".to_string());
     }
     let preflight = &report["preflight"];
     let resolution = &report["resolution_manifest"];
@@ -454,6 +462,7 @@ fn state_earns_validated(state: &ValidationState) -> bool {
         && state.cleanup_failure_reason.is_none()
         && !state.ref_mutation_observed
         && !state.worktree_registry_changed
+        && state.test_enumeration_producer.as_ref().is_some_and(|value| crate::policy::file_policy_producer::summary_is_valid(value, &serde_json::json!({"source_parent": source, "reviewed_tree": tree, "trusted_checker": {"executable_sha256": state.checker_executable_sha256}, "materialization": {"disposable_commit": state.disposable_commit}})))
         && commands_are_terminal_green(&state.commands)
         && state.failure_reasons.is_empty()
 }
@@ -503,6 +512,7 @@ fn report_value(state: &ValidationState) -> Value {
         },
         "required_command_catalog": REQUIRED_COMMANDS,
         "commands": &state.commands,
+        "test_enumeration_producer": &state.test_enumeration_producer,
         "repository_observation": {
             "ref_mutation_observed": state.ref_mutation_observed,
             "worktree_registry_changed": state.worktree_registry_changed,

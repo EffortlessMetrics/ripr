@@ -42,6 +42,7 @@ fn source_promotion_output_contract_vocabulary_is_registered_and_checked() -> Re
 
     for value in [
         "ripr.source_promotion_resolved_tree_validation.v1",
+        "ripr.file_policy_test_producer.v1",
         "rejected",
         "validated",
         "failed",

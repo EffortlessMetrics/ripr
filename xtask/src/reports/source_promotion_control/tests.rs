@@ -295,6 +295,13 @@ pub(crate) mod source_promotion_control_tests {
             },
             "required_command_catalog": super::super::source_promotion_validate_resolved_tree::REQUIRED_COMMANDS,
             "commands": commands,
+            "test_enumeration_producer": {
+                "schema": "ripr.file_policy_test_producer.v1", "mode": "reviewed_tree_worktree",
+                "subject_tree": "3333333333333333333333333333333333333333",
+                "source_parent": identity.source_parent.as_str(), "checker_sha256": "c".repeat(64),
+                "producer_root": std::env::temp_dir(), "subject_head": "6".repeat(40), "references_sha256": "2".repeat(64),
+                "reference_count": 11, "path": "commands/file-policy-test-producer.json", "sha256": digest_bytes(b"test-only indexed producer fixture\n"), "complete": true
+            },
             "repository_observation": {
                 "ref_mutation_observed": false,
                 "worktree_registry_changed": false,
@@ -585,7 +592,13 @@ pub(crate) mod source_promotion_control_tests {
     ) -> Result<IndexedPacket, String> {
         fs::create_dir_all(root)
             .map_err(|error| format!("failed to create test packet directory: {error}"))?;
-        let report_bytes = write_test_json(&root.join(report_name), report, "test packet report")?;
+        let mut report = report.clone();
+        let producer_files = if schema == RESOLVED_TREE_PACKET_SCHEMA {
+            let (summary, files) = crate::policy::file_policy_producer::retained_fixture(&report)?;
+            report["test_enumeration_producer"] = summary;
+            files
+        } else { Vec::new() };
+        let report_bytes = write_test_json(&root.join(report_name), &report, "test packet report")?;
         let attempt_bytes = b"{}\n";
         fs::write(root.join("control-attempt.json"), attempt_bytes)
             .map_err(|error| format!("failed to write test attempt journal: {error}"))?;
@@ -599,7 +612,7 @@ pub(crate) mod source_promotion_control_tests {
             "exact_join_construction" => (CONSTRUCTION_TITLE, CONSTRUCTION_SUCCESS_CLAIM),
             _ => ("Test controller packet", "Test-only controller packet."),
         };
-        let markdown = render_control_markdown(title, report, claim_boundary)?;
+        let markdown = render_control_markdown(title, &report, claim_boundary)?;
         let markdown_bytes = markdown.as_bytes();
         fs::write(root.join(&markdown_name), markdown_bytes)
             .map_err(|error| format!("failed to write test packet Markdown: {error}"))?;
@@ -620,6 +633,11 @@ pub(crate) mod source_promotion_control_tests {
                 "sha256": digest_bytes(&report_bytes),
             }),
         ];
+        for (path, bytes) in producer_files {
+            if let Some(parent) = root.join(&path).parent() { fs::create_dir_all(parent).map_err(|error| error.to_string())?; }
+            fs::write(root.join(&path), &bytes).map_err(|error| error.to_string())?;
+            files.push(serde_json::json!({"path": path, "bytes": bytes.len(), "sha256": digest_bytes(&bytes)}));
+        }
         files.sort_by(|left, right| json_string(left, "path").cmp(&json_string(right, "path")));
         let index = serde_json::json!({
             "schema": schema,
@@ -639,14 +657,13 @@ pub(crate) mod source_promotion_control_tests {
         fs::create_dir_all(root.join("commands")).map_err(|error| {
             format!("failed to create validation command fixture directory: {error}")
         })?;
-        let report_bytes = write_test_json(
-            &root.join(VALIDATION_REPORT),
-            report,
-            "test validation report",
-        )?;
+        let mut report = report.clone();
+        let (summary, producer_files) = crate::policy::file_policy_producer::retained_fixture(&report)?;
+        report["test_enumeration_producer"] = summary;
+        let report_bytes = write_test_json(&root.join(VALIDATION_REPORT), &report, "test validation report")?;
         let markdown_name = "resolved-tree-validation.md";
         let markdown =
-            super::super::source_promotion_validate_resolved_tree::render_markdown(report)?;
+            super::super::source_promotion_validate_resolved_tree::render_markdown(&report)?;
         let markdown_bytes = markdown.as_bytes();
         fs::write(root.join(markdown_name), markdown_bytes)
             .map_err(|error| format!("failed to write test validation Markdown: {error}"))?;
@@ -662,6 +679,10 @@ pub(crate) mod source_promotion_control_tests {
                 "sha256": digest_bytes(markdown_bytes),
             }),
         ];
+        for (path, bytes) in producer_files {
+            fs::write(root.join(&path), &bytes).map_err(|error| error.to_string())?;
+            files.push(serde_json::json!({"path": path, "bytes": bytes.len(), "sha256": digest_bytes(&bytes)}));
+        }
         let commands = report
             .get("commands")
             .and_then(Value::as_array)

@@ -88,6 +88,12 @@ mod tests {
         state.checker_executable_sha256 = Some("f".repeat(64));
         state.materialized_tree = Some("c".repeat(40));
         state.disposable_commit = Some("1".repeat(40));
+        state.test_enumeration_producer = Some(serde_json::json!({
+            "schema": "ripr.file_policy_test_producer.v1", "mode": "reviewed_tree_worktree",
+            "subject_tree": "c".repeat(40), "source_parent": "a".repeat(40), "checker_sha256": "f".repeat(64),
+            "producer_root": std::env::temp_dir(), "subject_head": "1".repeat(40), "references_sha256": "2".repeat(64),
+            "reference_count": 11, "path": "commands/file-policy-test-producer.json", "sha256": "3".repeat(64), "complete": true
+        }));
         state.materialization_created = true;
         state.materialization_clean_before = true;
         state.materialization_clean_after = true;

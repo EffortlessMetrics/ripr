@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub(crate) const SOURCE_PROMOTION_VALIDATE_RESOLVED_TREE_SUBCOMMAND: &str =
     "validate-resolved-tree";
@@ -82,6 +82,7 @@ struct ValidationState {
     ref_mutation_observed: bool,
     worktree_registry_changed: bool,
     commands: Vec<Value>,
+    test_enumeration_producer: Option<Value>,
     failure_reasons: Vec<String>,
 }
 
@@ -104,6 +105,7 @@ impl ValidationState {
             cleanup_failure_reason: None,
             ref_mutation_observed: false,
             worktree_registry_changed: false,
+            test_enumeration_producer: None,
             commands: REQUIRED_COMMANDS
                 .iter()
                 .map(|command| {

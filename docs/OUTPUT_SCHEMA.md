@@ -16056,6 +16056,28 @@ This receipt proves only the named source-governed repository contracts for one
 exact reviewed tree. It does not construct J, qualify later product or editor
 surfaces, move source or swarm authority, or authorize release publication.
 
+The `test_enumeration_producer` field is null before a verified file-policy
+producer completes. A `validated` receipt requires a canonical summary with
+`schema`, `mode`, `subject_tree`, `source_parent`, `checker_sha256`,
+`producer_root`, `subject_head`, `references_sha256`, `reference_count`, `path`,
+`sha256`, and `complete`. It binds the indexed environment-specific
+`ripr.file_policy_test_producer.v1` sidecar at
+`commands/file-policy-test-producer.json`. `mode` is
+`exact_source_parent_checkout` or `reviewed_tree_worktree`; `producer_root`
+names the actual physical Cargo source root. Source mode requires the live
+compile-time checker source root to be clean at the exact parent and complete
+reviewed tree. Selection is made once and later movement rejects the gate.
+
+The sidecar retains every ordered ledger occurrence and its real Cargo
+arguments (with JSON diagnostics), actual listing and compiler graph,
+executable/dependency-file digests, exact subject and producer inputs, tool
+identities and bounded logs. All commands and independent verification share
+the existing 180-second file-policy command deadline. No separate preparation
+allowance is introduced. This evidence reports current Cargo production under
+serial build ownership; it does not grant candidate command authority or make
+a cold/hybrid graph fit the bound. Historical receipts without this producer
+binding cannot become current construction evidence. The current producer supports the ledger's default-feature test selections and ordinary root dev/test profiles. Compiler wrappers and profile overrides in environment, Cargo configuration, or per-package inheritance are explicitly unavailable.
+
 ## Source-promotion network-policy resolution receipt
 
 `cargo xtask source-promotion resolve-network-policy` writes the typed

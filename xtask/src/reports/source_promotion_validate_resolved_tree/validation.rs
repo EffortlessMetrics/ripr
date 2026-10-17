@@ -266,6 +266,7 @@ fn validate_materialized_tree(
             index,
             &logs_dir,
             &options.source_parent,
+            &mut state.test_enumeration_producer,
         );
         let passed = command_receipt_is_terminal_pass(&receipt, command);
         state.commands[index] = receipt;

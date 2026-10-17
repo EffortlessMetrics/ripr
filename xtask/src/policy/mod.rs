@@ -6,6 +6,7 @@ mod doc_roles;
 pub(crate) mod droid_review;
 mod executable_files;
 mod file_policy;
+pub(crate) mod file_policy_producer;
 mod local_context;
 mod network;
 mod no_panic;

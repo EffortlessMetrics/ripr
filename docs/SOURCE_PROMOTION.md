@@ -479,6 +479,30 @@ named repository-governance commands on one exact reviewed tree. It does not
 construct J, qualify product/editor behavior, or authorize merge or
 publication.
 
+For `check-file-policy`, all test-valued ledger references still execute their
+actual Cargo test/list commands within that command's existing 180-second
+bound. The checker selects its producer root once: its live compile-time source
+checkout is eligible only when clean, at the exact source parent, and identical
+to the complete reviewed Git tree. Otherwise Cargo runs in the disposable
+reviewed-tree checkout. This can reuse Cargo's current physical source-root
+build graph; it adds no preparation phase or transferable timeout allowance.
+A cold or hybrid graph can still exceed the bound and reject validation.
+
+The indexed environment-specific `commands/file-policy-test-producer.json`
+sidecar (`ripr.file_policy_test_producer.v1`) records the physical producer
+root, materialized subject identity, toolchain/config/environment/lock inputs,
+ordered references, actual arguments, Cargo graph records, executable and
+dependency-file digests, and bounded per-reference logs. Cargo remains the
+producer and performs its own fingerprint validation; a cached executable is
+never substituted for a Cargo invocation. Dependency-file source tokens and
+manifest-directory markers, when emitted, must match the selected source.
+Source or artifact movement after selection rejects the whole enumeration.
+The parent independently verifies the report, current metadata and tools, and
+all reference evidence within the same deadline. The primary receipt binds
+this sidecar through `test_enumeration_producer`; missing or incompatible
+producer evidence cannot earn `validated`. Build and enumeration are serial;
+concurrent writers to the same Cargo target directory are unsupported. The current producer supports the ledger's default-feature test selections and ordinary root dev/test profiles. Compiler wrappers and profile overrides in environment, Cargo configuration, or per-package inheritance are explicitly unavailable.
+
 Parent-comparative semantic policy decisions remain reviewer-owned inputs. For
 0.11.0, #1572 produces the exact network-ledger reconciliation and #1478 binds
 that receipt into the complete resolution manifest before this command runs the
