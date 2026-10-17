@@ -1,8 +1,8 @@
 //! #3534 source-role conformance corpus driver.
 //!
-//! Each case under `fixtures/source-role-corpus/cases/<name>/` pins the
+//! Each case under `tests/data/source-role-corpus/cases/<name>/` pins the
 //! producer-owned source-role facts for a point of the matrix documented in
-//! `fixtures/source-role-corpus/README.md`: file roles, executable-test
+//! `tests/data/source-role-corpus/README.md`: file roles, executable-test
 //! membership, helper demotion, cfg-variant equivalence, and lookalike
 //! rejection. The assertions ARE the expected facts; a producer change that
 //! flips any of them must be a deliberate spec-level decision.
@@ -11,40 +11,16 @@ use crate::analysis::facts::{RustIndex, build_index};
 use crate::analysis::rust_index::is_test_file;
 use crate::analysis::workspace::SourceRoleContext;
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-fn case_root(name: &str) -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data/source-role-corpus/cases")
-        .join(name)
-}
+#[path = "../../tests/support/source_role_fixture.rs"]
+mod fixture;
+use fixture::SourceRoleCase;
 
-fn case_files(root: &Path) -> Result<Vec<PathBuf>, String> {
-    let mut files = Vec::new();
-    fn walk(directory: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
-        let entries = fs::read_dir(directory)
-            .map_err(|error| format!("case directory {directory:?} unreadable: {error}"))?;
-        let mut collected: Vec<_> = entries.filter_map(Result::ok).collect();
-        collected.sort_by_key(|entry| entry.file_name());
-        for entry in collected {
-            let path = entry.path();
-            if path.is_dir() {
-                walk(&path, files)?;
-            } else {
-                files.push(path);
-            }
-        }
-        Ok(())
-    }
-    walk(root, &mut files)?;
-    Ok(files)
-}
-
-fn build_case(name: &str) -> Result<RustIndex, String> {
-    let root = case_root(name);
-    let files = case_files(&root)?;
-    build_index(&root, &files)
+fn build_case(name: &str) -> Result<(SourceRoleCase, RustIndex), String> {
+    let case = SourceRoleCase::load(name)?;
+    let index = build_index(case.root(), case.files())?;
+    Ok((case, index))
 }
 
 fn roles_by_name(index: &RustIndex) -> BTreeMap<String, String> {
@@ -67,7 +43,7 @@ fn test_names(index: &RustIndex) -> Vec<String> {
 
 #[test]
 fn production_lib_has_one_production_subject_and_no_executable_tests() -> Result<(), String> {
-    let index = build_case("production_lib")?;
+    let (_case, index) = build_case("production_lib")?;
     let roles = roles_by_name(&index);
     assert_eq!(
         roles.get("discount").map(String::as_str),
@@ -82,7 +58,7 @@ fn production_lib_has_one_production_subject_and_no_executable_tests() -> Result
 
 #[test]
 fn explicit_test_target_joins_executable_tests_and_stays_out_of_production() -> Result<(), String> {
-    let index = build_case("explicit_test_target")?;
+    let (_case, index) = build_case("explicit_test_target")?;
     assert_eq!(test_names(&index), vec!["discount_runs".to_string()]);
     let roles = roles_by_name(&index);
     assert_eq!(
@@ -106,7 +82,7 @@ fn explicit_test_target_joins_executable_tests_and_stays_out_of_production() -> 
 
 #[test]
 fn lookalike_test_named_file_in_src_is_a_production_subject() -> Result<(), String> {
-    let index = build_case("naming_lookalike")?;
+    let (_case, index) = build_case("naming_lookalike")?;
     // `src/price_test.rs` is named like a test file but carries no test
     // attributes and no `tests` root: a plain function there stays a
     // production subject, and the name alone cannot establish role.
@@ -122,7 +98,7 @@ fn lookalike_test_named_file_in_src_is_a_production_subject() -> Result<(), Stri
 
 #[test]
 fn cfg_test_variants_all_reach_executable_tests() -> Result<(), String> {
-    let index = build_case("cfg_variants")?;
+    let (_case, index) = build_case("cfg_variants")?;
     assert_eq!(
         test_names(&index),
         vec![

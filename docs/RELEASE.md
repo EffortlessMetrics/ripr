@@ -215,6 +215,13 @@ release and dogfood evidence. This does not change the installed binary or
 library API, but removing either surface is a release-contract change that must
 be reviewed against `cargo package -p ripr --list` and this document.
 
+The source-role corpus stores its four manifests as `Cargo.toml.fixture`:
+Cargo otherwise omits nested packages even under `tests/**`. Its loader copies
+only the ten required inputs to temporary cases and restores `Cargo.toml`.
+Run `cargo test --test source_role_corpus_package` from the extracted crate to
+check that closure and the materialized bytes. This focused content check does
+not qualify the complete archive test suite or installed binary.
+
 The example paths are enumerated rather than globbed as `examples/**` on
 purpose. `ripr` runs against the sample workspace during tests and writes a
 fact cache into `crates/ripr/examples/sample/target/`. That directory is

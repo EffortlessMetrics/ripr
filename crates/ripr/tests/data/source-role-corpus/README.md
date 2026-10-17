@@ -4,8 +4,11 @@ Retained inputs pinning the producer-owned source-role contract
 (RIPR-SPEC-0153) against consumer-side drift. Each `cases/<name>/`
 directory holds the source/manifest inputs; the expected producer facts
 live as assertions in
-`crates/ripr/src/analysis/source_role_corpus.rs`, which loads these
-directories verbatim through `facts::build_index`.
+`crates/ripr/src/analysis/source_role_corpus.rs`, which materializes the
+required inputs through `tests/support/source_role_fixture.rs` before calling
+`facts::build_index`. Manifests are stored as `Cargo.toml.fixture` so Cargo
+retains the case directories in the source archive, then restored to
+`Cargo.toml` in temporary cases without changing their bytes.
 
 ## Cases and the failure class each pins
 

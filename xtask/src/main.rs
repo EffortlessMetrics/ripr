@@ -36,6 +36,8 @@ mod evidence_promotion;
 mod evidence_quality;
 mod fixture_contracts;
 mod no_panic;
+#[cfg(test)]
+mod package_contents_tests;
 mod policy;
 mod product_gate_plan;
 mod public_api_surface;

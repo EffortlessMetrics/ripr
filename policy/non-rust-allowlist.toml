@@ -550,6 +550,15 @@ reason = "Fixture-backed base/head attribution rules for canonical evidence comp
 covered_by = ["cargo test -p ripr --test causal_delta_fixture", "cargo xtask check-file-policy"]
 
 [[allow]]
+glob = "crates/ripr/tests/data/source-role-corpus/cases/*/Cargo.toml.fixture"
+kind = "fixture_input"
+owner = "analysis-fixtures"
+surface = "fixtures"
+classification = "fixture"
+reason = "Inert corpus manifests prevent Cargo nested-package exclusion; the test loader restores their filenames in isolated cases."
+covered_by = ["cargo test -p xtask --bin xtask cargo_package_retains_exact_source_role_fixture_closure", "cargo test -p ripr --test source_role_corpus_package", "cargo test -p ripr --lib source_role_corpus"]
+
+[[allow]]
 glob = "tests/fixtures/source_promotion_contract/*.json"
 kind = "fixture_input"
 owner = "release/ci"

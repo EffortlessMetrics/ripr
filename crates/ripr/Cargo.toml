@@ -17,6 +17,8 @@ categories = ["development-tools", "development-tools::testing"]
 # against the sample workspace during tests and writes a fact cache there; that
 # residue is gitignored, so a wildcard include makes `cargo package` fail on an
 # uncommitted-files check.
+# Corpus manifests use Cargo.toml.fixture so Cargo does not omit their nested
+# packages from tests/**; the test loader restores Cargo.toml in temporary cases.
 include = [
   "src/**",
   "tests/**",

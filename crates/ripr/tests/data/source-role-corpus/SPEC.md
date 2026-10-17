@@ -8,7 +8,9 @@ Case directories under `cases/<name>/`, each a minimal crate slice with
 source and manifest inputs covering one point of the source-role matrix:
 ordinary production source, an explicit `[[test]]` target, a
 naming-lookalike file (`src/price_test.rs`) that is not a test target,
-and plain/conjunct/negated `cfg(test)` module variants.
+and plain/conjunct/negated `cfg(test)` module variants. Each manifest is stored
+as `Cargo.toml.fixture`; the test loader materializes the ten required inputs
+in temporary directories and restores the manifest filename to `Cargo.toml`.
 
 ## When
 
@@ -35,3 +37,12 @@ through `workspace::classify_with`.
 Consumer-side role re-derivation is gated separately by
 `cargo xtask check-rust-source-role-authority` (see the repository
 README in this directory for the mutation-discrimination mapping).
+
+The retained archive-content and materialization checks can run independently
+of repository-only unit-test inputs:
+
+```bash
+cargo test -p ripr --test source_role_corpus_package
+```
+
+Run that target from the extracted crate to check the actual retained inputs.
