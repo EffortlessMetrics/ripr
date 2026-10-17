@@ -78,3 +78,6 @@ fn materialized_source_role_cases_preserve_the_required_inputs() -> Result<(), S
     }
     Ok(())
 }
+
+#[path = "support/source_role_loader_closure.rs"]
+mod loader_closure;
