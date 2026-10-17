@@ -6,6 +6,14 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(target_os = "linux")]
+#[path = "run/linux_process_tree.rs"]
+mod linux_process_tree;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "run/nested_process_tests.rs"]
+mod nested_process_tests;
+
 /// Grace period for draining stdout/stderr pipes after a process-group kill.
 ///
 /// After `terminate_timed_process_tree` fires, any descendant that escaped the
@@ -842,10 +850,20 @@ fn wait_for_child_with_timeout(
         }
 
         if started.elapsed() >= timeout {
+            let settlement_started = Instant::now();
             let termination_requested = terminate_after_timeout(child, error_context)?;
+            let remaining = POST_KILL_DRAIN_GRACE.saturating_sub(settlement_started.elapsed());
+            if !wait_for_child_exit(child, remaining, error_context)? {
+                return Err(format!(
+                    "timed-out {error_context} did not become waitable within settlement grace"
+                ));
+            }
             let status = child
-                .wait()
-                .map_err(|err| format!("failed to finish timed-out {error_context}: {err}"))?;
+                .try_wait()
+                .map_err(|err| format!("failed to finish timed-out {error_context}: {err}"))?
+                .ok_or_else(|| {
+                    format!("timed-out {error_context} lost its observed exit status")
+                })?;
             return Ok(WaitOutcome {
                 status,
                 duration: started.elapsed(),
@@ -873,6 +891,14 @@ fn timeout_was_enforced(termination_requested: bool, _status: &ExitStatus) -> bo
 }
 
 fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<bool, String> {
+    terminate_after_timeout_using(child, error_context, terminate_timed_process_tree)
+}
+
+fn terminate_after_timeout_using(
+    child: &mut Child,
+    error_context: &str,
+    terminate_tree: impl FnOnce(&Child) -> Result<bool, String>,
+) -> Result<bool, String> {
     if child
         .try_wait()
         .map_err(|err| format!("failed to poll {error_context}: {err}"))?
@@ -880,7 +906,26 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
     {
         return Ok(false);
     }
-    let tree_terminated = terminate_timed_process_tree(child);
+    let settlement_started = Instant::now();
+    let tree_terminated = match terminate_tree(child) {
+        Ok(terminated) => terminated,
+        Err(reason) => {
+            // The tree helper also kills every group it stopped on a partial
+            // discovery failure. Reap our direct child before reporting that
+            // descendant settlement could not be established.
+            #[cfg(unix)]
+            let group_kill = signal_timed_process("-KILL", &format!("-{}", child.id()));
+            #[cfg(not(unix))]
+            let group_kill = false;
+            let kill = child.kill();
+            let remaining = POST_KILL_DRAIN_GRACE.saturating_sub(settlement_started.elapsed());
+            let settled = wait_for_child_exit(child, remaining, error_context)?;
+            let status = child.try_wait();
+            return Err(format!(
+                "failed to settle timed-out {error_context}: {reason}; original owned group kill: {group_kill}; direct child kill: {kill:?}; bounded reap completed: {settled}; direct child exit: {status:?}"
+            ));
+        }
+    };
     if tree_terminated {
         #[cfg(windows)]
         {
@@ -919,7 +964,6 @@ fn terminate_after_timeout(child: &mut Child, error_context: &str) -> Result<boo
     }
 }
 
-#[cfg(windows)]
 fn wait_for_child_exit(
     child: &mut Child,
     grace: Duration,
@@ -952,16 +996,15 @@ fn wait_for_child_exit(
     }
 }
 
-fn terminate_timed_process_tree(child: &Child) -> bool {
-    #[cfg(unix)]
+fn terminate_timed_process_tree(child: &Child) -> Result<bool, String> {
+    #[cfg(target_os = "linux")]
+    {
+        linux_process_tree::terminate(child.id(), POST_KILL_DRAIN_GRACE, signal_timed_process)
+    }
+    #[cfg(all(unix, not(target_os = "linux")))]
     {
         let group = format!("-{}", child.id());
-        let status = Command::new("kill")
-            .args(["-KILL", "--", group.as_str()])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-        status.is_ok_and(|status| status.success())
+        Ok(signal_timed_process("-KILL", &group))
     }
     #[cfg(windows)]
     {
@@ -971,14 +1014,47 @@ fn terminate_timed_process_tree(child: &Child) -> bool {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status();
-        status.is_ok_and(|status| status.success())
+        Ok(status.is_ok_and(|status| status.success()))
     }
     #[cfg(not(unix))]
     #[cfg(not(windows))]
     {
         let _ = child;
-        false
+        Ok(false)
     }
+}
+
+#[cfg(unix)]
+fn signal_timed_process(signal: &str, target: &str) -> bool {
+    let status = Command::new("kill")
+        .args([signal, "--", target])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+    status.is_ok_and(|status| status.success())
+}
+
+#[cfg(test)]
+fn spawn_timeout_test_child(
+    program: &str,
+    args: &[String],
+    envs: &[(&str, &str)],
+    independent_group: bool,
+) -> Result<Child, String> {
+    let mut command = Command::new(program);
+    command
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    if independent_group {
+        configure_timed_child_command(&mut command);
+    }
+    for (key, value) in envs {
+        command.env(key, value);
+    }
+    command
+        .spawn()
+        .map_err(|error| format!("spawn timeout control: {error}"))
 }
 
 fn read_stream<T: Read>(mut stream: T) -> Result<String, String> {
@@ -1191,7 +1267,6 @@ mod tests {
     use std::fs;
     use std::io::{Cursor, Read};
     use std::path::Path;
-    use std::process::{Command, Stdio};
     use std::sync::mpsc;
     use std::thread;
     use std::time::{Duration, Instant};
@@ -1671,12 +1746,8 @@ mod tests {
     #[test]
     fn terminate_after_timeout_returns_false_for_already_finished_child() -> Result<(), String> {
         let _cwd_guard = acquire_test_cwd_read_guard();
-        let mut child = Command::new("rustc")
-            .arg("--version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|err| format!("spawn rustc version: {err}"))?;
+        let mut child =
+            super::spawn_timeout_test_child("rustc", &["--version".to_string()], &[], true)?;
 
         loop {
             if child

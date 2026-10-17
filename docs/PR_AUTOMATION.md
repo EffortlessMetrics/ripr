@@ -296,6 +296,14 @@ which rejects generated target/sample build residue. Before writing the final
 report index, it also refreshes the deterministic suggested-fixes patch under
 `target/ripr/reports/`.
 
+On Linux, timed command cancellation settles rooted synchronous descendants,
+including nested command adapters that create another process group. The runner
+uses bounded process metadata snapshots to stop and discover owned groups before
+killing and confirming their exit. Incomplete discovery remains an explicit
+error, with best-effort cleanup of known owned work. This does not claim control
+of already daemonized/session-escaped processes or extend other platforms'
+process-tree guarantees. Command deadlines and policy enumeration stay unchanged.
+
 `repo-exposure-summary-report` is the ordinary repo-local summary route. It
 writes `target/ripr/reports/repo-exposure-summary.json` from
 `repo-exposure-summary-json` and avoids the per-seam evidence payloads carried
