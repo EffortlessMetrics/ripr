@@ -1,5 +1,12 @@
 use super::*;
 
+fn require_rejection<T>(result: Result<T, String>, context: &str) -> Result<(), String> {
+    match result {
+        Err(_) => Ok(()),
+        Ok(_) => Err(format!("{context} unexpectedly accepted")),
+    }
+}
+
 struct Fixture(PathBuf);
 impl Drop for Fixture {
     fn drop(&mut self) {
@@ -150,11 +157,17 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
     // The old physical-root strategy really executes all11 calls, but cannot
     // masquerade as the selected same-source producer.
     produce(&subject, &head, None, &legacy_output, &commands)?;
-    assert!(checked(&legacy_output, &subject, root, &head, &commands).is_err());
+    require_rejection(
+        checked(&legacy_output, &subject, root, &head, &commands),
+        stringify!(checked(&legacy_output, &subject, root, &head, &commands)),
+    )?;
     let evidence = root.join("evidence");
     fs::create_dir(&evidence).map_err(|error| error.to_string())?;
     let output = evidence.join("file-policy-test-producer.json");
-    assert!(checked(&output, &subject, root, &head, &commands).is_err());
+    require_rejection(
+        checked(&output, &subject, root, &head, &commands),
+        stringify!(checked(&output, &subject, root, &head, &commands)),
+    )?;
     produce(&subject, &head, Some(root), &output, &commands)?;
     let summary = checked(&output, &subject, root, &head, &commands)?;
     assert_eq!(summary["mode"], "exact_source_parent_checkout");
@@ -192,10 +205,10 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
             serde_json::to_vec(&altered).map_err(|error| error.to_string())?,
         )
         .map_err(|error| error.to_string())?;
-        assert!(
-            checked(&output, &subject, root, &head, &commands).is_err(),
-            "accepted {pointer}"
-        );
+        require_rejection(
+            checked(&output, &subject, root, &head, &commands),
+            &format!("accepted {pointer}"),
+        )?;
     }
     let mut missing = original.clone();
     missing["references"]
@@ -207,7 +220,10 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
         serde_json::to_vec(&missing).map_err(|error| error.to_string())?,
     )
     .map_err(|error| error.to_string())?;
-    assert!(checked(&output, &subject, root, &head, &commands).is_err());
+    require_rejection(
+        checked(&output, &subject, root, &head, &commands),
+        stringify!(checked(&output, &subject, root, &head, &commands)),
+    )?;
     fs::write(&output, &bytes).map_err(|error| error.to_string())?;
     let stdout_name = original["references"][0]["stdout_path"]
         .as_str()
@@ -220,18 +236,17 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
         "cargo test -p enumeration_subject --test causal_delta_fixture",
         "cargo test -p enumeration_subject --lib other_filter",
     ] {
-        assert!(
+        require_rejection(
             artifacts(
                 &stdout,
                 metadata,
                 root,
                 wrong_command,
                 &original["test_profile"],
-                None
-            )
-            .is_err(),
-            "accepted {wrong_command}"
-        );
+                None,
+            ),
+            &format!("accepted {wrong_command}"),
+        )?;
     }
     for field in ["features", "profile"] {
         let altered = stdout
@@ -251,46 +266,59 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
             })
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(
+        require_rejection(
             artifacts(
                 &altered,
                 metadata,
                 root,
                 &commands[0].1,
                 &original["test_profile"],
-                None
-            )
-            .is_err(),
-            "accepted altered {field}"
-        );
+                None,
+            ),
+            &format!("accepted altered {field}"),
+        )?;
     }
     let missing_build = stdout
         .lines()
         .filter(|line| !line.contains("build-finished"))
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(
+    require_rejection(
         artifacts(
             &missing_build,
             metadata,
             root,
             &commands[0].1,
             &original["test_profile"],
+            None,
+        ),
+        stringify!(artifacts(
+            &missing_build,
+            metadata,
+            root,
+            &commands[0].1,
+            &original["test_profile"],
             None
-        )
-        .is_err()
-    );
-    assert!(
+        )),
+    )?;
+    require_rejection(
         artifacts(
             &format!("{stdout}malformed producer record\n"),
             metadata,
             root,
             &commands[0].1,
             &original["test_profile"],
+            None,
+        ),
+        stringify!(artifacts(
+            &format!("{stdout}malformed producer record\n"),
+            metadata,
+            root,
+            &commands[0].1,
+            &original["test_profile"],
             None
-        )
-        .is_err()
-    );
+        )),
+    )?;
     let executable = Path::new(
         original["references"][0]["artifacts"][0]["executable"]
             .as_str()
@@ -311,17 +339,24 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
         .join("\n");
     assert_ne!(changed, dependency_bytes);
     fs::write(&depfile, changed).map_err(|error| error.to_string())?;
-    assert!(
+    require_rejection(
         artifacts(
             &stdout,
             metadata,
             root,
             &commands[0].1,
             &original["test_profile"],
+            None,
+        ),
+        stringify!(artifacts(
+            &stdout,
+            metadata,
+            root,
+            &commands[0].1,
+            &original["test_profile"],
             None
-        )
-        .is_err()
-    );
+        )),
+    )?;
     fs::write(&depfile, dependency_bytes).map_err(|error| error.to_string())?;
     let exe_bytes = fs::read(executable).map_err(|error| error.to_string())?;
     OpenOptions::new()
@@ -329,10 +364,16 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
         .open(executable)
         .and_then(|mut file| file.write_all(b"moved"))
         .map_err(|error| error.to_string())?;
-    assert!(checked(&output, &subject, root, &head, &commands).is_err());
+    require_rejection(
+        checked(&output, &subject, root, &head, &commands),
+        stringify!(checked(&output, &subject, root, &head, &commands)),
+    )?;
     fs::write(executable, exe_bytes).map_err(|error| error.to_string())?;
     fs::write(root.join("Cargo.lock"), "moved lock").map_err(|error| error.to_string())?;
-    assert!(checked(&output, &subject, root, &head, &commands).is_err());
+    require_rejection(
+        checked(&output, &subject, root, &head, &commands),
+        stringify!(checked(&output, &subject, root, &head, &commands)),
+    )?;
     git_ok(root, &["restore", "Cargo.lock"])?;
     git_ok(
         root,
@@ -348,7 +389,10 @@ fn actual_eleven_cargo_producers_bind_current_source_and_reject_stale_evidence()
             "same-tree HEAD movement",
         ],
     )?;
-    assert!(checked(&output, &subject, root, &head, &commands).is_err());
+    require_rejection(
+        checked(&output, &subject, root, &head, &commands),
+        stringify!(checked(&output, &subject, root, &head, &commands)),
+    )?;
     Ok(())
 }
 
@@ -382,7 +426,10 @@ fn real_zero_denominator_and_wrong_filter_are_rejected_with_retained_logs() -> R
         1,
         "cargo test -p enumeration_subject --lib absent_discriminator".to_string(),
     )];
-    assert!(produce(root, &head, Some(root), &output, &commands).is_err());
+    require_rejection(
+        produce(root, &head, Some(root), &output, &commands),
+        stringify!(produce(root, &head, Some(root), &output, &commands)),
+    )?;
     let report: Report =
         serde_json::from_slice(&fs::read(&output).map_err(|error| error.to_string())?)
             .map_err(|error| error.to_string())?;
@@ -408,7 +455,7 @@ fn source_selection_rejects_dirty_anchor_and_preserves_materialized_fallback() -
         "reviewed_tree_worktree"
     );
     assert_eq!(choose_root(root, &head, None)?.0, "reviewed_tree_worktree");
-    assert!(
+    require_rejection(
         verify_with_anchor(
             &root.join("missing"),
             root,
@@ -416,16 +463,27 @@ fn source_selection_rejects_dirty_anchor_and_preserves_materialized_fallback() -
             "",
             &commands(),
             Some(root),
+            Instant::now(),
+        ),
+        stringify!(verify_with_anchor(
+            &root.join("missing"),
+            root,
+            &head,
+            "",
+            &commands(),
+            Some(root),
             Instant::now()
-        )
-        .is_err()
-    );
+        )),
+    )?;
     fs::write(root.join("untracked-input"), "changed").map_err(|error| error.to_string())?;
-    assert!(choose_root(root, &head, Some(root)).is_err());
+    require_rejection(
+        choose_root(root, &head, Some(root)),
+        stringify!(choose_root(root, &head, Some(root))),
+    )?;
     Ok(())
 }
 
-pub(super) fn retained_fixture(receipt: &Value) -> Result<(Value, Vec<(String, Vec<u8>)>), String> {
+pub(super) fn retained_fixture(receipt: &Value) -> Result<FixturePacket, String> {
     let root = std::env::temp_dir().join("test-only-retained-cargo-producer");
     let target = serde_json::json!({"name": "fixture_package", "kind": ["lib"], "src_path": root.join("src/lib.rs"), "test": true});
     let profile = serde_json::json!({"opt_level": "0", "debuginfo": 2, "debug_assertions": true, "overflow_checks": true, "test": true});
@@ -538,7 +596,10 @@ fn indexed_producer_contract_rejects_malformed_missing_and_rebound_evidence() ->
             .ok_or_else(|| format!("missing indexed {path}"))
     };
     verify_retained(&summary, bytes, read)?;
-    assert!(verify_retained(&summary, b"indexed garbage", read).is_err());
+    require_rejection(
+        verify_retained(&summary, b"indexed garbage", read),
+        stringify!(verify_retained(&summary, b"indexed garbage", read)),
+    )?;
     let original: Value = serde_json::from_slice(bytes).map_err(|error| error.to_string())?;
     for (pointer, replacement) in [
         ("/complete", serde_json::json!(false)),
@@ -563,10 +624,10 @@ fn indexed_producer_contract_rejects_malformed_missing_and_rebound_evidence() ->
         let bytes = serde_json::to_vec(&altered).map_err(|error| error.to_string())?;
         let mut rebound = summary.clone();
         rebound["sha256"] = serde_json::json!(sha(&bytes));
-        assert!(
-            verify_retained(&rebound, &bytes, read).is_err(),
-            "accepted retained {pointer}"
-        );
+        require_rejection(
+            verify_retained(&rebound, &bytes, read),
+            &format!("accepted retained {pointer}"),
+        )?;
     }
     let mut missing = original;
     missing["references"]
@@ -576,17 +637,26 @@ fn indexed_producer_contract_rejects_malformed_missing_and_rebound_evidence() ->
     let bytes = serde_json::to_vec(&missing).map_err(|error| error.to_string())?;
     let mut rebound = summary.clone();
     rebound["sha256"] = serde_json::json!(sha(&bytes));
-    assert!(verify_retained(&rebound, &bytes, read).is_err());
-    assert!(
+    require_rejection(
+        verify_retained(&rebound, &bytes, read),
+        stringify!(verify_retained(&rebound, &bytes, read)),
+    )?;
+    require_rejection(
         verify_retained(
             &summary,
             files
                 .get("commands/file-policy-test-producer.json")
                 .ok_or("missing sidecar")?,
+            |_| Err("missing indexed log".to_string()),
+        ),
+        stringify!(verify_retained(
+            &summary,
+            files
+                .get("commands/file-policy-test-producer.json")
+                .ok_or("missing sidecar")?,
             |_| Err("missing indexed log".to_string())
-        )
-        .is_err()
-    );
+        )),
+    )?;
     Ok(())
 }
 

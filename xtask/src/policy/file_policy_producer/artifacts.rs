@@ -280,7 +280,7 @@ fn materialized_artifact(
     let executable = executable
         .canonicalize()
         .map_err(|error| error.to_string())?;
-    if !executable.starts_with(&target_dir) {
+    if !executable.starts_with(target_dir) {
         return Err("Cargo artifact escaped its target directory".to_string());
     }
     let depfile = executable.with_extension("d");
@@ -297,7 +297,7 @@ fn materialized_artifact(
         || !source_paths.contains(&source)
         || source_paths
             .iter()
-            .any(|path| !path.starts_with(root) && !path.starts_with(&target_dir))
+            .any(|path| !path.starts_with(root) && !path.starts_with(target_dir))
     {
         return Err("artifact depfile is not bound to its current source paths".to_string());
     }

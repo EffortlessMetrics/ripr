@@ -219,7 +219,7 @@ fn produce(
                     .duration
                     .as_millis()
                     .try_into()
-                    .map_err(|_| "producer duration is too large")?,
+                    .map_err(|error| format!("producer duration is too large: {error}"))?,
                 command: command.clone(),
                 actual_args,
                 selected_tests: captured
@@ -450,6 +450,9 @@ pub(crate) fn summary_is_valid(summary: &Value, receipt: &Value) -> bool {
 mod tests;
 
 #[cfg(test)]
-pub(crate) fn retained_fixture(receipt: &Value) -> Result<(Value, Vec<(String, Vec<u8>)>), String> {
+pub(crate) type FixturePacket = (Value, Vec<(String, Vec<u8>)>);
+
+#[cfg(test)]
+pub(crate) fn retained_fixture(receipt: &Value) -> Result<FixturePacket, String> {
     tests::retained_fixture(receipt)
 }
