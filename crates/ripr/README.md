@@ -145,25 +145,25 @@ ripr doctor
 # Analyze the current Git diff against origin/main
 ripr check --base origin/main
 
-# The following examples use the bundled sample diff. If you installed
-# ripr from source, run them from the crate directory (crates/ripr/).
-# If you installed via cargo install ripr, substitute your own --diff path.
-ripr check --diff examples/sample/example.diff
+# The following examples use files included in the crate source archive.
+# Run from the extracted crate root, or crates/ripr/ in a checkout.
+# cargo install does not copy the sample to your working directory;
+# for an installed command in your own project, substitute your own --diff path.
+# Keep --root . so a checkout's ancestor workspace does not change the paths.
+ripr check --root . --diff examples/library.diff
 
 # Emit stable JSON for tools and agents
-ripr check --diff examples/sample/example.diff --json
+ripr check --root . --diff examples/library.diff --json
 
 # Emit GitHub Actions annotations
-ripr check --diff examples/sample/example.diff --format github
+ripr check --root . --diff examples/library.diff --format github
 
-# Explain one finding. Copy a probe id from the --json output above;
-# it is content-addressed against the workspace root, so the exact
-# hash depends on where you run ripr from. The id below is from the
-# ripr repository root.
-ripr explain --diff examples/sample/example.diff probe:crates_ripr_examples_sample_src_lib.rs:predicate:3d666895
+# Explain one finding. Replace <probe-id> with an id from the --json output
+# above; ids depend on the analyzed root and current source contents.
+ripr explain --root . --diff examples/library.diff <probe-id>
 
 # Emit an agent-ready context packet (same probe id as explain)
-ripr context --diff examples/sample/example.diff --at probe:crates_ripr_examples_sample_src_lib.rs:predicate:3d666895 --json
+ripr context --root . --diff examples/library.diff --at <probe-id> --json
 
 # Start the experimental LSP sidecar
 ripr lsp
