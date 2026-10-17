@@ -314,6 +314,20 @@ This source-parent-selected receipt reports the named repository-governance comm
   "status": "validated",
   "swarm_parent": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "tag_attempted": false,
+  "test_enumeration_producer": {
+    "checker_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "complete": true,
+    "mode": "reviewed_tree_worktree",
+    "path": "commands/file-policy-test-producer.json",
+    "producer_root": "/canonical-fixture/source",
+    "reference_count": 11,
+    "references_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+    "schema": "ripr.file_policy_test_producer.v1",
+    "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+    "source_parent": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "subject_head": "1111111111111111111111111111111111111111",
+    "subject_tree": "cccccccccccccccccccccccccccccccccccccccc"
+  },
   "tool_version": "0.1.0",
   "trusted_checker": {
     "executable_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",

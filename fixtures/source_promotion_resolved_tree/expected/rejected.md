@@ -314,6 +314,7 @@ This source-parent-selected receipt reports the named repository-governance comm
   "status": "rejected",
   "swarm_parent": null,
   "tag_attempted": false,
+  "test_enumeration_producer": null,
   "tool_version": "0.1.0",
   "trusted_checker": {
     "executable_sha256": null,

@@ -244,10 +244,23 @@ fn inputs_before(root: &Path, deadline: Option<Instant>) -> Result<Inputs, Strin
     let git = |args: &[&str]| successful_before(Path::new("git"), args, root, deadline);
     let hash = |path: &Path| file_sha_before(path, deadline);
     let root = regular_root(root)?;
-    for name in ["RUSTC_WRAPPER", "RUSTC_WORKSPACE_WRAPPER"] {
+    for name in [
+        "RUSTC_WRAPPER",
+        "RUSTC_WORKSPACE_WRAPPER",
+        "CARGO_BUILD_RUSTC",
+        "CARGO_BUILD_RUSTC_WRAPPER",
+        "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
+    ] {
         if std::env::var_os(name).is_some_and(|value| !value.is_empty()) {
             return Err("source-bound producer does not support compiler wrappers".to_string());
         }
+    }
+    if std::env::vars_os().any(|(key, value)| {
+        !value.is_empty()
+            && key.to_string_lossy().starts_with("CARGO_TARGET_")
+            && key.to_string_lossy().ends_with("_RUNNER")
+    }) {
+        return Err("source-bound producer does not support configured test runners".to_string());
     }
     if !git(&["status", "--porcelain=v1"])?.is_empty() {
         return Err("producer source checkout is not clean".to_string());
@@ -283,6 +296,13 @@ fn inputs_before(root: &Path, deadline: Option<Instant>) -> Result<Inputs, Strin
                 configs.insert(path.clone(), hash(&path)?);
             }
         }
+    }
+    for path in configs.keys() {
+        remaining(deadline)?;
+        validate_cargo_config(
+            &String::from_utf8(read_regular(path, STREAM_LIMIT as u64)?)
+                .map_err(|error| error.to_string())?,
+        )?;
     }
     configs.insert(
         root.join("rust-toolchain.toml"),
@@ -445,4 +465,39 @@ fn test_profile(inputs: &Inputs) -> Result<Value, String> {
     Ok(
         serde_json::json!({"opt_level": opt, "debuginfo": debug, "debug_assertions": assertions, "overflow_checks": overflow.unwrap_or(assertions), "test": true}),
     )
+}
+
+fn validate_cargo_config(text: &str) -> Result<(), String> {
+    let value: toml::Value = toml::from_str(text).map_err(|error| error.to_string())?;
+    if value
+        .get("build")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|build| {
+            ["rustc", "rustc-wrapper", "rustc-workspace-wrapper"]
+                .iter()
+                .any(|key| build.contains_key(*key))
+        })
+    {
+        return Err(
+            "source-bound producer does not support configured compilers or compiler wrappers"
+                .to_string(),
+        );
+    }
+    if value
+        .get("target")
+        .and_then(toml::Value::as_table)
+        .is_some_and(|targets| {
+            targets
+                .values()
+                .any(|target| target.get("runner").is_some())
+        })
+    {
+        return Err("source-bound producer does not support configured test runners".to_string());
+    }
+    if value.get("profile").is_some() {
+        return Err(
+            "source-bound producer does not support Cargo config profile overrides".to_string(),
+        );
+    }
+    Ok(())
 }

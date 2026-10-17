@@ -129,13 +129,13 @@ fn produce(
     let (mode, initial) = choose_root(subject, source_parent, candidate)?;
     let root = initial.root.clone();
     let cargo = Path::new(env!("CARGO"));
+    let profile = test_profile(&initial)?;
     let metadata: Value = serde_json::from_str(&successful(
         cargo,
         &["metadata", "--format-version", "1", "--no-deps", "--locked"],
         &root,
     )?)
     .map_err(|error| error.to_string())?;
-    let profile = test_profile(&initial)?;
     let mut report = Report {
         schema: SCHEMA.to_string(),
         mode,

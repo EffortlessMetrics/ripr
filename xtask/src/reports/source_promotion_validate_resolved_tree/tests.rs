@@ -545,7 +545,11 @@ mod tests {
                 ),
             ),
         ] {
-            let report = report_value(&state);
+            let mut report = report_value(&state);
+            // Golden rendering is portable; production retains the physical root.
+            if report["test_enumeration_producer"].is_object() {
+                report["test_enumeration_producer"]["producer_root"] = serde_json::json!("/canonical-fixture/source");
+            }
             let json = format!(
                 "{}\n",
                 serde_json::to_string_pretty(&report)

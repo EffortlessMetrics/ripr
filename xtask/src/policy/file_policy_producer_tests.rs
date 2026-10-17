@@ -589,3 +589,43 @@ fn indexed_producer_contract_rejects_malformed_missing_and_rebound_evidence() ->
     );
     Ok(())
 }
+
+#[test]
+fn configured_compilers_wrappers_and_runners_are_rejected_before_cargo() -> Result<(), String> {
+    let fixture = fixture()?;
+    let root = &fixture.0;
+    fs::create_dir(root.join(".cargo")).map_err(|error| error.to_string())?;
+    for config in [
+        "[build]\nrustc = 'must-not-execute-compiler'\n",
+        "[build]\nrustc-wrapper = 'must-not-execute-wrapper'\n",
+        "[build]\nrustc-workspace-wrapper = 'must-not-execute-wrapper'\n",
+        "[target.'cfg(unix)']\nrunner = 'must-not-execute-runner'\n",
+    ] {
+        fs::write(root.join(".cargo/config.toml"), config).map_err(|error| error.to_string())?;
+        git_ok(root, &["add", ".cargo/config.toml"])?;
+        git_ok(
+            root,
+            &[
+                "-c",
+                "user.name=producer fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                "unsupported producer context",
+            ],
+        )?;
+        let head = git_ok(root, &["rev-parse", "HEAD"])?;
+        let output = root.join("evidence-not-created");
+        let error = produce(root, &head, Some(root), &output, &commands())
+            .err()
+            .ok_or("configured program context was admitted")?;
+        assert!(
+            error.contains("does not support configured"),
+            "unexpected refusal: {error}"
+        );
+        assert!(!output.exists());
+    }
+    Ok(())
+}
