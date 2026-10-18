@@ -71,6 +71,48 @@ pub(crate) mod source_promotion_control_tests {
         }
     }
 
+    #[test]
+    fn replay_validation_inventory_binds_exact_producer_evidence() -> Result<(), String> {
+        let _guard = crate::acquire_test_cwd_read_guard();
+        let root = test_temp_dir("replay-producer-inventory")?;
+        let packet = write_validation_packet_with_logs(&root, &valid_resolved_tree_receipt())?;
+        let report = packet_json(&packet, VALIDATION_REPORT, "validation fixture")?;
+        validate_validation_command_evidence(&packet, &report, false)?;
+
+        let mut extra = packet.clone();
+        extra.files.insert(
+            "commands/file-policy-test-12.stdout.log".to_string(),
+            IndexedFile {
+                sha256: digest_bytes(&[]),
+                contents: Vec::new(),
+            },
+        );
+        let reason = validate_validation_command_evidence(&extra, &report, false)
+            .err()
+            .ok_or("replay accepted an unreferenced producer-shaped log")?;
+        require(
+            reason.contains("inventory differs from its exact contract"),
+            reason,
+        )?;
+
+        let mut missing = packet.clone();
+        missing
+            .files
+            .remove("commands/file-policy-test-01.stdout.log");
+        let reason = validate_validation_command_evidence(&missing, &report, false)
+            .err()
+            .ok_or("replay accepted missing producer evidence")?;
+        require(reason.contains("producer evidence is not indexed"), reason)?;
+
+        let mut rebound = report.clone();
+        rebound["test_enumeration_producer"]["sha256"] = Value::String("0".repeat(64));
+        let reason = validate_validation_command_evidence(&packet, &rebound, false)
+            .err()
+            .ok_or("replay accepted a producer detached from its primary receipt")?;
+        require(reason.contains("differs from validation receipt"), reason)?;
+        root.cleanup()
+    }
+
     /// #1613: hold the reader boundary from ambient path capture through use.
     /// The writer is observed queued (or entered in the removal control), so
     /// scheduling delays are not the oracle. The deadline only bounds failure.

@@ -690,6 +690,9 @@ fn validate_validation_command_evidence(
             }
         }
     }
+    if !allow_not_run {
+        expected_files.extend(validation_producer_inventory(&packet.files, validation)?);
+    }
     validate_exact_packet_inventory(packet, &expected_files, "resolved-tree validation")?;
     Ok(())
 }
