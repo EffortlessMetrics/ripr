@@ -7721,12 +7721,26 @@ fn routed_rust_evidence_step_matches(step: &[&str], upload: bool) -> bool {
         })
         .collect();
     let action = if upload { "upload" } else { "download" };
-    if !direct
+    // This is a closed declaration contract, not a YAML/expression evaluator.
+    // Unsupported keys (including quoted or escaped spellings) must not hide
+    // a failure-shielding property from the check.
+    if direct.iter().any(|line| {
+        !line.split_once(':').is_some_and(|(key, _)| {
+            matches!(
+                key,
+                "name" | "id" | "if" | "uses" | "with" | "continue-on-error"
+            )
+        })
+    }) || !direct
         .iter()
         .any(|line| line.starts_with(&format!("uses: actions/{action}-artifact@")))
         || !direct.contains(&"if: always()")
         || direct.iter().filter(|line| line.starts_with("if:")).count() != 1
-        || (upload && direct.contains(&"continue-on-error: true"))
+        || (upload
+            && direct.iter().any(|line| {
+                line.strip_prefix("continue-on-error:")
+                    .is_some_and(|value| value.trim() != "false")
+            }))
     {
         return false;
     }

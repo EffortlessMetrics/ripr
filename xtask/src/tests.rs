@@ -49500,6 +49500,33 @@ fn routed_rust_evidence_transfer_contract_rejects_wrong_or_missing_uploads() -> 
             ),
         ];
         if action == "upload" {
+            for property in [
+                "continue-on-error: true",
+                "continue-on-error: ${{ true }}",
+                "continue-on-error: ${{ fromJSON('true') }}",
+                "continue-on-error: ${{ false }}",
+                "continue-on-error : true",
+                r#""continue-on-error": true"#,
+                "'continue-on-error': ${{ true }}",
+                r#""continue\u002don\u002derror": true"#,
+            ] {
+                cases.push((
+                    property,
+                    step.replace(
+                        "        if: always()",
+                        &format!("        if: always()\n        {property}"),
+                    ),
+                ));
+            }
+            let explicit_false = step.replace(
+                "        if: always()",
+                "        if: always()\n        continue-on-error: false",
+            );
+            let valid = workflow.replacen(&block, &block.replacen(&step, &explicit_false, 1), 1);
+            assert!(
+                routed_rust_workflow_contract_violations(&valid, None, None).is_empty(),
+                "literal false must remain a valid unshielded {job} upload"
+            );
             for path in [
                 "routed-rust-plan.json",
                 "routed-rust-plan.md",
