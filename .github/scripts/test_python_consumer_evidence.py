@@ -147,6 +147,19 @@ class ConsumerEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'passed output changed'):
             evidence.finalize(self.output, self.identity, self.producer)
 
+    def test_oversized_pass_preserves_truncation_after_failure(self):
+        self.start()
+        for command in evidence.COMMANDS[:2]:
+            evidence.transition(self.output, self.identity, command, 'running')
+            evidence.transition(self.output, self.identity, command, 'passed')
+        evidence.transition(self.output, self.identity, 'preview', 'running')
+        (self.output / 'check.json').write_bytes(b'x' * (evidence.MAX_OUTPUT + 1))
+        with self.assertRaisesRegex(ValueError, 'missing or oversized output'):
+            evidence.transition(self.output, self.identity, 'preview', 'passed')
+        self.assertFalse(evidence.finalize(self.output, self.identity, self.producer))
+        self.assertTrue(self.read()['commands'][2]['output']['truncated'])
+        self.assertEqual(self.read()['commands'][2]['status'], 'failed')
+
     def test_output_bound_and_no_overwrite(self):
         self.start()
         with self.assertRaises(FileExistsError):

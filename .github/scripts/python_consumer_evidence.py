@@ -103,7 +103,10 @@ def transition(output, identity, command, state):
         require(state in ('passed', 'failed') and row['status'] == 'running', 'invalid terminal transition')
         captured = capture(output, command)
         if state == 'passed' and command in OUTPUTS:
-            require(captured is not None and captured['bytes'] > 0 and not captured['truncated'], 'missing or oversized output')
+            if captured is None or captured['bytes'] == 0 or captured['truncated']:
+                row.update(status='failed', output=captured)
+                write(output, receipt)
+                raise ValueError('missing or oversized output')
         row.update(status=state, output=captured)
     write(output, receipt)
 
