@@ -9,6 +9,9 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Reject missing, malformed, duplicate or unsupported wheel format metadata
+  before PyPI admission stages a wheel; retain compatible minor formats (#1865).
+
 - Document staged public-to-swarm integration, qualification and return promotion;
   route agent guidance through the same runbook and identify the existing
   direct-J contract reconciliation without changing runtime gates (#1768).

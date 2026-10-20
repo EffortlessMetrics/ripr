@@ -128,7 +128,11 @@ def stage_wheel(root, destination, identity, attempt):
         metadata = Parser().parsestr(archive.read(metadata_name).decode("utf-8"))
         require(metadata.get_all("Name") == ["ripr-rs"], "distribution mismatch")
         require(metadata.get_all("Version") == [identity["version"]], "version mismatch")
-        tags = Parser().parsestr(archive.read(wheel_name).decode("utf-8")).get_all("Tag")
+        wheel_metadata = Parser().parsestr(archive.read(wheel_name).decode("utf-8"))
+        versions = wheel_metadata.get_all("Wheel-Version", [])
+        require(len(versions) == 1 and re.fullmatch(r"1\.[0-9]+", versions[0].strip()),
+                "unsupported wheel format: expected one Wheel-Version: 1.x")
+        tags = wheel_metadata.get_all("Tag")
         require(tags == [PLATFORM_TAG], "wheel platform mismatch")
     destination.mkdir(parents=True, exist_ok=False)
     shutil.copyfile(wheel, destination / filename)
