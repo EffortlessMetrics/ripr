@@ -22488,6 +22488,16 @@ pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
 pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
     if matches!(
         path,
+        ".github/scripts/python_consumer_evidence.py"
+            | ".github/scripts/test_python_consumer_evidence.py"
+    ) {
+        return Some(
+            "Checkout-free Python wheel consumers retain bounded diagnostic command states and output digests using the runner standard library; fixtures execute no installed package and diagnostics grant no admission.",
+        );
+    }
+
+    if matches!(
+        path,
         ".github/scripts/pypi_admission.py" | ".github/scripts/test_pypi_admission.py"
     ) {
         return Some(
