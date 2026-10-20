@@ -147,6 +147,79 @@ class ConsumerEvidenceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'passed output changed'):
             evidence.finalize(self.output, self.identity, self.producer)
 
+    def test_producer_refusal_bounds_outputs_and_persists_terminal_failure(self):
+        self.start()
+        original = self.read()['producer']
+        evidence.transition(self.output, self.identity, 'install', 'running')
+        qualification = self.producer / 'qualification.json'
+        qualification.write_text(qualification.read_text() + '\n')
+        (self.output / 'check.json').write_bytes(b'x' * (evidence.MAX_OUTPUT + 1))
+        with self.assertRaisesRegex(ValueError, 'producer bytes changed'):
+            evidence.finalize(self.output, self.identity, self.producer)
+        receipt = self.read()
+        self.assertEqual((self.output / 'check.json').stat().st_size, evidence.MAX_OUTPUT)
+        self.assertEqual(receipt['status'], 'rejected')
+        self.assertEqual(receipt['producer'], original)
+        self.assertFalse(receipt['release_eligible'])
+        self.assertEqual(receipt['commands'][0]['status'], 'failed')
+        self.assertTrue(receipt['commands'][2]['output']['truncated'])
+
+    def test_rejected_complete_receipt_cannot_recover_by_restoring_producer(self):
+        self.start()
+        for command in evidence.COMMANDS:
+            evidence.transition(self.output, self.identity, command, 'running')
+            if command in evidence.OUTPUTS:
+                (self.output / evidence.OUTPUTS[command]).write_text('original')
+            evidence.transition(self.output, self.identity, command, 'passed')
+        self.assertTrue(evidence.finalize(self.output, self.identity, self.producer))
+        qualification = self.producer / 'qualification.json'
+        original = qualification.read_bytes()
+        qualification.write_bytes(original + b'\n')
+        with self.assertRaisesRegex(ValueError, 'producer bytes changed'):
+            evidence.finalize(self.output, self.identity, self.producer)
+        qualification.write_bytes(original)
+        with self.assertRaisesRegex(ValueError, 'producer bytes changed'):
+            evidence.finalize(self.output, self.identity, self.producer)
+        self.assertEqual(self.read()['status'], 'rejected')
+
+    def test_stale_consumer_identity_still_bounds_and_records_refusal(self):
+        self.start()
+        evidence.transition(self.output, self.identity, 'install', 'running')
+        (self.output / 'explain.txt').write_bytes(b'x' * (evidence.MAX_OUTPUT + 1))
+        stale = dict(self.identity, run_attempt=3)
+        with self.assertRaisesRegex(ValueError, 'consumer identity mismatch'):
+            evidence.finalize(self.output, stale, self.producer)
+        receipt = self.read()
+        self.assertEqual(receipt['identity'], self.identity)
+        self.assertEqual(receipt['status'], 'rejected')
+        self.assertEqual(receipt['commands'][0]['status'], 'failed')
+        self.assertTrue(receipt['commands'][3]['output']['truncated'])
+        self.assertEqual((self.output / 'explain.txt').stat().st_size, evidence.MAX_OUTPUT)
+
+    def test_repeat_finalize_refusal_revokes_complete_without_rebinding_outputs(self):
+        self.start()
+        for command in evidence.COMMANDS:
+            evidence.transition(self.output, self.identity, command, 'running')
+            if command in evidence.OUTPUTS:
+                (self.output / evidence.OUTPUTS[command]).write_text('original')
+            evidence.transition(self.output, self.identity, command, 'passed')
+        self.assertTrue(evidence.finalize(self.output, self.identity, self.producer))
+        original = self.read()['commands'][2]['output']
+        (self.output / 'check.json').write_text('replacement')
+        with self.assertRaisesRegex(ValueError, 'passed output changed'):
+            evidence.finalize(self.output, self.identity, self.producer)
+        receipt = self.read()
+        self.assertEqual(receipt['status'], 'rejected')
+        self.assertEqual(receipt['commands'][2]['status'], 'failed')
+        self.assertEqual(receipt['commands'][2]['output'], original)
+        self.assertEqual(receipt['commands'][2]['observed_output']['sha256'],
+                         hashlib.sha256(b'replacement').hexdigest())
+        self.assertFalse(receipt['release_eligible'])
+        (self.output / 'check.json').write_text('original')
+        with self.assertRaises(ValueError):
+            evidence.finalize(self.output, self.identity, self.producer)
+        self.assertEqual(self.read()['status'], 'rejected')
+
     def test_oversized_pass_preserves_truncation_after_failure(self):
         self.start()
         for command in evidence.COMMANDS[:2]:

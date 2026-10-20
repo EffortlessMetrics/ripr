@@ -67,11 +67,15 @@ def initialize(producer, output, identity):
     write(output, receipt)
 
 
-def read(output, identity):
-    receipt = json.loads((output / 'consumer.json').read_text())
+def validate_receipt(receipt, identity):
     require(receipt['identity'] == identity, 'consumer identity mismatch')
     require([row['command'] for row in receipt['commands']] == list(COMMANDS), 'command denominator mismatch')
     require(receipt['release_eligible'] is False, 'diagnostics cannot grant admission')
+
+
+def read(output, identity):
+    receipt = json.loads((output / 'consumer.json').read_text())
+    validate_receipt(receipt, identity)
     return receipt
 
 
@@ -112,25 +116,45 @@ def transition(output, identity, command, state):
 
 
 def finalize(output, identity, producer):
-    receipt = read(output, identity)
-    require(receipt['producer'] == producer_identity(producer, identity), 'producer bytes changed')
+    # Bound every permitted output before any identity refusal can abort cleanup.
+    captures = {command: capture(output, command) for command in OUTPUTS}
+    receipt = json.loads((output / 'consumer.json').read_text())
+    error = receipt.get('error') if receipt.get('status') == 'rejected' else None
+    try:
+        validate_receipt(receipt, identity)
+        require(receipt['producer'] == producer_identity(producer, identity), 'producer bytes changed')
+    except (ValueError, KeyError, TypeError, OSError) as refusal:
+        error = error or str(refusal)
     for row in receipt['commands']:
-        captured = capture(output, row['command'])
-        if row['status'] == 'passed' and row['command'] in OUTPUTS:
-            require(captured == row['output'], 'passed output changed')
-        if captured is not None:
-            # Keep the fact that an earlier capture truncated the output.
-            if row['output'] and row['output'].get('truncated'):
+        captured = captures.get(row['command'])
+        previous = row['output']
+        # A second capture of already bounded bytes must retain truncation history.
+        if previous and captured and previous.get('truncated'):
+            if all(previous[key] == captured[key] for key in ('path', 'bytes', 'sha256')):
                 captured['truncated'] = True
+        if previous is not None and captured != previous:
+            error = error or ('passed output changed' if row['status'] == 'passed'
+                              else 'recorded output changed')
+            # Keep the original binding; changed bytes are observations, not proof.
+            row['observed_output'] = captured
+            row['status'] = 'failed'
+        else:
             row['output'] = captured
         if row['status'] == 'running' or (captured and captured['truncated']):
             row['status'] = 'failed'
         if row['status'] == 'passed' and row['command'] in OUTPUTS:
-            require(captured and captured['bytes'] > 0, 'passed output disappeared')
-    complete = all(row['selected'] and row['executed'] and row['status'] == 'passed'
-                   for row in receipt['commands'])
-    receipt['status'] = 'complete' if complete else 'partial'
+            if not captured or not captured['bytes']:
+                error = error or 'passed output disappeared'
+                row['status'] = 'failed'
+    complete = not error and all(row['selected'] and row['executed'] and row['status'] == 'passed'
+                                for row in receipt['commands'])
+    receipt['release_eligible'] = False
+    receipt['status'] = 'rejected' if error else ('complete' if complete else 'partial')
+    if error:
+        receipt['error'] = error
     write(output, receipt)
+    if error:
+        raise ValueError(error)
     return complete
 
 

@@ -79,6 +79,10 @@ no release eligibility, including when every group passes. Existing publisher
 admission remains authoritative and still requires a successful qualification
 run. Failures before recorder initialization and runner loss may leave no
 consumer artifact; absence is never a pass.
+Integrity refusals still bound the permitted outputs and persist a rejected
+terminal diagnostic. Original producer and output bindings are preserved;
+changed output bytes are identified separately as `observed_output`. A rejected
+receipt cannot become complete on a later finalization, even if bytes are restored.
 
 This retains evidence from the existing checkout-free, offline pip/uv installs;
 it adds no network namespace isolation or broader platform qualification.
