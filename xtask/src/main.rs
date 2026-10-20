@@ -7645,17 +7645,13 @@ const ROUTED_RUST_DEADLINE_JOBS: [&str; 5] = [
 const ROUTED_RUST_REUSABLE_WORKFLOW_PATH: &str = ".github/workflows/rust-gates.yml";
 const ROUTED_RUST_REUSABLE_WORKFLOW_REF: &str = "uses: ./.github/workflows/rust-gates.yml";
 
-/// Whether any line in the named job block satisfies `predicate`.
-/// Job keys are exactly two-space-indented `name:` lines under `jobs:`;
-/// anything deeper belongs to the current block.
-fn routed_rust_job_block_any(
-    workflow: &str,
-    job: &str,
-    mut predicate: impl FnMut(&str) -> bool,
-) -> bool {
+/// Lines belonging to the named job under `jobs:`. Only direct two-space job
+/// keys select a block; nested mappings and other top-level sections cannot.
+fn routed_rust_job_lines<'a>(workflow: &'a str, job: &str) -> Vec<&'a str> {
     let job_header = format!("{job}:");
     let mut in_jobs = false;
     let mut in_block = false;
+    let mut lines = Vec::new();
     for line in workflow.lines() {
         if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
             in_jobs = line.trim() == "jobs:";
@@ -7670,14 +7666,115 @@ fn routed_rust_job_block_any(
             in_block = in_jobs && line.trim() == job_header;
             continue;
         }
-        if in_block && !line.is_empty() && !line.starts_with(' ') {
-            break;
-        }
-        if in_block && line.starts_with("    ") && !line.starts_with("     ") && predicate(line) {
-            return true;
+        if in_block {
+            lines.push(line);
         }
     }
-    false
+    lines
+}
+
+fn routed_rust_job_block_any(
+    workflow: &str,
+    job: &str,
+    mut predicate: impl FnMut(&str) -> bool,
+) -> bool {
+    routed_rust_job_lines(workflow, job)
+        .into_iter()
+        .any(|line| line.starts_with("    ") && !line.starts_with("     ") && predicate(line))
+}
+
+/// Check the canonical block-style transfer declaration in its actual job and
+/// step. A name elsewhere in the workflow cannot establish an artifact handoff.
+/// The downloaded bytes remain subject to ci-routed-rust-result validation.
+fn routed_rust_evidence_transfer_matches(workflow: &str, job: &str, upload: bool) -> bool {
+    let lines = routed_rust_job_lines(workflow, job);
+    let Some(start) = lines.iter().position(|line| *line == "    steps:") else {
+        return false;
+    };
+    let mut steps: Vec<Vec<&str>> = Vec::new();
+    for line in &lines[start + 1..] {
+        if line.trim().is_empty() || line.trim_start().starts_with('#') {
+            continue;
+        }
+        if line.starts_with("    ") && !line.starts_with("     ") {
+            break;
+        }
+        if line.starts_with("      - ") {
+            steps.push(vec![line]);
+        } else if let Some(step) = steps.last_mut() {
+            step.push(line);
+        }
+    }
+    steps
+        .iter()
+        .any(|step| routed_rust_evidence_step_matches(step, upload))
+}
+
+fn routed_rust_evidence_step_matches(step: &[&str], upload: bool) -> bool {
+    let direct: Vec<&str> = step
+        .iter()
+        .filter_map(|line| {
+            line.strip_prefix("      - ").or_else(|| {
+                line.strip_prefix("        ")
+                    .filter(|value| !value.starts_with(' '))
+            })
+        })
+        .collect();
+    let action = if upload { "upload" } else { "download" };
+    // This is a closed declaration contract, not a YAML/expression evaluator.
+    // Unsupported keys (including quoted or escaped spellings) must not hide
+    // a failure-shielding property from the check.
+    if direct.iter().any(|line| {
+        !line.split_once(':').is_some_and(|(key, _)| {
+            matches!(
+                key,
+                "name" | "id" | "if" | "uses" | "with" | "continue-on-error"
+            )
+        })
+    }) || !direct
+        .iter()
+        .any(|line| line.starts_with(&format!("uses: actions/{action}-artifact@")))
+        || !direct.contains(&"if: always()")
+        || direct.iter().filter(|line| line.starts_with("if:")).count() != 1
+        || (upload
+            && direct.iter().any(|line| {
+                line.strip_prefix("continue-on-error:")
+                    .is_some_and(|value| value.trim() != "false")
+            }))
+    {
+        return false;
+    }
+    let Some(with) = step.iter().position(|line| *line == "        with:") else {
+        return false;
+    };
+    let fields: Vec<&str> = step[with + 1..]
+        .iter()
+        .copied()
+        .take_while(|line| line.starts_with("          "))
+        .collect();
+    if !fields.contains(
+        &"          name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
+    ) {
+        return false;
+    }
+    if !upload {
+        return fields.contains(&"          path: target/ripr/reports/");
+    }
+    let Some(path) = fields.iter().position(|line| *line == "          path: |") else {
+        return false;
+    };
+    let paths: Vec<&str> = fields[path + 1..]
+        .iter()
+        .take_while(|line| line.starts_with("            "))
+        .map(|line| line.trim())
+        .collect();
+    paths
+        == [
+            "target/ripr/reports/routed-rust-plan.json",
+            "target/ripr/reports/routed-rust-plan.md",
+            "target/ripr/reports/routed-rust-execution.json",
+            "target/ripr/reports/routed-rust-command-*.log",
+        ]
 }
 
 fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) -> bool {
@@ -7735,6 +7832,19 @@ fn routed_rust_workflow_contract_violations_with_reusable(
     lane_whitelist: Option<&str>,
 ) -> Vec<String> {
     let mut violations = Vec::new();
+
+    for (job, upload) in [
+        ("rust-github", true),
+        ("docs-gate", true),
+        ("result", false),
+    ] {
+        if !routed_rust_evidence_transfer_matches(workflow, job, upload) {
+            violations.push(format!(
+                "source routed Rust job `{job}` lacks the complete run/attempt evidence artifact {}",
+                if upload { "upload" } else { "download" }
+            ));
+        }
+    }
 
     for job in ["route", "detect-docs-only"] {
         if !routed_rust_job_block_any(workflow, job, |line| {
