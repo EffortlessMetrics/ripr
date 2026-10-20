@@ -83,9 +83,9 @@ def capture(output, command):
     if command not in OUTPUTS:
         return None
     path = output / OUTPUTS[command]
+    require(not path.is_symlink(), 'output must not be a symlink')
     if not path.exists():
         return None
-    require(not path.is_symlink(), 'output must not be a symlink')
     size = path.stat().st_size
     with path.open('rb') as stream:
         data = stream.read(MAX_OUTPUT)
@@ -117,7 +117,20 @@ def transition(output, identity, command, state):
 
 def finalize(output, identity, producer):
     # Bound every permitted output before any identity refusal can abort cleanup.
-    captures = {command: capture(output, command) for command in OUTPUTS}
+    captures, capture_errors = {}, {}
+    for command, filename in OUTPUTS.items():
+        try:
+            captures[command] = capture(output, command)
+        except (ValueError, OSError) as refusal:
+            capture_errors[command] = str(refusal)
+            path = output / filename
+            if path.is_symlink():
+                # Upload must not follow a refused link outside the evidence.
+                try:
+                    path.unlink()
+                    capture_errors[command] += '; symlink removed without following'
+                except OSError as removal_error:
+                    capture_errors[command] += f'; removal failed: {removal_error}'
     receipt = json.loads((output / 'consumer.json').read_text())
     error = receipt.get('error') if receipt.get('status') == 'rejected' else None
     try:
@@ -125,13 +138,20 @@ def finalize(output, identity, producer):
         require(receipt['producer'] == producer_identity(producer, identity), 'producer bytes changed')
     except (ValueError, KeyError, TypeError, OSError) as refusal:
         error = error or str(refusal)
+    error = error or next(iter(capture_errors.values()), None)
     for row in receipt['commands']:
         captured = captures.get(row['command'])
         previous = row['output']
         # A second capture of already bounded bytes must retain truncation history.
-        if previous and captured and previous.get('truncated'):
-            if all(previous[key] == captured[key] for key in ('path', 'bytes', 'sha256')):
-                captured['truncated'] = True
+        for history in (previous, row.get('observed_output')):
+            if history and captured and history.get('truncated'):
+                if all(history[key] == captured[key] for key in ('path', 'bytes', 'sha256')):
+                    captured['truncated'] = True
+        if row['command'] in capture_errors:
+            row['output_error'] = capture_errors[row['command']]
+            row['observed_output'] = None
+            row['status'] = 'failed'
+            continue
         if previous is not None and captured != previous:
             error = error or ('passed output changed' if row['status'] == 'passed'
                               else 'recorded output changed')

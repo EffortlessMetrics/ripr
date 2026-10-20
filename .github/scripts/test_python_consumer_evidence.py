@@ -242,6 +242,39 @@ class ConsumerEvidenceTests(unittest.TestCase):
         retained = self.output / 'check.json'
         self.assertEqual(retained.stat().st_size, evidence.MAX_OUTPUT)
 
+    def test_capture_refusal_still_bounds_other_outputs_and_revokes_complete(self):
+        self.test_complete_and_retained_output()
+        original = self.read()['commands'][2]['output']
+        target = self.root / 'outside'
+        target.write_text('do not read or modify')
+        check = self.output / 'check.json'
+        check.unlink()
+        check.symlink_to(target)
+        (self.output / 'explain.txt').write_bytes(b'x' * (evidence.MAX_OUTPUT + 1))
+        with self.assertRaisesRegex(ValueError, 'symlink'):
+            evidence.finalize(self.output, self.identity, self.producer)
+        receipt = self.read()
+        self.assertEqual(receipt['status'], 'rejected')
+        self.assertEqual(receipt['commands'][2]['status'], 'failed')
+        self.assertEqual(receipt['commands'][2]['output'], original)
+        self.assertIn('removed without following', receipt['commands'][2]['output_error'])
+        self.assertFalse(check.is_symlink())
+        self.assertEqual(target.read_text(), 'do not read or modify')
+        self.assertEqual((self.output / 'explain.txt').stat().st_size, evidence.MAX_OUTPUT)
+        self.assertTrue(receipt['commands'][3]['observed_output']['truncated'])
+
+    def test_observed_truncation_survives_repeat_finalization(self):
+        self.test_complete_and_retained_output()
+        original = self.read()['commands'][2]['output']
+        (self.output / 'check.json').write_bytes(b'x' * (evidence.MAX_OUTPUT + 1))
+        for _ in range(2):
+            with self.assertRaises(ValueError):
+                evidence.finalize(self.output, self.identity, self.producer)
+            row = self.read()['commands'][2]
+            self.assertEqual(row['output'], original)
+            self.assertTrue(row['observed_output']['truncated'])
+            self.assertEqual(row['status'], 'failed')
+
 
 if __name__ == '__main__':
     unittest.main()
