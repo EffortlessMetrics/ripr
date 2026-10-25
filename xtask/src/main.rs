@@ -5550,6 +5550,11 @@ fn check_workflows_impl() -> Result<(), String> {
             continue;
         };
         let text = read_text_lossy(&path)?;
+        crate::policy::workflow_npm_tags::validate_workflow_npm_tags(
+            &normalized,
+            &text,
+            &mut violations,
+        );
         violations.extend(workflow_runtime_violations(
             &normalized,
             &text,
