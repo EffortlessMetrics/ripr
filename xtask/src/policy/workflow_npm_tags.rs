@@ -41,11 +41,34 @@ fn logical_lines(physical: &[(usize, String)]) -> Vec<(usize, String)> {
 }
 
 fn is_block_scalar_header(value: &str) -> bool {
+    // YAML allows a trailing comment after the indicator (`run: | # note`);
+    // the comment is not part of the scalar style.
+    let value = match value.find(" #") {
+        Some(index) => &value[..index],
+        None => value,
+    };
     let value = value.trim();
     (value.starts_with('|') || value.starts_with('>'))
         && value[1..]
             .chars()
             .all(|c| c.is_ascii_digit() || c == '+' || c == '-')
+}
+
+/// Strips one layer of matching YAML quotes from an inline `run:` value so
+/// `run: "cd pkg && npm publish"` reaches the shell tokenizer as the text
+/// GitHub Actions actually executes. A value that does not both start and end
+/// with the same quote character is returned unchanged.
+fn strip_yaml_quotes(value: &str) -> String {
+    let trimmed = value.trim();
+    let bytes = trimmed.as_bytes();
+    let quoted = bytes.len() >= 2
+        && (bytes[0] == b'"' || bytes[0] == b'\'')
+        && bytes[bytes.len() - 1] == bytes[0];
+    if quoted {
+        trimmed[1..trimmed.len() - 1].trim().to_string()
+    } else {
+        trimmed.to_string()
+    }
 }
 
 /// Splits a YAML line into `(key, value)` when it is a mapping entry such as
@@ -66,22 +89,46 @@ fn yaml_key_value(content: &str) -> Option<(&str, &str)> {
 /// `run:` key, the body of a `run:` block scalar, and plain non-key lines.
 /// Other keys (`name:`, `description:`, `if:`, `env:` values, ...) and their
 /// block-scalar bodies are skipped. Returns one-based physical line numbers.
+///
+/// YAML folding is respected conservatively: a `>`-style run body emits both
+/// the folded group as one space-joined shell line and its physical lines, so
+/// a publish split across folded lines is caught while a trailing comment in
+/// one folded line cannot hide a later command. `|`-style bodies stay one
+/// shell line per physical line, joined only by backslash continuation.
 fn workflow_script_lines(text: &str) -> Vec<(usize, String)> {
     let mut scripts = Vec::new();
-    // (indent of the block header line, whether the body is shell script)
-    let mut block: Option<(usize, bool)> = None;
+    // (key column of the block header line, body is shell script, folded style)
+    let mut block: Option<(usize, bool, bool)> = None;
+    // (first physical line, accumulated folded lines) for a `>`-style run body.
+    let mut fold: Option<(usize, Vec<String>)> = None;
     for (index, raw) in text.lines().enumerate() {
         let number = index + 1;
         let indent = raw.len() - raw.trim_start().len();
         let trimmed = raw.trim();
-        if let Some((header_indent, is_script)) = block {
+        if let Some((header_indent, is_script, folded)) = block {
             if trimmed.is_empty() || indent > header_indent {
                 if is_script {
-                    scripts.push((number, raw.to_string()));
+                    if folded {
+                        if trimmed.is_empty() {
+                            if let Some((start, lines)) = fold.take() {
+                                scripts.push((start, lines.join(" ")));
+                            }
+                        } else {
+                            fold.get_or_insert_with(|| (number, Vec::new()))
+                                .1
+                                .push(trimmed.to_string());
+                            scripts.push((number, trimmed.to_string()));
+                        }
+                    } else {
+                        scripts.push((number, raw.to_string()));
+                    }
                 }
                 continue;
             }
             block = None;
+            if let Some((start, lines)) = fold.take() {
+                scripts.push((start, lines.join(" ")));
+            }
         }
         let mut content = raw.trim_start();
         while let Some(rest) = content.strip_prefix("- ") {
@@ -94,13 +141,16 @@ fn workflow_script_lines(text: &str) -> Vec<(usize, String)> {
             Some((key, value)) => {
                 let is_run = key == "run";
                 if is_block_scalar_header(value) {
-                    block = Some((key_column, is_run));
+                    block = Some((key_column, is_run, value.trim_start().starts_with('>')));
                 } else if is_run {
-                    scripts.push((number, value.to_string()));
+                    scripts.push((number, strip_yaml_quotes(value)));
                 }
             }
             None => scripts.push((number, content.to_string())),
         }
+    }
+    if let Some((start, lines)) = fold.take() {
+        scripts.push((start, lines.join(" ")));
     }
     scripts
 }
@@ -447,6 +497,7 @@ mod tests {
             "      - run: npm --otp 123 publish --tag next;\n",
             "      - run: npm -w pkg publish --tag=next\n",
             "      - run: npm run publish\n",
+            "      - run: npm --tag next publish\n",
             "      - run: npm dist-tag add --otp 123 pkg@1.0.0 next\n",
             "      - run: npm dist-tag ls pkg\n",
         ] {
@@ -466,6 +517,53 @@ mod tests {
             "{:?}",
             workflow_violations(metadata)
         );
+    }
+
+    #[test]
+    fn workflow_folded_scalar_publish_is_refused_and_literal_split_is_not() {
+        // `>` folds the body into one shell line: `npm publish --tag latest` runs.
+        let folded = "      - run: >\n          npm\n          publish --tag latest\n";
+        assert!(has_violation(&workflow_violations(folded), "forbidden"));
+        // Folding also joins a tagless publish across the fold.
+        let tagless = "      - run: >-\n          npm\n          publish --access public\n";
+        assert!(has_violation(
+            &workflow_violations(tagless),
+            "explicit non-`latest`"
+        ));
+        // A folded group whose earlier line comments the tail is still caught
+        // because each physical line is also scanned.
+        let swallowed =
+            "      - run: >\n          echo hi # note\n          npm publish --tag latest\n";
+        assert!(has_violation(&workflow_violations(swallowed), "forbidden"));
+        // A literal block really runs one command per line; a bare `npm`
+        // publishes nothing and `publish` is not a command.
+        let literal = "      - run: |\n          npm\n          publish --tag latest\n";
+        assert!(workflow_violations(literal).is_empty());
+        // Backslash-continued literal bodies remain joined and caught.
+        let continued = "      - run: |\n          npm \\\n            publish --tag latest\n";
+        assert!(has_violation(&workflow_violations(continued), "forbidden"));
+    }
+
+    #[test]
+    fn workflow_quoted_run_values_are_decoded_before_shell_scan() {
+        let double = "      - run: \"cd pkg && npm publish\"\n";
+        assert!(has_violation(
+            &workflow_violations(double),
+            "explicit non-`latest`"
+        ));
+        let single = "      - run: 'cd pkg && npm publish --tag latest'\n";
+        assert!(has_violation(&workflow_violations(single), "forbidden"));
+        let tagged = "      - run: \"npm publish --tag next\"\n";
+        assert!(workflow_violations(tagged).is_empty());
+    }
+
+    #[test]
+    fn workflow_block_header_trailing_comment_still_scans_body() {
+        // `run: | # note` is a valid block scalar header; the body must be
+        // scanned even when a body line looks like a YAML mapping entry.
+        let commented = "      - run: | # install\n          foo: npm publish --tag latest\n";
+        assert!(has_violation(&workflow_violations(commented), "forbidden"));
+        assert!(workflow_violations("      - run: | # install\n          echo ok\n").is_empty());
     }
 
     /// The real publish workflow's exact staging command is the guard's
