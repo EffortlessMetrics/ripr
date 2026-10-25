@@ -54,20 +54,96 @@ fn is_block_scalar_header(value: &str) -> bool {
             .all(|c| c.is_ascii_digit() || c == '+' || c == '-')
 }
 
-/// Strips one layer of matching YAML quotes from an inline `run:` value so
+/// Decodes one complete YAML quoted scalar from an inline `run:` value so
 /// `run: "cd pkg && npm publish"` reaches the shell tokenizer as the text
-/// GitHub Actions actually executes. A value that does not both start and end
-/// with the same quote character is returned unchanged.
+/// GitHub Actions actually executes. The closing quote ends the scalar; any
+/// remainder (a trailing YAML comment) is discarded. YAML double-quoted
+/// escapes are decoded, including `\xNN`/`\uNNNN`/`\UXXXXXXXX`, so an escaped
+/// `npm` cannot hide behind a different spelling. A value that does not start
+/// with a quote is returned unchanged; an unterminated quote is returned
+/// unchanged and stays fail-closed in the shell tokenizer.
 fn strip_yaml_quotes(value: &str) -> String {
     let trimmed = value.trim();
     let bytes = trimmed.as_bytes();
-    let quoted = bytes.len() >= 2
-        && (bytes[0] == b'"' || bytes[0] == b'\'')
-        && bytes[bytes.len() - 1] == bytes[0];
-    if quoted {
-        trimmed[1..trimmed.len() - 1].trim().to_string()
-    } else {
-        trimmed.to_string()
+    if bytes.is_empty() || (bytes[0] != b'"' && bytes[0] != b'\'') {
+        return trimmed.to_string();
+    }
+    let quote = bytes[0];
+    let mut index = 1;
+    while index < bytes.len() {
+        if quote == b'"' && bytes[index] == b'\\' && index + 1 < bytes.len() {
+            index += 2;
+            continue;
+        }
+        if bytes[index] == quote {
+            if quote == b'\'' && bytes.get(index + 1) == Some(&b'\'') {
+                index += 2;
+                continue;
+            }
+            let inner = &trimmed[1..index];
+            return if quote == b'\'' {
+                inner.replace("''", "'")
+            } else {
+                unescape_yaml_double_quoted(inner)
+            };
+        }
+        index += 1;
+    }
+    trimmed.to_string()
+}
+
+fn unescape_yaml_double_quoted(inner: &str) -> String {
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c != '\\' {
+            out.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('0') => out.push('\0'),
+            Some('a') => out.push('\u{7}'),
+            Some('b') => out.push('\u{8}'),
+            Some('t') | Some('\t') => out.push('\t'),
+            Some('n') => out.push('\n'),
+            Some('v') => out.push('\u{b}'),
+            Some('f') => out.push('\u{c}'),
+            Some('r') => out.push('\r'),
+            Some('e') => out.push('\u{1b}'),
+            Some(' ') => out.push(' '),
+            Some('"') => out.push('"'),
+            Some('/') => out.push('/'),
+            Some('\\') => out.push('\\'),
+            Some('N') => out.push('\u{85}'),
+            Some('_') => out.push('\u{a0}'),
+            Some('L') => out.push('\u{2028}'),
+            Some('P') => out.push('\u{2029}'),
+            Some('x') => push_hex(&mut chars, 2, &mut out),
+            Some('u') => push_hex(&mut chars, 4, &mut out),
+            Some('U') => push_hex(&mut chars, 8, &mut out),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
+}
+
+fn push_hex(chars: &mut std::str::Chars<'_>, width: usize, out: &mut String) {
+    let mut value: u32 = 0;
+    for _ in 0..width {
+        match chars.next().and_then(|c| c.to_digit(16)) {
+            Some(digit) => value = value * 16 + digit,
+            None => {
+                out.push('\\');
+                return;
+            }
+        }
+    }
+    if let Some(decoded) = char::from_u32(value) {
+        out.push(decoded);
     }
 }
 
@@ -263,6 +339,7 @@ const VALUE_FLAGS: &[&str] = &[
     "--userconfig",
     "--access",
     "--provenance-file",
+    "--cache",
 ];
 
 /// Fails when a workflow publishes or tags npm without exactly one literal
@@ -372,17 +449,22 @@ fn check_dist_tag_args(path: &str, number: usize, args: &[&str], violations: &mu
         }
         position += 1;
     }
-    if let ["add" | "set", rest @ ..] = positionals.as_slice() {
-        match rest {
-            [_package] => violations.push(format!(
+    if let ["add" | "set", package, rest @ ..] = positionals.as_slice() {
+        if rest.is_empty() {
+            violations.push(format!(
                 "{path}:{number}: `npm dist-tag` without a tag argument defaults to `latest`"
-            )),
-            [_package, tag, ..] => {
-                if let Err(reason) = literal_non_latest_tag(tag) {
-                    violations.push(format!("{path}:{number}: `npm dist-tag` {reason}"));
-                }
+            ));
+            return;
+        }
+        // Every trailing positional must be a literal non-`latest` tag. An
+        // unknown value-taking flag's bare-word value would otherwise shift
+        // the tag read and hide a `latest` move.
+        for candidate in rest {
+            if let Err(reason) = literal_non_latest_tag(candidate) {
+                violations.push(format!(
+                    "{path}:{number}: `npm dist-tag` on `{package}` {reason}"
+                ));
             }
-            [] => {}
         }
     }
 }
@@ -555,6 +637,30 @@ mod tests {
         assert!(has_violation(&workflow_violations(single), "forbidden"));
         let tagged = "      - run: \"npm publish --tag next\"\n";
         assert!(workflow_violations(tagged).is_empty());
+        // A trailing YAML comment after the closing quote does not prevent
+        // scalar decoding.
+        let commented = "      - run: \"cd pkg && npm publish --tag latest\" # release\n";
+        assert!(has_violation(&workflow_violations(commented), "forbidden"));
+        // YAML double-quoted escapes are decoded, so an escaped `npm` cannot
+        // hide behind a different spelling.
+        let escaped = "      - run: \"cd pkg && \\x6epm publish --tag latest\"\n";
+        assert!(has_violation(&workflow_violations(escaped), "forbidden"));
+    }
+
+    #[test]
+    fn workflow_dist_tag_value_flag_shift_is_not_exploitable() {
+        // `--cache` takes a value; its value must not be read as the tag.
+        let shifted = "      - run: npm dist-tag add pkg@1.0.0 --cache cache latest\n";
+        assert!(has_violation(&workflow_violations(shifted), "forbidden"));
+        let prefixed = "      - run: npm dist-tag add --cache cache pkg@1.0.0 next\n";
+        assert!(workflow_violations(prefixed).is_empty());
+        // Any unrecognized trailing positional after the package is held to
+        // the same literal non-`latest` rule.
+        let extra = "      - run: npm dist-tag add pkg@1.0.0 next https://registry.example\n";
+        assert!(has_violation(
+            &workflow_violations(extra),
+            "not a literal dist-tag"
+        ));
     }
 
     #[test]
