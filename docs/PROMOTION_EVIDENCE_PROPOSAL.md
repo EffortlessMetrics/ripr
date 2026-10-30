@@ -22,6 +22,15 @@ approved contract must be present in the trusted current source base, before a
 consumer can call it authoritative. A missing, skipped, cancelled, neutral,
 wrong-subject, ambiguous, or unavailable required result is not a pass.
 
+This proposed denominator is not currently achievable: the checked-in
+promotion contract deliberately rejects while its tag-governance authority is
+unavailable. The promotion PR also needs the documented opt-in marker. After
+the final head is fixed, the routed result requires a fresh Draft-to-Ready
+transition; the `rust` job needs `full-ci` or `release-check` at an eligible PR
+event. The security workflow does not subscribe to `ready_for_review`, so that
+transition alone does not rerun its jobs. Each required result must actually
+run successfully for the intended subject through a supported event.
+
 The promotion-contract job cannot require its own completion to finish: its
 receipt must identify the four prerequisite results and a later external
 admission check must also establish the `Source Promotion Contract` result.
@@ -36,7 +45,9 @@ source base. GitHub artifact attestations are one possible mechanism, but the
 repository does not currently emit such a receipt for these jobs; signer,
 predicate and artifact identity would have to be verified. Do not infer a
 workflow revision from an equal base/head file alone or from the ordinary run
-path.
+path. The installed `gh` in the development environment lacks the
+`attestation` subcommand, so this verification path also requires an available,
+approved verifier and a real attested receipt before it can be qualified.
 
 An independent review must name the exact promotion head, be from someone other
 than the PR author, and satisfy an explicit repository-owned eligibility policy.
