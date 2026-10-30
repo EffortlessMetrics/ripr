@@ -661,7 +661,9 @@ The proposed `.github/promotion-evidence-policy.json` names a source-owned
 observed check subset, not the complete required-result policy. The optional
 `source_promotion_live_evidence.py` reader requires that policy at the exact
 current base and compares the routed workflow blob at base and PR head. It
-checks the named run, job, suite, PR, review and subject identities twice.
+checks the named run, job, suite, PR, review and subject identities twice. It
+reads the complete bounded PR review timeline and rejects any dismissal event,
+including when the review list no longer shows the original state.
 Missing policy, dismissed reviews, missing evidence, changed workflow blobs or
 stale identities reject. An `observed_subset` result is not admission: equal
 workflow blobs do not authenticate the revision executed by the hosted run,

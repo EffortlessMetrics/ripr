@@ -130,6 +130,14 @@ def observe(reader, number, head, base):
             raise ValueError("PR repository identity mismatch")
         policy_blob, workflow_blob = observed_policy(reader, base, head)
         reviews = pages(reader, f"{PREFIX}pulls/{number}/reviews")
+        timeline = pages(reader, f"{PREFIX}issues/{number}/timeline")
+        if not all(isinstance(event, dict) and isinstance(event.get("event"), str) and event["event"] for event in timeline):
+            raise ValueError("malformed review timeline")
+        # A dismissal can change the review's visible state to a comment. Until
+        # a complete, authenticated decision policy can reconcile the event
+        # with its original review and later approvals, do not infer resolution.
+        if any(event.get("event") == "review_dismissed" for event in timeline):
+            raise ValueError("review dismissal requires reconciliation authority")
         checks = pages(reader, f"{PREFIX}commits/{head}/check-runs", "check_runs")
         normalized_reviews = []
         previous = ("", 0)
@@ -191,7 +199,7 @@ def observe(reader, number, head, base):
                                 "head_sha": check["head_sha"], "status": check["status"], "conclusion": check["conclusion"]}]}
         validate(snapshot, head, base)
         return {"snapshot": snapshot, "check_id": check["id"], "run": run, "job": job, "workflow": workflow,
-                "policy_blob": policy_blob, "workflow_blob": workflow_blob}
+                "policy_blob": policy_blob, "workflow_blob": workflow_blob, "timeline": timeline}
     except (KeyError, TypeError) as error:
         raise ValueError("incomplete GitHub evidence") from error
 

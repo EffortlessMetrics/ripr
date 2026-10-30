@@ -40,6 +40,7 @@ def responses():
             P+f'contents/{live.WORKFLOW}?ref={B}': blob(live.WORKFLOW, b'workflow'),
             P+f'contents/{live.WORKFLOW}?ref={H}': blob(live.WORKFLOW, b'workflow'),
             P+'pulls/7/reviews?per_page=100&page=1': [review],
+            P+'issues/7/timeline?per_page=100&page=1': [],
             P+f'commits/{H}/check-runs?per_page=100&page=1': {'total_count': 1, 'check_runs': [check]},
             P+'actions/jobs/55': job, P+'actions/runs/44': run,
             P+'actions/workflows/66': {'id': 66, 'path': live.WORKFLOW}}
@@ -67,6 +68,10 @@ class LiveEvidenceTests(unittest.TestCase):
         d = responses(); item = d[P+f'contents/{live.WORKFLOW}?ref={H}']; altered = b'other workflow'; item.update(size=len(altered), content=base64.b64encode(altered).decode(), sha=hashlib.sha1(b'blob '+str(len(altered)).encode()+b'\0'+altered).hexdigest()); cases.append(d)
         d = responses(); d[P+'pulls/7/reviews?per_page=100&page=1'] = []; cases.append(d)
         d = responses(); d[P+'pulls/7/reviews?per_page=100&page=1'][0]['state'] = 'DISMISSED'; cases.append(d)
+        d = responses(); d[P+'issues/7/timeline?per_page=100&page=1'] = [{'event': 'review_dismissed', 'dismissed_review': {'review_id': 10}}]; cases.append(d)
+        d = responses(); del d[P+'issues/7/timeline?per_page=100&page=1']; cases.append(d)
+        d = responses(); d[P+'issues/7/timeline?per_page=100&page=1'] = [None]; cases.append(d)
+        d = responses(); d[P+'issues/7/timeline?per_page=100&page=1'] = [{}]; cases.append(d)
         d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'] = []; cases.append(d)
         d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'][0]['head_sha'] = 'c'*40; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['head_sha'] = 'c'*40; cases.append(d)
@@ -115,7 +120,7 @@ class LiveEvidenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['status'], 'observed_subset')
             calls = (root/'calls').read_text().splitlines()
-            self.assertEqual(len(calls), 20)
+            self.assertEqual(len(calls), 22)
             self.assertTrue(all(path in responses() and 'protection' not in path and 'rulesets' not in path for path in calls))
 
 if __name__ == '__main__': unittest.main()
