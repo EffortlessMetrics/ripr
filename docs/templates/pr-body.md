@@ -23,7 +23,7 @@ security language. Test-only work must not imply production behavior changed.
 
 ## Match evidence to the claim
 
-Keep the decisive before/after result or negative control. A regression offered
+Keep the decisive before/after result or negative control. A regression test offered
 as repair evidence must distinguish the defect. Preservation tests may pass on
 the base by design. Selection and discrimination are different obligations:
 confirm both that the intended case ran and that the oracle notices a violation.
