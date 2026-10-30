@@ -239,14 +239,13 @@ jobs:
           export_validation_outputs
           printf '%s\n' "source_main=$source_main" "join_head=$join_head" "preflight=$preflight" "resolution_manifest=$resolution_manifest" "swarm_ref=$swarm_ref" "swarm_parent=$swarm_parent" "source_parent=$BASE_SHA" "control_commit=$control_commit" "preflight_sha256=$preflight_sha256" "resolution_sha256=$resolution_sha256" >> "$GITHUB_OUTPUT"
 
-      - name: Verify live swarm tag and protected ruleset
+      - name: Verify live swarm tag and require governance evidence
         id: live-governance
         if: steps.inputs.outcome == 'success'
         env:
           SWARM_REF: ${{ steps.inputs.outputs.swarm_ref }}
           SWARM_PARENT: ${{ steps.inputs.outputs.swarm_parent }}
           VALIDATION_FAILURE_PATH: ${{ runner.temp }}/source-promotion-validation-failure.txt
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           fail_live() {
@@ -258,18 +257,11 @@ jobs:
           live_ref=$(git ls-remote --refs https://github.com/EffortlessMetrics/ripr-swarm.git "$SWARM_REF") || fail_live "unable to read protected candidate tag"
           test "$(printf '%s\n' "$live_ref" | wc -l)" -eq 1 || fail_live "protected candidate tag is missing or ambiguous"
           test "$(printf '%s\n' "$live_ref" | awk '{print $1}')" = "$SWARM_PARENT" || fail_live "protected candidate tag does not resolve to SWARM_PARENT"
-          ruleset_url="https://api.github.com/repos/EffortlessMetrics/ripr-swarm/rulesets/20661783"
-          ruleset=$(curl --fail --silent --show-error --location --header "Accept: application/vnd.github+json" --header "Authorization: Bearer $GH_TOKEN" "$ruleset_url") || fail_live "unable to read live protected candidate-tag ruleset"
-          printf '%s' "$ruleset" | jq -e '
-            .id == 20661783 and .target == "tag" and .enforcement == "active" and
-            .conditions.ref_name.include == ["refs/tags/ripr-release-*"] and
-            (.conditions.ref_name.exclude // []) == [] and
-            ([.rules[]?.type] | index("update") != null) and
-            ([.rules[]?.type] | index("deletion") != null)
-          ' >/dev/null || fail_live "live protected candidate-tag ruleset is missing or mismatched"
-          printf '%s\n' "validation_phase=live_governance" "validation_reason=live governance checks passed" "validation_status=passed" >> "$GITHUB_OUTPUT"
+          # A live tag lookup establishes the ref value, not tag-governance authority.
+          # No administrative ruleset API read is available to this workflow.
           echo "tag=passed" >> "$GITHUB_OUTPUT"
-          echo "ruleset=passed" >> "$GITHUB_OUTPUT"
+          echo "ruleset=unknown" >> "$GITHUB_OUTPUT"
+          fail_live "authenticated candidate-tag governance evidence is unavailable"
 
       - name: Run the exact full-history verifier
         id: verify
@@ -441,7 +433,7 @@ jobs:
             --argjson parents "$parents" \
             --argjson checks "$checks" \
             --argjson failure_reasons "$failure_reasons" \
-            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,version:$version,source_main:$source_main,source_parent:$source_parent,join_head:$join_head,control_commit:$control_commit,trusted_verifier_sha:$trusted_verifier_sha,verifier_receipt_status:$verifier_receipt_status,verifier_exit_code:$verifier_exit_code,validation:{status:$validation_status,phase:$validation_phase,reason:$validation_reason},inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},control_sidecars:{contract_inputs:$control_inputs_path,preflight:$control_preflight_path,resolution_manifest:$control_resolution_manifest_path},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity, live protected tag and ruleset bindings only.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
+            '{schema:$schema,status:$status,pr_number:$pr_number,base_sha:$base_sha,head_sha:$head_sha,version:$version,source_main:$source_main,source_parent:$source_parent,join_head:$join_head,control_commit:$control_commit,trusted_verifier_sha:$trusted_verifier_sha,verifier_receipt_status:$verifier_receipt_status,verifier_exit_code:$verifier_exit_code,validation:{status:$validation_status,phase:$validation_phase,reason:$validation_reason},inputs:{preflight:$preflight,resolution_manifest:$resolution_manifest},control_sidecars:{contract_inputs:$control_inputs_path,preflight:$control_preflight_path,resolution_manifest:$control_resolution_manifest_path},preflight_sha256:$preflight_sha256,resolution_manifest_sha256:$resolution_sha256,parents:$parents,tree:$tree,merge_base:$merge_base,inventory:{conflicts:($conflict_count|tonumber? // $conflict_count),source_survivors:($survivor_count|tonumber? // $survivor_count),swarm_exclusions:($exclusion_count|tonumber? // $exclusion_count)},version_state:$version_state,governance:{protected_candidate_tag:$live_tag,protected_ruleset:$live_ruleset},checks:$checks,failure_reasons:$failure_reasons,claim_boundary:["Exact PR head, ordered two-parent ancestry, reviewed tree, metadata identity and live tag binding only; tag governance is unknown when evidence is unavailable.","No merge, publication, tag, release, settings, branch-protection, or product-correctness claim."]}' > "$contract"
           {
             echo "## Source Promotion Contract"
             echo ""

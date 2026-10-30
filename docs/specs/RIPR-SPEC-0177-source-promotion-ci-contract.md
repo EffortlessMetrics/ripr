@@ -67,11 +67,10 @@ produce a green `Source Promotion Contract` check.
 Before invoking the verifier, the workflow resolves the declared `swarm_ref`
 with `git ls-remote --refs` against the fixed public
 `EffortlessMetrics/ripr-swarm` remote and requires exactly one result whose SHA
-equals `SWARM_PARENT`. It also reads fixed public ruleset `20661783` and
-requires target `tag`, active enforcement, the singleton
-`refs/tags/ripr-release-*` pattern, and both active `update` and `deletion`
-rules. These checks are external provenance, not receipt-controlled
-self-consistency.
+equals `SWARM_PARENT`. It does not query administrative rulesets. The tag
+lookup does not prove tag-governance authority, so the workflow reports that
+authority as unknown and rejects until an authenticated evidence contract is
+implemented. A successful tag lookup is not a substitute for that authority.
 
 The workflow summary repeats the ordered parent graph, candidate/source SHAs,
 merge base, tree, receipt digests, preflight conflict/survivor/version state,

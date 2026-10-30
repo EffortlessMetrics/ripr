@@ -2717,7 +2717,8 @@ mod tests {
             "control preflight digest mismatch",
             "control resolution digest mismatch",
             "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7",
-            "(.conditions.ref_name.exclude // []) == []",
+            "authenticated candidate-tag governance evidence is unavailable",
+            "echo \"ruleset=unknown\"",
             "permissions:\n  contents: read",
             "<!-- source-promotion: true -->",
             "This workflow never executes the merge command",
@@ -2727,6 +2728,9 @@ mod tests {
                     "source-promotion workflow lost required contract: {needle}"
                 ));
             }
+        }
+        if workflow.contains("/rulesets/") || workflow.contains("Authorization: Bearer") {
+            return Err("source-promotion workflow must not read administrative rulesets".into());
         }
         if workflow
             .lines()

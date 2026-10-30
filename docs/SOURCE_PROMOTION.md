@@ -53,10 +53,10 @@ Also record:
 namespace. It must be the exact fully-qualified protected candidate tag
 `refs/tags/ripr-release-${VERSION}-${SWARM_CANDIDATE}` from the active swarm tag
 ruleset, and it must resolve in the actual `EffortlessMetrics/ripr-swarm`
-remote to `SWARM_CANDIDATE`. The source promotion contract also verifies fixed
-public ruleset `20661783` has the exact `refs/tags/ripr-release-*` singleton
-pattern with active update and deletion protections. Missing, wrong-target,
-missing-ruleset, or mismatched-ruleset inputs fail closed.
+remote to `SWARM_CANDIDATE`. The contract does not read administrative
+rulesets. A live ref lookup does not establish tag governance; until an
+authenticated governance evidence contract is implemented, that authority is
+unknown and the promotion-contract job rejects the attempt.
 The governed candidate tag is expected to be lightweight: its direct ref must
 resolve to the candidate commit, rather than relying on an annotated tag object.
 
