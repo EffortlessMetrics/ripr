@@ -21,11 +21,19 @@ struct Ledger {
 #[serde(deny_unknown_fields)]
 struct Row {
     path: String,
+    #[serde(deserialize_with = "required_entry")]
     source_entry: Option<String>,
+    #[serde(deserialize_with = "required_entry")]
     candidate_entry: Option<String>,
     disposition: String,
     rationale: String,
     evidence: String,
+}
+
+fn required_entry<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(deserializer)
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>, String> {
@@ -355,6 +363,24 @@ mod tests {
     use super::super::tests::{test_git_output as git_test, test_git_output_with_input};
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn survivor_entries_distinguish_explicit_absence_from_missing_fields() -> Result<(), String> {
+        let row = serde_json::json!({"path":"deleted", "source_entry":"100644 blob abc", "candidate_entry":null,
+            "disposition":"deleted", "rationale":"reviewed", "evidence":"review"});
+        serde_json::from_value::<Row>(row.clone()).map_err(|e| e.to_string())?;
+        for field in ["source_entry", "candidate_entry"] {
+            let mut missing = row.clone();
+            missing
+                .as_object_mut()
+                .ok_or("row must be an object")?
+                .remove(field);
+            if serde_json::from_value::<Row>(missing).is_ok() {
+                return Err(format!("missing {field} was treated as explicit null"));
+            }
+        }
+        Ok(())
+    }
 
     fn commit_tree(repo: &Path, tree: &str, a: &str, b: &str) -> Result<String, String> {
         test_git_output_with_input(

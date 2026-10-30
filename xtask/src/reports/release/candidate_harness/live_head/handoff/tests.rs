@@ -543,3 +543,47 @@ fn native_handoff_rereads_decisions_before_receipt_and_binds_source_identity() -
     }
     Ok(())
 }
+
+#[test]
+fn producer_native_v2_handoff_is_consumed_by_public_validator() -> Result<(), String> {
+    let fixture = Fixture::new()?;
+    let admitted = fixture.admit()?;
+    let receipt = admitted.revalidate_with("0.11.0", |reference, owner| {
+        let value = fixture
+            .native
+            .get(reference)
+            .ok_or("fixture decision missing")?;
+        let bytes = serde_json::to_vec(value).map_err(|e| e.to_string())?;
+        native::decode_native(reference, owner, &bytes)
+    })?;
+    let acceptance = serde_json::to_value(&receipt).map_err(|e| e.to_string())?;
+    let candidate = acceptance["subject"]["candidate_sha"].clone();
+    let reference = acceptance["subject"]["candidate_ref"].clone();
+    let preflight = json!({"schema":"ripr.source_promotion_preflight.v2",
+        "swarm_parent":candidate, "swarm_ref_sha":candidate, "swarm_ref":reference,
+        "version_state":{"requested_version":"0.11.0"}, "acceptance":acceptance});
+    crate::reports::source_promotion_acceptance::validate(&preflight)?;
+    let mut reads = 0;
+    crate::reports::source_promotion_acceptance::revalidate_with_reader(
+        &preflight,
+        |reference, _owner| {
+            reads += 1;
+            serde_json::to_vec(
+                fixture
+                    .native
+                    .get(reference)
+                    .ok_or("fixture decision missing")?,
+            )
+            .map_err(|e| e.to_string())
+        },
+    )?;
+    if reads != 3 {
+        return Err("consumer did not re-read each actual producer decision".into());
+    }
+    let mut altered = preflight.clone();
+    altered["acceptance"]["subject"]["candidate_tree"] = json!("0".repeat(40));
+    if crate::reports::source_promotion_acceptance::validate(&altered).is_ok() {
+        return Err("consumer accepted a changed actual producer subject".into());
+    }
+    Ok(())
+}
