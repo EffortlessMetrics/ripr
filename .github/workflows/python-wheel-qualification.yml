@@ -9,6 +9,8 @@ on:
       - ".github/workflows/publish-pypi.yml"
       - ".github/scripts/pypi_admission.py"
       - ".github/scripts/test_pypi_admission.py"
+      - ".github/scripts/python_consumer_evidence.py"
+      - ".github/scripts/test_python_consumer_evidence.py"
       - "Cargo.lock"
       - "Cargo.toml"
       - "crates/ripr/**"
@@ -64,7 +66,9 @@ jobs:
           persist-credentials: false
 
       - name: Test source publisher admission
-        run: python3 -m unittest discover -s .github/scripts -p 'test_pypi_admission.py'
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_pypi_admission.py'
+          python3 -m unittest discover -s .github/scripts -p 'test_python_consumer_evidence.py'
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
@@ -440,6 +444,7 @@ jobs:
         run: |
           set -euo pipefail
           evidence="${GITHUB_WORKSPACE}/target/ripr/python-wheel-evidence"
+          cp .github/scripts/python_consumer_evidence.py "${evidence}/python_consumer_evidence.py"
           tar -czf "${evidence}/python-basic-fixture.tar.gz" \
             -C "${GITHUB_WORKSPACE}" \
             fixtures/python/basic
@@ -474,6 +479,8 @@ jobs:
       matrix:
         client: [pip, uv]
     env:
+      CLIENT: ${{ matrix.client }}
+      CONSUMER_EVIDENCE: ${{ github.workspace }}/python-consumer-${{ matrix.client }}-${{ github.run_id }}-${{ github.run_attempt }}
       RIPR_NATIVE_VERSION: ${{ needs.build-wheel.outputs.native_version }}
       RIPR_PYTHON_VERSION: ${{ needs.build-wheel.outputs.python_version }}
       EXPECTED_PAYLOAD_SHA256: ${{ needs.build-wheel.outputs.payload_sha256 }}
@@ -494,12 +501,17 @@ jobs:
           name: pypi-qualified-wheel-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence
 
+      - name: Initialize diagnostic consumer evidence
+        id: consumer_evidence
+        run: python3 evidence/python_consumer_evidence.py init
+
       - name: Install from the local wheelhouse without Rust or source checkout
         shell: bash
         env:
           CLIENT: ${{ matrix.client }}
         run: |
           set -euo pipefail
+          python3 evidence/python_consumer_evidence.py running install
           base_path="/usr/bin:/bin"
           wheel="$(find evidence/wheelhouse -maxdepth 1 -type f -name '*.whl' -print -quit)"
           test -n "${wheel}"
@@ -566,12 +578,15 @@ jobs:
             } >> "${GITHUB_ENV}"
           fi
 
+          python3 evidence/python_consumer_evidence.py passed install
+          python3 evidence/python_consumer_evidence.py running native_identity
           resolved="$(env -i HOME="${HOME}" PATH="${consumer_path}" bash -c 'command -v ripr')"
           test "${resolved}" = "${executable}"
           test "$(sha256sum "${resolved}" | awk '{print $1}')" = "${EXPECTED_PAYLOAD_SHA256}"
           test "$(env -i HOME="${HOME}" PATH="${consumer_path}" ripr --version)" = \
             "ripr ${RIPR_NATIVE_VERSION}"
           test ! -e "${planted_marker}"
+          python3 evidence/python_consumer_evidence.py passed native_identity
           {
             echo "CLIENT=${CLIENT}"
             echo "CONSUMER_EXECUTABLE=${executable}"
@@ -586,11 +601,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 evidence/python_consumer_evidence.py running preview
           project="${RUNNER_TEMP}/${CLIENT} consumer ü"
           fixture="${project}/fixtures/python/basic"
-          check_json="${RUNNER_TEMP}/${CLIENT}-python-check.json"
-          disabled_json="${RUNNER_TEMP}/${CLIENT}-python-disabled.json"
-          explain_text="${RUNNER_TEMP}/${CLIENT}-python-explain.txt"
+          check_json="${CONSUMER_EVIDENCE}/check.json"
+          disabled_json="${CONSUMER_EVIDENCE}/disabled.json"
+          explain_text="${CONSUMER_EVIDENCE}/explain.txt"
           project_marker="${RUNNER_TEMP}/${CLIENT}-project-python-executed"
           mkdir -p "${project}"
           tar -xzf evidence/python-basic-fixture.tar.gz -C "${project}"
@@ -628,6 +644,8 @@ jobs:
             and .findings[0].language == "python"
             and .findings[0].language_status == "preview"
           ' "${check_json}" >/dev/null
+          python3 evidence/python_consumer_evidence.py passed preview
+          python3 evidence/python_consumer_evidence.py running explain
           finding_id="$(jq -er '.findings[0].id' "${check_json}")"
           env -i \
             HOME="${HOME}" \
@@ -648,6 +666,8 @@ jobs:
           test ! -e "${project_marker}"
           test ! -e "${PLANTED_MARKER}"
 
+          python3 evidence/python_consumer_evidence.py passed explain
+          python3 evidence/python_consumer_evidence.py running disable
           cat > "${fixture}/ripr.toml" <<'EOF'
           [languages]
           enabled = ["rust"]
@@ -670,12 +690,14 @@ jobs:
               and .analyzed == false
               and (.why | contains("empty result is not Rust-grade clean")))
           ' "${disabled_json}" >/dev/null
+          python3 evidence/python_consumer_evidence.py passed disable
           echo "PROJECT_FIXTURE=${fixture}" >> "${GITHUB_ENV}"
 
       - name: Reinstall and uninstall cleanly
         shell: bash
         run: |
           set -euo pipefail
+          python3 evidence/python_consumer_evidence.py running reinstall
           if [ "${CLIENT}" = pip ]; then
             "${CONSUMER_PYTHON}" -m pip install \
               --disable-pip-version-check \
@@ -685,6 +707,8 @@ jobs:
               "ripr-rs==${RIPR_PYTHON_VERSION}"
             test "$(sha256sum "${CONSUMER_EXECUTABLE}" | awk '{print $1}')" = \
               "${EXPECTED_PAYLOAD_SHA256}"
+            python3 evidence/python_consumer_evidence.py passed reinstall
+            python3 evidence/python_consumer_evidence.py running uninstall
             "${CONSUMER_PYTHON}" -m pip uninstall -y ripr-rs
             if "${CONSUMER_PYTHON}" -m pip show ripr-rs >/dev/null 2>&1; then
               echo "::error::ripr-rs remained installed after uninstall" >&2
@@ -698,6 +722,8 @@ jobs:
               "${CONSUMER_PYTHON}" -m uv tool install --force "${WHEEL_PATH}"
             test "$(sha256sum "${CONSUMER_EXECUTABLE}" | awk '{print $1}')" = \
               "${EXPECTED_PAYLOAD_SHA256}"
+            python3 evidence/python_consumer_evidence.py passed reinstall
+            python3 evidence/python_consumer_evidence.py running uninstall
             UV_OFFLINE=1 \
             UV_TOOL_DIR="${UV_TOOL_DIR}" \
             UV_TOOL_BIN_DIR="${UV_TOOL_BIN_DIR}" \
@@ -709,3 +735,17 @@ jobs:
             "${PLANTED_DIR}/ripr"
           test -f "${PROJECT_FIXTURE}/src/pricing.py"
           test ! -e "${PLANTED_MARKER}"
+          python3 evidence/python_consumer_evidence.py passed uninstall
+
+      - name: Finalize diagnostic evidence, including partial failures
+        if: always() && steps.consumer_evidence.outcome == 'success'
+        run: python3 evidence/python_consumer_evidence.py finalize
+
+      - name: Retain diagnostic consumer evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: pypi-consumer-${{ matrix.client }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.CONSUMER_EVIDENCE }}/
+          if-no-files-found: warn
+          retention-days: 5
