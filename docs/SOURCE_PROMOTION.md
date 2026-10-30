@@ -666,8 +666,10 @@ Missing policy, dismissed reviews, missing evidence, changed workflow blobs or
 stale identities reject. An `observed_subset` result is not admission: equal
 workflow blobs do not authenticate the revision executed by the hosted run,
 review association is not current reviewer authority, the reads are not atomic,
-and a complete required-result policy is not established. This reader is not
-wired to the promotion gate.
+and a complete required-result policy is not established. The blob digest
+checks returned bytes; their association with the requested commit is supplied
+by GitHub's contents API, and the current-base observation is trusted only as
+that API's read at the time. This reader is not wired to the promotion gate.
 
 `cargo xtask source-promotion verify-staged --preflight <v2.json> --survivors <ledger.json> --source-main <P> --swarm-base <B> --preview <K>` verifies the staged geometry separately from the historical direct-J verifier. P, B and K are exact lowercase commit IDs. The native v2 preflight names the immutable selected and qualified swarm candidate S and the reviewed tree T; its native decisions are re-read before and after verification. The command requires P absent from B and introduced by the first swarm first-parent merge after B, including an outer merge whose second parent contains the actual public import. It requires P and B in S's ancestry, K's ordered parents `[P, S]`, and K's tree, S's tree and the reviewed preflight tree to be identical. It retains the existing source release-metadata checks.
 

@@ -62,6 +62,7 @@ class LiveEvidenceTests(unittest.TestCase):
         d = responses(); d[P+'git/ref/heads/main']['object']['sha'] = 'c'*40; cases.append(d)
         d = responses(); del d[P+f'contents/{live.POLICY}?ref={B}']; cases.append(d)
         d = responses(); d[P+f'contents/{live.POLICY}?ref={B}']['content'] = ''; cases.append(d)
+        d = responses(); item = d[P+f'contents/{live.POLICY}?ref={B}']; altered = b'{"schema":"unsupported"}'; item.update(size=len(altered), content=base64.b64encode(altered).decode(), sha=hashlib.sha1(b'blob '+str(len(altered)).encode()+b'\0'+altered).hexdigest()); cases.append(d)
         d = responses(); d[P+f'contents/{live.WORKFLOW}?ref={H}']['sha'] = 'c'*40; cases.append(d)
         d = responses(); item = d[P+f'contents/{live.WORKFLOW}?ref={H}']; altered = b'other workflow'; item.update(size=len(altered), content=base64.b64encode(altered).decode(), sha=hashlib.sha1(b'blob '+str(len(altered)).encode()+b'\0'+altered).hexdigest()); cases.append(d)
         d = responses(); d[P+'pulls/7/reviews?per_page=100&page=1'] = []; cases.append(d)
