@@ -104,7 +104,7 @@ def observe(reader, number, head, base):
                 raise ValueError("dismissal timing requires independent authority")
             normalized_reviews.append({"id": ident, "author": review["user"]["login"], "state": review["state"],
                                        "commit_id": review["commit_id"], "author_association": review["author_association"]})
-        selected = [c for c in checks if c.get("name") == "Ripr Rust Small Result" and c.get("app", {}).get("slug") == "github-actions"]
+        selected = [c for c in checks if c.get("name") == "Ripr Rust Small Result" and c.get("app", {}).get("slug") == "github-actions" and c.get("app", {}).get("id") == 15368]
         if len(selected) != 1:
             raise ValueError("routed result missing or ambiguous")
         check = selected[0]
@@ -121,15 +121,22 @@ def observe(reader, number, head, base):
         prs = run.get("pull_requests")
         if (not isinstance(prs, list) or len(prs) != 1 or not isinstance(prs[0], dict)
                 or prs[0].get("number") != number or prs[0].get("head", {}).get("sha") != head
-                or prs[0].get("base", {}).get("sha") != base):
+                or prs[0].get("base", {}).get("sha") != base
+                or prs[0].get("base", {}).get("ref") != "main"
+                or prs[0].get("base", {}).get("repo", {}).get("url") != f"https://api.github.com/repos/{REPOSITORY}"
+                or prs[0].get("head", {}).get("repo", {}).get("url") != f"https://api.github.com/repos/{REPOSITORY}"):
             raise ValueError("workflow run PR and base identity unavailable or different")
         if (job["id"] != job_id or job["run_id"] != run_id or job["name"] != check["name"]
                 or job["status"] != "completed" or job["conclusion"] != "success"
+                or job["head_sha"] != head or not isinstance(run["run_attempt"], int)
+                or isinstance(run["run_attempt"], bool) or run["run_attempt"] < 1
+                or job["run_attempt"] != run["run_attempt"]
                 or job["check_run_url"] != f"https://api.github.com/repos/{REPOSITORY}/check-runs/{check['id']}"
                 or run["id"] != run_id or run["event"] != "pull_request" or run["head_sha"] != head
                 or run["status"] != "completed" or run["conclusion"] != "success"
-                or run["repository"]["full_name"] != REPOSITORY or workflow["id"] != run["workflow_id"]
-                or workflow["path"] != WORKFLOW):
+                or run["repository"]["full_name"] != REPOSITORY or run["head_repository"]["full_name"] != REPOSITORY
+                or run["path"] != WORKFLOW or run["check_suite_id"] != check["check_suite"]["id"]
+                or workflow["id"] != run["workflow_id"] or workflow["path"] != WORKFLOW):
             raise ValueError("workflow run identity or result mismatch")
         snapshot = {"repository": REPOSITORY, "base_ref": pr["base"]["ref"], "state": pr["state"],
                     "draft": pr["draft"], "head_sha": pr["head"]["sha"], "base_sha": pr["base"]["sha"],

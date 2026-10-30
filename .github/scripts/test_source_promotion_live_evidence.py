@@ -19,13 +19,15 @@ def responses():
     review = {'id': 10, 'submitted_at': '2026-10-30T01:02:03Z', 'user': {'login': 'reviewer'},
               'state': 'APPROVED', 'commit_id': H, 'author_association': 'MEMBER'}
     check = {'id': 33, 'name': 'Ripr Rust Small Result', 'head_sha': H, 'status': 'completed',
-             'conclusion': 'success', 'app': {'slug': 'github-actions'},
+             'conclusion': 'success', 'app': {'slug': 'github-actions', 'id': 15368}, 'check_suite': {'id': 77},
              'details_url': 'https://github.com/EffortlessMetrics/ripr/actions/runs/44/job/55'}
     job = {'id': 55, 'run_id': 44, 'name': check['name'], 'status': 'completed', 'conclusion': 'success',
-           'check_run_url': f'https://api.github.com/repos/{live.REPOSITORY}/check-runs/33'}
+           'check_run_url': f'https://api.github.com/repos/{live.REPOSITORY}/check-runs/33', 'head_sha': H, 'run_attempt': 1}
     run = {'id': 44, 'workflow_id': 66, 'head_sha': H, 'event': 'pull_request', 'status': 'completed',
            'conclusion': 'success', 'repository': {'full_name': live.REPOSITORY},
-           'pull_requests': [{'number': 7, 'head': {'sha': H}, 'base': {'sha': B}}]}
+           'head_repository': {'full_name': live.REPOSITORY}, 'path': live.WORKFLOW, 'run_attempt': 1, 'check_suite_id': 77,
+           'pull_requests': [{'number': 7, 'head': {'sha': H, 'repo': {'url': f'https://api.github.com/repos/{live.REPOSITORY}'}},
+                              'base': {'sha': B, 'ref': 'main', 'repo': {'url': f'https://api.github.com/repos/{live.REPOSITORY}'}}}]}
     return {P+'pulls/7': pr, P+'git/ref/heads/main': {'object': {'sha': B}},
             P+'pulls/7/reviews?per_page=100&page=1': [review],
             P+f'commits/{H}/check-runs?per_page=100&page=1': {'total_count': 1, 'check_runs': [check]},
@@ -57,6 +59,11 @@ class LiveEvidenceTests(unittest.TestCase):
         d = responses(); d[P+'actions/runs/44']['pull_requests'][0]['base']['sha'] = 'c'*40; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['pull_requests'] = []; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['conclusion'] = 'failure'; cases.append(d)
+        d = responses(); d[P+'actions/jobs/55']['run_attempt'] = 2; cases.append(d)
+        d = responses(); d[P+'actions/jobs/55']['head_sha'] = 'c'*40; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['check_suite_id'] = 78; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['path'] = '.github/workflows/other.yml'; cases.append(d)
+        d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'][0]['app']['id'] = 42; cases.append(d)
         d = responses(); d[P+'actions/workflows/66']['path'] = '.github/workflows/other.yml'; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['workflow_id'] = '../bad'; cases.append(d)
         d = responses(); del d[P+'actions/jobs/55']; cases.append(d)
