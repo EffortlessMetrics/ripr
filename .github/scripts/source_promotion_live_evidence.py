@@ -218,6 +218,9 @@ def verify(reader, number, head, base):
             "head_sha": head, "base_sha": base, "check_id": first["check_id"],
             "run_id": first["run"]["id"], "workflow_id": first["workflow"]["id"],
             "policy_blob": first["policy_blob"], "equal_workflow_blob": first["workflow_blob"],
+            "admission": "unavailable", "authority": {"required_result_denominator": "unknown",
+                "executed_workflow_revision": "unknown", "current_reviewer_eligibility": "unknown",
+                "dismissal_reconciliation": "not_attempted", "atomic_currentness": "unavailable"},
             "non_claim": "No complete required-result policy, trusted workflow revision, current reviewer authority, atomic snapshot, admission, merge or release authority is established."}
 
 

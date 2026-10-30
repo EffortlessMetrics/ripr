@@ -55,6 +55,8 @@ class LiveEvidenceTests(unittest.TestCase):
     def test_mocked_positive_is_only_observed_subset(self):
         result = live.verify(reader(responses()), 7, H, B)
         self.assertEqual(result['status'], 'observed_subset')
+        self.assertEqual(result['admission'], 'unavailable')
+        self.assertTrue(all(value in ('unknown', 'not_attempted', 'unavailable') for value in result['authority'].values()))
         self.assertIn('No complete required-result policy', result['non_claim'])
 
     def test_reject_missing_stale_review_and_workflow_adversaries(self):
@@ -99,6 +101,23 @@ class LiveEvidenceTests(unittest.TestCase):
             if path == P+'git/ref/heads/main':
                 count += 1
                 if count == 2: return {'object': {'sha': 'c'*40}}
+            return reader(data)(path)
+        with self.assertRaises(ValueError): live.verify(changing, 7, H, B)
+
+    def test_reject_page_two_dismissal_and_timeline_change(self):
+        first = P+'issues/7/timeline?per_page=100&page=1'
+        second = P+'issues/7/timeline?per_page=100&page=2'
+        data = responses()
+        data[first] = [{'event': 'commented', 'id': n} for n in range(100)]
+        data[second] = [{'event': 'review_dismissed', 'dismissed_review': {'review_id': 10}}]
+        with self.assertRaises(ValueError): live.verify(reader(data), 7, H, B)
+        data = responses()
+        count = 0
+        def changing(path):
+            nonlocal count
+            if path == first:
+                count += 1
+                if count == 2: return [{'event': 'commented', 'id': 123}]
             return reader(data)(path)
         with self.assertRaises(ValueError): live.verify(changing, 7, H, B)
 
