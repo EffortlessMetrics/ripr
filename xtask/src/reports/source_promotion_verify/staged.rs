@@ -814,6 +814,33 @@ mod tests {
             }
             let parsed: Ledger =
                 serde_json::from_value(ledger.clone()).map_err(|e| e.to_string())?;
+            // A later import must not authenticate an earlier, unrelated merge
+            // as the first-leg transition even though P is in the final history.
+            let unrelated = commit_tree(&swarm_repo, &tree, &base, &common)?;
+            let later = commit_tree(&swarm_repo, &tree, &unrelated, &source)?;
+            let later_ref = format!("refs/tags/ripr-release-0.11.0-{later}");
+            let later_portable =
+                super::super::super::source_promotion_acceptance::tests::fixture_for_candidate(
+                    &later, &tree, &later_ref,
+                )?;
+            let mut later_preflight = preflight.clone();
+            later_preflight["swarm_parent"] = Value::String(later.clone());
+            later_preflight["swarm_ref_sha"] = Value::String(later.clone());
+            later_preflight["swarm_ref"] = Value::String(later_ref);
+            later_preflight["acceptance"] = later_portable["acceptance"].clone();
+            if !verify(
+                &swarm_repo,
+                &later_preflight,
+                &bytes,
+                &parsed,
+                &source,
+                &base,
+                &preview,
+            )
+            .is_err_and(|reason| reason.contains("imported parent does not contain source"))
+            {
+                return Err("a later import authenticated an unrelated first transition".into());
+            }
             let swapped = commit_tree(&swarm_repo, &tree, &candidate, &source)?;
             if verify(
                 &swarm_repo,
