@@ -451,15 +451,19 @@ jobs:
             printf '%s\n' "- conflicts: $conflict_count; source survivors: $survivor_count; swarm exclusions: $exclusion_count"
             printf '%s\n' "- version/changelog state: $version_state"
             echo ""
-            echo "Use Create a merge commit."
-            echo "Do not use Squash and merge."
-            echo "Do not use Rebase and merge."
-            echo ""
-            echo '```bash'
-            echo "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr \\"
-            echo "  --merge \\"
-            echo "  --match-head-commit $PR_HEAD"
-            echo '```'
+            if test "$status" = verified; then
+              echo "Use Create a merge commit."
+              echo "Do not use Squash and merge."
+              echo "Do not use Rebase and merge."
+              echo ""
+              echo '```bash'
+              echo "gh pr merge $PR_NUMBER --repo EffortlessMetrics/ripr \\"
+              echo "  --merge \\"
+              echo "  --match-head-commit $PR_HEAD"
+              echo '```'
+            else
+              echo "Promotion is not authorized by this rejected or incomplete contract."
+            fi
             echo ""
             echo "This workflow never executes the merge command. Unrelated PRs skip this job; a skipped job is not a promotion pass."
             if test "$status" != verified; then
