@@ -417,6 +417,28 @@ and should usually be split.
 
 ## Current Workflows
 
+### Workflow content policy
+
+`cargo xtask check-workflows` scans every `.github/workflows/*.yml` file in
+this repository, including the real npm publish workflow
+`.github/workflows/publish-npm.yml`. Since the npm dist-tag guard
+(ripr-swarm#9663, `xtask/src/policy/workflow_npm_tags.rs`), it refuses:
+
+- any workflow `npm publish` that does not pass exactly one literal
+  non-`latest` `--tag`/`--tag=` (an omitted tag defaults to `latest`);
+- any workflow `npm dist-tag add`/`set` whose tag is missing or not a literal
+  non-`latest` word;
+- tags carried by variables, `${{ }}` expressions, command substitution or
+  quoting tricks, because they can expand to `latest` at run time.
+
+`--dry-run` publishes are exempt. YAML folding (`run: >`), quoted `run:`
+values, and trailing comments after a block scalar header are decoded before
+shell tokenization so those forms cannot bypass the scan. Out of scope, as
+upstream: `pnpm`/`yarn` publish, `NPM_CONFIG_TAG`, and composite or reusable
+actions. The current publish workflow satisfies the guard by staging with the
+literal `--tag=next`; moving npm `latest` remains a separate maintainer
+decision outside CI.
+
 ### Routed Rust
 
 `.github/workflows/routed-rust.yml` is the source repository's Rust gate. It
