@@ -1,4 +1,6 @@
 import copy
+import base64
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -28,7 +30,15 @@ def responses():
            'head_repository': {'full_name': live.REPOSITORY}, 'path': live.WORKFLOW, 'run_attempt': 1, 'check_suite_id': 77,
            'pull_requests': [{'number': 7, 'head': {'sha': H, 'repo': {'url': f'https://api.github.com/repos/{live.REPOSITORY}'}},
                               'base': {'sha': B, 'ref': 'main', 'repo': {'url': f'https://api.github.com/repos/{live.REPOSITORY}'}}}]}
+    policy = (Path(live.__file__).parents[1] / 'promotion-evidence-policy.json').read_bytes()
+    def blob(path, contents):
+        return {'path': path, 'type': 'file', 'encoding': 'base64', 'size': len(contents),
+                'sha': hashlib.sha1(b'blob ' + str(len(contents)).encode() + b'\0' + contents).hexdigest(),
+                'content': base64.b64encode(contents).decode()}
     return {P+'pulls/7': pr, P+'git/ref/heads/main': {'object': {'sha': B}},
+            P+f'contents/{live.POLICY}?ref={B}': blob(live.POLICY, policy),
+            P+f'contents/{live.WORKFLOW}?ref={B}': blob(live.WORKFLOW, b'workflow'),
+            P+f'contents/{live.WORKFLOW}?ref={H}': blob(live.WORKFLOW, b'workflow'),
             P+'pulls/7/reviews?per_page=100&page=1': [review],
             P+f'commits/{H}/check-runs?per_page=100&page=1': {'total_count': 1, 'check_runs': [check]},
             P+'actions/jobs/55': job, P+'actions/runs/44': run,
@@ -50,6 +60,10 @@ class LiveEvidenceTests(unittest.TestCase):
         cases = []
         d = responses(); d[P+'pulls/7']['head']['sha'] = 'c'*40; cases.append(d)
         d = responses(); d[P+'git/ref/heads/main']['object']['sha'] = 'c'*40; cases.append(d)
+        d = responses(); del d[P+f'contents/{live.POLICY}?ref={B}']; cases.append(d)
+        d = responses(); d[P+f'contents/{live.POLICY}?ref={B}']['content'] = ''; cases.append(d)
+        d = responses(); d[P+f'contents/{live.WORKFLOW}?ref={H}']['sha'] = 'c'*40; cases.append(d)
+        d = responses(); item = d[P+f'contents/{live.WORKFLOW}?ref={H}']; altered = b'other workflow'; item.update(size=len(altered), content=base64.b64encode(altered).decode(), sha=hashlib.sha1(b'blob '+str(len(altered)).encode()+b'\0'+altered).hexdigest()); cases.append(d)
         d = responses(); d[P+'pulls/7/reviews?per_page=100&page=1'] = []; cases.append(d)
         d = responses(); d[P+'pulls/7/reviews?per_page=100&page=1'][0]['state'] = 'DISMISSED'; cases.append(d)
         d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'] = []; cases.append(d)
@@ -100,7 +114,7 @@ class LiveEvidenceTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['status'], 'observed_subset')
             calls = (root/'calls').read_text().splitlines()
-            self.assertEqual(len(calls), 14)
+            self.assertEqual(len(calls), 20)
             self.assertTrue(all(path in responses() and 'protection' not in path and 'rulesets' not in path for path in calls))
 
 if __name__ == '__main__': unittest.main()

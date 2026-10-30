@@ -3,6 +3,8 @@
 The source-owned contract observes one routed check and an independent approval.
 It does not establish the full required policy or the trust of a workflow revision.
 """
+import base64
+import hashlib
 import json
 import re
 import selectors
@@ -15,7 +17,43 @@ from source_promotion_pr_evidence import REPOSITORY, validate
 MAX_PAGES = 10
 MAX_BYTES = 4 * 1024 * 1024
 WORKFLOW = ".github/workflows/routed-rust.yml"
+POLICY = ".github/promotion-evidence-policy.json"
 PREFIX = f"repos/{REPOSITORY}/"
+
+
+def repository_blob(reader, path, revision):
+    item = reader(f"{PREFIX}contents/{path}?ref={revision}")
+    if (not isinstance(item, dict) or item.get("path") != path or item.get("type") != "file"
+            or item.get("encoding") != "base64" or not isinstance(item.get("content"), str)
+            or not isinstance(item.get("size"), int) or isinstance(item["size"], bool)
+            or not 0 <= item["size"] <= 1024 * 1024):
+        raise ValueError("repository blob metadata unavailable")
+    try:
+        content = base64.b64decode(item["content"].replace("\n", ""), validate=True)
+    except ValueError as error:
+        raise ValueError("repository blob encoding invalid") from error
+    digest = hashlib.sha1(b"blob " + str(len(content)).encode("ascii") + b"\0" + content).hexdigest()
+    if len(content) != item["size"] or item.get("sha") != digest:
+        raise ValueError("repository blob identity differs from content")
+    return digest, content
+
+
+def observed_policy(reader, base, head):
+    policy_sha, policy_bytes = repository_blob(reader, POLICY, base)
+    try:
+        policy = json.loads(policy_bytes)
+    except (ValueError, UnicodeDecodeError) as error:
+        raise ValueError("repository promotion policy malformed") from error
+    expected = {"schema": "ripr.promotion_observed_check_policy.v1", "coverage": "observed_subset",
+                "required_results": [{"name": "Ripr Rust Small Result", "app_slug": "github-actions",
+                                      "app_id": 15368, "workflow_path": WORKFLOW}]}
+    if policy != expected:
+        raise ValueError("repository promotion policy unavailable or unsupported")
+    base_blob, _ = repository_blob(reader, WORKFLOW, base)
+    head_blob, _ = repository_blob(reader, WORKFLOW, head)
+    if base_blob != head_blob:
+        raise ValueError("routed workflow differs between current base and PR head")
+    return policy_sha, base_blob
 
 
 def read_api(path):
@@ -90,6 +128,7 @@ def observe(reader, number, head, base):
     try:
         if pr["number"] != number or pr["base"]["repo"]["full_name"] != REPOSITORY or pr["head"]["repo"]["full_name"] != REPOSITORY:
             raise ValueError("PR repository identity mismatch")
+        policy_blob, workflow_blob = observed_policy(reader, base, head)
         reviews = pages(reader, f"{PREFIX}pulls/{number}/reviews")
         checks = pages(reader, f"{PREFIX}commits/{head}/check-runs", "check_runs")
         normalized_reviews = []
@@ -151,7 +190,8 @@ def observe(reader, number, head, base):
                     "checks": [{"name": check["name"], "app_slug": check["app"]["slug"],
                                 "head_sha": check["head_sha"], "status": check["status"], "conclusion": check["conclusion"]}]}
         validate(snapshot, head, base)
-        return {"snapshot": snapshot, "check_id": check["id"], "run": run, "job": job, "workflow": workflow}
+        return {"snapshot": snapshot, "check_id": check["id"], "run": run, "job": job, "workflow": workflow,
+                "policy_blob": policy_blob, "workflow_blob": workflow_blob}
     except (KeyError, TypeError) as error:
         raise ValueError("incomplete GitHub evidence") from error
 
@@ -169,6 +209,7 @@ def verify(reader, number, head, base):
     return {"status": "observed_subset", "repository": REPOSITORY, "pr": number,
             "head_sha": head, "base_sha": base, "check_id": first["check_id"],
             "run_id": first["run"]["id"], "workflow_id": first["workflow"]["id"],
+            "policy_blob": first["policy_blob"], "equal_workflow_blob": first["workflow_blob"],
             "non_claim": "No complete required-result policy, trusted workflow revision, current reviewer authority, atomic snapshot, admission, merge or release authority is established."}
 
 

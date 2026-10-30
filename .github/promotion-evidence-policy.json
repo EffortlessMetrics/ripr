@@ -1,0 +1,12 @@
+{
+  "schema": "ripr.promotion_observed_check_policy.v1",
+  "coverage": "observed_subset",
+  "required_results": [
+    {
+      "name": "Ripr Rust Small Result",
+      "app_slug": "github-actions",
+      "app_id": 15368,
+      "workflow_path": ".github/workflows/routed-rust.yml"
+    }
+  ]
+}

@@ -657,6 +657,18 @@ reachable.
 
 ## Staged-return geometry verifier
 
+The proposed `.github/promotion-evidence-policy.json` names a source-owned
+observed check subset, not the complete required-result policy. The optional
+`source_promotion_live_evidence.py` reader requires that policy at the exact
+current base and compares the routed workflow blob at base and PR head. It
+checks the named run, job, suite, PR, review and subject identities twice.
+Missing policy, dismissed reviews, missing evidence, changed workflow blobs or
+stale identities reject. An `observed_subset` result is not admission: equal
+workflow blobs do not authenticate the revision executed by the hosted run,
+review association is not current reviewer authority, the reads are not atomic,
+and a complete required-result policy is not established. This reader is not
+wired to the promotion gate.
+
 `cargo xtask source-promotion verify-staged --preflight <v2.json> --survivors <ledger.json> --source-main <P> --swarm-base <B> --preview <K>` verifies the staged geometry separately from the historical direct-J verifier. P, B and K are exact lowercase commit IDs. The native v2 preflight names the immutable selected and qualified swarm candidate S and the reviewed tree T; its native decisions are re-read before and after verification. The command requires P absent from B and introduced by the first swarm first-parent merge after B, including an outer merge whose second parent contains the actual public import. It requires P and B in S's ancestry, K's ordered parents `[P, S]`, and K's tree, S's tree and the reviewed preflight tree to be identical. It retains the existing source release-metadata checks.
 
 The UTF-8 JSON ledger has schema `ripr.staged_survivors.v1`, the exact raw preflight SHA-256 without a prefix, `source_parent`, `swarm_base`, `candidate`, `candidate_tree`, and `rows`. Each row contains `path`, `source_entry`, `candidate_entry`, `disposition`, `rationale`, and `evidence`. An entry is null when absent, otherwise the exact `mode type object-id` header from `git ls-tree` at the named commit. Rows must cover exactly the public paths changed between the unique merge base of B and P and P; renames are accounted as deletion plus addition. Paths are NUL-framed during inventory, and non-UTF-8 paths fail closed. The verifier checks the exact entries and nonempty dispositions but cannot decide whether a disposition is semantically correct: the ledger still requires independent review.
