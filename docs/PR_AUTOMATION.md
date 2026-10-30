@@ -342,12 +342,16 @@ bound to the rechecked SHA (`--force-with-lease=<ref>:<sha>`, never plain
 changed, and failed branch. No CI or scheduled job runs the apply path.
 
 `gh-pr-status --pr <number>` is the per-PR merge-readiness packet. It reads
-GitHub CLI PR status, branch-protection required contexts when available,
-latest reviews, and Droid-related checks, then writes
+GitHub CLI PR status, latest reviews, and Droid-related checks, then writes
 `target/ripr/reports/gh-pr-status.md` and
 `target/ripr/reports/gh-pr-status.json` with the merge state, outstanding
 checks, failed checks, behind-main state, review status, Droid status, and a
-safe next action: `wait`, `rebase`, `inspect failure`, or `merge`. It is
+safe next action: `wait`, `rebase`, `inspect failure`, or `merge`. It does not
+query protection settings: the required-context policy is unknown from the PR
+rollup alone, so this command will not recommend merge on that evidence. In
+JSON, an empty `required_checks_outstanding` with
+`required_contexts_available: false` means unknown, not that none are required.
+Observed pending checks are reported separately. It is
 advisory and never updates the branch, comments, approves, or merges.
 Use [Merge freshness and watcher policy](MERGE_WATCH_POLICY.md) for polling
 cadence, branch-refresh decisions, REST status fallback, Droid/advisory-check

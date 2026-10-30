@@ -3378,8 +3378,8 @@ fn gh_pr_status_readiness(
         .iter()
         .filter(|check| pr_check_pending(check))
         .filter(|check| {
-            !required_contexts_available
-                || required_contexts
+            required_contexts_available
+                && required_contexts
                     .iter()
                     .any(|context| context.eq_ignore_ascii_case(&check.name))
         })
@@ -3495,9 +3495,11 @@ fn gh_pr_status_markdown(
             required_contexts.len()
         ));
     } else {
-        body.push_str("- Required context lookup: unavailable; using status rollup only\n");
+        body.push_str("- Required context policy and outstanding required checks: unknown\n");
     }
-    append_markdown_list(&mut body, &readiness.required_checks_outstanding, "None");
+    if readiness.required_contexts_available {
+        append_markdown_list(&mut body, &readiness.required_checks_outstanding, "None");
+    }
 
     body.push_str("\n## Failed Checks\n\n");
     append_markdown_list(&mut body, &readiness.failed_checks, "None");

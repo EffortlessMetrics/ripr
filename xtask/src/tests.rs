@@ -29867,6 +29867,11 @@ fn gh_pr_status_readiness_selects_safe_next_action() {
             .iter()
             .any(|check| check.contains("rust"))
     );
+    let unknown_pending = gh_pr_status_readiness(&pending, &[], false, Vec::new());
+    assert!(unknown_pending.required_checks_outstanding.is_empty());
+    assert_eq!(unknown_pending.pending_checks.len(), 1);
+    let rendered = gh_pr_status_markdown(&pending, &[], &unknown_pending);
+    assert!(rendered.contains("outstanding required checks: unknown"));
 
     let failed = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "FAILURE")]);
     let failed_readiness = gh_pr_status_readiness(&failed, &contexts, true, Vec::new());
