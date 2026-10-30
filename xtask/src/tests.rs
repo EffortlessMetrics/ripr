@@ -29826,10 +29826,6 @@ fn parse_gh_pr_status_reads_view_json() -> Result<(), String> {
     assert_eq!(pr.checks.len(), 2);
     assert_eq!(pr.reviews.len(), 1);
     assert_eq!(pr.reviews[0].author, "droid");
-    assert_eq!(
-        parse_required_status_contexts(r#"["rust","msrv","rust"]"#)?,
-        vec!["msrv".to_string(), "rust".to_string()]
-    );
     Ok(())
 }
 
@@ -29839,6 +29835,28 @@ fn gh_pr_status_readiness_selects_safe_next_action() {
     let clean = gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")]);
     let clean_readiness = gh_pr_status_readiness(&clean, &contexts, true, Vec::new());
     assert_eq!(clean_readiness.safe_next_action, "merge");
+
+    let missing = gh_pr_status_pr(vec![gh_pr_status_check("other", "COMPLETED", "SUCCESS")]);
+    let readiness = gh_pr_status_readiness(&missing, &contexts, true, Vec::new());
+    assert_eq!(readiness.safe_next_action, "wait");
+    assert_eq!(readiness.required_checks_outstanding, ["rust (missing)"]);
+    let mut missing_review =
+        gh_pr_status_pr(vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")]);
+    missing_review.review_decision.clear();
+    assert_eq!(
+        gh_pr_status_readiness(&missing_review, &contexts, true, Vec::new()).safe_next_action,
+        "wait"
+    );
+
+    for checks in [
+        vec![],
+        vec![gh_pr_status_check("rust", "COMPLETED", "SUCCESS")],
+    ] {
+        let unknown = gh_pr_status_pr(checks);
+        let readiness = gh_pr_status_readiness(&unknown, &[], false, Vec::new());
+        assert_eq!(readiness.safe_next_action, "wait");
+        assert!(!readiness.required_contexts_available);
+    }
 
     let pending = gh_pr_status_pr(vec![gh_pr_status_check("rust", "IN_PROGRESS", "")]);
     let pending_readiness = gh_pr_status_readiness(&pending, &contexts, true, Vec::new());

@@ -3217,22 +3217,14 @@ pub(crate) fn pr_triage_report_impl() -> Result<(), String> {
 pub(crate) fn gh_pr_status_impl(args: &[String]) -> Result<(), String> {
     let number = parse_gh_pr_status_args(args)?;
     let pr = collect_gh_pr_status(number)?;
-    let mut warnings = Vec::new();
-    let (required_contexts, required_contexts_available) =
-        match collect_required_status_contexts(&pr.base_ref_name) {
-            Ok(contexts) => (contexts, true),
-            Err(err) => {
-                warnings.push(format!(
-                    "required status context lookup failed; using status rollup only: {err}"
-                ));
-                (Vec::new(), false)
-            }
-        };
+    // A rollup does not identify the complete required-check policy.
+    // Report that authority as unknown without reading repository settings.
+    let required_contexts = Vec::new();
     let readiness = gh_pr_status_readiness(
         &pr,
         &required_contexts,
-        required_contexts_available,
-        warnings,
+        false,
+        vec!["Required check policy is unavailable from the PR status rollup.".to_string()],
     );
     let body = gh_pr_status_markdown(&pr, &required_contexts, &readiness);
     write_report("gh-pr-status.md", &body)?;
@@ -3311,31 +3303,6 @@ fn collect_gh_pr_status(number: u64) -> Result<GhPrStatusPullRequest, String> {
     parse_gh_pr_status_pull_request(&output)
 }
 
-fn collect_required_status_contexts(base_ref_name: &str) -> Result<Vec<String>, String> {
-    let repo_output = run_output("gh", &["repo", "view", "--json", "owner,name"])?;
-    let repo_value: Value = serde_json::from_str(&repo_output)
-        .map_err(|err| format!("failed to parse gh repo JSON: {err}"))?;
-    let owner = repo_value
-        .get("owner")
-        .and_then(|owner| owner.get("login"))
-        .and_then(Value::as_str)
-        .ok_or_else(|| format!("gh repo JSON is missing owner.login: {repo_value}"))?;
-    let name = repo_value
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| format!("gh repo JSON is missing name: {repo_value}"))?;
-    let branch = if base_ref_name.trim().is_empty() {
-        "main"
-    } else {
-        base_ref_name.trim()
-    };
-    let endpoint = format!(
-        "repos/{owner}/{name}/branches/{branch}/protection/required_status_checks/contexts"
-    );
-    let output = run_output_owned("gh", &["api".to_string(), endpoint])?;
-    parse_required_status_contexts(&output)
-}
-
 fn parse_gh_pr_status_pull_request(text: &str) -> Result<GhPrStatusPullRequest, String> {
     let item: Value =
         serde_json::from_str(text).map_err(|err| format!("failed to parse gh PR JSON: {err}"))?;
@@ -3388,22 +3355,6 @@ fn parse_gh_pr_status_review(value: &Value) -> GhPrStatusReview {
     }
 }
 
-fn parse_required_status_contexts(text: &str) -> Result<Vec<String>, String> {
-    let value: Value = serde_json::from_str(text)
-        .map_err(|err| format!("failed to parse required status contexts JSON: {err}"))?;
-    let Some(items) = value.as_array() else {
-        return Err("required status contexts JSON must be an array".to_string());
-    };
-    let mut contexts = items
-        .iter()
-        .filter_map(Value::as_str)
-        .map(str::to_string)
-        .collect::<Vec<_>>();
-    contexts.sort();
-    contexts.dedup();
-    Ok(contexts)
-}
-
 fn gh_pr_status_readiness(
     pr: &GhPrStatusPullRequest,
     required_contexts: &[String],
@@ -3422,7 +3373,7 @@ fn gh_pr_status_readiness(
         .filter(|check| pr_check_pending(check))
         .map(format_gh_pr_check_status)
         .collect::<Vec<_>>();
-    let required_checks_outstanding = pr
+    let mut required_checks_outstanding = pr
         .checks
         .iter()
         .filter(|check| pr_check_pending(check))
@@ -3434,6 +3385,17 @@ fn gh_pr_status_readiness(
         })
         .map(format_gh_pr_check_status)
         .collect::<Vec<_>>();
+    if required_contexts_available {
+        for context in required_contexts {
+            if !pr
+                .checks
+                .iter()
+                .any(|check| check.name.eq_ignore_ascii_case(context))
+            {
+                required_checks_outstanding.push(format!("{context} (missing)"));
+            }
+        }
+    }
     let droid_checks = pr
         .checks
         .iter()
@@ -3467,8 +3429,10 @@ fn gh_pr_safe_next_action(
     if readiness.behind_main {
         return "rebase";
     }
-    if pr.is_draft
-        || pr.review_decision.eq_ignore_ascii_case("REVIEW_REQUIRED")
+    if !readiness.required_contexts_available
+        || pr.checks.is_empty()
+        || pr.is_draft
+        || !pr.review_decision.eq_ignore_ascii_case("APPROVED")
         || !readiness.required_checks_outstanding.is_empty()
         || !readiness.pending_checks.is_empty()
     {
