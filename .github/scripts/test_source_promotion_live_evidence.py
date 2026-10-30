@@ -62,6 +62,8 @@ class LiveEvidenceTests(unittest.TestCase):
         d = responses(); d[P+'actions/jobs/55']['run_attempt'] = 2; cases.append(d)
         d = responses(); d[P+'actions/jobs/55']['head_sha'] = 'c'*40; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['check_suite_id'] = 78; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['check_suite_id'] = None; d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'][0]['check_suite']['id'] = None; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['check_suite_id'] = False; d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'][0]['check_suite']['id'] = False; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['path'] = '.github/workflows/other.yml'; cases.append(d)
         d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'][0]['app']['id'] = 42; cases.append(d)
         d = responses(); d[P+'actions/workflows/66']['path'] = '.github/workflows/other.yml'; cases.append(d)

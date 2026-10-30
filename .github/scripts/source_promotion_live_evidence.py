@@ -108,6 +108,11 @@ def observe(reader, number, head, base):
         if len(selected) != 1:
             raise ValueError("routed result missing or ambiguous")
         check = selected[0]
+        check_id = check.get("id")
+        suite = check.get("check_suite")
+        suite_id = suite.get("id") if isinstance(suite, dict) else None
+        if any(not isinstance(value, int) or isinstance(value, bool) or value <= 0 for value in (check_id, suite_id)):
+            raise ValueError("check or suite identity unavailable")
         url = check["details_url"]
         match = re.fullmatch(r"https://github\.com/EffortlessMetrics/ripr/actions/runs/([1-9][0-9]*)/job/([1-9][0-9]*)", url or "")
         if not match:
@@ -135,7 +140,8 @@ def observe(reader, number, head, base):
                 or run["id"] != run_id or run["event"] != "pull_request" or run["head_sha"] != head
                 or run["status"] != "completed" or run["conclusion"] != "success"
                 or run["repository"]["full_name"] != REPOSITORY or run["head_repository"]["full_name"] != REPOSITORY
-                or run["path"] != WORKFLOW or run["check_suite_id"] != check["check_suite"]["id"]
+                or run["path"] != WORKFLOW or not isinstance(run["check_suite_id"], int)
+                or isinstance(run["check_suite_id"], bool) or run["check_suite_id"] != suite_id
                 or workflow["id"] != run["workflow_id"] or workflow["path"] != WORKFLOW):
             raise ValueError("workflow run identity or result mismatch")
         snapshot = {"repository": REPOSITORY, "base_ref": pr["base"]["ref"], "state": pr["state"],
