@@ -606,8 +606,11 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
     let file = fs::File::create(asset_path)
         .map_err(|err| format!("failed to create {}: {err}", asset_path.display()))?;
     let mut writer = zip::ZipWriter::new(file);
-    let options: zip::write::FileOptions<'_, ()> =
-        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    // Retain Unix permission metadata on every host, including Windows, so
+    // archive readback preserves the executable role's mode.
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .system(zip::System::Unix);
 
     let entries = fs::read_dir(package_dir)
         .map_err(|err| format!("failed to read {}: {err}", package_dir.display()))?;
@@ -819,13 +822,16 @@ fn archive_member_inventory(
                 let mut entry = archive
                     .by_index(index)
                     .map_err(|err| format!("failed to read zip member {index}: {err}"))?;
+                let name = entry
+                    .name()
+                    .map_err(|err| format!("failed to read zip member {index} name: {err}"))?
+                    .trim_start_matches("./")
+                    .to_string();
                 if entry.is_dir() {
                     return Err(format!(
-                        "release server archive contains directory `{}`",
-                        entry.name()
+                        "release server archive contains directory `{name}`"
                     ));
                 }
-                let name = entry.name().trim_start_matches("./").to_string();
                 let mode = entry.unix_mode().unwrap_or_else(|| package_mode(&name));
                 members.push(archive_member(
                     &name,

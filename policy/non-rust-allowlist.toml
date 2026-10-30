@@ -679,3 +679,21 @@ surface = "config"
 classification = "config"
 reason = "Bounded native-only npm template and exact published wheel pin; version is derived from the qualified native source."
 covered_by = ["python3 -m unittest discover -s .github/scripts -p test_npm_package.py"]
+
+[[allow]]
+glob = ".github/scripts/python_consumer_evidence.py"
+kind = "python_consumer_evidence"
+owner = "release"
+surface = "ci"
+classification = "tooling"
+reason = "Bounded standard-library diagnostic recorder and local fixtures for checkout-free wheel consumers; no admission or package execution."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_python_consumer_evidence.py"]
+
+[[allow]]
+glob = ".github/scripts/test_python_consumer_evidence.py"
+kind = "python_consumer_evidence"
+owner = "release"
+surface = "ci"
+classification = "test"
+reason = "Bounded standard-library diagnostic recorder and local fixtures for checkout-free wheel consumers; no admission or package execution."
+covered_by = ["python3 -m unittest discover -s .github/scripts -p test_python_consumer_evidence.py"]

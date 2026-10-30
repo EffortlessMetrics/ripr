@@ -13,6 +13,10 @@ are scoped or reviewed.
   server binary. Bundled platform VSIXs remain planned; cache/download and
   configured/PATH provisioning retain their existing behavior and prerequisites.
 
+- Document staged public-to-swarm integration, qualification and return promotion;
+  route agent guidance through the same runbook and identify the existing
+  direct-J contract reconciliation without changing runtime gates (#1768).
+
 - Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
 
 - Add `xtask release-final-server-subjects` to prepare the exact twelve existing

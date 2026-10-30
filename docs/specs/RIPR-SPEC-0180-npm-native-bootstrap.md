@@ -135,6 +135,10 @@ cargo xtask check-spec-numbering
 - `.github/scripts/test_npm_package.py`: malformed wheel/tar and identity controls.
 - `.github/scripts/npm_consumer.py`: measured installs, use, disablement and cleanup.
 - `xtask/src/policy/file_policy.rs`: exact non-Rust runtime exception boundary.
+- `xtask/src/policy/workflow_npm_tags.rs`: in-tree workflow npm publish/dist-tag
+  dist-tag guard; every negative and positive control in its test corpus,
+  including the checked-in `publish-npm.yml` good path and its `latest`
+  mutations.
 
 ## Implementation Mapping
 
@@ -145,6 +149,8 @@ cargo xtask check-spec-numbering
 - `.github/workflows/npm-package-qualification.yml`: exact-head, attempt-bound proof.
 - `.github/workflows/publish-npm.yml`: default read-only admission and isolated
   explicitly requested stage-only OIDC, followed by a read-only response record.
+- `xtask/src/main.rs` `check_workflows_impl`: wired npm dist-tag guard scan over
+  every workflow file (ripr-swarm#9663).
 
 ## Metrics
 
