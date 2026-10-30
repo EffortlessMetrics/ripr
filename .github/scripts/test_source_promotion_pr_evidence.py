@@ -27,6 +27,7 @@ class EvidenceTests(unittest.TestCase):
             s = fixture(); s["checks"][0][field] = value; samples.append(s)
         s = fixture(); s["checks"].append(copy.deepcopy(s["checks"][0])); samples.append(s)
         s = fixture(); s["reviews"].append({"id": 2, "author": "reviewer", "state": "CHANGES_REQUESTED", "commit_id": HEAD, "author_association": "MEMBER"}); samples.append(s)
+        s = fixture(); s["reviews"].extend([{"id": 2, "author": "other", "state": "CHANGES_REQUESTED", "commit_id": HEAD, "author_association": "MEMBER"}, {"id": 3, "author": "other", "state": "COMMENTED", "commit_id": HEAD, "author_association": "MEMBER"}]); samples.append(s)
         for sample in samples:
             with self.subTest(sample=sample), self.assertRaises(ValueError):
                 target.validate(sample, HEAD, BASE)

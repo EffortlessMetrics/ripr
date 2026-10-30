@@ -29,6 +29,7 @@ def validate(snapshot, expected_head, expected_base):
     if not isinstance(reviews, list):
         raise ValueError("missing review evidence")
     latest = {}
+    seen_ids = set()
     for review in reviews:
         if not isinstance(review, dict):
             raise ValueError("malformed review")
@@ -36,11 +37,17 @@ def validate(snapshot, expected_head, expected_base):
         number = review.get("id")
         if not isinstance(reviewer, str) or not reviewer or not isinstance(number, int) or isinstance(number, bool) or number <= 0:
             raise ValueError("missing review identity")
+        if number in seen_ids:
+            raise ValueError("duplicate review identity")
+        seen_ids.add(number)
+        state = review.get("state")
+        if state not in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED", "COMMENTED"):
+            raise ValueError("unknown review state")
+        if state == "COMMENTED":
+            continue
         key = reviewer.casefold()
         if key not in latest or number > latest[key]["id"]:
             latest[key] = review
-        elif number == latest[key]["id"]:
-            raise ValueError("ambiguous review identity")
     if any(r.get("state") == "CHANGES_REQUESTED" for r in latest.values()):
         raise ValueError("unresolved requested changes")
     if not any(r.get("state") == "APPROVED" and r.get("commit_id") == expected_head
