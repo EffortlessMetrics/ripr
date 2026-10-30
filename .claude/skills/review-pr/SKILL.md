@@ -152,7 +152,7 @@ This adds no reviewer identity, handoff or mandatory formatting gate.
 7. **Post the inspection record on the exact head.** A clean result documents inspected surfaces, risks, invariants, validation, residual assumptions, missing evidence, and disposition. `LGTM` is not a review record.
 8. **Handle author self-review honestly.** GitHub does not allow the author to request changes on their own PR. Submit a `COMMENT` review and state whether the current head is blocking or review-ready. Do not treat the platform limitation as an approval.
 9. **Repair through one candidate.** Return valid findings to `build-candidate`; reply to incorrect findings with source-backed evidence; resolve only after repair or reply. Re-enter `review-pr` for dimensions changed by the repair.
-10. **Route the disposition.** Only `REVIEW_READY` proceeds to `finish-pr`. Other outcomes retain the candidate as draft, repair-required, incomplete, or durably in flight.
+10. **Route the disposition.** Only `REVIEW_READY` permits merge convergence through `finish-pr`. A committed `REVIEW_INCOMPLETE` candidate may enter `finish-pr` for authorized publication and collection of missing remote evidence, not merge. Other non-terminal outcomes retain the candidate in repair or durably in flight.
 
 # False-confidence rules
 
