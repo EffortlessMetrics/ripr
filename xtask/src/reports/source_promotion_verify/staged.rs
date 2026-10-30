@@ -384,8 +384,8 @@ fn verify(
     require_ancestor(
         repo,
         source,
-        import,
-        "first swarm transition does not import source",
+        parents[2],
+        "first swarm transition's imported parent does not contain source",
     )?;
     let tree = git(repo, &["rev-parse", &format!("{candidate}^{{tree}}")])?
         .trim()
@@ -437,7 +437,7 @@ fn verify(
             "--ignore-submodules=none".into(),
             "--name-only".into(),
             "-z".into(),
-            merge_base,
+            merge_base.clone(),
             source.into(),
             "--".into(),
         ],
@@ -475,7 +475,7 @@ fn verify(
         }
     }
     Ok(
-        serde_json::json!({"schema":"ripr.staged_return_geometry.v1", "status":"verified_geometry", "source_parent":source, "swarm_base":base, "import_transition":import, "candidate":candidate, "candidate_tree":tree, "preview":preview, "parents":graph.parents, "preflight_sha256":digest_bytes(bytes), "survivor_count":actual.len(), "non_claims":["The supplied pre-import base and survivor ledger are not authenticated as first-leg review evidence; survivor dispositions require independent semantic review.","No live public-main currentness or analyzer subject and configuration coverage is established.","This is not public required-check, protected merge, final landing, package or release authorization."]}),
+        serde_json::json!({"schema":"ripr.staged_return_geometry.v1", "status":"verified_geometry", "source_parent":source, "swarm_base":base, "import_transition":import, "imported_parent":parents[2], "survivor_merge_base":merge_base, "candidate":candidate, "candidate_tree":tree, "preview":preview, "parents":graph.parents, "preflight_sha256":digest_bytes(bytes), "survivor_count":actual.len(), "non_claims":["The supplied pre-import base and survivor ledger are not authenticated as first-leg review evidence; survivor dispositions require independent semantic review.","No live public-main currentness or analyzer subject and configuration coverage is established.","This is not public required-check, protected merge, final landing, package or release authorization."]}),
     )
 }
 
@@ -687,6 +687,8 @@ mod tests {
                 || result["survivor_count"] != 2
                 || result["status"] != "verified_geometry"
                 || result["import_transition"] != outer
+                || result["imported_parent"] != inner
+                || result["survivor_merge_base"] != common
                 || !result["non_claims"].as_array().is_some_and(|claims| {
                     claims.iter().any(|claim| {
                         claim.as_str().is_some_and(|s| {
@@ -699,6 +701,24 @@ mod tests {
                     "positive staged route did not consume exact native snapshots and survivor"
                         .into(),
                 );
+            }
+            for (missing_preflight, missing_ledger) in [
+                (root.join("missing-preflight"), ledger_path.clone()),
+                (preflight_path.clone(), root.join("missing-ledger")),
+            ] {
+                if verify_current(
+                    &swarm_repo,
+                    &missing_preflight,
+                    &missing_ledger,
+                    &source,
+                    &base,
+                    &preview,
+                    |_, _| Ok(()),
+                )
+                .is_ok()
+                {
+                    return Err("missing staged input was accepted".into());
+                }
             }
             git_test(&swarm_repo, &["config", "diff.relative", "true"])?;
             let nested = swarm_repo.join("crates/ripr");
