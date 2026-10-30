@@ -115,7 +115,14 @@ def observe(reader, number, head, base):
         run_id, job_id = map(int, match.groups())
         job = reader(f"{PREFIX}actions/jobs/{job_id}")
         run = reader(f"{PREFIX}actions/runs/{run_id}")
+        if not isinstance(run.get("workflow_id"), int) or isinstance(run["workflow_id"], bool) or run["workflow_id"] <= 0:
+            raise ValueError("workflow identity unavailable")
         workflow = reader(f"{PREFIX}actions/workflows/{run['workflow_id']}")
+        prs = run.get("pull_requests")
+        if (not isinstance(prs, list) or len(prs) != 1 or not isinstance(prs[0], dict)
+                or prs[0].get("number") != number or prs[0].get("head", {}).get("sha") != head
+                or prs[0].get("base", {}).get("sha") != base):
+            raise ValueError("workflow run PR and base identity unavailable or different")
         if (job["id"] != job_id or job["run_id"] != run_id or job["name"] != check["name"]
                 or job["status"] != "completed" or job["conclusion"] != "success"
                 or job["check_run_url"] != f"https://api.github.com/repos/{REPOSITORY}/check-runs/{check['id']}"
@@ -149,7 +156,7 @@ def verify(reader, number, head, base):
     return {"status": "observed_subset", "repository": REPOSITORY, "pr": number,
             "head_sha": head, "base_sha": base, "check_id": first["check_id"],
             "run_id": first["run"]["id"], "workflow_id": first["workflow"]["id"],
-            "non_claim": "No complete required-result policy, trusted workflow revision, admission, merge or release authority is established."}
+            "non_claim": "No complete required-result policy, trusted workflow revision, current reviewer authority, atomic snapshot, admission, merge or release authority is established."}
 
 
 if __name__ == "__main__":

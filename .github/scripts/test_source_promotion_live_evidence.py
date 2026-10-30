@@ -1,4 +1,10 @@
 import copy
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 import unittest
 import source_promotion_live_evidence as live
 
@@ -18,7 +24,8 @@ def responses():
     job = {'id': 55, 'run_id': 44, 'name': check['name'], 'status': 'completed', 'conclusion': 'success',
            'check_run_url': f'https://api.github.com/repos/{live.REPOSITORY}/check-runs/33'}
     run = {'id': 44, 'workflow_id': 66, 'head_sha': H, 'event': 'pull_request', 'status': 'completed',
-           'conclusion': 'success', 'repository': {'full_name': live.REPOSITORY}}
+           'conclusion': 'success', 'repository': {'full_name': live.REPOSITORY},
+           'pull_requests': [{'number': 7, 'head': {'sha': H}, 'base': {'sha': B}}]}
     return {P+'pulls/7': pr, P+'git/ref/heads/main': {'object': {'sha': B}},
             P+'pulls/7/reviews?per_page=100&page=1': [review],
             P+f'commits/{H}/check-runs?per_page=100&page=1': {'total_count': 1, 'check_runs': [check]},
@@ -46,8 +53,12 @@ class LiveEvidenceTests(unittest.TestCase):
         d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'] = []; cases.append(d)
         d = responses(); d[P+f'commits/{H}/check-runs?per_page=100&page=1']['check_runs'][0]['head_sha'] = 'c'*40; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['head_sha'] = 'c'*40; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['pull_requests'][0]['number'] = 8; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['pull_requests'][0]['base']['sha'] = 'c'*40; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['pull_requests'] = []; cases.append(d)
         d = responses(); d[P+'actions/runs/44']['conclusion'] = 'failure'; cases.append(d)
         d = responses(); d[P+'actions/workflows/66']['path'] = '.github/workflows/other.yml'; cases.append(d)
+        d = responses(); d[P+'actions/runs/44']['workflow_id'] = '../bad'; cases.append(d)
         d = responses(); del d[P+'actions/jobs/55']; cases.append(d)
         for sample in cases:
             with self.subTest(sample=sample), self.assertRaises(ValueError): live.verify(reader(sample), 7, H, B)
@@ -65,5 +76,22 @@ class LiveEvidenceTests(unittest.TestCase):
     def test_reject_unbounded_pagination_and_bad_subject_before_read(self):
         with self.assertRaises(ValueError): live.pages(lambda _: [1]*100, P+'pulls/7/reviews')
         with self.assertRaises(ValueError): live.verify(lambda _: self.fail('unexpected read'), 7, '../bad', B)
+
+    def test_stubbed_cli_reads_only_expected_nonadministrative_endpoints(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'responses.json').write_text(json.dumps(responses()))
+            stub = root / 'gh'
+            stub.write_text('#!' + sys.executable + '\nimport json, os, sys\np=sys.argv[-1]\nwith open(os.environ["CALLS"], "a") as f: f.write(p+"\\n")\nd=json.load(open(os.environ["RESPONSES"]))\nif p not in d: sys.exit(1)\nprint(json.dumps(d[p]))\n')
+            stub.chmod(0o755)
+            env = dict(os.environ, PATH=str(root) + os.pathsep + os.environ['PATH'],
+                       CALLS=str(root/'calls'), RESPONSES=str(root/'responses.json'), PYTHONDONTWRITEBYTECODE='1')
+            result = subprocess.run([sys.executable, str(Path(live.__file__)), '7', H, B],
+                                    env=env, capture_output=True, text=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)['status'], 'observed_subset')
+            calls = (root/'calls').read_text().splitlines()
+            self.assertEqual(len(calls), 14)
+            self.assertTrue(all(path in responses() and 'protection' not in path and 'rulesets' not in path for path in calls))
 
 if __name__ == '__main__': unittest.main()
