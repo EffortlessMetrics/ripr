@@ -9,6 +9,10 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Clarify editor onboarding: the current universal VSIX includes no bundled
+  server binary. Bundled platform VSIXs remain planned; cache/download and
+  configured/PATH provisioning retain their existing behavior and prerequisites.
+
 - Document staged public-to-swarm integration, qualification and return promotion;
   route agent guidance through the same runbook and identify the existing
   direct-J contract reconciliation without changing runtime gates (#1768).
