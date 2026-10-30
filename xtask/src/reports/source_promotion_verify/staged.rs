@@ -36,19 +36,63 @@ fn required_entry<'de, D: serde::Deserializer<'de>>(
     Option::<String>::deserialize(deserializer)
 }
 
-fn read_bounded(path: &Path) -> Result<Vec<u8>, String> {
-    let meta = fs::symlink_metadata(path).map_err(|e| format!("inspect staged ledger: {e}"))?;
-    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > LIMIT as u64 {
-        return Err("staged ledger must be a bounded regular file".into());
+fn read_bounded(path: &Path, limit: u64) -> Result<Vec<u8>, String> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true);
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(target_arch = "x86_64")]
+        let nofollow = 0x0002_0000;
+        #[cfg(target_arch = "aarch64")]
+        let nofollow = 0x0000_8000;
+        options.custom_flags(nofollow | 0x0000_0800);
+    }
+    #[cfg(all(
+        target_os = "macos",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(0x0000_0100 | 0x0000_0004);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options
+            .custom_flags(0x0020_0000)
+            .share_mode(0x0000_0001 | 0x0000_0002);
+    }
+    #[cfg(not(any(
+        windows,
+        all(
+            target_os = "linux",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        ),
+        all(
+            target_os = "macos",
+            any(target_arch = "x86_64", target_arch = "aarch64")
+        )
+    )))]
+    return Err("safe no-follow staged input is unsupported on this target".into());
+    let file = options
+        .open(path)
+        .map_err(|e| format!("open staged input without following links: {e}"))?;
+    let meta = file
+        .metadata()
+        .map_err(|e| format!("inspect staged input: {e}"))?;
+    if !meta.is_file() || meta.file_type().is_symlink() || meta.len() > limit {
+        return Err("staged input must be a bounded regular file".into());
     }
     let mut bytes = Vec::new();
-    fs::File::open(path)
-        .map_err(|e| e.to_string())?
-        .take((LIMIT + 1) as u64)
+    file.take(limit + 1)
         .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;
-    if bytes.len() > LIMIT {
-        return Err("staged ledger exceeds byte limit".into());
+    if bytes.len() as u64 > limit {
+        return Err("staged input exceeds byte limit".into());
     }
     Ok(bytes)
 }
@@ -115,15 +159,27 @@ fn verify_current(
     preview: &str,
     mut acceptance: impl FnMut(&Value, &Path) -> Result<(), String>,
 ) -> Result<Value, String> {
-    let preflight_bytes = read_preflight_bytes(preflight_path)?;
-    let ledger_bytes = read_bounded(ledger_path)?;
+    let root_output = bounded_git(repo, &["rev-parse".into(), "--show-toplevel".into()])?;
+    let root_text =
+        std::str::from_utf8(&root_output).map_err(|_| "repository root is not UTF-8")?;
+    let root = root_text
+        .strip_suffix('\n')
+        .ok_or("repository root has no terminator")?;
+    let repo = fs::canonicalize(root).map_err(|e| format!("resolve repository root: {e}"))?;
+    check_graph_view(
+        &repo,
+        std::env::var_os("GIT_GRAFT_FILE").as_deref(),
+        std::env::var_os("GIT_SHALLOW_FILE").as_deref(),
+    )?;
+    let preflight_bytes = read_bounded(preflight_path, MAX_PREFLIGHT_BYTES)?;
+    let ledger_bytes = read_bounded(ledger_path, LIMIT as u64)?;
     let preflight: Value =
         serde_json::from_slice(&preflight_bytes).map_err(|e| format!("staged preflight: {e}"))?;
     let ledger: Ledger =
         serde_json::from_slice(&ledger_bytes).map_err(|e| format!("staged ledger: {e}"))?;
-    acceptance(&preflight, repo)?;
+    acceptance(&preflight, &repo)?;
     let mut report = verify(
-        repo,
+        &repo,
         &preflight,
         &preflight_bytes,
         &ledger,
@@ -131,35 +187,96 @@ fn verify_current(
         base,
         preview,
     )?;
-    if read_preflight_bytes(preflight_path)? != preflight_bytes
-        || read_bounded(ledger_path)? != ledger_bytes
+    if read_bounded(preflight_path, MAX_PREFLIGHT_BYTES)? != preflight_bytes
+        || read_bounded(ledger_path, LIMIT as u64)? != ledger_bytes
     {
         return Err("staged input changed during verification".into());
     }
-    acceptance(&preflight, repo)?;
+    acceptance(&preflight, &repo)?;
+    check_graph_view(
+        &repo,
+        std::env::var_os("GIT_GRAFT_FILE").as_deref(),
+        std::env::var_os("GIT_SHALLOW_FILE").as_deref(),
+    )?;
     report["survivor_ledger_sha256"] = Value::String(digest_bytes(&ledger_bytes));
     Ok(report)
 }
 
+fn check_graph_view(
+    repo: &Path,
+    graft_override: Option<&std::ffi::OsStr>,
+    shallow_override: Option<&std::ffi::OsStr>,
+) -> Result<(), String> {
+    if graft_override.is_some() || shallow_override.is_some() {
+        return Err("Git graft or shallow-file override is set".into());
+    }
+    let promisor = capture_git(
+        repo,
+        &[
+            "config".into(),
+            "--get-regexp".into(),
+            "^(extensions\\.partialclone|remote\\..*\\.(promisor|partialclonefilter))$".into(),
+        ],
+    )?;
+    match promisor.status.and_then(|status| status.code()) {
+        Some(1) if !promisor.timed_out && promisor.stdout.is_empty() => (),
+        Some(0) => {
+            return Err("staged verification refuses partial/promisor Git repositories".into());
+        }
+        _ => return Err("could not establish complete Git object configuration".into()),
+    }
+    if bounded_git(
+        repo,
+        &["rev-parse".into(), "--is-shallow-repository".into()],
+    )? != b"false\n"
+    {
+        return Err("staged verification requires a non-shallow repository".into());
+    }
+    let common = bounded_git(repo, &["rev-parse".into(), "--git-common-dir".into()])?;
+    let common = std::str::from_utf8(&common)
+        .map_err(|_| "Git common directory is not UTF-8")?
+        .strip_suffix('\n')
+        .ok_or("Git common directory has no terminator")?;
+    let grafts = repo.join(common).join("info/grafts");
+    match fs::symlink_metadata(grafts) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("cannot inspect Git grafts: {error}")),
+        Ok(_) => Err("staged verification refuses Git grafts".into()),
+    }
+}
+
 fn bounded_git(repo: &Path, args: &[String]) -> Result<Vec<u8>, String> {
-    let mut full = vec!["--no-replace-objects".to_string()];
+    let output = capture_git(repo, args)?;
+    if output.timed_out || output.status.is_none_or(|s| !s.success()) {
+        return Err("staged Git inventory failed, timed out or exceeded its limit".into());
+    }
+    Ok(output.stdout)
+}
+
+fn capture_git(repo: &Path, args: &[String]) -> Result<crate::run::TimedBytesOutput, String> {
+    let mut full = vec![
+        "--no-replace-objects".to_string(),
+        "--literal-pathspecs".to_string(),
+    ];
     full.extend_from_slice(args);
-    let output = crate::run::capture_bytes_in_dir_with_budget(
+    crate::run::capture_bytes_in_dir_with_budget(
         Path::new("git"),
         &full,
         (repo, None),
-        &[],
+        &[
+            "GIT_LITERAL_PATHSPECS",
+            "GIT_GLOB_PATHSPECS",
+            "GIT_NOGLOB_PATHSPECS",
+            "GIT_ICASE_PATHSPECS",
+            "GIT_CONFIG",
+        ],
         crate::run::ByteCaptureBudget {
             timeout: Duration::from_secs(30),
             stdout_bytes: LIMIT,
             stderr_bytes: 65536,
         },
         "staged inventory",
-    )?;
-    if output.timed_out || output.status.is_none_or(|s| !s.success()) {
-        return Err("staged Git inventory failed, timed out or exceeded its limit".into());
-    }
-    Ok(output.stdout)
+    )
 }
 
 fn entry(repo: &Path, commit: &str, path: &str) -> Result<Option<String>, String> {
@@ -171,7 +288,7 @@ fn entry(repo: &Path, commit: &str, path: &str) -> Result<Option<String>, String
             "--full-tree".into(),
             commit.into(),
             "--".into(),
-            format!(":(literal){path}"),
+            path.into(),
         ],
     )?;
     if bytes.is_empty() {
@@ -316,6 +433,8 @@ fn verify(
             "--no-ext-diff".into(),
             "--no-textconv".into(),
             "--no-renames".into(),
+            "--no-relative".into(),
+            "--ignore-submodules=none".into(),
             "--name-only".into(),
             "-z".into(),
             merge_base,
@@ -342,19 +461,21 @@ fn verify(
         {
             return Err("duplicate or incomplete survivor disposition".into());
         }
-        if row.source_entry != entry(repo, source, &row.path)?
-            || row.candidate_entry != entry(repo, candidate, &row.path)?
-        {
-            return Err(format!("survivor tree entry differs for {:?}", row.path));
-        }
     }
     if actual != expected {
         return Err(
             "survivor rows do not exactly cover public changes since the pre-import base".into(),
         );
     }
+    for row in &ledger.rows {
+        if row.source_entry != entry(repo, source, &row.path)?
+            || row.candidate_entry != entry(repo, candidate, &row.path)?
+        {
+            return Err(format!("survivor tree entry differs for {:?}", row.path));
+        }
+    }
     Ok(
-        serde_json::json!({"schema":"ripr.staged_return_geometry.v1", "status":"verified_geometry", "source_parent":source, "swarm_base":base, "import_transition":import, "candidate":candidate, "candidate_tree":tree, "preview":preview, "parents":graph.parents, "preflight_sha256":digest_bytes(bytes), "survivor_count":actual.len(), "non_claims":["Survivor dispositions require independent semantic review; this receipt does not verify their rationale.","This is not public required-check, protected merge, final landing, package or release authorization."]}),
+        serde_json::json!({"schema":"ripr.staged_return_geometry.v1", "status":"verified_geometry", "source_parent":source, "swarm_base":base, "import_transition":import, "candidate":candidate, "candidate_tree":tree, "preview":preview, "parents":graph.parents, "preflight_sha256":digest_bytes(bytes), "survivor_count":actual.len(), "non_claims":["The supplied pre-import base and survivor ledger are not authenticated as first-leg review evidence; survivor dispositions require independent semantic review.","No live public-main currentness or analyzer subject and configuration coverage is established.","This is not public required-check, protected merge, final landing, package or release authorization."]}),
     )
 }
 
@@ -435,6 +556,17 @@ mod tests {
             fs::write(source_repo.join("public\nname.txt"), "source\n")
                 .map_err(|e| e.to_string())?;
             git_test(&source_repo, &["add", "."])?;
+            git_test(
+                &source_repo,
+                &[
+                    "update-index",
+                    "--add",
+                    "--cacheinfo",
+                    "160000",
+                    &common,
+                    "vendor",
+                ],
+            )?;
             git_test(&source_repo, &["commit", "--quiet", "-m", "public"])?;
             let source = git_test(&source_repo, &["rev-parse", "HEAD"])?;
             git_test(
@@ -502,11 +634,37 @@ mod tests {
                     &candidate, &tree, &reference,
                 )?;
             preflight["acceptance"] = portable["acceptance"].clone();
+            git_test(&swarm_repo, &["config", "diff.ignoreSubmodules", "all"])?;
+            let hidden = bounded_git(
+                &swarm_repo,
+                &[
+                    "diff".into(),
+                    "--no-renames".into(),
+                    "--name-only".into(),
+                    "-z".into(),
+                    common.clone(),
+                    source.clone(),
+                    "--".into(),
+                ],
+            )?;
+            if hidden
+                .split(|byte| *byte == 0)
+                .any(|path| path == b"vendor")
+            {
+                return Err("fixture did not demonstrate configured gitlink suppression".into());
+            }
             let bytes = serde_json::to_vec(&preflight).map_err(|e| e.to_string())?;
             let preflight_path = root.join("preflight.json");
             fs::write(&preflight_path, &bytes).map_err(|e| e.to_string())?;
             let path = "public\nname.txt";
-            let mut ledger = serde_json::json!({"schema":"ripr.staged_survivors.v1","preflight_sha256":digest_bytes(&bytes),"source_parent":source,"swarm_base":base,"candidate":candidate,"candidate_tree":tree,"rows":[{"path":path,"source_entry":entry(&swarm_repo,&source,path)?,"candidate_entry":entry(&swarm_repo,&candidate,path)?,"disposition":"retained","rationale":"same blob","evidence":"fixture review"}]});
+            let source_gitlink = entry(&swarm_repo, &source, "vendor")?;
+            let candidate_gitlink = entry(&swarm_repo, &candidate, "vendor")?;
+            if source_gitlink != Some(format!("160000 commit {common}"))
+                || candidate_gitlink != source_gitlink
+            {
+                return Err("fixture lost the exact source and candidate gitlink".into());
+            }
+            let mut ledger = serde_json::json!({"schema":"ripr.staged_survivors.v1","preflight_sha256":digest_bytes(&bytes),"source_parent":source,"swarm_base":base,"candidate":candidate,"candidate_tree":tree,"rows":[{"path":path,"source_entry":entry(&swarm_repo,&source,path)?,"candidate_entry":entry(&swarm_repo,&candidate,path)?,"disposition":"retained","rationale":"same blob","evidence":"fixture review"},{"path":"vendor","source_entry":source_gitlink,"candidate_entry":candidate_gitlink,"disposition":"retained","rationale":"same gitlink","evidence":"fixture review"}]});
             let ledger_path = root.join("survivors.json");
             fs::write(
                 &ledger_path,
@@ -526,15 +684,92 @@ mod tests {
                 },
             )?;
             if reads != 6
-                || result["survivor_count"] != 1
+                || result["survivor_count"] != 2
                 || result["status"] != "verified_geometry"
                 || result["import_transition"] != outer
+                || !result["non_claims"].as_array().is_some_and(|claims| {
+                    claims.iter().any(|claim| {
+                        claim.as_str().is_some_and(|s| {
+                            s.contains("analyzer subject") && s.contains("public-main")
+                        })
+                    })
+                })
             {
                 return Err(
                     "positive staged route did not consume exact native snapshots and survivor"
                         .into(),
                 );
             }
+            git_test(&swarm_repo, &["config", "diff.relative", "true"])?;
+            let nested = swarm_repo.join("crates/ripr");
+            let nested_report = verify_current(
+                &nested,
+                &preflight_path,
+                &ledger_path,
+                &source,
+                &base,
+                &preview,
+                |v, r| {
+                    super::super::super::source_promotion_acceptance::revalidate_with_reader_and_tree(v, r, |reference, owner| {
+                    super::super::super::source_promotion_acceptance::tests::responses(v, reference, owner)
+                })
+                },
+            )?;
+            if nested_report["survivor_count"] != 2 {
+                return Err("subdirectory/config hid a survivor".into());
+            }
+            git_test(&swarm_repo, &["config", "remote.origin.promisor", "true"])?;
+            if !check_graph_view(&swarm_repo, None, None)
+                .is_err_and(|e| e.contains("partial/promisor"))
+            {
+                return Err("promisor repository accepted".into());
+            }
+            git_test(
+                &swarm_repo,
+                &["config", "--unset", "remote.origin.promisor"],
+            )?;
+            git_test(
+                &swarm_repo,
+                &["config", "remote.origin.partialclonefilter", "tree:0"],
+            )?;
+            if !check_graph_view(&swarm_repo, None, None)
+                .is_err_and(|e| e.contains("partial/promisor"))
+            {
+                return Err("partial clone filter accepted".into());
+            }
+            git_test(
+                &swarm_repo,
+                &["config", "--unset", "remote.origin.partialclonefilter"],
+            )?;
+            #[cfg(unix)]
+            {
+                let link = root.join("ledger-link");
+                std::os::unix::fs::symlink(&ledger_path, &link).map_err(|e| e.to_string())?;
+                if read_bounded(&link, LIMIT as u64).is_ok() {
+                    return Err("staged input symlink was followed".into());
+                }
+            }
+            for (graft, shallow) in [
+                (Some(std::ffi::OsStr::new("override")), None),
+                (None, Some(std::ffi::OsStr::new("override"))),
+            ] {
+                if check_graph_view(&swarm_repo, graft, shallow).is_ok() {
+                    return Err("graph environment override accepted".into());
+                }
+            }
+            let grafts = swarm_repo.join(".git/info/grafts");
+            fs::write(&grafts, format!("{common}\n")).map_err(|e| e.to_string())?;
+            if !check_graph_view(&swarm_repo, None, None).is_err_and(|e| e.contains("grafts")) {
+                return Err("grafted history accepted".into());
+            }
+            fs::remove_file(&grafts).map_err(|e| e.to_string())?;
+            let shallow = swarm_repo.join(".git/shallow");
+            fs::write(&shallow, format!("{common}\n")).map_err(|e| e.to_string())?;
+            if !check_graph_view(&swarm_repo, None, None).is_err_and(|e| e.contains("non-shallow"))
+            {
+                return Err("shallow history accepted".into());
+            }
+            fs::remove_file(&shallow).map_err(|e| e.to_string())?;
             let drift = verify_current(
                 &swarm_repo,
                 &preflight_path,
