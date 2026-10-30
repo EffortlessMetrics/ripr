@@ -397,6 +397,38 @@ fn build_receipt(options: &Options) -> Result<GeometryReceipt, String> {
     })
 }
 
+#[cfg(test)]
+pub(super) fn staged_geometry_fixture(
+    source_repo: &Path,
+    swarm_repo: &Path,
+    source: &str,
+    swarm: &str,
+    tree: &str,
+) -> Result<serde_json::Value, String> {
+    let options = Options {
+        handoff: HandoffInput {
+            controller_root: source_repo.into(),
+            manifest: "unused".into(),
+            selection_decision: String::new(),
+            qualification_bundle: "unused".into(),
+            qualification_decision: String::new(),
+        },
+        source_parent: source.into(),
+        swarm_parent: swarm.into(),
+        swarm_ref: format!("refs/tags/ripr-release-0.11.0-{swarm}"),
+        source_repo: source_repo.into(),
+        swarm_repo: swarm_repo.into(),
+        source_main: "HEAD".into(),
+        swarm_main: "HEAD".into(),
+        version: "0.11.0".into(),
+        resolved_tree: Some(tree.into()),
+        out: source_repo.join("unused"),
+        source_remote: "EffortlessMetrics/ripr".into(),
+        swarm_remote: "EffortlessMetrics/ripr-swarm".into(),
+    };
+    serde_json::to_value(build_receipt(&options)?).map_err(|e| e.to_string())
+}
+
 fn ensure_distinct_repositories(
     source_root: &Path,
     swarm_root: &Path,

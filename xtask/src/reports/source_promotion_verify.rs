@@ -11,6 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+mod staged;
 mod version_identity;
 use version_identity::{RELEASE_METADATA_SURFACES, verify_release_metadata_identity};
 
@@ -70,6 +71,9 @@ struct Options {
 }
 
 pub(crate) fn source_promotion_verify(args: &[String]) -> Result<(), String> {
+    if args.first().map(String::as_str) == Some("verify-staged") {
+        return staged::command(args);
+    }
     let options = match parse_args(args) {
         Ok(options) => options,
         Err(reason) => {
@@ -364,6 +368,10 @@ fn validate_identity(name: &str, value: &str) -> Result<(), String> {
 }
 
 pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String> {
+    validate_preflight_mode(preflight, source_main, "two_parent_join")
+}
+
+fn validate_preflight_mode(preflight: &Value, source_main: &str, mode: &str) -> Result<(), String> {
     let schema = string_field(preflight, "schema")?;
     if schema != PREFLIGHT_SCHEMA && schema != "ripr.source_promotion_preflight.v2" {
         return Err(format!("unsupported preflight schema {schema:?}"));
@@ -371,8 +379,8 @@ pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result
     if schema == "ripr.source_promotion_preflight.v2" {
         super::source_promotion_acceptance::validate(preflight)?;
     }
-    if string_field(preflight, "mode")? != "two_parent_join" {
-        return Err("preflight mode must be two_parent_join".to_string());
+    if string_field(preflight, "mode")? != mode {
+        return Err(format!("preflight mode must be {mode}"));
     }
     let source = string_field(preflight, "source_parent")?;
     let swarm = string_field(preflight, "swarm_parent")?;
@@ -1763,7 +1771,7 @@ mod tests {
         Ok((all, first))
     }
 
-    fn test_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
+    pub(super) fn test_git_output(repo: &Path, args: &[&str]) -> Result<String, String> {
         let output = Command::new("git")
             .current_dir(repo)
             .args(args)
@@ -1775,7 +1783,7 @@ mod tests {
         Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
     }
 
-    fn test_git_output_with_input(
+    pub(super) fn test_git_output_with_input(
         repo: &Path,
         args: &[&str],
         input: &str,

@@ -654,3 +654,11 @@ exact control commit in its normalized post-merge workflow receipt, passes the e
 arguments and `--main-head` to the trusted verifier, and fails when an
 equivalent flattened tree is present without the exact join object remaining
 reachable.
+
+## Staged-return geometry verifier
+
+`cargo xtask source-promotion verify-staged --preflight <v2.json> --survivors <ledger.json> --source-main <P> --swarm-base <B> --preview <K>` verifies the staged geometry separately from the historical direct-J verifier. P, B and K are exact lowercase commit IDs. The native v2 preflight names the immutable selected and qualified swarm candidate S and the reviewed tree T; its native decisions are re-read before and after verification. The command requires P absent from B and introduced by the first swarm first-parent merge after B, including an outer merge whose second parent contains the actual public import. It requires P and B in S's ancestry, K's ordered parents `[P, S]`, and K's tree, S's tree and the reviewed preflight tree to be identical. It retains the existing source release-metadata checks.
+
+The UTF-8 JSON ledger has schema `ripr.staged_survivors.v1`, the exact raw preflight SHA-256 without a prefix, `source_parent`, `swarm_base`, `candidate`, `candidate_tree`, and `rows`. Each row contains `path`, `source_entry`, `candidate_entry`, `disposition`, `rationale`, and `evidence`. An entry is null when absent, otherwise the exact `mode type object-id` header from `git ls-tree` at the named commit. Rows must cover exactly the public paths changed between the unique merge base of B and P and P; renames are accounted as deletion plus addition. Paths are NUL-framed during inventory, and non-UTF-8 paths fail closed. The verifier checks the exact entries and nonempty dispositions but cannot decide whether a disposition is semantically correct: the ledger still requires independent review.
+
+The emitted `verified_geometry` is not public required-check admission, live public-main currentness, a protected merge authorization, a final landing, or release qualification. Native v2 fixtures and retained decisions do not substitute for a live native run. Do not feed this receipt to historical direct-J consumers or alter a preflight's mode to make it pass.

@@ -536,6 +536,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "release-upload-assets --version <version>",
         "release-upload-vsix --tag <tag>",
         "source-promotion verify --preflight <receipt.json> --resolution-manifest <manifest.json> --join-head <sha> --source-main <sha> [--main-head <sha>] [--out <dir>]",
+        "source-promotion verify-staged --preflight <receipt.json> --survivors <ledger.json> --source-main <sha> --swarm-base <sha> --preview <sha>",
         "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
         "source-promotion validate-resolved-tree --source-parent <sha> --swarm-parent <sha> --reviewed-tree <tree> --preflight <receipt.json> --preflight-sha256 <digest> --resolution-manifest <manifest.json> --resolution-sha256 <digest> [--out <dir>]",
         "source-promotion write-trusted-builder-receipt --source-parent <sha> --workflow-source-sha <sha> --executable <path> --cargo-target-dir <path> --locked-build --isolated-target-dir [--out <dir>]",
@@ -1593,6 +1594,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "Verifies an exact history-preserving join, reviewed resolution manifest, ancestry digests, and metadata identity without constructing or mutating Git refs.",
+        ),
+        command_entry(
+            "source-promotion verify-staged --preflight <receipt.json> --survivors <ledger.json> --source-main <sha> --swarm-base <sha> --preview <sha>",
+            "report_only",
+            "stdout JSON geometry receipt",
+            false,
+            false,
+            "Checks staged source import, candidate and preview identities and a complete survivor ledger; it does not authorize a merge or release.",
         ),
         command_entry(
             "source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>",
