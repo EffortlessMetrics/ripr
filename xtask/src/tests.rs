@@ -49472,6 +49472,7 @@ fn routed_rust_docs_lane_retains_subject_bound_child_evidence() -> Result<(), St
         "observed_subject_sha: ${{ steps.subject.outputs.observed_subject_sha }}",
         "child_receipt_state: ${{ steps.child_receipt.outputs.child_receipt_state }}",
         "ci-child-receipt",
+        "name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}",
     ] {
         if !docs_gate.contains(required) {
             return Err(format!(
@@ -49494,6 +49495,134 @@ fn routed_rust_docs_lane_retains_subject_bound_child_evidence() -> Result<(), St
                 "result must consume docs-gate evidence containing `{required}`"
             ));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn routed_rust_evidence_transfer_contract_rejects_wrong_or_missing_uploads() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for (job, action) in [
+        ("rust-github", "upload"),
+        ("docs-gate", "upload"),
+        ("result", "download"),
+    ] {
+        let block = crate::routed_rust_job_lines(&workflow, job).join("\n");
+        let lines: Vec<&str> = block.lines().collect();
+        let action_line = lines
+            .iter()
+            .position(|line| line.starts_with(&format!("        uses: actions/{action}-artifact@")))
+            .ok_or_else(|| format!("fixture lacks {job} artifact action"))?;
+        let start = (0..=action_line)
+            .rev()
+            .find(|index| lines[*index].starts_with("      - "))
+            .ok_or("fixture action lacks a step")?;
+        let end = (action_line + 1..lines.len())
+            .find(|index| lines[*index].starts_with("      - "))
+            .unwrap_or(lines.len());
+        let step = lines[start..end].join("\n");
+        let mut cases = vec![
+            ("missing step", String::new()),
+            (
+                "wrong artifact name",
+                step.replace("name: ripr-routed-rust-evidence-", "name: wrong-evidence-"),
+            ),
+            (
+                "stale attempt",
+                step.replace("${{ github.run_attempt }}", "1"),
+            ),
+            ("disabled step", step.replace("if: always()", "if: false")),
+            (
+                "commented name",
+                step.replace("          name:", "          # name:"),
+            ),
+            (
+                "wrong property scope",
+                step.replace("        with:", "        env:"),
+            ),
+            (
+                "split action and inputs",
+                step.replace(
+                    "        with:",
+                    "      - name: Detached artifact inputs\n        with:",
+                ),
+            ),
+            (
+                "wrong action",
+                step.replace(
+                    &format!("actions/{action}-artifact@"),
+                    "actions/other-artifact@",
+                ),
+            ),
+        ];
+        if action == "upload" {
+            for property in [
+                "continue-on-error: true",
+                "continue-on-error: ${{ true }}",
+                "continue-on-error: ${{ fromJSON('true') }}",
+                "continue-on-error: ${{ false }}",
+                "continue-on-error : true",
+                r#""continue-on-error": true"#,
+                "'continue-on-error': ${{ true }}",
+                r#""continue\u002don\u002derror": true"#,
+            ] {
+                cases.push((
+                    property,
+                    step.replace(
+                        "        if: always()",
+                        &format!("        if: always()\n        {property}"),
+                    ),
+                ));
+            }
+            let explicit_false = step.replace(
+                "        if: always()",
+                "        if: always()\n        continue-on-error: false",
+            );
+            let valid = workflow.replacen(&block, &block.replacen(&step, &explicit_false, 1), 1);
+            assert!(
+                routed_rust_workflow_contract_violations(&valid, None, None).is_empty(),
+                "literal false must remain a valid unshielded {job} upload"
+            );
+            for path in [
+                "routed-rust-plan.json",
+                "routed-rust-plan.md",
+                "routed-rust-execution.json",
+                "routed-rust-command-*.log",
+            ] {
+                cases.push((
+                    path,
+                    step.replace(&format!("            target/ripr/reports/{path}\n"), ""),
+                ));
+            }
+        } else {
+            cases.push((
+                "wrong destination",
+                step.replace("path: target/ripr/reports/", "path: target/other/"),
+            ));
+        }
+        for (case, replacement) in cases {
+            assert_ne!(replacement, step, "{job}/{case} must change the fixture");
+            let mutated_block = block.replacen(&step, &replacement, 1);
+            let mutated = workflow.replacen(&block, &mutated_block, 1);
+            assert_ne!(mutated, workflow, "{job}/{case} must reach the workflow");
+            let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
+            assert!(
+                violations.iter().any(|value| {
+                    value.contains(&format!("job `{job}`")) && value.contains("evidence artifact")
+                }),
+                "contract accepted {job}/{case}: {violations:?}"
+            );
+        }
+        let removed = workflow.replacen(&block, &block.replacen(&step, "", 1), 1);
+        let relocated = removed.replacen("    steps:\n", &format!("    steps:\n{step}\n"), 1);
+        assert_ne!(relocated, workflow);
+        assert!(
+            routed_rust_workflow_contract_violations(&relocated, None, None)
+                .iter()
+                .any(|value| value.contains(&format!("job `{job}`"))
+                    && value.contains("evidence artifact")),
+            "an artifact transfer in another job must not satisfy {job}"
+        );
     }
     Ok(())
 }
@@ -49920,6 +50049,11 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
         let plan_path = dir.join("routed-rust-plan.json");
         let execution_path = dir.join("routed-rust-execution.json");
         let required = crate::routed_rust_required_ids("docs_only", "pull_request");
+        assert_eq!(
+            required.len(),
+            12,
+            "docs fixture must exercise all required commands"
+        );
         let base_plan = routed_rust_test_plan("docs_only", &required);
         let make_args = |child: &str,
                          expected_cache_hit: &str,
@@ -49997,6 +50131,7 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             ])
         };
 
+        let mut valid_pair = None;
         for case in [
             "valid",
             "valid_cache_miss",
@@ -50076,21 +50211,50 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                 .map(|id| routed_rust_test_command(id, "passed"))
                 .collect();
             write_routed_rust_test_evidence(root, &required)?;
-            let mut execution = serde_json::json!({
-                "schema": "ripr.routed_rust_execution.v1",
-                "plan_sha256": crate::routed_rust_bytes_digest(plan_bytes.as_bytes()),
-                "state": "passed",
-                "subject_sha": plan["subject_sha"],
-                "subject_tree": plan["subject_tree"],
-                "required_proposition_ids": required,
-                "commands": commands,
-                "propositions": routed_rust_test_execution_propositions(&required),
-                "job_outcome": "success",
-                "planned_command_count": required.len(),
-                "observed_command_count": required.len(),
-                "failure_class": null,
-                "invalidations": [],
-            });
+            let rows = commands
+                .iter()
+                .map(serde_json::to_string)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| format!("render command fixture: {err}"))?;
+            fs::write(dir.join("commands.jsonl"), format!("{}\n", rows.join("\n")))
+                .map_err(|err| format!("write command fixture: {err}"))?;
+            // Use the retained producer, then pass its actual receipt bytes to
+            // the aggregate. Command rows/logs are explicit unit fixtures, not
+            // a claim that all twelve Cargo commands ran in this test.
+            crate::ci_child_receipt_at(
+                root,
+                &[
+                    "--plan".to_string(),
+                    required.join(","),
+                    "--plan-path".to_string(),
+                    plan_path.to_str().ok_or("non-UTF-8 plan path")?.to_string(),
+                    "--job-outcome".to_string(),
+                    "success".to_string(),
+                    "--subject-sha".to_string(),
+                    plan["subject_sha"]
+                        .as_str()
+                        .ok_or("missing fixture subject")?
+                        .to_string(),
+                    "--subject-tree".to_string(),
+                    plan["subject_tree"]
+                        .as_str()
+                        .ok_or("missing fixture tree")?
+                        .to_string(),
+                ],
+            )?;
+            let mut execution: serde_json::Value = serde_json::from_slice(
+                &fs::read(&execution_path)
+                    .map_err(|err| format!("read produced receipt: {err}"))?,
+            )
+            .map_err(|err| format!("parse produced receipt: {err}"))?;
+            assert_eq!(execution["planned_command_count"], 12);
+            assert_eq!(execution["observed_command_count"], 12);
+            assert_eq!(execution["commands"].as_array().map(Vec::len), Some(12));
+            for id in &required {
+                let bytes = fs::read(dir.join(format!("routed-rust-command-{id}.log")))
+                    .map_err(|err| format!("read fixture log: {err}"))?;
+                assert!(!bytes.is_empty(), "{id} must have nonempty evidence");
+            }
             let child = match case {
                 "digest" => {
                     execution["plan_sha256"] = serde_json::json!("wrong");
@@ -50173,6 +50337,13 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                 ),
             )
             .map_err(|err| format!("write execution: {err}"))?;
+            if case == "valid" {
+                valid_pair = Some((
+                    plan_bytes.as_bytes().to_vec(),
+                    fs::read(&execution_path)
+                        .map_err(|err| format!("retain valid execution bytes: {err}"))?,
+                ));
+            }
             let expected_cache_hit = plan["cache_hit"].as_str().unwrap_or_default();
             let expected_cache_matched_identity =
                 plan["cache_matched_identity"].as_str().unwrap_or_default();
@@ -50196,6 +50367,24 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
                     .map_err(|err| format!("read result packet: {err}"))?,
             )
             .map_err(|err| format!("parse result packet: {err}"))?;
+            if expected_valid {
+                assert_eq!(packet["verdict"], "passed");
+                assert_eq!(
+                    packet["required_proposition_ids"],
+                    serde_json::json!(required)
+                );
+                assert_eq!(
+                    packet["plan_sha256"],
+                    crate::routed_rust_bytes_digest(plan_bytes.as_bytes())
+                );
+                assert_eq!(
+                    packet["execution_sha256"],
+                    crate::routed_rust_bytes_digest(
+                        &fs::read(&execution_path)
+                            .map_err(|err| format!("read consumed execution: {err}"))?
+                    )
+                );
+            }
             if matches!(case, "receipt_failed" | "tick_failed")
                 && (packet["verdict"] != "failed"
                     || !packet["invalidations"].as_array().is_some_and(|values| {
@@ -50240,11 +50429,19 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
             }
         }
 
+        let (valid_plan_bytes, valid_execution_bytes) =
+            valid_pair.ok_or("positive fixture must retain an exact valid packet pair")?;
+        fs::write(&plan_path, &valid_plan_bytes)
+            .map_err(|err| format!("restore valid plan: {err}"))?;
+        fs::write(&execution_path, &valid_execution_bytes)
+            .map_err(|err| format!("restore valid execution: {err}"))?;
         let mut failed_download_args = make_args(
             "success",
             "true",
             "ripr-routed-rust-Linux-cache-action-digest",
         )?;
+        crate::ci_routed_rust_result(&failed_download_args)
+            .map_err(|err| format!("download control must start from valid evidence: {err}"))?;
         let outcome = failed_download_args
             .iter()
             .position(|value| value == "--download-outcome")
@@ -50260,13 +50457,8 @@ fn routed_rust_result_is_owned_by_exact_plan_and_execution_bytes() -> Result<(),
         )
         .map_err(|err| format!("parse failed-download result: {err}"))?;
         if failed_download_packet["verdict"] != "not_proven"
-            || !failed_download_packet["invalidations"]
-                .as_array()
-                .is_some_and(|values| {
-                    values
-                        .iter()
-                        .any(|value| value == "artifact_download_not_successful")
-                })
+            || failed_download_packet["invalidations"]
+                != serde_json::json!(["artifact_download_not_successful"])
         {
             return Err(format!(
                 "failed artifact download did not fail closed: {failed_download_packet}"
