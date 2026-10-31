@@ -9,6 +9,8 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- `cargo xtask source-promotion verify` now verifies the staged public-to-swarm return preview (a `fast_forward` preflight: ordered parents `[P, S]`, tree equal to S's tree) and records the preflight `mode` in its receipt; `two_parent_join` verification is unchanged (#1627).
+
 - Reconcile 0.11 RC guidance with dated public tag/release state, historical
   conditional RC1 authority and tentative next-cut intent. Require exact
   candidate-bound authority and qualification; ordinary source integration
