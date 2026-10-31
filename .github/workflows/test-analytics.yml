@@ -26,14 +26,14 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
         with:
           shared-key: ripr-test-analytics-${{ runner.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - uses: taiki-e/install-action@nextest
+      - uses: taiki-e/install-action@040ce91a9a9db140750a142d8c3e66f94ce198bd # nextest
 
       - name: Run Rust tests with JUnit output
         run: cargo nextest run --workspace --all-features --profile ci
@@ -52,7 +52,7 @@ jobs:
 
       - name: Upload test results to Codecov
         if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)) }}
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
         with:
           files: target/nextest/ci/junit.xml
           report_type: test_results

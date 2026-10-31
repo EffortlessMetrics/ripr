@@ -16,9 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - uses: taiki-e/install-action@cargo-deny
+      - uses: taiki-e/install-action@718993db25d12d67fe704d6aa97369e03d3803c8 # cargo-deny
 
       - run: cargo-deny check advisories licenses bans sources
 
