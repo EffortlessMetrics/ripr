@@ -89,6 +89,7 @@ For presentation/output-text changes or scoped Python/TypeScript repair-card fin
 derive the PR-local route from the checked JSON output:
 
 ```bash
+mkdir -p target/ripr/reports
 ripr check --root . --format json > target/ripr/reports/check.json
 ripr reports gap-ledger \
   --check-output target/ripr/reports/check.json \
@@ -132,6 +133,7 @@ inspect an opaque helper, fixture, macro, or dynamic boundary.
 For a gap-ledger-backed task, create the focused agent packet:
 
 ```bash
+mkdir -p target/ripr/agent
 ripr agent packet \
   --root . \
   --gap-ledger target/ripr/reports/gap-decision-ledger.json \
@@ -210,6 +212,7 @@ it with the CI artifact packet.
 For an agent or repeatable workflow, produce the focused receipt:
 
 ```bash
+mkdir -p target/ripr/agent
 ripr agent verify \
   --root . \
   --before target/ripr/pilot/repo-exposure.json \
