@@ -1533,6 +1533,19 @@ mod tests {
                     "reviewed tree that differs from the swarm tree stayed fast_forward".into(),
                 );
             }
+            // A verified reviewed tree equal to the swarm tree stays a staged return,
+            // including when spelled in uppercase; an unverified one does not.
+            let mut reviewed_equal = preflight.clone();
+            reviewed_equal["dry_merge"]["reviewed_resolved_tree"] = Value::String(tree.clone());
+            reviewed_equal["dry_merge"]["reviewed_resolved_tree_verified"] = Value::Bool(true);
+            validate_preflight(&reviewed_equal, &public)?;
+            reviewed_equal["dry_merge"]["reviewed_resolved_tree"] =
+                Value::String(tree.to_ascii_uppercase());
+            validate_preflight(&reviewed_equal, &public)?;
+            reviewed_equal["dry_merge"]["reviewed_resolved_tree_verified"] = Value::Bool(false);
+            if validate_preflight(&reviewed_equal, &public).is_ok() {
+                return Err("unverified reviewed tree was accepted under fast_forward".into());
+            }
             // Forged preview: preview_tree names P's tree and the head carries it,
             // so only the swarm-parent-tree check can refuse it.
             let mut forged = preflight.clone();

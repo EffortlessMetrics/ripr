@@ -40,7 +40,12 @@ VS Code package version, and both npm lock-root version fields match
 changes are not release metadata drift when those governed identities remain
 unchanged. Optional merged source main must reach J.
 
-Automatic `preview_tree` is never accepted as the reviewed tree. The command
+Automatic `preview_tree` is never accepted as the reviewed tree of a
+`two_parent_join`. For a `fast_forward` preflight (public P is an ancestor of
+swarm S, clean automatic merge) the verified head is the staged return preview
+K: ordered parents `[P, S]` and a tree equal to both `preview_tree` and S's
+tree; a supplied reviewed tree must be verified and equal. The receipt records
+the preflight `mode`. The command
 never constructs a join or mutates refs, the index, worktree, remotes,
 branches, tags, releases, credentials, publication channels, or K back-sync
 state.
