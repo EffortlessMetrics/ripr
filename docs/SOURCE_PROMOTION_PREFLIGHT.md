@@ -8,6 +8,17 @@ The disposable merge probe requires Git 2.38 or newer because it uses
 `git merge-tree --write-tree --name-only -z`. The command fails closed on an
 older or malformed Git version rather than falling back to localized prose.
 
+For current sync direction, use the [staged integration guide](SOURCE_PROMOTION.md#staged-integration).
+For an ancestor P, this preflight retains `fast_forward` when `--resolved-tree`
+is omitted or names the same object as the automatic preview tree. A separately
+supplied, object-verified reviewed tree that differs from that preview selects
+`two_parent_join`. The direct-J verifier still requires `two_parent_join`, so
+the equal/omitted-tree mismatch remains. Selecting join mode does not satisfy
+the [current native acceptance](#current-native-acceptance) requirements below.
+The [contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+must be implemented and reviewed before claiming those commands admit the
+staged flow. This guide grants no receipt rewrite or gate bypass.
+
 ## Current native acceptance
 
 Current source verification, resolved-tree validation, admission, construction,

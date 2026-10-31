@@ -1,14 +1,162 @@
 # Source Promotion
 
-This runbook promotes reviewed development history from
-`EffortlessMetrics/ripr-swarm` into the release-authority repository
-`EffortlessMetrics/ripr`.
+The current sync direction under source [#1768](https://github.com/EffortlessMetrics/ripr/issues/1768)
+is **public main → swarm → public main**. First integrate public-only work into
+swarm, resolve conflicts and repair there, qualify the combined candidate, then
+return that exact history to public. This follows the October 15 owner direction;
+it does not perform a sync or authorize publication.
 
-The goal is not to copy a final tree. The goal is to preserve the reviewed swarm
-commits, preserve source-only release and security work, and leave an auditable
-Git graph.
+## Staged integration
 
-## Non-negotiable history contract
+**Execution status:** this is the target sequence. The current source-promotion
+verifier does not admit its public-ancestor graph. Complete the
+[existing-contract reconciliation](#existing-contract-reconciliation) before
+attempting the public return; the Git examples below do not supply admission.
+
+Use an owned checkout per writer. Record exact repository URLs and commit SHAs;
+never move another worker's checkout. In this guide:
+
+- `P` is the captured `EffortlessMetrics/ripr/main` commit;
+- `B` is the swarm base before importing P;
+- `S` is the exact swarm candidate after integration and repairs;
+- `T` is the qualified tree `S^{tree}`;
+- `K` is the contained proposal's synthetic public merge preview;
+- `A` is the actual public-main commit after the return merge.
+
+Before the first-leg PR, verify that swarm admits a normal ancestry-preserving
+merge with its required checks. Reconcile conflicts between the
+[settings guidance](REPO_SETTINGS.md), tracked configuration and current policy
+with the existing owner. If no reviewed path is permitted, hold the inbound leg
+under #1768/#1627; do not squash the import or infer a settings exception from
+this guide. No settings change is authorized here.
+
+1. Fetch both repositories and record P/B, their merge base and public-only
+   survivors. Retain a machine-safe NUL-framed raw Git inventory with object
+   IDs, paths, status/modes, rename pairs, binary files and deletions; do not
+   parse paths by newlines. A clean automatic merge is not semantic review.
+2. Branch from swarm B and merge P with preserved ancestry. Resolve conflicts
+   on swarm, preserving public release/distribution work and swarm improvements.
+   Review repository-specific workflows/policy explicitly: imported files do
+   not transfer source credentials, settings or publication authority to swarm.
+3. Use meaningful preparatory, integration and follow-up repair PRs when useful.
+   Resolve every conflict in a merge before committing it; do not spread an
+   unmerged index or unresolved markers across PRs. Merge every sync PR carrying
+   foreign history with a merge commit;
+   never squash, rebase, cherry-pick or reconstruct the imported range. Ordinary
+   feature PR policy is unchanged. Do not append repairs to a qualified subject
+   and keep claiming its old proof.
+   Account for newly reachable public ancestors across each swarm first-parent
+   transition, including an outer PR merge around an inner public import merge.
+   The outer second parent may be that inner merge rather than P; retain both
+   merge identities instead of classifying the import from that parent alone.
+4. Qualify exact S/T after the last affected repair: current independent
+   semantic review, required product/policy/package tests and installed-user
+   journeys. Retain actual executed counts, failures, limits and artifact
+   identities. Graph/control metadata alone does not qualify the product.
+5. Before a public return PR, fetch public main again. It must still equal P,
+   and P must be an ancestor of S. If either check fails, merge the new public
+   head into swarm, review its effects and renew affected qualification. Merely
+   replacing the recorded P cannot repair missing ancestry.
+6. Target the public return PR at exact S as its head. The
+   [contained proposal](https://github.com/EffortlessMetrics/ripr/issues/1627#issuecomment-6183107417)
+   gives preview K and actual merge A separate identities, each with ordered
+   parents `[P, S]` and tree T. This proposal still needs source implementation
+   and protected admission. Do not add a wrapper or resolve fresh conflicts on
+   that return head.
+7. Re-read the published result A and prove both P and S are ancestors and
+   `A^{tree} == T`. Record A separately from preview K and PR head S.
+   Any new source, metadata or package change receives the affected final-source
+   proof; it is not silently covered by S's old package receipt.
+
+These Git checks illustrate the return boundary; fetching updates only owned
+local refs. Run them in the owned public checkout with `origin` identifying
+`EffortlessMetrics/ripr`, P set to the captured public main commit, S/T set from
+the retained qualification, and all required objects fetched:
+
+```bash
+set -eu
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+CURRENT_PUBLIC=$(git rev-parse refs/remotes/origin/main)
+test "$CURRENT_PUBLIC" = "$P"
+git merge-base --is-ancestor "$P" "$S"
+test "$(git rev-parse "$S^{tree}")" = "$T"
+```
+
+Immediately before the normal protected merge, recheck the exact public base,
+reviewed PR head and qualification identities. A fetch/check is not an atomic
+base lease; a PR-head-only guard does not lock public main. Identify and verify
+the actual protected expected-base enforcement with #1768/#1627 and coordinate
+the merge window. If it is absent or currentness cannot be established, stop
+rather than claiming this guide supplies a guard. After merge, observe A rather than assuming the
+transport succeeded:
+
+```bash
+set -eu
+git fetch origin +refs/heads/main:refs/remotes/origin/main
+A=$(git rev-parse refs/remotes/origin/main)
+git merge-base --is-ancestor "$P" "$A"
+git merge-base --is-ancestor "$S" "$A"
+test "$(git rev-parse "$A^{tree}")" = "$T"
+```
+
+A moved public head requires reconciliation even if the merge is textually
+clean. Later swarm development does not retarget S or justify resetting swarm.
+Keep the source, staged candidate, merge result and final release package as
+separate identities. Preserve older pins/receipts and record a successor when
+inputs change; do not retarget an existing pin. Release/RC/channel authorization
+remains separate.
+
+## Existing contract reconciliation
+
+The historical direct-J instructions below resolved source/swarm divergence
+only after swarm qualification and forbade repair descendants of J. The current
+flow resolves that divergence and performs repairs **in swarm before S is
+qualified**. It preserves history, exact identities, independent review and
+real tests without requiring one monolithic integration PR.
+
+Existing automation is not changed by this guide. When P is the merge base,
+source preflight retains `fast_forward` if `--resolved-tree` is omitted or
+names the same object as the automatic preview tree. A separately supplied,
+object-verified reviewed tree that differs from that preview selects
+`two_parent_join` (`xtask/src/reports/source_promotion.rs`, receipt construction).
+`source_promotion_verify::validate_preflight` still requires `two_parent_join`.
+Selecting that mode does not supply [current native acceptance](SOURCE_PROMOTION_PREFLIGHT.md#current-native-acceptance):
+preflight v2 and handoff acceptance v2 remain required, and historical v1
+geometry grants no current selection or qualification authority.
+Creating a wrapper J does not change the mode or supply native acceptance.
+The protected swarm pin/handoff, reviewed-tree/controller,
+direct-J/no-repair-child rules and
+#1769–#1773 inputs therefore need explicit reconciliation under #1768/#1627
+before those historical commands can admit the staged flow. Do not edit
+receipt fields to impersonate another mode.
+
+First-leg accounting for public ancestors introduced through nested PR merges
+also requires reviewed source support. The transition rule above is target
+behavior; this guide does not implement a receipt or verifier for it.
+
+The [production plan](https://github.com/EffortlessMetrics/ripr/issues/1627#issuecomment-6183107417)
+also leaves public/swarm workflow and runner-policy compatibility and
+cross-repository qualification consumption unresolved. Passing swarm jobs alone
+does not supply public required-result admission. No new source contract has
+landed; the existing production owner retains that implementation.
+
+The routed command contract also fixes 22 propositions and exact argv
+(`xtask/src/main.rs`, `ROUTED_RUST_PROPOSITION_IDS` and
+`routed_rust_expected_command`). If complete history analysis is oversized or
+unavailable, preserve that result. A separately typed integration receipt needs
+reviewed source-level contract changes and negative tests; it cannot be
+renamed Complete, make skipped commands green or silently narrow the base.
+No workflow, branch protection or security setting change is authorized here.
+
+## Historical direct-J contract reference
+
+The following retained procedures describe the older direct-J interfaces and
+receipts. They are reference for reconciliation, not the default staged
+sequence above or evidence that current commands already accept it.
+Their K names post-publication back-sync, distinct from the staged proposal's
+preview K.
+
+### Non-negotiable history contract
 
 ```text
 never squash
@@ -30,7 +178,7 @@ If a promotion PR is squashed accidentally, stop the release. Do not tag or
 publish. Revert the flattened merge if necessary and repeat the promotion with
 preserved ancestry.
 
-## Inputs
+### Inputs
 
 Freeze these values before creating the promotion branch:
 
@@ -62,9 +210,9 @@ resolve to the candidate commit, rather than relying on an annotated tag object.
 
 Do not use a floating `swarm/main` ref as the reviewed candidate.
 
-## Choose the promotion mode
+### Choose the promotion mode
 
-### Fast-forward promotion
+#### Fast-forward promotion
 
 Use fast-forward mode only when source is already an ancestor of the frozen
 swarm candidate and there is no source-only divergence to preserve:
@@ -77,7 +225,7 @@ A zero exit status makes fast-forward technically available. The release owner
 must still confirm that no source-only release, security, workflow, metadata, or
 history commit would be lost.
 
-### Two-parent history-preserving join
+#### Two-parent history-preserving join
 
 Use a two-parent join whenever source and swarm have diverged. This is the
 required mode for the `0.11.0` release train.
@@ -93,7 +241,7 @@ The source parent remains first so first-parent release history stays readable.
 The swarm candidate remains second so every reviewed swarm commit stays
 reachable.
 
-## Preflight
+### Preflight
 
 Use a fresh clone or disposable worktree:
 
@@ -119,19 +267,19 @@ git merge-base --is-ancestor "$SWARM_CANDIDATE" swarm/main
 Record the merge base, included commit count, expected conflicts, source
 survivors, and swarm exclusions before creating the join.
 
-## Create the promotion branch
+### Create the promotion branch
 
 ```bash
 git switch -c "promote/${VERSION}-swarm" "$SOURCE_PARENT"
 ```
 
-### Fast-forward mode
+#### Fast-forward mode
 
 ```bash
 git merge --ff-only "$SWARM_CANDIDATE"
 ```
 
-### Two-parent join mode
+#### Two-parent join mode
 
 ```bash
 git merge --no-ff --no-commit "$SWARM_CANDIDATE"
@@ -152,7 +300,7 @@ git commit -m "promote: join frozen ripr-swarm candidate for ${VERSION}"
 PROMOTION_HEAD_SHA="$(git rev-parse HEAD)"
 ```
 
-## Verify the branch history
+### Verify the branch history
 
 For two-parent mode:
 
@@ -175,7 +323,7 @@ Also verify:
 - generated and golden changes are understood;
 - the full source proof suite passes.
 
-## Open the PR
+### Open the PR
 
 Push the exact reviewed head:
 
@@ -206,7 +354,7 @@ development trunk; the source PR review should focus on identity, conflicts,
 survivors, exclusions, and current source proof rather than treating the entire
 swarm range as one opaque new patch.
 
-## Merge
+### Merge
 
 Before merging, fetch the current PR head and confirm it still equals the
 reviewed promotion head. Then use merge commit mode only:
@@ -219,7 +367,7 @@ gh pr merge <PR> --repo EffortlessMetrics/ripr \
 
 Do not use `--squash` or `--rebase`.
 
-## Post-merge verification
+### Post-merge verification
 
 ```bash
 git fetch origin --prune
@@ -232,36 +380,36 @@ The release packet must retain the promotion head and both ordered join parents.
 Release readiness must fail when the join is not reachable from source `main`,
 even if the flattened tree contents happen to match.
 
-## Recovery
+### Recovery
 
-### Source main moved before the promotion PR opened
+#### Source main moved before the promotion PR opened
 
 Re-run preflight from the new exact source parent. Do not silently rebase the
 join commit and reuse old receipts.
 
-### The promotion branch has unexpected conflicts
+#### The promotion branch has unexpected conflicts
 
 Stop and update the preflight/conflict policy. Do not resolve new conflicts ad
 hoc inside an already-reviewed plan.
 
-### The PR was squashed or rebased
+#### The PR was squashed or rebased
 
 Stop the release and do not tag. The reviewed history was flattened. Revert or
 otherwise neutralize the incorrect integration, then repeat the source promotion
 with a preserved join and fresh current-head proof.
 
-### A source-only survivor is missing
+#### A source-only survivor is missing
 
 Treat that as a failed integration, not a documentation discrepancy. Repair the
 join before the metadata/version PR starts.
 
-## Claim boundary
+### Claim boundary
 
 A successful source promotion proves that reviewed swarm history and required
 source-only work coexist on source `main` with auditable ancestry. It does not
 prove release metadata, downstream compatibility, or publication.
 
-## Repeatable exact-J verification
+### Repeatable exact-J verification
 
 Retain the final `ripr.source_promotion_preflight.v1` receipt as immutable
 input, then author and review one deterministic
@@ -297,7 +445,7 @@ The verifier is read-only and does not construct J, resolve conflicts, publish,
 or perform the later ancestry-preserving K back-sync; K verification is a
 separate follow-up contract.
 
-## Preconstruction reviewed-tree validation
+### Preconstruction reviewed-tree validation
 
 Before constructing or publishing a direct two-parent join, validate the exact
 reviewed tree with the source-parent-selected governance implementation:
@@ -336,7 +484,7 @@ Parent-comparative semantic policy decisions remain reviewer-owned inputs. For
 that receipt into the complete resolution manifest before this command runs the
 source-trusted final-tree checks.
 
-## Source-owned admission, construction, and candidate-ref controller
+### Source-owned admission, construction, and candidate-ref controller
 
 Issue #1609 adds four typed control-plane subcommands under
 `cargo xtask source-promotion`:
@@ -483,7 +631,7 @@ receipt keeps `merge_command: null` and `merge_command_attempts: 0`. Issue #1508
 owns the later authoritative promotion candidate and merge-command decision
 after accepted-tree and qualification evidence exist.
 
-## Source Promotion Admission workflow
+### Source Promotion Admission workflow
 
 `.github/workflows/source-promotion-admission.yml` is the permanent,
 source-owned transport for resolved-tree admission. It supports
@@ -570,7 +718,7 @@ A terminal-green admission packet is necessary transport evidence, not
 product/editor qualification, J6 publication, merge authority, or release
 authority.
 
-## Source Promotion Contract workflow
+### Source Promotion Contract workflow
 
 Promotion PRs opt into the source-side contract check with this exact body
 marker:

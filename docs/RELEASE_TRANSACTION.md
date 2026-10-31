@@ -3,6 +3,14 @@
 Status: active operator runbook for the `0.11.0` live-head transaction and
 future releases using the same two-repository history model.
 
+For the current public → swarm → public sequence, start with the
+[staged sync guide](SOURCE_PROMOTION.md#staged-integration). Resolve public
+conflicts and repairs in swarm before qualifying the exact return candidate.
+The direct-J commands below retain their historical controller/pin/receipt
+contracts; see [required reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+before executing them for a staged candidate. This documentation changes no
+runtime gate, protected merge policy or publication authority.
+
 This document is the canonical lifecycle from the release boundary through
 reopened swarm development. It sequences existing verifier contracts; it does
 not replace their semantics or make publication implicit.

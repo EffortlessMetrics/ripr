@@ -256,6 +256,62 @@ fn release_server_build_uses_canonical_locked_toolchain() -> Result<(), String> 
     Ok(())
 }
 
+#[test]
+fn release_server_workflow_isolates_attestation_from_upload() -> Result<(), String> {
+    let workflow = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(".github/workflows/release-server-binaries.yml"),
+    )
+    .map_err(|error| format!("failed to read release-server workflow: {error}"))?;
+    let job = |name: &str, next: Option<&str>| -> Result<String, String> {
+        let start = workflow
+            .find(&format!("\n  {name}:"))
+            .ok_or_else(|| format!("release workflow is missing the {name} job"))?;
+        let rest = &workflow[start + 1..];
+        let end = next
+            .and_then(|next| rest.find(&format!("\n  {next}:")))
+            .unwrap_or(rest.len());
+        Ok(rest[..end].to_string())
+    };
+    let build = job("build", Some("manifest"))?;
+    let manifest = job("manifest", Some("attest"))?;
+    let attest = job("attest", Some("upload"))?;
+    let upload = job("upload", None)?;
+    let privileged =
+        |text: &str| text.contains("id-token: write") || text.contains("attestations: write");
+    // Only the attest job may hold OIDC/attestation scopes; it must not write contents.
+    if privileged(&build) || privileged(&manifest) || privileged(&upload) {
+        return Err("OIDC or attestation scope leaked outside the attest job".to_string());
+    }
+    if !(attest.contains("id-token: write")
+        && attest.contains("attestations: write")
+        && !attest.contains("contents: write"))
+    {
+        return Err(
+            "attest job must hold id-token and attestations write, not contents write".to_string(),
+        );
+    }
+    // Release write belongs to the upload job alone, and only after verification.
+    if build.contains("contents: write") || manifest.contains("contents: write") {
+        return Err("contents: write leaked into build or manifest".to_string());
+    }
+    if !upload.contains("contents: write") || !upload.contains("needs: attest") {
+        return Err("upload must be the contents:write job and depend on attest".to_string());
+    }
+    if workflow.contains("release-upload-assets") != upload.contains("release-upload-assets") {
+        return Err("release-upload-assets must appear only in the upload job".to_string());
+    }
+    // Attestation must be pinned by full SHA and verified for every file before upload.
+    if !attest.contains("actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8")
+        || !attest.contains("gh attestation verify")
+        || !attest.contains("--signer-workflow")
+    {
+        return Err("attest job must use the pinned action and verify every subject".to_string());
+    }
+    Ok(())
+}
+
 pub(crate) fn write(path: &Path, text: &str) {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).unwrap();
@@ -8351,7 +8407,23 @@ fn create_zip_archive_writes_flat_package_contents() -> Result<(), String> {
             let entry = archive
                 .by_index(index)
                 .map_err(|err| format!("zip entry {index}: {err}"))?;
-            names.push(entry.name().to_string());
+            let name = entry
+                .name()
+                .map_err(|err| format!("zip entry {index} name: {err}"))?
+                .into_owned();
+            assert_eq!(entry.system(), zip::System::Unix, "{name}");
+            assert_eq!(
+                entry.compression(),
+                zip::CompressionMethod::Deflated,
+                "{name}"
+            );
+            let expected_mode = if name == "ripr.exe" { 0o755 } else { 0o644 };
+            assert_eq!(
+                entry.unix_mode().map(|mode| mode & 0o777),
+                Some(expected_mode),
+                "{name}"
+            );
+            names.push(name);
         }
         names.sort();
         assert_eq!(

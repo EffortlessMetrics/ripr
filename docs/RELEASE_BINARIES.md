@@ -321,3 +321,19 @@ builds the helper before supplying the publication token to the execution step.
 Downloaded verification bytes remain in a uniquely named temporary directory.
 This transport does not admit the final release candidate, authorize a channel,
 or replace the publication-convergence work in #1489/#1646.
+
+## Verifying release provenance
+
+`release-server-binaries.yml` attests the twelve public files (five archives,
+five `.sha256` sidecars, the manifest and `SHA256SUMS`) with GitHub build
+provenance in a job that has `id-token: write` and no release write, verifies
+each attestation, and only then runs the upload job. To check a downloaded file:
+
+```bash
+gh attestation verify <file> --repo EffortlessMetrics/ripr \
+  --signer-workflow EffortlessMetrics/ripr/.github/workflows/release-server-binaries.yml
+```
+
+This establishes that the bytes were built by that workflow in this repository.
+It does not replace the manifest and checksum checks, and a typed inventory and
+receipt for the subject set remain open in #1502.
