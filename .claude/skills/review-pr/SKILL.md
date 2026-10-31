@@ -96,6 +96,35 @@ Use `review-pr` when:
 
 The lead Claude context may perform the pass directly. Delegate only when another context changes the available evidence, oracle, tools, threat model, platform access, or failure perspective. The lead verifies the returned evidence and owns the final disposition.
 
+# Contribution and evidence review
+
+Establish the destination and requested operation before choosing public output.
+Keep this repository's structured inspection record and merge gates intact. A
+fork candidate, external submission and review of another author's work need
+appropriate prose, not automatic export of the internal record. Review, summary
+editing, repair, publication and merge remain separately authorized actions.
+Existing authority should be reused, not requested again.
+
+Review implementation, evidence and explanation together. Check the completed
+behavior and preserved useful workflow, not only the new rejection path. Ask
+what the title/body/docs lead a reader to believe and whether the candidate
+establishes it. An overclaim needs correction; an incomplete accepted requirement
+needs repair or an authorized scope decision, not merely weaker wording.
+
+Inspectable worker or CI results can support direct verification claims after
+checking subject, command, environment, result and applicability. Do not require
+personal reexecution solely because work was delegated. A bare 'tests passed'
+note remains reported evidence. Verify capabilities before declaring execution
+unavailable; never claim a reproduction, experiment or write without its result.
+Keep source reasoning, OS probes, helper tests and application execution distinct.
+Reviewer-specific limits belong in the review where material, not repeated as
+qualifiers on supported author claims.
+
+Use [PR-body guidance](../../../docs/templates/pr-body.md) for human-facing
+explanations. Preserve effective author wording; do not rewrite another person
+into a house voice or add personality, career framing or process narration.
+This adds no reviewer identity, handoff or mandatory formatting gate.
+
 # Workflow
 
 1. **Bind the subject.** Retain repository, PR or branch, exact `reviewed_head_sha`, base and integration basis, issue/claim boundary, acceptance, non-goals, and review time. Re-read the head before posting. A moved head invalidates affected review dimensions. Bind it from an inspection workspace you own; see **Inspection workspace**.
@@ -109,8 +138,8 @@ The lead Claude context may perform the pass directly. Delegate only when anothe
    - **Contract parity:** runtime validation, schema, docs, help, output contracts, compatibility history, generated relationships, and support claims agree.
    - **Platform/package/security:** platform branches, filesystem/process semantics, package contents, permissions, trust, secret, and network boundaries when engaged.
    - **Exact-head CI/receipts:** required and advisory checks, actual jobs, denominators, skipped lanes, failures, artifacts, reports, and head identity. Inspect the failing step or receipt; aggregate status is not the cause.
-5. **Challenge load-bearing claims.** Use a counterexample, mutation/removal experiment, deliberately wrong implementation, alternate case, or record why such a challenge is not practical. A green test that cannot distinguish the old behavior is an oracle defect.
-6. **Classify results without collapsing them:**
+5. **Challenge load-bearing claims.** Use a counterexample, mutation/removal experiment, deliberately wrong implementation, alternate case, or record why such a challenge is not practical. First identify the proof obligation. A regression test offered as evidence of repair must distinguish that defect. Preservation checks may pass on the base by design; safety claims may need source reasoning. Test-only changes must establish intended-case selection and discrimination. Do not invent red/green results or require one experiment type for every claim.
+6. **Classify findings.** Establish whether the candidate introduces or worsens the defect, a pre-existing defect defeats its claimed behavior, or this is an independent discovery or preference. Pre-existence does not excuse a claim-defeating defect; adjacency does not force unrelated work into the PR. Explain impact and reachability. Keep these results separate:
    - blocking source/contract defect;
    - blocking test/oracle defect;
    - blocking missing platform/integration proof;
@@ -123,7 +152,7 @@ The lead Claude context may perform the pass directly. Delegate only when anothe
 7. **Post the inspection record on the exact head.** A clean result documents inspected surfaces, risks, invariants, validation, residual assumptions, missing evidence, and disposition. `LGTM` is not a review record.
 8. **Handle author self-review honestly.** GitHub does not allow the author to request changes on their own PR. Submit a `COMMENT` review and state whether the current head is blocking or review-ready. Do not treat the platform limitation as an approval.
 9. **Repair through one candidate.** Return valid findings to `build-candidate`; reply to incorrect findings with source-backed evidence; resolve only after repair or reply. Re-enter `review-pr` for dimensions changed by the repair.
-10. **Route the disposition.** Only `REVIEW_READY` proceeds to `finish-pr`. Other outcomes retain the candidate as draft, repair-required, incomplete, or durably in flight.
+10. **Route the disposition.** Only `REVIEW_READY` permits merge convergence through `finish-pr`. A committed `REVIEW_INCOMPLETE` candidate may enter `finish-pr` for authorized publication and collection of missing remote evidence, not merge. Other non-terminal outcomes retain the candidate in repair or durably in flight.
 
 # False-confidence rules
 
@@ -156,6 +185,20 @@ disposition:
 ```
 
 Lead with actionable findings in severity order. Include file/symbol or contract locations and the concrete failure mode. Put synthesis after findings rather than using a summary to bury them.
+
+Retain the record above for this repository's agent consumers. Human-facing
+comments need the trigger, relevant path, consequence and correction, not a
+mandatory labelled form. A clean external review can state the inspected
+behavior, conclusion and material limit briefly; it must not imply unrun proof.
+Check existing threads before posting, consolidate duplicates and acknowledge
+repairs. A prior clean review does not suppress a newly requested substantive
+pass or a later valid finding. Judge findings on their merits; do not invent
+activity or repeatedly rewrite already effective text.
+
+A source-clear recommendation to submit is not merge readiness. Preserve this
+repository's `REVIEW_READY` prerequisites and state which stage is established;
+missing upstream-only checks need not prevent an otherwise authorized submission.
+
 
 # Currentness dimensions
 
