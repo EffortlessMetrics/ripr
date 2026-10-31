@@ -164,9 +164,7 @@ fn verify_geometry(options: &Options) -> Result<Value, String> {
     let mut checks = Map::new();
     let source = string_field(&preflight, "source_parent")?;
     let swarm = string_field(&preflight, "swarm_parent")?;
-    let reviewed_tree = object_field(&preflight, "dry_merge")?
-        .get("reviewed_resolved_tree")
-        .and_then(Value::as_str);
+    let reviewed_tree = Some(expected_tree(&preflight)?);
     checks.insert(
         "head_is_declared_join".into(),
         Value::Bool(graph.parents.len() == 2),
@@ -181,7 +179,7 @@ fn verify_geometry(options: &Options) -> Result<Value, String> {
     );
     checks.insert(
         "reviewed_tree".into(),
-        Value::Bool(reviewed_tree == Some(graph.tree.as_str())),
+        Value::Bool(reviewed_tree.as_deref() == Some(graph.tree.as_str())),
     );
     checks.insert(
         "release_version_identity".into(),
@@ -199,6 +197,9 @@ fn verify_geometry(options: &Options) -> Result<Value, String> {
     let report = serde_json::json!({
         "schema": "ripr.source_promotion_verification.v2",
         "status": "verified",
+        // Lets a consumer tell a staged-return preview K (tree = swarm parent
+        // tree) from a join carrying a reviewed resolution.
+        "mode": string_field(&preflight, "mode")?,
         "join_head": options.join,
         "source_main": options.source_main,
         "main_head": options.main,
@@ -220,7 +221,7 @@ fn verify_geometry(options: &Options) -> Result<Value, String> {
         "invalidation_rules": [
             "Changing the preflight bytes, resolution manifest, exact join, parent identities, reviewed tree, governed release-version identity, source-authoritative CHANGELOG.md bytes, or verified main invalidates this receipt.",
             "A descendant repair commit is not the declared join and must be verified with a fresh exact head.",
-            "This receipt proves the exact Git graph, reviewed-tree identity, governed release-version identity, and source-authoritative CHANGELOG.md bytes only; it does not adjudicate conflicts, product correctness, release readiness, or publication.",
+            "This receipt proves the exact Git graph, expected-tree identity (reviewed resolution for two_parent_join, swarm parent tree for fast_forward), governed release-version identity, and source-authoritative CHANGELOG.md bytes only; it does not adjudicate conflicts, product correctness, release readiness, or publication.",
         ],
         "non_claims": [
             "No semantic conflict ruling or artifact adequacy claim.",
@@ -363,6 +364,69 @@ fn validate_identity(name: &str, value: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Tree the verified head must carry, by preflight mode.
+///
+/// `two_parent_join` requires a verified reviewed resolution. `fast_forward`
+/// is the staged return (public P is an ancestor of qualified swarm S): the
+/// head under verification is the preview K with ordered parents [P, S] and
+/// tree T = S^{tree}. The preflight carries T as the clean automatic
+/// `preview_tree`; a supplied reviewed tree must agree with it, because a
+/// different reviewed tree is a `two_parent_join`, not a staged return.
+fn expected_tree(preflight: &Value) -> Result<String, String> {
+    let dry = object_field(preflight, "dry_merge")?;
+    let reviewed = dry.get("reviewed_resolved_tree").and_then(Value::as_str);
+    let verified = dry
+        .get("reviewed_resolved_tree_verified")
+        .and_then(Value::as_bool)
+        == Some(true);
+    // Manifest-only callers predate the mode field; they validated a join.
+    let mode = preflight
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("two_parent_join");
+    match mode {
+        "two_parent_join" => {
+            let reviewed = reviewed
+                .ok_or_else(|| "preflight is missing reviewed resolved tree".to_string())?;
+            validate_hex("reviewed_resolved_tree", reviewed, 40)?;
+            if !verified {
+                return Err("preflight reviewed resolved tree is not verified".to_string());
+            }
+            Ok(reviewed.to_string())
+        }
+        "fast_forward" => {
+            if string_field(preflight, "merge_base")? != string_field(preflight, "source_parent")? {
+                return Err(
+                    "staged return requires the source parent to be an ancestor of the swarm parent"
+                        .to_string(),
+                );
+            }
+            if dry.get("status").and_then(Value::as_str) != Some("clean") {
+                return Err("staged return requires a clean automatic merge".to_string());
+            }
+            let preview = dry
+                .get("preview_tree")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "staged return preflight is missing preview_tree".to_string())?;
+            validate_hex("preview_tree", preview, 40)?;
+            let preview = preview.to_ascii_lowercase();
+            if let Some(reviewed) = reviewed {
+                validate_hex("reviewed_resolved_tree", reviewed, 40)?;
+                if !verified || !reviewed.eq_ignore_ascii_case(&preview) {
+                    return Err(
+                        "staged return reviewed tree must be verified and equal the swarm tree"
+                            .to_string(),
+                    );
+                }
+            }
+            Ok(preview)
+        }
+        other => Err(format!(
+            "preflight mode must be two_parent_join or fast_forward, found {other:?}"
+        )),
+    }
+}
+
 pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result<(), String> {
     let schema = string_field(preflight, "schema")?;
     if schema != PREFLIGHT_SCHEMA && schema != "ripr.source_promotion_preflight.v2" {
@@ -371,9 +435,8 @@ pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result
     if schema == "ripr.source_promotion_preflight.v2" {
         super::source_promotion_acceptance::validate(preflight)?;
     }
-    if string_field(preflight, "mode")? != "two_parent_join" {
-        return Err("preflight mode must be two_parent_join".to_string());
-    }
+    string_field(preflight, "mode")?;
+    expected_tree(preflight)?;
     let source = string_field(preflight, "source_parent")?;
     let swarm = string_field(preflight, "swarm_parent")?;
     let merge_base = string_field(preflight, "merge_base")?;
@@ -408,19 +471,6 @@ pub(crate) fn validate_preflight(preflight: &Value, source_main: &str) -> Result
                 return Err(format!("preflight {role} is not fully identity-verified"));
             }
         }
-    }
-    let dry = object_field(preflight, "dry_merge")?;
-    let reviewed = dry
-        .get("reviewed_resolved_tree")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "preflight is missing reviewed resolved tree".to_string())?;
-    validate_hex("reviewed_resolved_tree", reviewed, 40)?;
-    if dry
-        .get("reviewed_resolved_tree_verified")
-        .and_then(Value::as_bool)
-        != Some(true)
-    {
-        return Err("preflight reviewed resolved tree is not verified".to_string());
     }
     for key in [
         "source_range",
@@ -478,11 +528,8 @@ pub(crate) fn validate_manifest(
         .and_then(Value::as_str)
         .ok_or_else(|| "resolution manifest is missing reviewed_join_tree".to_string())?;
     validate_hex("reviewed_join_tree", tree, 40)?;
-    let receipt_tree = object_field(preflight, "dry_merge")?
-        .get("reviewed_resolved_tree")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "preflight is missing reviewed resolved tree".to_string())?;
-    if tree != receipt_tree {
+    let receipt_tree = expected_tree(preflight)?;
+    if tree != receipt_tree.as_str() {
         return Err("resolution manifest reviewed tree does not match preflight".to_string());
     }
     let rows = manifest
@@ -623,12 +670,17 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
     )?
     .trim()
     .to_string();
-    let dry_tree = object_field(preflight, "dry_merge")?
-        .get("reviewed_resolved_tree")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "reviewed tree is malformed".to_string())?;
+    let dry_tree = expected_tree(preflight)?;
     if tree != dry_tree {
         return Err("J tree does not equal reviewed resolved tree".to_string());
+    }
+    if string_field(preflight, "mode")? == "fast_forward" {
+        let swarm_tree = git(&options.repo, &["rev-parse", &format!("{swarm}^{{tree}}")])?
+            .trim()
+            .to_string();
+        if tree != swarm_tree {
+            return Err("staged return tree does not equal the swarm parent tree".to_string());
+        }
     }
     let manifest_tree = tree.clone();
     if object_field(preflight, "dry_merge")?
@@ -741,6 +793,10 @@ fn verify_release_metadata(repo: &Path, join: &str, source: &str) -> Result<(), 
 fn render_markdown(report: &Value) -> Result<String, String> {
     let schema = string_field(report, "schema")?;
     let status = string_field(report, "status")?;
+    let mode = report
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("not available");
     let join = report
         .get("join_head")
         .and_then(Value::as_str)
@@ -789,7 +845,7 @@ fn render_markdown(report: &Value) -> Result<String, String> {
         .get("non_claims")
         .ok_or_else(|| "report non-claims missing".to_string())?;
     let header = format!(
-        "# Source-promotion verification\n\n- Schema: {schema}\n- Status: **{status}**\n- J: `{join}`\n- SOURCE_PARENT: `{source}`\n- Parents (ordered): `{}` then `{}`\n- Tree: `{tree}`\n- Preflight SHA-256: `{}`\n- Resolution manifest SHA-256: `{}`\n\n## Claim boundary\n\nThe receipt proves the exact two-parent Git graph, reviewed tree identity, ancestry denominators/digests, release-version identity and source-authoritative changelog bytes, and optional merged-main reachability. It does not adjudicate semantic conflict resolutions, product correctness, release readiness, publication, or K back-sync.\n",
+        "# Source-promotion verification\n\n- Schema: {schema}\n- Status: **{status}**\n- Mode: {mode}\n- J: `{join}`\n- SOURCE_PARENT: `{source}`\n- Parents (ordered): `{}` then `{}`\n- Tree: `{tree}`\n- Preflight SHA-256: `{}`\n- Resolution manifest SHA-256: `{}`\n\n## Claim boundary\n\nThe receipt proves the exact two-parent Git graph, expected tree identity (the reviewed resolution for `two_parent_join`; the swarm parent tree for `fast_forward`), ancestry denominators/digests, release-version identity and source-authoritative changelog bytes, and optional merged-main reachability. It does not adjudicate semantic conflict resolutions, product correctness, release readiness, publication, or K back-sync.\n",
         parents.first().and_then(Value::as_str).unwrap_or(""),
         parents.get(1).and_then(Value::as_str).unwrap_or(""),
         preflight_digest,
@@ -1376,6 +1432,127 @@ mod tests {
                 || before_remotes != after_remotes
             {
                 return Err("verification changed caller repository state".into());
+            }
+            Ok(())
+        })();
+        let _ = fs::remove_dir_all(&root);
+        result
+    }
+
+    #[test]
+    fn staged_return_accepts_exact_preview_and_rejects_graph_adversaries() -> Result<(), String> {
+        let _guard = CWD_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|error| format!("cwd test lock poisoned: {error}"))?;
+        let root = fixture_root("staged-return")?;
+        let result = (|| {
+            test_git(&root, &["init", "--quiet"])?;
+            test_git(&root, &["config", "user.email", "test@example.invalid"])?;
+            test_git(&root, &["config", "user.name", "test"])?;
+            fs::write(root.join("public.txt"), "public\n").map_err(|e| e.to_string())?;
+            test_git(&root, &["add", "."])?;
+            test_git(&root, &["commit", "--quiet", "-m", "public P"])?;
+            let public = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            let public_tree = test_git_output(&root, &["rev-parse", "HEAD^{tree}"])?;
+            fs::write(root.join("swarm.txt"), "swarm\n").map_err(|e| e.to_string())?;
+            test_git(&root, &["add", "."])?;
+            test_git(&root, &["commit", "--quiet", "-m", "swarm S"])?;
+            let swarm = test_git_output(&root, &["rev-parse", "HEAD"])?;
+            let tree = test_git_output(&root, &["rev-parse", "HEAD^{tree}"])?;
+            let commit = |tree: &str, parents: &[&str]| -> Result<String, String> {
+                let mut args = vec!["commit-tree", tree];
+                for parent in parents {
+                    args.push("-p");
+                    args.push(parent);
+                }
+                test_git_output_with_input(&root, &args, "preview\n")
+            };
+            let k = commit(&tree, &[&public, &swarm])?;
+            let swapped = commit(&tree, &[&swarm, &public])?;
+            let wrong_tree = commit(&public_tree, &[&public, &swarm])?;
+            let extra_parent = commit(&tree, &[&public, &swarm, &swapped])?;
+            let wrapper = commit(&tree, &[&k])?;
+            let source_range = test_recompute_range(&root, &public, &public)?;
+            let swarm_range = test_recompute_range(&root, &public, &swarm)?;
+            let preflight = serde_json::json!({
+                "schema": PREFLIGHT_SCHEMA, "mode": "fast_forward", "source_parent": public,
+                "swarm_parent": swarm, "swarm_ref": format!("refs/tags/ripr-release-0.11.0-{swarm}"),
+                "swarm_ref_sha": swarm, "source_main": public, "merge_base": public,
+                "source_repository": {"common_dir_verified":true,"root_verified":true,"remote_verified":true},
+                "swarm_repository": {"common_dir_verified":true,"root_verified":true,"remote_verified":true},
+                "source_range": range_json(&source_range), "swarm_range": range_json(&swarm_range),
+                "dry_merge": {"status": "clean", "preview_tree": tree, "reviewed_resolved_tree": null,
+                              "reviewed_resolved_tree_verified": false, "conflicts": []},
+                "source_survivor_candidates": [], "swarm_authority_resolution_candidates": [],
+                "version_state": {"requested_version": "0.11.0"}, "invalidation_rules": []
+            });
+            validate_preflight(&preflight, &public)?;
+            let options = |head: &str| Options {
+                repo: root.clone(),
+                preflight: root.join("unused.json"),
+                manifest: root.join("unused.json"),
+                join: head.to_string(),
+                source_main: public.clone(),
+                main: None,
+                out: root.join("out"),
+            };
+            let graph = verify_graph(&options(&k), &preflight)?;
+            if graph.parents != [public.clone(), swarm.clone()] || graph.tree != tree {
+                return Err("staged preview K graph was not reported exactly".into());
+            }
+            for (label, head) in [
+                ("swapped parents", &swapped),
+                ("wrong tree", &wrong_tree),
+                ("extra parent", &extra_parent),
+                ("wrapper commit", &wrapper),
+            ] {
+                if verify_graph(&options(head), &preflight).is_ok() {
+                    return Err(format!("staged return accepted {label}"));
+                }
+            }
+            let mutate = |edit: &dyn Fn(&mut Value)| {
+                let mut value = preflight.clone();
+                edit(&mut value);
+                validate_preflight(&value, &public).is_ok()
+            };
+            if mutate(&|v| v["merge_base"] = Value::String(swarm.clone())) {
+                return Err("stale/non-ancestor public parent was accepted".into());
+            }
+            if mutate(&|v| v["dry_merge"]["preview_tree"] = Value::Null) {
+                return Err("missing preview tree was accepted".into());
+            }
+            if mutate(&|v| v["dry_merge"]["status"] = Value::String("conflicts".into())) {
+                return Err("conflicted staged return was accepted".into());
+            }
+            if mutate(&|v| {
+                v["dry_merge"]["reviewed_resolved_tree"] = Value::String(public_tree.clone());
+                v["dry_merge"]["reviewed_resolved_tree_verified"] = Value::Bool(true);
+            }) {
+                return Err(
+                    "reviewed tree that differs from the swarm tree stayed fast_forward".into(),
+                );
+            }
+            // Forged preview: preview_tree names P's tree and the head carries it,
+            // so only the swarm-parent-tree check can refuse it.
+            let mut forged = preflight.clone();
+            forged["dry_merge"]["preview_tree"] = Value::String(public_tree.clone());
+            match verify_graph(&options(&wrong_tree), &forged) {
+                Err(reason) if reason.contains("swarm parent tree") => {}
+                other => {
+                    return Err(format!(
+                        "forged preview tree was not refused by the swarm-tree check: {:?}",
+                        other.map(|graph| graph.tree)
+                    ));
+                }
+            }
+            if mutate(&|v| v["mode"] = Value::String("squash".into())) {
+                return Err("unknown mode was accepted".into());
+            }
+            let mut join_mode = preflight.clone();
+            join_mode["mode"] = Value::String("two_parent_join".into());
+            if validate_preflight(&join_mode, &public).is_ok() {
+                return Err("two_parent_join without a verified reviewed tree was accepted".into());
             }
             Ok(())
         })();
