@@ -10,6 +10,10 @@ on:
     tags:
       - "v*"
 
+# Default-deny: each job below declares the narrow scopes it needs.
+permissions:
+  contents: read
+
 jobs:
   build:
     name: build ${{ matrix.target }}
@@ -42,7 +46,7 @@ jobs:
             archive: tar.gz
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
@@ -59,24 +63,28 @@ jobs:
         run: cargo run --locked -p xtask -- release-server-archive --release-version "$RIPR_RELEASE_VERSION" --target "${{ matrix.target }}" --executable "${{ matrix.executable }}" --archive "${{ matrix.archive }}"
 
       - name: Upload server artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ripr-server-${{ matrix.target }}
           path: dist/*
 
   manifest:
+    # Assembles the final publishable files. Read-only: no release write, no
+    # OIDC token. The exact bytes leave this job as one artifact.
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           toolchain: 1.95.0
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: ripr-server-*
           path: dist
@@ -87,6 +95,64 @@ jobs:
         env:
           RIPR_RELEASE_VERSION: ${{ github.event.inputs.version || github.ref_name }}
         run: cargo run --locked -p xtask -- release-server-manifest --release-version "$RIPR_RELEASE_VERSION" --repository "${{ github.repository }}"
+
+      - name: Upload final release subjects
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ripr-server-final
+          path: dist/*
+          if-no-files-found: error
+
+  attest:
+    # The only job with an OIDC token. It cannot write releases or contents,
+    # and it runs no repository code: it only downloads, attests and verifies
+    # the exact bytes the upload job will later publish (#1502).
+    needs: manifest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ripr-server-final
+          path: dist
+
+      - name: Attest release asset provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: dist/*
+
+      # Upload is unreachable unless every final file verifies against this
+      # repository's attestations.
+      - name: Verify every attestation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: for file in dist/*; do gh attestation verify "$file" --repo "$GH_REPO" --signer-workflow "$GH_REPO/.github/workflows/release-server-binaries.yml"; done
+
+  upload:
+    # Publishes only after attestation verification. contents: write lives here
+    # alone; it holds no OIDC token.
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+        with:
+          toolchain: 1.95.0
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ripr-server-final
+          path: dist
 
       - name: Upload release assets
         env:
