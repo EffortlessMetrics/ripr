@@ -374,7 +374,13 @@ fn validate_identity(name: &str, value: &str) -> Result<(), String> {
 /// different reviewed tree is a `two_parent_join`, not a staged return.
 fn expected_tree(preflight: &Value) -> Result<String, String> {
     let dry = object_field(preflight, "dry_merge")?;
-    let reviewed = dry.get("reviewed_resolved_tree").and_then(Value::as_str);
+    // `null` means "not supplied"; any other non-string value is malformed and
+    // must not silently skip the reviewed-tree checks.
+    let reviewed = match dry.get("reviewed_resolved_tree") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(tree)) => Some(tree.as_str()),
+        Some(_) => return Err("preflight reviewed resolved tree is malformed".to_string()),
+    };
     let verified = dry
         .get("reviewed_resolved_tree_verified")
         .and_then(Value::as_bool)
@@ -686,7 +692,7 @@ fn verify_graph(options: &Options, preflight: &Value) -> Result<Graph, String> {
     if object_field(preflight, "dry_merge")?
         .get("preview_tree")
         .and_then(Value::as_str)
-        == Some(manifest_tree.as_str())
+        .is_some_and(|preview| preview.eq_ignore_ascii_case(&manifest_tree))
         && object_field(preflight, "dry_merge")?
             .get("conflicts")
             .and_then(Value::as_array)
@@ -1545,6 +1551,17 @@ mod tests {
             reviewed_equal["dry_merge"]["reviewed_resolved_tree_verified"] = Value::Bool(false);
             if validate_preflight(&reviewed_equal, &public).is_ok() {
                 return Err("unverified reviewed tree was accepted under fast_forward".into());
+            }
+            let mut conflicted = preflight.clone();
+            conflicted["dry_merge"]["preview_tree"] = Value::String(tree.to_ascii_uppercase());
+            conflicted["dry_merge"]["conflicts"] = serde_json::json!(["x"]);
+            if verify_graph(&options(&k), &conflicted).is_ok() {
+                return Err("uppercase preview tree hid a conflict inventory".into());
+            }
+            let mut malformed = preflight.clone();
+            malformed["dry_merge"]["reviewed_resolved_tree"] = serde_json::json!({"tree": tree});
+            if validate_preflight(&malformed, &public).is_ok() {
+                return Err("non-string reviewed tree was accepted under fast_forward".into());
             }
             // Forged preview: preview_tree names P's tree and the head carries it,
             // so only the swarm-parent-tree check can refuse it.
