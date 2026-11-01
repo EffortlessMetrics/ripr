@@ -177,7 +177,6 @@ jobs:
           test "$(sha256sum "$preflight" | awk '{print $1}')" = "$preflight_sha256" || fail "preflight digest does not match the immutable control commit"
           test "$(sha256sum "$resolution_manifest" | awk '{print $1}')" = "$resolution_sha256" || fail "resolution manifest digest does not match the immutable control commit"
           test "$source_main" = "$BASE_SHA" || fail "control source_main does not equal the PR base SHA"
-          test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
 
           validation_phase=preflight_identity
           swarm_ref=$(jq -er '.swarm_ref | select(type == "string" and test("^refs/tags/ripr-release-[^/]+-[0-9a-f]{40}$"))' "$preflight") || fail "preflight swarm_ref must be the protected candidate tag ref"
@@ -185,6 +184,33 @@ jobs:
           version=$(jq -er '.version_state.requested_version | select(type == "string" and length > 0)' "$preflight") || fail "preflight requested version is missing"
 
           test "$(git rev-parse --verify "$source_main^{commit}")" = "$source_main" || fail "source_main is not present in full history"
+
+          # staged-preview-begin
+          promotion_mode=$(jq -er '.mode | select(type == "string")' "$preflight") || fail "preflight mode is missing"
+          case "$promotion_mode" in
+            two_parent_join)
+              test "$join_head" = "$PR_HEAD" || fail "declared join_head does not equal the live PR head"
+              ;;
+            fast_forward)
+              # The staged PR head is S; K is GitHub's distinct merge preview.
+              test "$swarm_parent" = "$PR_HEAD" || fail "staged swarm parent does not equal the PR head"
+              test "$source_main" = "$BASE_SHA" || fail "staged source parent does not equal the PR base"
+              test "$source_main" != "$PR_HEAD" || fail "staged source and swarm commits must differ"
+              git --no-replace-objects merge-base --is-ancestor "$source_main" "$PR_HEAD" || fail "staged source is not an ancestor of the PR head"
+              case "$PR_NUMBER" in ''|*[!0-9]*) fail "PR number is not numeric" ;; esac
+              git fetch --no-tags origin "refs/pull/$PR_NUMBER/merge" || fail "unable to fetch the PR merge preview"
+              preview=$(git --no-replace-objects rev-parse --verify 'FETCH_HEAD^{commit}') || fail "PR merge preview is not a commit"
+              test "$preview" = "$join_head" || fail "control join_head does not equal the live PR preview"
+              parents=$(git --no-replace-objects rev-list --parents -n 1 "$preview") || fail "unable to inspect PR preview parents"
+              test "$parents" = "$preview $source_main $PR_HEAD" || fail "PR preview parents are not ordered [source, swarm]"
+              qualified_tree=$(jq -er '.dry_merge.reviewed_resolved_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$preflight") || fail "staged qualified tree is missing"
+              test "$(git --no-replace-objects rev-parse "$PR_HEAD^{tree}")" = "$qualified_tree" || fail "PR head tree differs from staged qualified tree"
+              test "$(git --no-replace-objects rev-parse "$preview^{tree}")" = "$qualified_tree" || fail "PR preview tree differs from staged qualified tree"
+              ;;
+            *) fail "unsupported preflight mode" ;;
+          esac
+          # This preview check is not an atomic expected-base merge guard.
+          # staged-preview-end
 
           validation_phase=pr_contract
           printf '%s\n' "$PR_BODY" | grep -Fq '<!-- source-promotion: true -->' || fail "promotion marker is missing"
