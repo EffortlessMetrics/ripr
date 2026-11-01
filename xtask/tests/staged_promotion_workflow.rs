@@ -166,7 +166,7 @@ mod git_fixture {
         fn run(&self, mode: &str, identity: [&str; 6]) -> Result<Output, String> {
             let [public, base, head, swarm, preview, tree] = identity;
             let preflight = self.root.join("preflight.json");
-            std::fs::write(&preflight,format!("{{\"mode\":\"{mode}\",\"dry_merge\":{{\"reviewed_resolved_tree\":\"{tree}\"}}}}"))
+            std::fs::write(&preflight,format!("{{\"mode\":\"{mode}\",\"dry_merge\":{{\"reviewed_resolved_tree\":null,\"preview_tree\":\"{tree}\"}}}}"))
                 .map_err(|e|e.to_string())?;
             let script = format!(
                 "set -e\nfail() {{ printf '%s\\n' \"$1\" >&2; exit 1; }}\n{}\n",
@@ -348,7 +348,7 @@ mod git_fixture {
         git(&f.root, &["checkout", "--quiet", "--detach", &actual])?;
         let preflight = f.root.join("post-preflight.json");
         std::fs::write(&preflight, format!(
-            "{{\"schema\":\"ripr.source_promotion_preflight.v2\",\"mode\":\"fast_forward\",\"swarm_parent\":\"{}\",\"dry_merge\":{{\"reviewed_resolved_tree\":\"{}\"}},\"acceptance\":{{\"subject\":{{\"candidate_sha\":\"{}\",\"candidate_tree\":\"{}\"}}}}}}",
+            "{{\"schema\":\"ripr.source_promotion_preflight.v2\",\"mode\":\"fast_forward\",\"swarm_parent\":\"{}\",\"dry_merge\":{{\"reviewed_resolved_tree\":null,\"preview_tree\":\"{}\"}},\"acceptance\":{{\"subject\":{{\"candidate_sha\":\"{}\",\"candidate_tree\":\"{}\"}}}}}}",
             f.swarm, f.tree, f.swarm, f.tree
         )).map_err(|e| e.to_string())?;
         let preview_object = f.root.join("preview.git-object");

@@ -203,7 +203,7 @@ jobs:
               test "$preview" = "$join_head" || fail "control join_head does not equal the live PR preview"
               parents=$(git --no-replace-objects rev-list --parents -n 1 "$preview") || fail "unable to inspect PR preview parents"
               test "$parents" = "$preview $source_main $PR_HEAD" || fail "PR preview parents are not ordered [source, swarm]"
-              qualified_tree=$(jq -er '.dry_merge.reviewed_resolved_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$preflight") || fail "staged qualified tree is missing"
+              qualified_tree=$(jq -er '.dry_merge.preview_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$preflight") || fail "staged qualified tree is missing"
               test "$(git --no-replace-objects rev-parse "$PR_HEAD^{tree}")" = "$qualified_tree" || fail "PR head tree differs from staged qualified tree"
               test "$(git --no-replace-objects rev-parse "$preview^{tree}")" = "$qualified_tree" || fail "PR preview tree differs from staged qualified tree"
               ;;
@@ -697,7 +697,7 @@ jobs:
               # K is a preview and A is the actual merged main; neither is substituted for the other.
               test "$SOURCE_PARENT" = "$SOURCE_MAIN"
               swarm_head=$(jq -er '.swarm_parent | select(type == "string" and test("^[0-9a-f]{40}$"))' "$PREFLIGHT")
-              qualified_tree=$(jq -er '.dry_merge.reviewed_resolved_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$PREFLIGHT")
+              qualified_tree=$(jq -er '.dry_merge.preview_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$PREFLIGHT")
               jq -e --arg swarm "$swarm_head" --arg tree "$qualified_tree" \
                 '.schema == "ripr.source_promotion_preflight.v2" and .acceptance.subject.candidate_sha == $swarm and .acceptance.subject.candidate_tree == $tree' "$PREFLIGHT" >/dev/null
               test -f "$PREVIEW_OBJECT"
@@ -759,7 +759,7 @@ jobs:
           mode=$(jq -r '.mode // "unknown"' "${PREFLIGHT:-/dev/null}" 2>/dev/null || printf unknown)
           if test "$mode" = fast_forward; then
             swarm=$(jq -r '.swarm_parent // ""' "$PREFLIGHT")
-            tree=$(jq -r '.dry_merge.reviewed_resolved_tree // ""' "$PREFLIGHT")
+            tree=$(jq -r '.dry_merge.preview_tree // ""' "$PREFLIGHT")
             jq -n --arg status "$status" --arg control_commit "$CONTROL_COMMIT" --arg preview_head "$JOIN_HEAD" --arg source_parent "$SOURCE_PARENT" --arg swarm_head "$swarm" --arg qualified_tree "$tree" --arg actual_merge_head "$MAIN_HEAD" \
               '{schema:"ripr.source_promotion_staged_post_merge_contract.v1",status:$status,control_commit:$control_commit,preview_head:$preview_head,source_parent:$source_parent,swarm_head:$swarm_head,qualified_tree:$qualified_tree,actual_merge_head:$actual_merge_head,claim:"Post-merge observation only; does not establish an atomic expected-base guard or release authority."}' > "$out/source-promotion-post-merge-contract.json"
           else
