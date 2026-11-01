@@ -263,7 +263,29 @@ jobs:
           validation_reason=all_validation_checks_passed
           validation_status=passed
           export_validation_outputs
-          printf '%s\n' "source_main=$source_main" "join_head=$join_head" "preflight=$preflight" "resolution_manifest=$resolution_manifest" "swarm_ref=$swarm_ref" "swarm_parent=$swarm_parent" "source_parent=$BASE_SHA" "control_commit=$control_commit" "preflight_sha256=$preflight_sha256" "resolution_sha256=$resolution_sha256" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "source_main=$source_main" "join_head=$join_head" "preflight=$preflight" "resolution_manifest=$resolution_manifest" "swarm_ref=$swarm_ref" "swarm_parent=$swarm_parent" "source_parent=$BASE_SHA" "control_commit=$control_commit" "preflight_sha256=$preflight_sha256" "resolution_sha256=$resolution_sha256" "promotion_mode=$promotion_mode" >> "$GITHUB_OUTPUT"
+
+      - name: Verify retained staged preview object
+        id: staged-preview
+        if: steps.inputs.outcome == 'success' && steps.inputs.outputs.promotion_mode == 'fast_forward'
+        env:
+          CONTROL_COMMIT: ${{ steps.inputs.outputs.control_commit }}
+          JOIN_HEAD: ${{ steps.inputs.outputs.join_head }}
+          PREVIEW_OBJECT_PATH: docs/release/source-promotion/preview-commit.git-object
+        run: |
+          set -euo pipefail
+          # staged-retain-begin
+          control_dir="$RUNNER_TEMP/ripr-promotion-control"
+          entry=$(git -C "$control_dir" ls-tree "$CONTROL_COMMIT" -- "$PREVIEW_OBJECT_PATH")
+          test "$(printf '%s\n' "$entry" | awk -F '\t' '{print $1}' | awk '{print $1}')" = 100644
+          test "$(printf '%s\n' "$entry" | awk -F '\t' '{print $2}')" = "$PREVIEW_OBJECT_PATH"
+          size=$(git -C "$control_dir" cat-file -s "$CONTROL_COMMIT:$PREVIEW_OBJECT_PATH")
+          test "$size" -gt 0 && test "$size" -le 1048576
+          preview_object="$RUNNER_TEMP/ripr-staged-preview.git-object"
+          git -C "$control_dir" show "$CONTROL_COMMIT:$PREVIEW_OBJECT_PATH" > "$preview_object"
+          test "$(git hash-object -t commit --stdin < "$preview_object")" = "$JOIN_HEAD"
+          git --no-replace-objects cat-file commit "$JOIN_HEAD" | cmp - "$preview_object"
+          # staged-retain-end
 
       - name: Verify live swarm tag and protected ruleset
         id: live-governance
@@ -299,7 +321,7 @@ jobs:
 
       - name: Run the exact full-history verifier
         id: verify
-        if: steps.inputs.outcome == 'success' && steps.live-governance.outcome == 'success'
+        if: steps.inputs.outcome == 'success' && steps.live-governance.outcome == 'success' && (steps.inputs.outputs.promotion_mode != 'fast_forward' || steps.staged-preview.outcome == 'success')
         env:
           GH_TOKEN: ${{ github.token }}
           PREFLIGHT: ${{ steps.inputs.outputs.preflight }}
@@ -552,6 +574,8 @@ jobs:
           EXPECTED_SOURCE_MAIN: ${{ inputs.source_main }}
           EXPECTED_SOURCE_PARENT: ${{ inputs.source_parent }}
           EXPECTED_JOIN_HEAD: ${{ inputs.join_head }}
+          EXPECTED_MAIN_HEAD: ${{ inputs.main_head }}
+          PREVIEW_OBJECT_PATH: docs/release/source-promotion/preview-commit.git-object
         run: |
           set -euo pipefail
           fail() { printf '%s\n' "post-merge contract rejected: $1" >&2; exit 1; }
@@ -590,7 +614,20 @@ jobs:
           test "$source_main" = "$EXPECTED_SOURCE_MAIN" || fail "control source_main does not match dispatch input"
           test "$EXPECTED_SOURCE_PARENT" = "$source_main" || fail "source_parent must equal control source_main"
           test "$join_head" = "$EXPECTED_JOIN_HEAD" || fail "control join_head does not match dispatch input"
-          git -C "$control_dir" fetch --no-tags origin "$EXPECTED_JOIN_HEAD"
+          promotion_mode=$(jq -er '.mode | select(type == "string")' "$preflight") || fail "preflight mode is missing"
+          preview_object=''
+          if test "$promotion_mode" = fast_forward; then
+            test "$(printf '%s' "$EXPECTED_MAIN_HEAD" | grep -E '^[0-9a-f]{40}$')" = "$EXPECTED_MAIN_HEAD" || fail "main_head must be an exact lowercase SHA"
+            validate_tracked_regular_file "$PREVIEW_OBJECT_PATH"
+            size=$(git -C "$control_dir" cat-file -s "$CONTROL_COMMIT:$PREVIEW_OBJECT_PATH")
+            test "$size" -gt 0 && test "$size" -le 1048576 || fail "retained preview object has invalid size"
+            preview_object="$RUNNER_TEMP/ripr-staged-preview.git-object"
+            git -C "$control_dir" show "$CONTROL_COMMIT:$PREVIEW_OBJECT_PATH" > "$preview_object"
+            test "$(git -C "$control_dir" hash-object -t commit -w --stdin < "$preview_object")" = "$EXPECTED_JOIN_HEAD" || fail "retained preview object does not match join_head"
+            git -C "$control_dir" fetch --no-tags origin "$EXPECTED_MAIN_HEAD"
+          else
+            git -C "$control_dir" fetch --no-tags origin "$EXPECTED_JOIN_HEAD"
+          fi
           test "$(git -C "$control_dir" merge-base "$CONTROL_COMMIT" "$EXPECTED_JOIN_HEAD" 2>/dev/null || true)" != "$CONTROL_COMMIT" || fail "control commit must not be an ancestor of the join head"
           test "$(git -C "$control_dir" merge-base "$CONTROL_COMMIT" "$EXPECTED_JOIN_HEAD" 2>/dev/null || true)" != "$EXPECTED_JOIN_HEAD" || fail "control commit must not be a descendant of the join head"
           test "$(sha256sum "$preflight" | awk '{print $1}')" = "$preflight_sha256" || fail "control preflight digest mismatch"
@@ -599,6 +636,7 @@ jobs:
             echo "control_commit=$CONTROL_COMMIT"
             echo "preflight=$preflight"
             echo "resolution_manifest=$resolution_manifest"
+            echo "preview_object=$preview_object"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build verifier from trusted source parent
@@ -626,6 +664,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PREFLIGHT: ${{ steps.control.outputs.preflight }}
           RESOLUTION_MANIFEST: ${{ steps.control.outputs.resolution_manifest }}
+          PREVIEW_OBJECT: ${{ steps.control.outputs.preview_object }}
           JOIN_HEAD: ${{ inputs.join_head }}
           SOURCE_MAIN: ${{ inputs.source_main }}
           MAIN_HEAD: ${{ inputs.main_head }}
@@ -661,7 +700,8 @@ jobs:
               qualified_tree=$(jq -er '.dry_merge.reviewed_resolved_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$PREFLIGHT")
               jq -e --arg swarm "$swarm_head" --arg tree "$qualified_tree" \
                 '.schema == "ripr.source_promotion_preflight.v2" and .acceptance.subject.candidate_sha == $swarm and .acceptance.subject.candidate_tree == $tree' "$PREFLIGHT" >/dev/null
-              git fetch --no-tags origin "$JOIN_HEAD"
+              test -f "$PREVIEW_OBJECT"
+              test "$(git hash-object -t commit -w --stdin < "$PREVIEW_OBJECT")" = "$JOIN_HEAD"
               test "$(git --no-replace-objects rev-list --parents -n 1 "$JOIN_HEAD")" = "$JOIN_HEAD $SOURCE_MAIN $swarm_head"
               test "$(git --no-replace-objects rev-parse "$JOIN_HEAD^{tree}")" = "$qualified_tree"
               test "$(git --no-replace-objects rev-list --parents -n 1 "$MAIN_HEAD")" = "$MAIN_HEAD $SOURCE_MAIN $swarm_head"

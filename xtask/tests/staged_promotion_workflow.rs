@@ -351,6 +351,16 @@ mod git_fixture {
             "{{\"schema\":\"ripr.source_promotion_preflight.v2\",\"mode\":\"fast_forward\",\"swarm_parent\":\"{}\",\"dry_merge\":{{\"reviewed_resolved_tree\":\"{}\"}},\"acceptance\":{{\"subject\":{{\"candidate_sha\":\"{}\",\"candidate_tree\":\"{}\"}}}}}}",
             f.swarm, f.tree, f.swarm, f.tree
         )).map_err(|e| e.to_string())?;
+        let preview_object = f.root.join("preview.git-object");
+        let raw = Command::new("git")
+            .current_dir(&f.root)
+            .args(["--no-replace-objects", "cat-file", "commit", &f.preview])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !raw.status.success() {
+            return Err("could not read preview commit object".into());
+        }
+        std::fs::write(&preview_object, &raw.stdout).map_err(|e| e.to_string())?;
         let verifier = f.root.join("verifier");
         std::fs::write(&verifier, r##"#!/bin/sh
 set -eu
@@ -369,6 +379,30 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
 "##).map_err(|e| e.to_string())?;
         std::fs::set_permissions(&verifier, std::fs::Permissions::from_mode(0o700))
             .map_err(|e| e.to_string())?;
+        let runner = f.root.join("post-runner");
+        let source = f.root.to_str().ok_or("non-UTF-8 source fixture")?;
+        let destination = runner.to_str().ok_or("non-UTF-8 runner fixture")?;
+        git(
+            &f.root,
+            &[
+                "clone",
+                "--quiet",
+                "--no-local",
+                "--no-tags",
+                "--branch",
+                "main",
+                source,
+                destination,
+            ],
+        )?;
+        let absent = Command::new("git")
+            .current_dir(&runner)
+            .args(["cat-file", "-e", &f.preview])
+            .status()
+            .map_err(|e| e.to_string())?;
+        if absent.success() {
+            return Err("fixture unexpectedly carried the preview object".into());
+        }
         let out = f.root.join("post-out");
         let run = |main: &str, tree: &str| -> Result<Output, String> {
             if out.exists() {
@@ -378,8 +412,9 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
             Command::new("bash")
                 .arg("-c")
                 .arg(script)
-                .current_dir(&f.root)
+                .current_dir(&runner)
                 .env("PREFLIGHT", &preflight)
+                .env("PREVIEW_OBJECT", &preview_object)
                 .env("RESOLUTION_MANIFEST", f.root.join("resolution.json"))
                 .env("SOURCE_PARENT", &f.public)
                 .env("SOURCE_MAIN", &f.public)
@@ -403,6 +438,14 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
             .map_err(|e| e.to_string())?;
         if !receipt.contains(&actual) || receipt.contains(&f.preview) {
             return Err("actual receipt did not bind actual separately".into());
+        }
+        std::fs::write(&preview_object, b"tampered").map_err(|e| e.to_string())?;
+        if run(&actual, &f.tree)?.status.success() {
+            return Err("tampered preview object was accepted".into());
+        }
+        std::fs::write(&preview_object, &raw.stdout).map_err(|e| e.to_string())?;
+        if !run(&actual, &f.tree)?.status.success() {
+            return Err("restored preview object was rejected".into());
         }
         let receipt_script = format!("set -euo pipefail\n{}\n", staged_receipt_gate()?);
         let write_receipt = |outcome: &str| -> Result<Output, String> {
@@ -464,6 +507,75 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
         git(&f.root, &["update-ref", "refs/heads/main", &f.swarm])?;
         if run(&actual, &f.tree)?.status.success() {
             return Err("moved public main was accepted".into());
+        }
+        Ok(())
+    }
+    #[test]
+    fn retained_preview_requires_exact_regular_git_object() -> Result<(), String> {
+        let f = Fixture::new()?;
+        let control = f.root.join("ripr-promotion-control");
+        std::fs::create_dir(&control).map_err(|e| e.to_string())?;
+        git(&control, &["init", "-q"])?;
+        let name = "docs/release/source-promotion/preview-commit.git-object";
+        let path = control.join(name);
+        std::fs::create_dir_all(path.parent().ok_or("no parent")?).map_err(|e| e.to_string())?;
+        let object = Command::new("git")
+            .current_dir(&f.root)
+            .args(["cat-file", "commit", &f.preview])
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !object.status.success() {
+            return Err("cannot read preview".into());
+        }
+        std::fs::write(&path, &object.stdout).map_err(|e| e.to_string())?;
+        git(&control, &["add", name])?;
+        git(&control, &["commit", "-qm", "retain preview"])?;
+        let valid = git(&control, &["rev-parse", "HEAD"])?;
+        std::fs::write(&path, b"tampered").map_err(|e| e.to_string())?;
+        git(&control, &["add", name])?;
+        git(&control, &["commit", "-qm", "tamper"])?;
+        let tampered = git(&control, &["rev-parse", "HEAD"])?;
+        git(&control, &["rm", name])?;
+        git(&control, &["commit", "-qm", "remove"])?;
+        let missing = git(&control, &["rev-parse", "HEAD"])?;
+        let workflow = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .ok_or("no root")?
+                .join(".github/workflows/source-promotion-contract.yml"),
+        )
+        .map_err(|e| e.to_string())?;
+        let start = workflow
+            .find("          # staged-retain-begin\n")
+            .ok_or("missing retain start")?;
+        let rest = &workflow[start..];
+        let end = rest
+            .find("          # staged-retain-end\n")
+            .ok_or("missing retain end")?;
+        let script = format!(
+            "set -euo pipefail\n{}",
+            rest[..end]
+                .lines()
+                .map(|line| line.strip_prefix("          ").unwrap_or(line))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        let run = |commit: &str| {
+            Command::new("bash")
+                .args(["-c", &script])
+                .current_dir(&f.root)
+                .env("RUNNER_TEMP", &f.root)
+                .env("CONTROL_COMMIT", commit)
+                .env("JOIN_HEAD", &f.preview)
+                .env("PREVIEW_OBJECT_PATH", name)
+                .output()
+                .map_err(|e| e.to_string())
+        };
+        if !run(&valid)?.status.success() {
+            return Err("valid retained preview rejected".into());
+        }
+        if run(&tampered)?.status.success() || run(&missing)?.status.success() {
+            return Err("invalid retained preview accepted".into());
         }
         Ok(())
     }
