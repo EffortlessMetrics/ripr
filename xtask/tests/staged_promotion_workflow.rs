@@ -31,9 +31,58 @@ fn workflow_exposes_a_staged_preview_identity_gate() -> Result<(), String> {
     Ok(())
 }
 
+fn staged_post_gate() -> Result<String, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("missing root")?;
+    let workflow = fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
+        .map_err(|e| e.to_string())?;
+    let start = workflow
+        .find("          # staged-post-begin\n")
+        .ok_or("staged post-merge gate is missing")?;
+    let rest = &workflow[start..];
+    let end = rest
+        .find("          # staged-post-end\n")
+        .ok_or("staged post-merge gate is unterminated")?;
+    Ok(rest[..end]
+        .lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+fn staged_receipt_gate() -> Result<String, String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("missing root")?;
+    let workflow = fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
+        .map_err(|e| e.to_string())?;
+    let start = workflow
+        .find("          # staged-receipt-begin\n")
+        .ok_or("staged receipt gate is missing")?;
+    let rest = &workflow[start..];
+    let end = rest
+        .find("          # staged-receipt-end\n")
+        .ok_or("staged receipt gate is unterminated")?;
+    Ok(rest[..end]
+        .lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>()
+        .join("\n"))
+}
+
+#[test]
+fn workflow_records_staged_preview_and_actual_separately() -> Result<(), String> {
+    let gate = staged_post_gate()?;
+    if !gate.contains("staged_preview") || !gate.contains("staged_actual") {
+        return Err("staged workflow must verify preview and actual separately".into());
+    }
+    Ok(())
+}
+
 #[cfg(unix)]
 mod git_fixture {
-    use super::identity_gate;
+    use super::{identity_gate, staged_post_gate, staged_receipt_gate};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -276,6 +325,146 @@ mod git_fixture {
             )?,
             "unsupported preflight mode",
         )?;
+        Ok(())
+    }
+    #[test]
+    fn actual_post_gate_checks_distinct_preview_and_merge() -> Result<(), String> {
+        use std::os::unix::fs::PermissionsExt;
+        let f = Fixture::new()?;
+        let actual = git(
+            &f.root,
+            &[
+                "commit-tree",
+                &f.tree,
+                "-p",
+                &f.public,
+                "-p",
+                &f.swarm,
+                "-m",
+                "actual",
+            ],
+        )?;
+        git(&f.root, &["update-ref", "refs/heads/main", &actual])?;
+        git(&f.root, &["checkout", "--quiet", "--detach", &actual])?;
+        let preflight = f.root.join("post-preflight.json");
+        std::fs::write(&preflight, format!(
+            "{{\"schema\":\"ripr.source_promotion_preflight.v2\",\"mode\":\"fast_forward\",\"swarm_parent\":\"{}\",\"dry_merge\":{{\"reviewed_resolved_tree\":\"{}\"}},\"acceptance\":{{\"subject\":{{\"candidate_sha\":\"{}\",\"candidate_tree\":\"{}\"}}}}}}",
+            f.swarm, f.tree, f.swarm, f.tree
+        )).map_err(|e| e.to_string())?;
+        let verifier = f.root.join("verifier");
+        std::fs::write(&verifier, r##"#!/bin/sh
+set -eu
+shift 2
+head= source= main= out=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --join-head) head=$2;; --source-main) source=$2;; --main-head) main=$2;; --out) out=$2;;
+  esac
+  shift 2
+done
+mkdir -p "$out"
+if [ -n "$main" ]; then reach=passed; else reach=not_run; fi
+jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg tree "$MOCK_TREE" --arg main "$main" --arg reach "$reach" \
+  '{status:"verified",join_head:$head,source_main:$source,main_head:(if $main == "" then null else $main end),parents:[$source,$swarm],tree:$tree,checks:{main_reachability:$reach,native_selection_acceptance_current:true,native_qualification_acceptance_current:true}}' > "$out/source-promotion-verification.json"
+"##).map_err(|e| e.to_string())?;
+        std::fs::set_permissions(&verifier, std::fs::Permissions::from_mode(0o700))
+            .map_err(|e| e.to_string())?;
+        let out = f.root.join("post-out");
+        let run = |main: &str, tree: &str| -> Result<Output, String> {
+            if out.exists() {
+                std::fs::remove_dir_all(&out).map_err(|e| e.to_string())?;
+            }
+            let script = format!("set -euo pipefail\n{}\n", staged_post_gate()?);
+            Command::new("bash")
+                .arg("-c")
+                .arg(script)
+                .current_dir(&f.root)
+                .env("PREFLIGHT", &preflight)
+                .env("RESOLUTION_MANIFEST", f.root.join("resolution.json"))
+                .env("SOURCE_PARENT", &f.public)
+                .env("SOURCE_MAIN", &f.public)
+                .env("JOIN_HEAD", &f.preview)
+                .env("MAIN_HEAD", main)
+                .env("TRUSTED_VERIFIER", &verifier)
+                .env("SOURCE_PROMOTION_OUT", &out)
+                .env("MOCK_SWARM", &f.swarm)
+                .env("MOCK_TREE", tree)
+                .output()
+                .map_err(|e| e.to_string())
+        };
+        let accepted = run(&actual, &f.tree)?;
+        if !accepted.status.success() {
+            return Err(format!(
+                "valid staged actual rejected: {}",
+                String::from_utf8_lossy(&accepted.stderr)
+            ));
+        }
+        let receipt = std::fs::read_to_string(out.join("source-promotion-verification.json"))
+            .map_err(|e| e.to_string())?;
+        if !receipt.contains(&actual) || receipt.contains(&f.preview) {
+            return Err("actual receipt did not bind actual separately".into());
+        }
+        let receipt_script = format!("set -euo pipefail\n{}\n", staged_receipt_gate()?);
+        let write_receipt = |outcome: &str| -> Result<Output, String> {
+            Command::new("bash")
+                .arg("-c")
+                .arg(&receipt_script)
+                .current_dir(&f.root)
+                .env("PREFLIGHT", &preflight)
+                .env("SOURCE_PARENT", &f.public)
+                .env("SOURCE_MAIN", &f.public)
+                .env("JOIN_HEAD", &f.preview)
+                .env("MAIN_HEAD", &actual)
+                .env("CONTROL_COMMIT", &f.public)
+                .env("POST_VERIFY_OUTCOME", outcome)
+                .env("SOURCE_PROMOTION_OUT", &out)
+                .output()
+                .map_err(|e| e.to_string())
+        };
+        if !write_receipt("success")?.status.success() {
+            return Err("could not write staged receipt".into());
+        }
+        let receipt_path = out.join("source-promotion-post-merge-contract.json");
+        let check = Command::new("jq").args(["-e", "--arg", "preview", &f.preview, "--arg", "actual", &actual,
+            ".schema == \"ripr.source_promotion_staged_post_merge_contract.v1\" and .status == \"verified\" and .preview_head == $preview and .actual_merge_head == $actual"])
+            .arg(&receipt_path).output().map_err(|e| e.to_string())?;
+        if !check.status.success() {
+            return Err("staged receipt did not bind preview and actual".into());
+        }
+        if !write_receipt("failure")?.status.success() {
+            return Err("could not write failure receipt".into());
+        }
+        let check = Command::new("jq")
+            .args(["-e", ".status == \"rejected\""])
+            .arg(&receipt_path)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !check.status.success() {
+            return Err("failed workflow reused a verified receipt".into());
+        }
+        let wrong = git(
+            &f.root,
+            &[
+                "commit-tree",
+                &f.tree,
+                "-p",
+                &f.swarm,
+                "-p",
+                &f.public,
+                "-m",
+                "wrong",
+            ],
+        )?;
+        if run(&wrong, &f.tree)?.status.success() {
+            return Err("wrong actual parents were accepted".into());
+        }
+        if run(&actual, &f.public)?.status.success() {
+            return Err("forged verifier tree was accepted".into());
+        }
+        git(&f.root, &["update-ref", "refs/heads/main", &f.swarm])?;
+        if run(&actual, &f.tree)?.status.success() {
+            return Err("moved public main was accepted".into());
+        }
         Ok(())
     }
 }

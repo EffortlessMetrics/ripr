@@ -621,6 +621,7 @@ jobs:
           echo "sha=$SOURCE_PARENT" >> "$GITHUB_OUTPUT"
 
       - name: Verify exact J reaches merged source main
+        id: verify-post
         env:
           GH_TOKEN: ${{ github.token }}
           PREFLIGHT: ${{ steps.control.outputs.preflight }}
@@ -639,20 +640,62 @@ jobs:
             exit 1
           }
           test "$(git -C "$RUNNER_TEMP/ripr-trusted-verifier" rev-parse HEAD)" = "$SOURCE_PARENT"
-          "$TRUSTED_VERIFIER" source-promotion verify \
-            --preflight "$PREFLIGHT" \
-            --resolution-manifest "$RESOLUTION_MANIFEST" \
-            --join-head "$JOIN_HEAD" \
-            --source-main "$SOURCE_MAIN" \
-            --main-head "$MAIN_HEAD" \
-            --out "$SOURCE_PROMOTION_OUT"
-          jq -e '.status == "verified" and .checks.main_reachability == "passed"' \
-            "$SOURCE_PROMOTION_OUT/source-promotion-verification.json"
+          # staged-post-begin
+          promotion_mode=$(jq -er '.mode | select(type == "string")' "$PREFLIGHT")
+          case "$promotion_mode" in
+            two_parent_join)
+              "$TRUSTED_VERIFIER" source-promotion verify \
+                --preflight "$PREFLIGHT" \
+                --resolution-manifest "$RESOLUTION_MANIFEST" \
+                --join-head "$JOIN_HEAD" \
+                --source-main "$SOURCE_MAIN" \
+                --main-head "$MAIN_HEAD" \
+                --out "$SOURCE_PROMOTION_OUT"
+              jq -e '.status == "verified" and .checks.main_reachability == "passed"' \
+                "$SOURCE_PROMOTION_OUT/source-promotion-verification.json"
+              ;;
+            fast_forward)
+              # K is a preview and A is the actual merged main; neither is substituted for the other.
+              test "$SOURCE_PARENT" = "$SOURCE_MAIN"
+              swarm_head=$(jq -er '.swarm_parent | select(type == "string" and test("^[0-9a-f]{40}$"))' "$PREFLIGHT")
+              qualified_tree=$(jq -er '.dry_merge.reviewed_resolved_tree | select(type == "string" and test("^[0-9a-f]{40}$"))' "$PREFLIGHT")
+              jq -e --arg swarm "$swarm_head" --arg tree "$qualified_tree" \
+                '.schema == "ripr.source_promotion_preflight.v2" and .acceptance.subject.candidate_sha == $swarm and .acceptance.subject.candidate_tree == $tree' "$PREFLIGHT" >/dev/null
+              git fetch --no-tags origin "$JOIN_HEAD"
+              test "$(git --no-replace-objects rev-list --parents -n 1 "$JOIN_HEAD")" = "$JOIN_HEAD $SOURCE_MAIN $swarm_head"
+              test "$(git --no-replace-objects rev-parse "$JOIN_HEAD^{tree}")" = "$qualified_tree"
+              test "$(git --no-replace-objects rev-list --parents -n 1 "$MAIN_HEAD")" = "$MAIN_HEAD $SOURCE_MAIN $swarm_head"
+              test "$(git --no-replace-objects rev-parse "$MAIN_HEAD^{tree}")" = "$qualified_tree"
+              test "$(git --no-replace-objects rev-parse "$swarm_head^{tree}")" = "$qualified_tree"
+              git --no-replace-objects merge-base --is-ancestor "$SOURCE_MAIN" "$swarm_head"
+              staged_preview="$SOURCE_PROMOTION_OUT/staged-preview"
+              staged_actual="$SOURCE_PROMOTION_OUT/staged-actual"
+              test ! -e "$staged_preview/source-promotion-verification.json"
+              test ! -e "$staged_actual/source-promotion-verification.json"
+              "$TRUSTED_VERIFIER" source-promotion verify \
+                --preflight "$PREFLIGHT" --resolution-manifest "$RESOLUTION_MANIFEST" \
+                --join-head "$JOIN_HEAD" --source-main "$SOURCE_MAIN" --out "$staged_preview"
+              jq -e --arg head "$JOIN_HEAD" --arg source "$SOURCE_MAIN" --arg swarm "$swarm_head" --arg tree "$qualified_tree" \
+                '.status == "verified" and .join_head == $head and .parents == [$source, $swarm] and .tree == $tree and .checks.native_selection_acceptance_current == true and .checks.native_qualification_acceptance_current == true' \
+                "$staged_preview/source-promotion-verification.json" >/dev/null
+              "$TRUSTED_VERIFIER" source-promotion verify \
+                --preflight "$PREFLIGHT" --resolution-manifest "$RESOLUTION_MANIFEST" \
+                --join-head "$MAIN_HEAD" --source-main "$SOURCE_MAIN" --main-head "$MAIN_HEAD" --out "$staged_actual"
+              jq -e --arg head "$MAIN_HEAD" --arg source "$SOURCE_MAIN" --arg swarm "$swarm_head" --arg tree "$qualified_tree" \
+                '.status == "verified" and .join_head == $head and .main_head == $head and .parents == [$source, $swarm] and .tree == $tree and .checks.main_reachability == "passed" and .checks.native_selection_acceptance_current == true and .checks.native_qualification_acceptance_current == true' \
+                "$staged_actual/source-promotion-verification.json" >/dev/null
+              current_main=$(git ls-remote origin refs/heads/main | awk '{print $1}')
+              test "$current_main" = "$MAIN_HEAD"
+              cp "$staged_actual/source-promotion-verification.json" "$SOURCE_PROMOTION_OUT/source-promotion-verification.json"
+              ;;
+            *) echo "unsupported promotion mode" >&2; exit 1 ;;
+          esac
+          # A post-merge observation is not an atomic expected-base guard.
+          # staged-post-end
           {
             echo "## Source Promotion Post-Merge Reachability"
             echo ""
-            printf '%s\n' "Exact join $JOIN_HEAD remains reachable from merged source main $MAIN_HEAD."
-            echo "A flattened equivalent tree is rejected because the verifier requires the exact J object."
+            printf '%s\n' "Verified preview $JOIN_HEAD and observed merged source main $MAIN_HEAD."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Write SHA-bound post-merge contract receipt
@@ -663,14 +706,26 @@ jobs:
           SOURCE_MAIN: ${{ inputs.source_main }}
           SOURCE_PARENT: ${{ inputs.source_parent }}
           MAIN_HEAD: ${{ inputs.main_head }}
+          PREFLIGHT: ${{ steps.control.outputs.preflight }}
+          POST_VERIFY_OUTCOME: ${{ steps.verify-post.outcome }}
           SOURCE_PROMOTION_OUT: ${{ runner.temp }}/ripr-source-promotion
         run: |
           set -euo pipefail
+          # staged-receipt-begin
           out="$SOURCE_PROMOTION_OUT"
           mkdir -p "$out"
           status=rejected
-          if test -f "$out/source-promotion-verification.json" && jq -e '.status == "verified"' "$out/source-promotion-verification.json" >/dev/null; then status=verified; fi
-          jq -n --arg schema 'ripr.source_promotion_post_merge_contract.v1' --arg status "$status" --arg control_commit "$CONTROL_COMMIT" --arg join_head "$JOIN_HEAD" --arg source_main "$SOURCE_MAIN" --arg source_parent "$SOURCE_PARENT" --arg main_head "$MAIN_HEAD" '{schema:$schema,status:$status,control_commit:$control_commit,join_head:$join_head,source_main:$source_main,source_parent:$source_parent,main_head:$main_head}' > "$out/source-promotion-post-merge-contract.json"
+          if test "$POST_VERIFY_OUTCOME" = success && test -f "$out/source-promotion-verification.json" && jq -e '.status == "verified"' "$out/source-promotion-verification.json" >/dev/null; then status=verified; fi
+          mode=$(jq -r '.mode // "unknown"' "${PREFLIGHT:-/dev/null}" 2>/dev/null || printf unknown)
+          if test "$mode" = fast_forward; then
+            swarm=$(jq -r '.swarm_parent // ""' "$PREFLIGHT")
+            tree=$(jq -r '.dry_merge.reviewed_resolved_tree // ""' "$PREFLIGHT")
+            jq -n --arg status "$status" --arg control_commit "$CONTROL_COMMIT" --arg preview_head "$JOIN_HEAD" --arg source_parent "$SOURCE_PARENT" --arg swarm_head "$swarm" --arg qualified_tree "$tree" --arg actual_merge_head "$MAIN_HEAD" \
+              '{schema:"ripr.source_promotion_staged_post_merge_contract.v1",status:$status,control_commit:$control_commit,preview_head:$preview_head,source_parent:$source_parent,swarm_head:$swarm_head,qualified_tree:$qualified_tree,actual_merge_head:$actual_merge_head,claim:"Post-merge observation only; does not establish an atomic expected-base guard or release authority."}' > "$out/source-promotion-post-merge-contract.json"
+          else
+            jq -n --arg schema 'ripr.source_promotion_post_merge_contract.v1' --arg status "$status" --arg control_commit "$CONTROL_COMMIT" --arg join_head "$JOIN_HEAD" --arg source_main "$SOURCE_MAIN" --arg source_parent "$SOURCE_PARENT" --arg main_head "$MAIN_HEAD" '{schema:$schema,status:$status,control_commit:$control_commit,join_head:$join_head,source_main:$source_main,source_parent:$source_parent,main_head:$main_head}' > "$out/source-promotion-post-merge-contract.json"
+          fi
+          # staged-receipt-end
 
       - name: Upload SHA-bound post-merge receipts
         if: always()
