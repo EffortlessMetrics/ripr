@@ -188,7 +188,7 @@ mod tests {
             "python3",
             &arguments,
             &[],
-            Duration::from_secs(180),
+            Duration::from_mins(3),
             "source-promotion real-Git composition controls",
         )?;
         if output.timed_out
