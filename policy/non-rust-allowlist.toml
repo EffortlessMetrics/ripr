@@ -697,3 +697,21 @@ surface = "ci"
 classification = "test"
 reason = "Bounded standard-library diagnostic recorder and local fixtures for checkout-free wheel consumers; no admission or package execution."
 covered_by = ["python3 -m unittest discover -s .github/scripts -p test_python_consumer_evidence.py"]
+
+[[allow]]
+glob = ".github/scripts/source-promotion-composition.sh"
+kind = "source_promotion_composition"
+owner = "release/ci"
+surface = "ci"
+classification = "tooling"
+reason = "Stage the existing #1889 metadata-only Git composition validator before its trusted-base workflow is activated; no candidate code, protected result, merge or publication is executed."
+covered_by = ["python3 xtask/tests/source_promotion_composition.py"]
+
+[[allow]]
+glob = "xtask/tests/source_promotion_composition.py"
+kind = "source_promotion_composition_test"
+owner = "release/ci"
+surface = "ci"
+classification = "test"
+reason = "Standard-library fixture driver executes the production shell validator against isolated local Git objects; each negative requires its intended refusal reason, and no network or live GitHub mutation occurs."
+covered_by = ["python3 xtask/tests/source_promotion_composition.py"]
