@@ -110,6 +110,15 @@ class CompositionTests(unittest.TestCase):
         self.assertIn('no source-promotion composition requested', result.stdout)
         self.assertNotIn('matches the control packet', result.stdout)
 
+    def test_missing_pr_body_refuses_without_reclassifying_as_ordinary(self) -> None:
+        self.env.pop('PR_BODY')
+        self.check('event routing inputs missing')
+
+    def test_missing_head_ref_refuses_without_reclassifying_as_ordinary(self) -> None:
+        self.env.update(PR_BODY='ordinary')
+        self.env.pop('HEAD_REF')
+        self.check('event routing inputs missing')
+
     def test_missing_marker(self) -> None:
         self.env['PR_BODY'] = 'broken'
         self.check('promotion marker missing')
@@ -141,6 +150,21 @@ class CompositionTests(unittest.TestCase):
     def test_nonregular_control(self) -> None:
         self.control(executable=True)
         self.check('control sidecar is not a regular tracked file')
+
+    def test_missing_preflight_mode(self) -> None:
+        del self.pf['mode']
+        self.control()
+        self.check('invalid or missing preflight mode')
+
+    def test_null_preflight_mode(self) -> None:
+        self.pf['mode'] = None
+        self.control()
+        self.check('invalid or missing preflight mode')
+
+    def test_nonstring_preflight_mode(self) -> None:
+        self.pf['mode'] = 1
+        self.control()
+        self.check('invalid or missing preflight mode')
 
     def test_unknown_mode(self) -> None:
         self.pf['mode'] = 'unrecognized'

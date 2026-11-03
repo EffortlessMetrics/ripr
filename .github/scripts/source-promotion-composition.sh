@@ -4,6 +4,8 @@ set -euo pipefail
 fail() { printf '%s\n' "source-promotion composition rejected: $1" >&2; exit 1; }
 marker='<!-- source-promotion: true -->'
 control_prefix='<!-- source-promotion-control:'
+# Routing identity is mandatory, even for an ordinary non-promotion PR.
+[[ ${PR_BODY+x} && ${HEAD_REF+x} ]] || fail 'event routing inputs missing'
 # GitHub web-edited bodies may use CRLF; marker cardinality stays exact.
 PR_BODY=${PR_BODY//$'\r'/}
 if [[ "$HEAD_REF" != promote/0.11.0-* ]] && [[ "$PR_BODY" != *"$marker"* ]] && [[ "$PR_BODY" != *"$control_prefix"* ]]; then
@@ -35,7 +37,7 @@ git show "$control:$preflight_path" > "$preflight_file"
 jq -e --arg p "$preflight_path" --arg base "$BASE_SHA" '.schema == "ripr.source_promotion_ci_inputs.v2" and .preflight == $p and .source_main == $base' <<< "$inputs" >/dev/null || fail 'control identities do not bind event base and merge'
 expected=$(jq -er '.preflight_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' <<< "$inputs") || fail 'invalid preflight digest'
 [[ $(sha256sum "$preflight_file" | cut -d ' ' -f 1) == "$expected" ]] || fail 'preflight digest mismatch'
-mode=$(jq -er '.mode' "$preflight_file")
+mode=$(jq -er '.mode | select(type == "string")' "$preflight_file") || fail 'invalid or missing preflight mode'
 case "$mode" in
   fast_forward)
     jq -e --arg merge "$MERGE_SHA" '.join_head == $merge' <<< "$inputs" >/dev/null || fail 'control preview mismatch'
