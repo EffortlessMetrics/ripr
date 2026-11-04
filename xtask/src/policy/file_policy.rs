@@ -193,7 +193,7 @@ mod tests {
         )?;
         if output.timed_out
             || !output.status.is_some_and(|status| status.success())
-            || !output.stderr.contains("Ran 23 tests in")
+            || !output.stderr.contains("Ran 27 tests in")
             || !output.stderr.lines().any(|line| line.trim() == "OK")
         {
             return Err(format!(

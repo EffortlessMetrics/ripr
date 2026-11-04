@@ -74,13 +74,21 @@ class CompositionTests(unittest.TestCase):
             args.extend(('-p', parent))
         return self.git(*args)
 
-    def control(self, *, digest: str | None = None, executable: bool = False) -> None:
+    def control(self, *, digest: str | None = None, executable: bool = False,
+                raw_preflight: bytes | None = None,
+                duplicate_inputs: bool = False) -> None:
         path = self.root / PREFLIGHT
         path.parent.mkdir(parents=True, exist_ok=True)
-        data = json.dumps(self.pf, sort_keys=True).encode()
+        data = (raw_preflight if raw_preflight is not None
+                else json.dumps(self.pf, sort_keys=True).encode())
         path.write_bytes(data)
         self.inputs['preflight_sha256'] = digest or hashlib.sha256(data).hexdigest()
-        (self.root / CONTROL).write_text(json.dumps(self.inputs), encoding='utf-8')
+        inputs_text = json.dumps(self.inputs)
+        if duplicate_inputs:
+            second = {key: self.inputs[key] for key in (
+                'schema', 'source_main', 'join_head', 'preflight')}
+            inputs_text += '\n' + json.dumps(second)
+        (self.root / CONTROL).write_text(inputs_text, encoding='utf-8')
         self.git('add', 'docs')
         self.git('update-index', '--chmod=+x' if executable else '--chmod=-x', CONTROL)
         self.git('commit', '--allow-empty', '-qm', 'control')
@@ -166,6 +174,26 @@ class CompositionTests(unittest.TestCase):
         self.control()
         self.check('invalid or missing preflight mode')
 
+    def test_multiple_preflight_objects_are_rejected(self) -> None:
+        valid = json.dumps(self.pf, sort_keys=True).encode()
+        second = {
+            'mode': None,
+            'source_parent': self.p,
+            'swarm_parent': self.s,
+            'dry_merge': {},
+        }
+        stream = valid + b'\n' + json.dumps(second).encode()
+        self.control(raw_preflight=stream)
+        self.check('preflight must contain exactly one JSON object')
+
+    def test_multiple_control_objects_are_rejected(self) -> None:
+        self.control(duplicate_inputs=True)
+        self.check('control must contain exactly one JSON object')
+
+    def test_nonobject_preflight_is_rejected(self) -> None:
+        self.control(raw_preflight=b'[]')
+        self.check('preflight must contain exactly one JSON object')
+
     def test_unknown_mode(self) -> None:
         self.pf['mode'] = 'unrecognized'
         self.control()
@@ -205,6 +233,11 @@ class CompositionTests(unittest.TestCase):
         self.env.update(HEAD_SHA=orphan, MERGE_SHA=preview)
         self.control()
         self.check('P is not an ancestor of S')
+
+    def test_fast_forward_join_head_must_be_live_preview(self) -> None:
+        self.inputs['join_head'] = self.s
+        self.control()
+        self.check('control preview mismatch')
 
     def legacy(self, *, reverse: bool = False) -> None:
         parents = (self.s, self.p) if reverse else (self.p, self.s)
