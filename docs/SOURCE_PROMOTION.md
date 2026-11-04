@@ -789,6 +789,11 @@ prior green result. After a staged merge, post-merge verification binds the
 actual merged main commit A separately from preview K and writes the
 `ripr.source_promotion_staged_post_merge_contract.v1` receipt.
 
+The composition validator requires `python3` with its standard-library `json`
+module on the promotion route to reject duplicate keys in both JSON sidecars.
+If `python3` is unavailable, promotion validation fails closed with an
+explicit diagnostic. Ordinary PR routing does not require Python.
+
 The PR body must also contain the live-head guarded merge command and these
 warnings:
 
