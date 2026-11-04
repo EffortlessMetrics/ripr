@@ -400,6 +400,20 @@ control.
   verifier;
 - a valid two-parent join passes the verifier;
 - a single-parent or equivalent-tree flattened history fails post-merge;
+- the staged `fast_forward` route distinguishes GitHub's exact PR preview K
+  from the actual merged main commit A; the preview must have ordered parents
+  `[P,S]` and the qualified tree T, and the control sidecar must retain K's
+  exact regular Git commit object (not just its SHA);
+- the post-merge gate imports retained K without substituting A, verifies both
+  against the trusted source-parent verifier and T, and requires A to be the
+  live origin `main` tip with exact `[P,S]` parents; wrong-parent A, tampered K,
+  missing K, and forged verifier-tree controls reject;
+- the staged post-merge receipt has schema
+  `ripr.source_promotion_staged_post_merge_contract.v1`, binds the exact
+  `control_commit`, K, P, S, T, and A, and cannot report `verified` when
+  the post-merge gate fails;
+- GitHub PR-body `edited` events retrigger composition validation, including a
+  body-only control-marker mutation that does not change the PR head;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
   failure reasons, and claim boundaries;
 - the retained verified `ripr.source_promotion_verification.v2` shape passes the
@@ -464,6 +478,13 @@ control.
 
 ## Non-Goals
 
+The candidate-supplied `pull_request` composition workflow is not, by itself,
+an independently trusted or required promotion gate. Checking out a trusted
+base script does not make the workflow definition immutable: the PR can alter
+or omit its own job. Activation requires a separately enforced, trusted-source
+check and a live no-op-workflow substitution canary before promotion relies on
+that result. The candidate's passing check is contract evidence only.
+
 ## Acceptance Examples
 
 - A marked promotion PR with one exact source-control marker, canonical
@@ -499,6 +520,14 @@ completeness, duplicate
 `kind:key`, and flattened-history controls remain covered by the verifier tests
 mapped in `.ripr/traceability.toml`.
 
+The staged K/A route is exercised by
+`xtask/tests/staged_promotion_workflow.rs`: live Git-graph preview and
+post-merge tests, retained commit-object validation, wrong-parent and moved
+origin-main negatives, receipt identity, and the `edited` trigger contract.
+`xtask/tests/source_promotion_composition.py` covers the
+trusted-base composition script against real Git objects, including body-only
+marker editing, K's ordered parents and T, and stale control packets.
+
 The permanent admission transport is covered by the same workflow-contract
 integration target and by production-harness tests in
 `xtask/src/reports/source_promotion_admission_workflow.rs`. Those tests pin the
@@ -510,6 +539,10 @@ publication authority.
 ## Implementation Mapping
 
 - Workflow: `.github/workflows/source-promotion-contract.yml`
+- Staged pre-merge workflow: `.github/workflows/source-promotion-composition.yml`
+- Staged pre-merge trusted-base script:
+  `.github/scripts/source-promotion-composition.sh`
+- Staged Git-object workflow tests: `xtask/tests/staged_promotion_workflow.rs`
 - Trusted admission workflow:
   `.github/workflows/source-promotion-admission.yml`
 - Admission workflow harness:

@@ -93,6 +93,15 @@ mod git_fixture {
     fn isolated(command: &mut Command) -> &mut Command {
         // The fixture's Git graph must not depend on the developer's hooks,
         // commit-signing policy, init templates, or system/global aliases.
+        // In particular, inherited GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE and
+        // object-directory overrides must never redirect fixture writes into
+        // the repository running these tests. Explicit fixture identity below
+        // is applied only after inherited Git state has been removed.
+        for (name, _) in std::env::vars_os() {
+            if name.to_string_lossy().starts_with("GIT_") {
+                command.env_remove(name);
+            }
+        }
         command
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_CONFIG_NOSYSTEM", "1")
@@ -484,7 +493,7 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
             return Err("failed workflow reused a verified receipt".into());
         }
         let wrong = git(
-            &runner,
+            &f.root,
             &[
                 "commit-tree",
                 &f.tree,
@@ -496,15 +505,25 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
                 "wrong",
             ],
         )?;
-        // The negative must reach the parent-order check, not fail because
-        // the commit was created only in the other repository after clone.
+        // The negative must reach the parent-order check: wrong must exist in
+        // the runner AND be the actual current origin/main tip. If it exists
+        // only locally, the later origin-main identity check rejects it even
+        // if the parent-order assertion was accidentally removed.
+        git(&f.root, &["update-ref", "refs/heads/main", &wrong])?;
+        git(&runner, &["fetch", "origin", "refs/heads/main"])?;
         let present = git(&runner, &["cat-file", "-t", &wrong])?;
         if present != "commit" {
             return Err("wrong-parent commit is absent from the execution repository".into());
         }
+        let live = git(&runner, &["ls-remote", "origin", "refs/heads/main"])?;
+        if live.split_whitespace().next() != Some(wrong.as_str()) {
+            return Err("wrong-parent commit is not the current origin/main tip".into());
+        }
         if run(&wrong, &f.tree)?.status.success() {
             return Err("wrong actual parents were accepted".into());
         }
+        git(&f.root, &["update-ref", "refs/heads/main", &actual])?;
+        git(&runner, &["fetch", "origin", "refs/heads/main"])?;
         if run(&actual, &f.public)?.status.success() {
             return Err("forged verifier tree was accepted".into());
         }
