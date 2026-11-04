@@ -10,8 +10,7 @@ fn workflow_section(begin: &str, end: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     let begin = format!("          # {begin}\n");
     let end = format!("          # {end}\n");
-    if workflow.matches(begin.as_str()).count() != 1
-        || workflow.matches(end.as_str()).count() != 1
+    if workflow.matches(begin.as_str()).count() != 1 || workflow.matches(end.as_str()).count() != 1
     {
         return Err("workflow gate markers are missing or duplicated".into());
     }
