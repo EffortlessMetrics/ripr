@@ -2,24 +2,48 @@
 use std::fs;
 use std::path::Path;
 
-fn identity_gate() -> Result<String, String> {
+fn workflow_section(begin: &str, end: &str) -> Result<String, String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .ok_or("missing root")?;
     let workflow = fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
         .map_err(|e| e.to_string())?;
+    let begin = format!("          # {begin}\n");
+    let end = format!("          # {end}\n");
+    if workflow.matches(begin.as_str()).count() != 1
+        || workflow.matches(end.as_str()).count() != 1
+    {
+        return Err("workflow gate markers are missing or duplicated".into());
+    }
     let start = workflow
-        .find("          # staged-preview-begin\n")
-        .ok_or("staged preview identity gate is missing")?;
+        .find(begin.as_str())
+        .ok_or("workflow gate start marker is missing")?;
     let rest = &workflow[start..];
     let end = rest
-        .find("          # staged-preview-end\n")
-        .ok_or("staged preview identity gate is unterminated")?;
+        .find(end.as_str())
+        .ok_or("workflow gate end marker is missing or precedes the start")?;
     Ok(rest[..end]
         .lines()
         .map(|line| line.strip_prefix("          ").unwrap_or(line))
         .collect::<Vec<_>>()
         .join("\n"))
+}
+
+fn identity_gate() -> Result<String, String> {
+    workflow_section("staged-preview-begin", "staged-preview-end")
+}
+
+#[test]
+fn composition_check_revalidates_body_edits() -> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("missing root")?;
+    let path = root.join(".github/workflows/source-promotion-composition.yml");
+    let workflow = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    if !workflow.contains("types: [opened, synchronize, reopened, edited]") {
+        return Err("promotion control body edits must retrigger qualification".into());
+    }
+    Ok(())
 }
 
 #[test]
@@ -32,43 +56,11 @@ fn workflow_exposes_a_staged_preview_identity_gate() -> Result<(), String> {
 }
 
 fn staged_post_gate() -> Result<String, String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("missing root")?;
-    let workflow = fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
-        .map_err(|e| e.to_string())?;
-    let start = workflow
-        .find("          # staged-post-begin\n")
-        .ok_or("staged post-merge gate is missing")?;
-    let rest = &workflow[start..];
-    let end = rest
-        .find("          # staged-post-end\n")
-        .ok_or("staged post-merge gate is unterminated")?;
-    Ok(rest[..end]
-        .lines()
-        .map(|line| line.strip_prefix("          ").unwrap_or(line))
-        .collect::<Vec<_>>()
-        .join("\n"))
+    workflow_section("staged-post-begin", "staged-post-end")
 }
 
 fn staged_receipt_gate() -> Result<String, String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("missing root")?;
-    let workflow = fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
-        .map_err(|e| e.to_string())?;
-    let start = workflow
-        .find("          # staged-receipt-begin\n")
-        .ok_or("staged receipt gate is missing")?;
-    let rest = &workflow[start..];
-    let end = rest
-        .find("          # staged-receipt-end\n")
-        .ok_or("staged receipt gate is unterminated")?;
-    Ok(rest[..end]
-        .lines()
-        .map(|line| line.strip_prefix("          ").unwrap_or(line))
-        .collect::<Vec<_>>()
-        .join("\n"))
+    workflow_section("staged-receipt-begin", "staged-receipt-end")
 }
 
 #[test]
@@ -82,7 +74,7 @@ fn workflow_records_staged_preview_and_actual_separately() -> Result<(), String>
 
 #[cfg(unix)]
 mod git_fixture {
-    use super::{identity_gate, staged_post_gate, staged_receipt_gate};
+    use super::{identity_gate, staged_post_gate, staged_receipt_gate, workflow_section};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -99,8 +91,15 @@ mod git_fixture {
             let _ = std::fs::remove_dir_all(&self.root);
         }
     }
+    fn isolated(command: &mut Command) -> &mut Command {
+        // The fixture's Git graph must not depend on the developer's hooks,
+        // commit-signing policy, init templates, or system/global aliases.
+        command
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+    }
     fn git(root: &Path, args: &[&str]) -> Result<String, String> {
-        let output = Command::new("git")
+        let output = isolated(&mut Command::new("git"))
             .current_dir(root)
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.invalid")
@@ -172,7 +171,7 @@ mod git_fixture {
                 "set -e\nfail() {{ printf '%s\\n' \"$1\" >&2; exit 1; }}\n{}\n",
                 identity_gate()?
             );
-            Command::new("bash")
+            isolated(&mut Command::new("bash"))
                 .arg("-c")
                 .arg(script)
                 .current_dir(&self.root)
@@ -352,7 +351,7 @@ mod git_fixture {
             f.swarm, f.tree, f.swarm, f.tree
         )).map_err(|e| e.to_string())?;
         let preview_object = f.root.join("preview.git-object");
-        let raw = Command::new("git")
+        let raw = isolated(&mut Command::new("git"))
             .current_dir(&f.root)
             .args(["--no-replace-objects", "cat-file", "commit", &f.preview])
             .output()
@@ -395,7 +394,7 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
                 destination,
             ],
         )?;
-        let absent = Command::new("git")
+        let absent = isolated(&mut Command::new("git"))
             .current_dir(&runner)
             .args(["cat-file", "-e", &f.preview])
             .status()
@@ -409,7 +408,7 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
                 std::fs::remove_dir_all(&out).map_err(|e| e.to_string())?;
             }
             let script = format!("set -euo pipefail\n{}\n", staged_post_gate()?);
-            Command::new("bash")
+            isolated(&mut Command::new("bash"))
                 .arg("-c")
                 .arg(script)
                 .current_dir(&runner)
@@ -449,7 +448,7 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
         }
         let receipt_script = format!("set -euo pipefail\n{}\n", staged_receipt_gate()?);
         let write_receipt = |outcome: &str| -> Result<Output, String> {
-            Command::new("bash")
+            isolated(&mut Command::new("bash"))
                 .arg("-c")
                 .arg(&receipt_script)
                 .current_dir(&f.root)
@@ -486,7 +485,7 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
             return Err("failed workflow reused a verified receipt".into());
         }
         let wrong = git(
-            &f.root,
+            &runner,
             &[
                 "commit-tree",
                 &f.tree,
@@ -498,6 +497,12 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
                 "wrong",
             ],
         )?;
+        // The negative must reach the parent-order check, not fail because
+        // the commit was created only in the other repository after clone.
+        let present = git(&runner, &["cat-file", "-t", &wrong])?;
+        if present != "commit" {
+            return Err("wrong-parent commit is absent from the execution repository".into());
+        }
         if run(&wrong, &f.tree)?.status.success() {
             return Err("wrong actual parents were accepted".into());
         }
@@ -519,7 +524,7 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
         let name = "docs/release/source-promotion/preview-commit.git-object";
         let path = control.join(name);
         std::fs::create_dir_all(path.parent().ok_or("no parent")?).map_err(|e| e.to_string())?;
-        let object = Command::new("git")
+        let object = isolated(&mut Command::new("git"))
             .current_dir(&f.root)
             .args(["cat-file", "commit", &f.preview])
             .output()
@@ -538,30 +543,12 @@ jq -n --arg head "$head" --arg source "$source" --arg swarm "$MOCK_SWARM" --arg 
         git(&control, &["rm", name])?;
         git(&control, &["commit", "-qm", "remove"])?;
         let missing = git(&control, &["rev-parse", "HEAD"])?;
-        let workflow = std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .ok_or("no root")?
-                .join(".github/workflows/source-promotion-contract.yml"),
-        )
-        .map_err(|e| e.to_string())?;
-        let start = workflow
-            .find("          # staged-retain-begin\n")
-            .ok_or("missing retain start")?;
-        let rest = &workflow[start..];
-        let end = rest
-            .find("          # staged-retain-end\n")
-            .ok_or("missing retain end")?;
         let script = format!(
             "set -euo pipefail\n{}",
-            rest[..end]
-                .lines()
-                .map(|line| line.strip_prefix("          ").unwrap_or(line))
-                .collect::<Vec<_>>()
-                .join("\n")
+            workflow_section("staged-retain-begin", "staged-retain-end")?
         );
         let run = |commit: &str| {
-            Command::new("bash")
+            isolated(&mut Command::new("bash"))
                 .args(["-c", &script])
                 .current_dir(&f.root)
                 .env("RUNNER_TEMP", &f.root)

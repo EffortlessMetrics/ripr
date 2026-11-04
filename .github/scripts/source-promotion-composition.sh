@@ -4,6 +4,10 @@ set -euo pipefail
 fail() { printf '%s\n' "source-promotion composition rejected: $1" >&2; exit 1; }
 marker='<!-- source-promotion: true -->'
 control_prefix='<!-- source-promotion-control:'
+# Routing identity is mandatory, even for an ordinary non-promotion PR.
+[[ ${PR_BODY+x} && ${HEAD_REF+x} ]] || fail 'event routing inputs missing'
+# GitHub web-edited bodies may use CRLF; marker cardinality stays exact.
+PR_BODY=${PR_BODY//$'\r'/}
 if [[ "$HEAD_REF" != promote/0.11.0-* ]] && [[ "$PR_BODY" != *"$marker"* ]] && [[ "$PR_BODY" != *"$control_prefix"* ]]; then
   echo 'Ordinary pull request: no source-promotion composition requested.'
   exit 0
@@ -27,13 +31,17 @@ for path in "$control_path" "$preflight_path"; do
   [[ "$entry" == $'100644 blob '*$'\t'"$path" ]] || fail 'control sidecar is not a regular tracked file'
 done
 inputs=$(git show "$control:$control_path")
+# jq is stream-oriented: a valid object followed by an incomplete object can
+# otherwise satisfy separate field checks using values from different objects.
+jq -e -s 'length == 1 and (.[0] | type == "object")' <<< "$inputs" >/dev/null || fail 'control must contain exactly one JSON object'
 preflight_file=$(mktemp)
 trap 'rm -f "$preflight_file"' EXIT
 git show "$control:$preflight_path" > "$preflight_file"
+jq -e -s 'length == 1 and (.[0] | type == "object")' "$preflight_file" >/dev/null || fail 'preflight must contain exactly one JSON object'
 jq -e --arg p "$preflight_path" --arg base "$BASE_SHA" '.schema == "ripr.source_promotion_ci_inputs.v2" and .preflight == $p and .source_main == $base' <<< "$inputs" >/dev/null || fail 'control identities do not bind event base and merge'
 expected=$(jq -er '.preflight_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' <<< "$inputs") || fail 'invalid preflight digest'
 [[ $(sha256sum "$preflight_file" | cut -d ' ' -f 1) == "$expected" ]] || fail 'preflight digest mismatch'
-mode=$(jq -er '.mode' "$preflight_file")
+mode=$(jq -er '.mode | select(type == "string")' "$preflight_file") || fail 'invalid or missing preflight mode'
 case "$mode" in
   fast_forward)
     jq -e --arg merge "$MERGE_SHA" '.join_head == $merge' <<< "$inputs" >/dev/null || fail 'control preview mismatch'

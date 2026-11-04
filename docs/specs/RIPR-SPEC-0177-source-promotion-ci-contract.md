@@ -20,14 +20,22 @@ fixed `EffortlessMetrics/ripr` source repository, and consumes only these fixed
 paths from that immutable commit:
 
 - `docs/release/source-promotion/contract-inputs.json`;
-- `docs/release/source-promotion/preflight.json`; and
-- `docs/release/source-promotion/resolution-manifest.json`.
+- `docs/release/source-promotion/preflight.json`;
+- `docs/release/source-promotion/resolution-manifest.json`; and
+- for `fast_forward` only, `docs/release/source-promotion/preview-commit.git-object`,
+  the retained raw bytes of GitHub's exact preview K.
 
 The control manifest uses schema `ripr.source_promotion_ci_inputs.v2` and binds
 exact `source_main`, `join_head`, fixed paths, and the SHA-256 digest of each
-receipt. `join_head` must equal the live PR head and `source_main` must equal
-the live PR base. The control commit must not be an ancestor or descendant of
-J. On manual dispatch, `source_parent` must equal the sidecar's `source_main`
+JSON receipt. The preflight selects `mode: two_parent_join` or
+`mode: fast_forward`. In `two_parent_join`, `join_head` must equal the live
+PR head J with parents [source P, swarm S]. In `fast_forward`, the live PR
+head is S descending from P, while `join_head` is K, the live two-parent
+GitHub preview [P, S]; K and S must have the reviewed tree. The retained K
+object must hash to the declared K and bind those parents and that tree.
+`source_main` must equal the live PR base in either mode. The control commit
+must not be an ancestor or descendant of the PR head. On manual dispatch,
+`source_parent` must equal the sidecar's `source_main`
 before the verifier is built. The control files are external to J's tree: the workflow
 rejects candidate-provided paths and does not require a tracked input file in
 the promotion PR. This avoids a circular fixed-point contract in which a file
@@ -35,8 +43,9 @@ containing J also changes `J^{tree}`.
 
 The workflow's `validate_tracked_regular_file` helper performs the mode-100644
 and canonical-path checks in the fixed source repository before any sidecar
-bytes are copied into runner-temporary files. It is called for all three fixed
-sidecars and must never be pointed at a candidate-checkout `INPUTS_PATH`.
+bytes are copied into runner-temporary files. It is called for all three
+common sidecars and, for staged fast-forward, the retained preview object.
+It must never be pointed at a candidate-checkout `INPUTS_PATH`.
 
 The resolution schema is keyed by `kind:key`, so one workflow path may
 legitimately have rows in several reviewed categories. For every workflow path
@@ -63,6 +72,14 @@ normalized contract and succeeds only when its schema is
 Rejected evidence is therefore retained before the hosted job fails; a missing,
 malformed, rejected, candidate-supplied, or non-zero-verifier receipt cannot
 produce a green `Source Promotion Contract` check.
+
+The separate `Source Promotion Composition` workflow executes a validator
+from the trusted public base against the GitHub PR merge subject and the
+immutable sidecar's preflight digest. It runs on body `edited` events as well
+as opened, synchronized and reopened PRs: a changed marker must never reuse
+an earlier ordinary-PR pass. In staged mode, post-merge verification treats
+preview K and actual main merge A as different commit identities and writes
+`ripr.source_promotion_staged_post_merge_contract.v1`.
 
 Before invoking the verifier, the workflow resolves the declared `swarm_ref`
 with `git ls-remote --refs` against the fixed public

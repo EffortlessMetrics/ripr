@@ -31,6 +31,12 @@ traceability without reconstructing intent from chat history.
    cargo test --workspace
    ```
 
+   On Unix, the workspace suite also runs a real-Git source-promotion fixture
+   through `python3`. It requires `python3`, `bash`, `git`, `jq`, and
+   `sha256sum` on `PATH` (on macOS, install `jq` and GNU coreutils if
+   needed). Missing tools fail this fixture instead of silently skipping it.
+   These are test prerequisites, not runtime dependencies of `ripr`.
+
 4. Try the binary against the in-repo sample:
 
    ```bash

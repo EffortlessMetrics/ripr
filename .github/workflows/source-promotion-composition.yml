@@ -2,6 +2,8 @@ name: Source Promotion Composition
 
 on:
   pull_request:
+    # PR-body control markers and the base can change without a new commit.
+    types: [opened, synchronize, reopened, edited]
 
 permissions:
   contents: read
@@ -28,4 +30,3 @@ jobs:
           MERGE_SHA: ${{ github.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: bash .github/scripts/source-promotion-composition.sh
-
