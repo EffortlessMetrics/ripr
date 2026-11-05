@@ -36,7 +36,83 @@ qualification and publication histories.
 
 [Full development diff since v0.10.0](https://github.com/EffortlessMetrics/ripr/compare/v0.10.0...main).
 
+### Compatibility and upgrades
+
+- **Repair receipts:** allow explicit `agent receipt` reinvocation after a
+  completed repair without RIPR's own expected operational writes making the
+  binding stale. If an attempt is detected as using the older full-delta
+  binding, start a new repair attempt with the current binary; completed
+  attempts are not rebound in place
+  ([#1741](https://github.com/EffortlessMetrics/ripr/pull/1741)).
+- **Review-comment JSON:** emit warnings as records with `kind` and `message`
+  instead of bare strings. Consumers should read each warning's `message`
+  field; current output drops empty warning strings
+  ([#1457](https://github.com/EffortlessMetrics/ripr/pull/1457)).
+- **Review evidence paths:** use the same canonical checkout identity for PR
+  evidence, review inputs and receipts, including equivalent Windows drive
+  and UNC paths. Evidence from a different checkout remains ineligible for
+  reuse even when its commits and files match
+  ([#1688](https://github.com/EffortlessMetrics/ripr/pull/1688)).
+
+### Analysis and repair guidance
+
+- Require changed-sink identity and one oracle that binds identity, observation
+  strength and change reference before assigning `Yes` discrimination.
+  Return-value probes with before-text require observation of a changed token,
+  so shared wording alone cannot confirm the changed expression
+  ([#1747](https://github.com/EffortlessMetrics/ripr/pull/1747),
+  [#1751](https://github.com/EffortlessMetrics/ripr/pull/1751)).
+- Bind literal match-arm observation to the changed arm's pattern and owner-call
+  inputs. Shared result literals, diagnostic strings and quoted comments no
+  longer confirm the arm; unresolved guards retain conservative results
+  ([#1716](https://github.com/EffortlessMetrics/ripr/pull/1716),
+  [#1723](https://github.com/EffortlessMetrics/ripr/pull/1723)).
+- Report `rust_value_propagation_unresolved` for unresolved boundary operands
+  and guarded error-return propagation. Withhold specific boundary or error-test
+  prescriptions when static analysis cannot establish the missing
+  discriminator
+  ([#1724](https://github.com/EffortlessMetrics/ripr/pull/1724),
+  [#1726](https://github.com/EffortlessMetrics/ripr/pull/1726)).
+- Keep added `#[cfg(test)]` module closing braces within test-evidence scope
+  so they do not create spurious production-debt findings
+  ([#1722](https://github.com/EffortlessMetrics/ripr/pull/1722)).
+- Recognize typed and untyped wildcard-discard bindings across whitespace
+  variations, preserving their conservative infection and propagation results
+  ([#1664](https://github.com/EffortlessMetrics/ripr/pull/1664)).
+- Exclude `self`, `true` and `false` from predicate operand correlation, so
+  those shared tokens alone cannot connect a changed predicate to an unrelated
+  later value
+  ([#1666](https://github.com/EffortlessMetrics/ripr/pull/1666)).
+
 ### Distribution and installation
+
+- Recommend `cargo install ripr --locked` in the README and CLI Quickstart
+  so installation uses the published dependency lockfile and avoids
+  incompatible transitive updates
+  ([#1864](https://github.com/EffortlessMetrics/ripr/pull/1864)).
+- Add placement-independent server manifest v2 and distribution catalogs.
+  Descriptor-bound managed downloads and cached installations bind to the
+  admitted manifest digest. Downloads have size and destination limits, and
+  tar/ZIP contents are inventoried before extracting the planned regular files
+  ([#1710](https://github.com/EffortlessMetrics/ripr/pull/1710),
+  [#1717](https://github.com/EffortlessMetrics/ripr/pull/1717),
+  [#1718](https://github.com/EffortlessMetrics/ripr/pull/1718)).
+- Allow the VS Code managed-server path to use the exact predeclared RC
+  manifest only after a direct, non-redirected 404 from the preferred stable
+  placement. Both locations must match the same embedded manifest digest;
+  the selected location is displayed as observation evidence and does not
+  change cache identity
+  ([#1790](https://github.com/EffortlessMetrics/ripr/pull/1790)).
+- Exclude workspace build output from VSIX packages. The canonical
+  `cargo xtask vscode-package` path also rejects such output, bounds packages
+  to 1,500 entries and 64 MiB unpacked, and records checked inventory totals.
+  This admission does not cover the marketplace workflow's separate rebuild
+  ([#1801](https://github.com/EffortlessMetrics/ripr/pull/1801)).
+- Retain bounded pip/uv installed-consumer diagnostics per client and run
+  attempt, including partial failures. Diagnostic receipts bind the seven
+  command groups and captured outputs to producer, wheel and native identities;
+  these diagnostics do not authorize a release
+  ([#1875](https://github.com/EffortlessMetrics/ripr/pull/1875)).
 
 - Fix npm staging's tarball argument to use an explicit local `./dist/` path.
   The real CLI transport test now runs the workflow's shell command from the
@@ -72,6 +148,34 @@ qualification and publication histories.
 
 ### Release integrity
 
+- Update locked Tokio from 1.53.1 to 1.54.1 to address
+  RUSTSEC-2026-0386, without changing dependency requirements or features
+  ([#1878](https://github.com/EffortlessMetrics/ripr/pull/1878)).
+- Move xtask archive handling to non-yanked ZIP 9 and preserve Unix
+  permission metadata in server ZIP archives on every build host, including
+  Windows
+  ([#1867](https://github.com/EffortlessMetrics/ripr/pull/1867)).
+- Make VSIX GitHub attachment require an existing release and preserve
+  existing assets. An equal existing asset is accepted only after download
+  and hash verification; absent assets upload without replacement and are
+  verified afterward
+  ([#1789](https://github.com/EffortlessMetrics/ripr/pull/1789)).
+- Require in-tree workflow `npm publish` commands to use exactly one literal
+  non-`latest` tag. The workflow policy gate also rejects missing, dynamic or
+  `latest` tags in `npm dist-tag add`/`set` commands; dry-run publishes are
+  exempt
+  ([#1877](https://github.com/EffortlessMetrics/ripr/pull/1877)).
+- Tighten npm package qualification to reject ZIP member names that normalize
+  into canonical names, and require each retained follow-up explanation to
+  name the finding selected from its retained check output
+  ([#1842](https://github.com/EffortlessMetrics/ripr/pull/1842),
+  [#1843](https://github.com/EffortlessMetrics/ripr/pull/1843)).
+- Separate server product identity from release placement. Archive and
+  manifest commands accept a source-bound `--release-version` adapter for
+  matching stable or canonical RC placement while retaining suffix-free
+  product subject names. The legacy uploader still rejects RC input
+  ([#1844](https://github.com/EffortlessMetrics/ripr/pull/1844)).
+
 - Release workflow supply-chain hardening: `release-server-binaries.yml` now
   assembles the final subjects read-only, attests them with GitHub build
   provenance in a dedicated OIDC-only job, verifies every attestation, and only
@@ -91,6 +195,18 @@ qualification and publication histories.
 
 ### Release coordination
 
+- Require identity-bound native v2 acceptance for current source-promotion
+  verification, admission, construction and candidate-ref publication.
+  Retained manifest, bundle and packet bytes, complete positive execution
+  rows and fresh trusted native decisions must agree; historical v1 geometry
+  supplies no current promotion authority
+  ([#1815](https://github.com/EffortlessMetrics/ripr/pull/1815)).
+- Select `two_parent_join` when source is an ancestor of swarm but the
+  verified reviewed tree differs from the automatic preview. Equal or omitted
+  reviewed trees retain `fast_forward`; hexadecimal tree identity comparisons
+  ignore letter case
+  ([#1855](https://github.com/EffortlessMetrics/ripr/pull/1855)).
+
 - `cargo xtask source-promotion verify` now verifies the staged public-to-swarm
   return preview (a `fast_forward` preflight: ordered parents `[P, S]`, tree equal
   to S's tree) and records the preflight `mode` in its receipt;
@@ -102,6 +218,27 @@ qualification and publication histories.
 - Document staged public-to-swarm integration, qualification and return promotion;
   route agent guidance through the same runbook and identify the existing
   direct-J contract reconciliation without changing runtime gates (#1768).
+
+### Development workflow
+
+- Run privileged Droid review and tag workflows from trusted base or
+  default-branch definitions behind fresh subject admission and mode-specific
+  write permissions. Tag requests use PR/issue conversation comments or
+  opened issues; review, inline-review-comment, PR-body and assignment triggers
+  are withheld
+  ([#1720](https://github.com/EffortlessMetrics/ripr/pull/1720),
+  [#1721](https://github.com/EffortlessMetrics/ripr/pull/1721)).
+- Keep the running `cargo xtask` launcher in `target/xtask-driver`, separate
+  from workspace executables rebuilt by its child gates, so Windows builds
+  do not replace the running driver. Run automation from the repository root
+  and reserve that output directory for the launcher
+  ([#1690](https://github.com/EffortlessMetrics/ripr/pull/1690)).
+- Document the Unix workspace test prerequisites for the source-promotion
+  integration fixture: `python3`, `bash`, `git`, `jq` and `sha256sum`. Install
+  `jq` and GNU coreutils on macOS; missing tools fail the fixture instead of
+  skipping it. These are contributor test requirements, not CLI runtime
+  dependencies
+  ([#1892](https://github.com/EffortlessMetrics/ripr/pull/1892)).
 
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
