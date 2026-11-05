@@ -97,13 +97,18 @@ and the only supported copy-safe command:
 ```bash
 gh pr merge <PR> --repo EffortlessMetrics/ripr \
   --merge \
-  --match-head-commit <JOIN_SHA>
+  --match-head-commit <PR_HEAD_SHA>
 ```
 
-The summary explicitly requires Create a merge commit and forbids squash and
-rebase. The command is printed only; the workflow never executes it. A manual
+`PR_HEAD_SHA` is J for `two_parent_join` and S for `fast_forward`; preview K
+remains a verification/control input and must never replace the live PR head
+in this command. The summary explicitly requires Create a merge commit and forbids
+squash and rebase. The command is printed only; the workflow never executes it. A manual
 workflow-dispatch lane reruns the verifier with `--main-head` and requires the
-exact J object to remain reachable from merged source `main`.
+exact J object to remain reachable from merged source `main` in
+`two_parent_join`. In `fast_forward`, it verifies retained preview K and actual
+merge A separately, requires A to be the live source tip with ordered parents
+[P, S], and compares both trees to the qualified tree T.
 
 ### Resolved-tree preconstruction gate
 

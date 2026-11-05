@@ -72,6 +72,106 @@ fn workflow_records_staged_preview_and_actual_separately() -> Result<(), String>
 }
 
 #[cfg(unix)]
+#[test]
+fn documented_and_rendered_merge_commands_bind_live_head_in_both_modes() -> Result<(), String> {
+    use std::process::Command;
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("missing root")?;
+    let workflow = fs::read_to_string(root.join(".github/workflows/source-promotion-contract.yml"))
+        .map_err(|e| e.to_string())?;
+    let spec =
+        fs::read_to_string(root.join("docs/specs/RIPR-SPEC-0177-source-promotion-ci-contract.md"))
+            .map_err(|e| e.to_string())?;
+    let documented = spec
+        .split("```bash\n")
+        .nth(1)
+        .and_then(|block| block.split("```").next())
+        .ok_or("missing documented merge command")?;
+    let guard_start = workflow
+        .find("          case \"$merge_command\" in")
+        .ok_or("missing command guard")?;
+    let guard = workflow[guard_start..]
+        .split("          esac")
+        .next()
+        .ok_or("missing guard end")?;
+    let guard = format!("{guard}\n          esac\n");
+    let render_start = workflow
+        .find("            echo \"gh pr merge $PR_NUMBER")
+        .ok_or("missing command renderer")?;
+    let renderer = workflow[render_start..]
+        .split("            echo '```'")
+        .next()
+        .ok_or("missing renderer end")?;
+    let normalize = |command: &str| {
+        command
+            .replace("\\\n", " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    for (mode, head, join) in [
+        (
+            "two_parent_join",
+            "1111111111111111111111111111111111111111",
+            "1111111111111111111111111111111111111111",
+        ),
+        (
+            "fast_forward",
+            "2222222222222222222222222222222222222222",
+            "3333333333333333333333333333333333333333",
+        ),
+    ] {
+        let expected = format!(
+            "gh pr merge 123 --repo EffortlessMetrics/ripr --merge --match-head-commit {head}"
+        );
+        let command = normalize(
+            &documented
+                .replace("<PR>", "123")
+                .replace("<PR_HEAD_SHA>", head)
+                .replace("<JOIN_SHA>", join),
+        );
+        if command != expected {
+            return Err(format!("{mode}: documentation binds the wrong identity"));
+        }
+        let rendered = Command::new("bash")
+            .args(["-c", renderer])
+            .env("PR_NUMBER", "123")
+            .env("PR_HEAD", head)
+            .output()
+            .map_err(|e| e.to_string())?;
+        if !rendered.status.success()
+            || normalize(&String::from_utf8_lossy(&rendered.stdout)) != expected
+        {
+            return Err(format!(
+                "{mode}: rendered command differs from specification"
+            ));
+        }
+        for (candidate, accepted) in [
+            (command, true),
+            (
+                expected.replace(head, "4444444444444444444444444444444444444444"),
+                false,
+            ),
+        ] {
+            let output = Command::new("bash")
+                .args(["-c", &format!("fail() {{ exit 1; }}\n{guard}")])
+                .env("PR_NUMBER", "123")
+                .env("PR_HEAD", head)
+                .env("merge_command", candidate)
+                .output()
+                .map_err(|e| e.to_string())?;
+            if output.status.success() != accepted {
+                return Err(format!(
+                    "{mode}: real workflow guard accepted the wrong identity"
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
 mod git_fixture {
     use super::{identity_gate, staged_post_gate, staged_receipt_gate, workflow_section};
     use std::path::{Path, PathBuf};
