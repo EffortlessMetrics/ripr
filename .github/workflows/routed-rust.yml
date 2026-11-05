@@ -281,7 +281,7 @@ jobs:
             --repository "$REPOSITORY" \
             --workflow "$WORKFLOW"
       - name: Install nextest
-        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
         with:
           tool: nextest
       # Each planned command records its own terminal state before its exit code
@@ -626,7 +626,7 @@ jobs:
         id: evidence_download
         if: always()
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ripr-routed-rust-evidence-${{ github.run_id }}-${{ github.run_attempt }}
           path: target/ripr/reports/

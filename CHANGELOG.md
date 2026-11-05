@@ -193,6 +193,12 @@ qualification and publication histories.
   preparation receipt; rejection retains diagnostics without successful files.
   This does not attest, verify provenance, authorize uploads or close #1502.
 
+- Update pinned Actions for package artifact retrieval and coverage reporting,
+  including artifact download retries and Codecov verification-key import
+  handling. Keep generic tool installers explicit (`cargo-deny`, `cargo-llvm-cov`
+  and `nextest`) and align exact artifact-pin contract checks with the selected
+  download action (#1891).
+
 ### Release coordination
 
 - Require identity-bound native v2 acceptance for current source-promotion
