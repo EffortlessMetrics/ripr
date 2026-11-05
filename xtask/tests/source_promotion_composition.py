@@ -76,7 +76,8 @@ class CompositionTests(unittest.TestCase):
 
     def control(self, *, digest: str | None = None, executable: bool = False,
                 raw_preflight: bytes | None = None,
-                duplicate_inputs: bool = False) -> None:
+                duplicate_inputs: bool = False,
+                raw_inputs: str | None = None) -> None:
         path = self.root / PREFLIGHT
         path.parent.mkdir(parents=True, exist_ok=True)
         data = (raw_preflight if raw_preflight is not None
@@ -84,6 +85,8 @@ class CompositionTests(unittest.TestCase):
         path.write_bytes(data)
         self.inputs['preflight_sha256'] = digest or hashlib.sha256(data).hexdigest()
         inputs_text = json.dumps(self.inputs)
+        if raw_inputs is not None:
+            inputs_text = raw_inputs.replace('__DIGEST__', self.inputs['preflight_sha256'])
         if duplicate_inputs:
             second = {key: self.inputs[key] for key in (
                 'schema', 'source_main', 'join_head', 'preflight')}
@@ -112,7 +115,22 @@ class CompositionTests(unittest.TestCase):
         self.check()
 
     def test_ordinary_is_explicitly_not_a_promotion(self) -> None:
-        self.env.update(PR_BODY='ordinary', HEAD_REF='feature')
+        self.env.update(PR_BODY='ordinary', HEAD_REF='feature/valid-name')
+        result = self.command('bash', str(SCRIPT))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('no source-promotion composition requested', result.stdout)
+        self.assertNotIn('matches the control packet', result.stdout)
+
+    def test_missing_python_rejects_promotion_but_not_ordinary(self) -> None:
+        path = self.root / 'without-python'
+        path.mkdir()
+        for tool in ('bash', 'git'):
+            executable = shutil.which(tool)
+            self.assertIsNotNone(executable)
+            (path / tool).symlink_to(executable)
+        self.env['PATH'] = str(path)
+        self.check('python3 is required for promotion sidecar validation')
+        self.env.update(PR_BODY='ordinary', HEAD_REF='feature/valid')
         result = self.command('bash', str(SCRIPT))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('no source-promotion composition requested', result.stdout)
@@ -126,6 +144,46 @@ class CompositionTests(unittest.TestCase):
         self.env.update(PR_BODY='ordinary')
         self.env.pop('HEAD_REF')
         self.check('event routing inputs missing')
+
+    def test_empty_or_malformed_head_ref_is_rejected(self) -> None:
+        self.env['PR_BODY'] = 'ordinary'
+        for ref in ('', 'bad ref', 'bad..ref', 'bad\nref'):
+            with self.subTest(ref=ref):
+                self.env['HEAD_REF'] = ref
+                self.check('invalid head ref')
+
+    def test_duplicate_control_key_is_rejected(self) -> None:
+        inputs = json.dumps({**self.inputs, 'preflight_sha256': '__DIGEST__'})
+        inputs = inputs.replace('"schema":', '"schema": "invalid", "schema":', 1)
+        self.control(raw_inputs=inputs)
+        self.check('control must contain exactly one JSON object without duplicate keys')
+
+    def test_duplicate_preflight_key_is_rejected(self) -> None:
+        data = json.dumps(self.pf).replace('"mode":', '"mode": "two_parent_join", "mode":', 1)
+        self.control(raw_preflight=data.encode())
+        self.check('preflight must contain exactly one JSON object without duplicate keys')
+
+    def test_duplicate_nested_preflight_key_is_rejected(self) -> None:
+        data = json.dumps(self.pf).replace('"preview_tree":', '"preview_tree": "wrong", "preview_tree":', 1)
+        self.control(raw_preflight=data.encode())
+        self.check('preflight must contain exactly one JSON object without duplicate keys')
+
+    def test_escaped_duplicate_control_key_is_rejected(self) -> None:
+        inputs = json.dumps({**self.inputs, 'preflight_sha256': '__DIGEST__'})
+        inputs = inputs.replace('"schema":', '"\\u0073chema": "invalid", "schema":', 1)
+        self.control(raw_inputs=inputs)
+        self.check('control must contain exactly one JSON object without duplicate keys')
+
+    def test_duplicate_nested_control_key_is_rejected(self) -> None:
+        inputs = json.dumps({**self.inputs, 'preflight_sha256': '__DIGEST__'})
+        inputs = inputs[:-1] + ', "extra": {"x": 1, "x": 2}}'
+        self.control(raw_inputs=inputs)
+        self.check('control must contain exactly one JSON object without duplicate keys')
+
+    def test_same_key_in_distinct_objects_is_allowed(self) -> None:
+        self.pf['extra'] = {'first': {'x': 1}, 'second': {'x': 2}}
+        self.control()
+        self.check()
 
     def test_missing_marker(self) -> None:
         self.env['PR_BODY'] = 'broken'
