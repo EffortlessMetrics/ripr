@@ -203,7 +203,7 @@ explicitly instead of assuming the newer option exists.
 | Tracked edits since the current commit | `ripr check --base HEAD --worktree` | Staged and unstaged tracked changes relative to `HEAD`. |
 | A committed branch change | `ripr check --base origin/main` | The merge base of `origin/main` and `HEAD` through `HEAD`, equivalent to the scope of `git diff origin/main...HEAD`. Local edits are excluded. |
 | The current tracked tree against a chosen base | `ripr check --base origin/main --worktree` | The base commit directly against the working tree, including committed, staged, and unstaged differences. This is not a merge-base comparison. |
-| A saved unified diff | `ripr check --diff change.patch` | The supplied patch, interpreted against the selected project root. Keep the patch and project sources aligned. |
+| A saved unified diff | `ripr check --diff change.patch` | The patch file path resolves from the current working directory. Source paths inside the patch resolve against the selected root (`--root`). Keep the patch and project sources aligned. |
 
 Replace `origin/main` with the target branch or commit that actually exists in
 your clone. If it is missing, fetch the intended branch or pass another valid
