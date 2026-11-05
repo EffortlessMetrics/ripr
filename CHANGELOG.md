@@ -103,6 +103,13 @@ qualification and publication histories.
   route agent guidance through the same runbook and identify the existing
   direct-J contract reconciliation without changing runtime gates (#1768).
 
+### Documentation
+
+- Clarify contribution review and finalization guidance: match proof to the
+  changed behavior, preserve valid author wording, and distinguish independent
+  discoveries from defects that defeat the candidate's claim. Add synthetic
+  maintenance evaluation cases without changing qualification or merge rules.
+
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
 Release date: staged (unreleased).
