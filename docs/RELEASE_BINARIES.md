@@ -82,6 +82,7 @@ and uploads these assets to the matching GitHub Release:
 ```text
 ripr-server-v<VERSION>-<target>.zip
 ripr-server-v<VERSION>-<target>.tar.gz
+ripr-server-v<VERSION>-<target>.<zip-or-tar.gz>.sha256
 ripr-server-manifest-v<VERSION>.json
 SHA256SUMS
 ```
@@ -93,9 +94,117 @@ and `SHA256SUMS` digests. It is excluded from `SHA256SUMS` and is not a
 release asset; downstream provenance and placement-independent subject
 selection consume this evidence.
 
+
+### Product identity and release placement
+
+Archive and manifest `--version` inputs are **product versions**, such as
+`0.11.0`. A channel suffix remains rejected by their canonical admission:
+the same product archives and manifest must keep the same subject names at RC
+and stable placements.
+
+The existing producer commands also accept `--release-version <placement>`
+instead of `--version`. This caller adapter reads the checked-out `ripr`
+crate version through the existing workspace-inheritance reader, admits the
+suffix-free source product, and binds the placement to that exact product.
+It accepts the matching stable version/tag or `v<product>-rc.<positive integer>`
+(with an optional leading `v`); leading-zero, mismatched, ordinary-prerelease,
+ambiguous and missing inputs reject before producer filesystem changes.
+It then calls the unchanged archive/manifest producers with the product.
+This adapter is identity binding only; it grants no event or publication authority.
+
+On the exact source checkout whose suffix-free product agrees with the selected
+ship packet, the nonpublishing invocation shape is:
+
+```text
+cargo xtask release-server-archive --release-version <exact-authorized-placement> --target <target> --executable <name> --archive <zip|tar.gz>
+cargo xtask release-server-manifest --release-version <exact-authorized-placement> --repository <owner/repo>
+```
+
+For product `0.11.0`, the names remain `ripr-server-v0.11.0-<target>.*` and
+`ripr-server-manifest-v0.11.0.json`. Resolve the placeholder from the exact
+candidate-bound ruling and ship packet; never derive it by incrementing an RC
+number. See the [dated RC authority reconciliation](release/0.11.0/rc-authority-reconciliation.md).
+Syntactic acceptance of a placement grants no authority or qualification.
+Current development `alpha.2` metadata cannot stand in for a final suffix-free
+product checkout.
+
+The legacy `release-upload-assets` CLI stops channel-suffixed inputs **before**
+calling GitHub. Repairing producer placement transport does not make that
+opportunistic create/clobber uploader an RC publisher. Exact RC event authority,
+validated subjects and publication transport remain #1631/#1644/#1646 work.
+Existing explicit product producer invocations and stable upload behavior remain
+unchanged. Do not use the publication workflow as qualification proof.
+
+## Final server subject preparation (nonpublishing)
+
+After accepted archive/manifest assembly, prepare the exact current upload set:
+
+```bash
+cargo xtask release-final-server-subjects \
+  --version <product-version> --repository EffortlessMetrics/ripr \
+  --candidate-sha <40-lowercase-hex-sha> --candidate-tree <40-lowercase-hex-tree> \
+  --dist dist --out target/ripr/final-server-subjects
+```
+
+The output parent must exist and the output directory must be fresh and outside
+staging. This command reads staged bytes and writes local preparation evidence;
+it never invokes a signer, verifier, publication tool, or credential request.
+Its receipt always states `provenance_verified=false` and
+`release_upload_eligible=false`. It does not gate or authorize the existing live
+publisher yet, and a prepared JSON file cannot unlock publication.
+
+The command reuses the canonical assembler's read-only rendering to validate
+the receipt set and compare the final manifest, `SHA256SUMS`, and assembly receipt
+byte-for-byte. It independently hashes the files, requires the expected source
+SHA/tree/repository and locked release build contract, and binds every path from
+the existing uploader allowlist to an accepted role. Observed unknown, missing,
+changed, nonregular, symlinked, or aliased inputs reject with bounded JSON/Markdown
+observations retained before the command fails. Metadata inputs are bounded at
+4 MiB each and staging at 64 entries. The stable single-link/file-identity
+controls currently require a Unix assembly host, matching the Ubuntu manifest
+runner; other hosts reject rather than claim an unavailable alias check. All
+five configured artifact target platforms remain in the subject set.
+
+Input consistency is limited to observed snapshots. The command takes its
+initial directory snapshot before the canonical assembler reads, then takes and
+compares a final snapshot after those reads and before writing any preparation
+packet. These checks do not provide an atomic filesystem snapshot or resistance
+to hostile concurrent filesystem mutation: paths are reopened, staging is not
+locked, and changes can occur and revert between observations or occur after the
+final check. Run against exclusively controlled, quiescent staging. A later
+signer or uploader must independently bind the bytes it actually consumes.
+
+The current uploader selects **twelve** public files: five archives, five
+per-archive `.sha256` sidecars, one manifest, and `SHA256SUMS`. Issue #1502's
+seven-subject description omits the legacy sidecars. Preparation preserves and
+explicitly inventories those five additional current upload paths. Removing
+them would require a separately reviewed public-subject contract change.
+Build/assembly receipts and the preparation outputs remain nonpublic.
+
+The fresh output contains `final-server-subjects.json`,
+`final-server-provenance-inputs.json`, `final-server-subjects.sha256`, and
+`final-server-subjects.receipt.{json,md}`. The external subject-checksum list
+includes the digest of the public `SHA256SUMS` bytes without modifying or making
+that public file self-referential. The machine receipt is installed last and
+binds the exact raw bytes of all three preparation files through
+`inventory_sha256`, `provenance_inputs_sha256`, and `subject_checksums_sha256`.
+A rejected packet has only its diagnostic receipt, with those digest fields
+explicitly `null` and no inventory, provenance-input, or subject-checksum file
+from a successful generation. These byte commitments provide no signing or
+publication authority.
+
+This is the inventory/rehearsal portion of #1502, which remains open. The next
+transition must select a reviewed full-SHA producer action, separately establish
+the narrow signing/OIDC permission boundary, execute and genuinely verify every
+final subject with exact repository/workflow/ref/SHA/name/digest constraints,
+and make live upload require that terminal admission. Synthetic fixtures and
+these preparation receipts cannot substitute for it. Replay the producer on the
+eventual history-preserving #1768 integrated source head before candidate-bound
+qualification; this command does not freeze or qualify that candidate.
+
 The release-server evidence contracts are versioned independently of release
 placement: per-target build receipts use schema `0.2`, the assembled manifest
-uses schema `0.1`, and the internal assembly receipt uses schema `0.1`.
+uses schema `2`, and the internal assembly receipt uses schema `0.2`.
 Manifest assembly accepts only per-target receipts with schema `0.2`, validates
 the platform-neutral compiler release/commit identity across runner hosts, and
 retains host-specific `rustc -vV` text only as per-target evidence. The
@@ -195,3 +304,36 @@ boundary-gap fixture.
 The extension verifies archive SHA-256 before extraction. It still keeps
 `ripr.server.path` and PATH fallback for offline installs, pinned binaries, and
 enterprise-managed environments.
+
+### Exact VSIX attachment transport
+
+`cargo xtask release-upload-vsix --tag <tag>` consumes exactly one regular
+`dist/*.vsix` file and requires an existing GitHub Release. It reads the asset
+inventory before deciding whether to upload, never replaces an existing asset,
+and independently downloads and SHA-256 compares the resulting asset. An
+existing equal asset is verification-only; conflict, unavailable inventory,
+malformed inventory, upload failure, or verification failure stops the command.
+The command requires explicit release approval and is never part of a local
+validation recipe. Unit tests use a fake transport and make no GitHub requests.
+
+The workflow passes the tag through `RIPR_RELEASE_TAG` as argument data and
+builds the helper before supplying the publication token to the execution step.
+Downloaded verification bytes remain in a uniquely named temporary directory.
+This transport does not admit the final release candidate, authorize a channel,
+or replace the publication-convergence work in #1489/#1646.
+
+## Verifying release provenance
+
+`release-server-binaries.yml` attests the twelve public files (five archives,
+five `.sha256` sidecars, the manifest and `SHA256SUMS`) with GitHub build
+provenance in a job that has `id-token: write` and no release write, verifies
+each attestation, and only then runs the upload job. To check a downloaded file:
+
+```bash
+gh attestation verify <file> --repo EffortlessMetrics/ripr \
+  --signer-workflow EffortlessMetrics/ripr/.github/workflows/release-server-binaries.yml
+```
+
+This establishes that the bytes were built by that workflow in this repository.
+It does not replace the manifest and checksum checks, and a typed inventory and
+receipt for the subject set remain open in #1502.

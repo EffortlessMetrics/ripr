@@ -3,9 +3,32 @@
 Status: active operator runbook for the `0.11.0` live-head transaction and
 future releases using the same two-repository history model.
 
+For the current public → swarm → public sequence, start with the
+[staged sync guide](SOURCE_PROMOTION.md#staged-integration). Resolve public
+conflicts and repairs in swarm before qualifying the exact return candidate.
+The direct-J commands below retain their historical controller/pin/receipt
+contracts; see [required reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+before executing them for a staged candidate. This documentation changes no
+runtime gate, protected merge policy or publication authority.
+
 This document is the canonical lifecycle from the release boundary through
 reopened swarm development. It sequences existing verifier contracts; it does
 not replace their semantics or make publication implicit.
+
+Before P0, merge the source control repair that consumes preflight v2 / handoff
+acceptance v2, then drain the source-writing queue under #1814. A green producer
+gate or historical v1 receipt does not qualify the selected candidate. Native
+selection (#1609) and complete-bundle acceptance (#2769) must bind that exact
+candidate, manifest, owner roster and retained packet bytes. No acceptance
+record is manufactured by the controller or inferred from CI.
+
+Before entering the 0.11 transaction, consume the
+[RC authority reconciliation](release/0.11.0/rc-authority-reconciliation.md).
+The historical #1818 carrier, fresh #1768–#1773 second sync, #1467 source freeze,
+#1578 package qualification and public RC are separate subjects. An ordinary
+source merge or accepted RC placement syntax establishes none of the later
+states. The dated observation is not an activation packet; re-read the live
+#2379/#1606 rulings and exact public ref/release inventory before proceeding.
 
 ## Authority and command labels
 
@@ -23,8 +46,10 @@ Every command is marked:
   branch, or receipt file.
 - **[EXTERNAL-PUBLISHING]** — changes a remote ref, policy, tag, release,
   registry, marketplace, or other external state. Public artifact, tag,
-  release, and store operations require explicit channel authorization in
-  source issue [#1470](https://github.com/EffortlessMetrics/ripr/issues/1470);
+  release, and store operations require exact channel authorization: GitHub-only
+  public RC through the source [#1606](https://github.com/EffortlessMetrics/ripr/issues/1606)
+  ruling and [#1634](https://github.com/EffortlessMetrics/ripr/issues/1634), stable
+  channels through [#1470](https://github.com/EffortlessMetrics/ripr/issues/1470);
   control-plane ref and policy operations require owner approval and a receipt.
 
 Examples use POSIX shell syntax. On Windows, translate syntax but preserve

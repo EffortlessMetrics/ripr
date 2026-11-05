@@ -7,8 +7,7 @@ on:
       - main
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: badge-endpoints-${{ github.ref }}
@@ -17,13 +16,17 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    # Write scopes live on the one job that opens the badge PR, not workflow-wide.
+    permissions:
+      contents: write
+      pull-requests: write
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           cache-on-failure: true
 
@@ -41,7 +44,7 @@ jobs:
 
       - name: Open badge refresh PR
         if: steps.refresh.outcome == 'success'
-        uses: peter-evans/create-pull-request@v8.1.1
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: automation/badge-endpoints
           title: "badge: refresh public endpoints"

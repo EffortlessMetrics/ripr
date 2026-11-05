@@ -247,11 +247,67 @@ fn release_server_build_uses_canonical_locked_toolchain() -> Result<(), String> 
         || !build.contains("cargo build -p ripr --release --locked --target")
         || !build.contains("cargo run --locked -p xtask -- release-server-archive")
         || !build.contains("RIPR_RELEASE_VERSION:")
-        || !build.contains("--version \"$RIPR_RELEASE_VERSION\"")
+        || !build.contains("--release-version \"$RIPR_RELEASE_VERSION\"")
         || build.contains("github.event.inputs.version || github.ref_name }}\"")
         || build.contains("cargo generate-lockfile")
     {
         return Err("release target build is not pinned, locked, and read-only".to_string());
+    }
+    Ok(())
+}
+
+#[test]
+fn release_server_workflow_isolates_attestation_from_upload() -> Result<(), String> {
+    let workflow = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join(".github/workflows/release-server-binaries.yml"),
+    )
+    .map_err(|error| format!("failed to read release-server workflow: {error}"))?;
+    let job = |name: &str, next: Option<&str>| -> Result<String, String> {
+        let start = workflow
+            .find(&format!("\n  {name}:"))
+            .ok_or_else(|| format!("release workflow is missing the {name} job"))?;
+        let rest = &workflow[start + 1..];
+        let end = next
+            .and_then(|next| rest.find(&format!("\n  {next}:")))
+            .unwrap_or(rest.len());
+        Ok(rest[..end].to_string())
+    };
+    let build = job("build", Some("manifest"))?;
+    let manifest = job("manifest", Some("attest"))?;
+    let attest = job("attest", Some("upload"))?;
+    let upload = job("upload", None)?;
+    let privileged =
+        |text: &str| text.contains("id-token: write") || text.contains("attestations: write");
+    // Only the attest job may hold OIDC/attestation scopes; it must not write contents.
+    if privileged(&build) || privileged(&manifest) || privileged(&upload) {
+        return Err("OIDC or attestation scope leaked outside the attest job".to_string());
+    }
+    if !(attest.contains("id-token: write")
+        && attest.contains("attestations: write")
+        && !attest.contains("contents: write"))
+    {
+        return Err(
+            "attest job must hold id-token and attestations write, not contents write".to_string(),
+        );
+    }
+    // Release write belongs to the upload job alone, and only after verification.
+    if build.contains("contents: write") || manifest.contains("contents: write") {
+        return Err("contents: write leaked into build or manifest".to_string());
+    }
+    if !upload.contains("contents: write") || !upload.contains("needs: attest") {
+        return Err("upload must be the contents:write job and depend on attest".to_string());
+    }
+    if workflow.contains("release-upload-assets") != upload.contains("release-upload-assets") {
+        return Err("release-upload-assets must appear only in the upload job".to_string());
+    }
+    // Attestation must be pinned by full SHA and verified for every file before upload.
+    if !attest.contains("actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8")
+        || !attest.contains("gh attestation verify")
+        || !attest.contains("--signer-workflow")
+    {
+        return Err("attest job must use the pinned action and verify every subject".to_string());
     }
     Ok(())
 }
@@ -8351,7 +8407,23 @@ fn create_zip_archive_writes_flat_package_contents() -> Result<(), String> {
             let entry = archive
                 .by_index(index)
                 .map_err(|err| format!("zip entry {index}: {err}"))?;
-            names.push(entry.name().to_string());
+            let name = entry
+                .name()
+                .map_err(|err| format!("zip entry {index} name: {err}"))?
+                .into_owned();
+            assert_eq!(entry.system(), zip::System::Unix, "{name}");
+            assert_eq!(
+                entry.compression(),
+                zip::CompressionMethod::Deflated,
+                "{name}"
+            );
+            let expected_mode = if name == "ripr.exe" { 0o755 } else { 0o644 };
+            assert_eq!(
+                entry.unix_mode().map(|mode| mode & 0o777),
+                Some(expected_mode),
+                "{name}"
+            );
+            names.push(name);
         }
         names.sort();
         assert_eq!(
@@ -10821,6 +10893,167 @@ fn routed_rust_workflow_contract_rejects_missing_receipt_or_route_assertion() ->
                 "contract did not reject removal of {label}: {violations:?}"
             ));
         }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_routed_rust_ignored_labels_cannot_replace_proof() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?;
+    for (snippet, expected) in [
+        (
+            "if: github.event_name != 'pull_request' || contains(fromJSON",
+            "proof-event guard",
+        ),
+        ("'-label-ignore'", "concurrency isolation"),
+        (
+            "'Ripr Rust Small Ignored Label Event'",
+            "required result name",
+        ),
+        (
+            "if: always() && (github.event_name != 'pull_request'",
+            "proof-event guard",
+        ),
+    ] {
+        let mutated = workflow.replacen(snippet, "REMOVED_CONTROL", 1);
+        let violations = routed_rust_workflow_contract_violations(&mutated, None, None);
+        if !violations
+            .iter()
+            .any(|violation| violation.contains(expected))
+        {
+            return Err(format!(
+                "removal of {snippet} was not rejected: {violations:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn source_routed_rust_controls_reject_wrong_yaml_scope() -> Result<(), String> {
+    let workflow = routed_rust_workflow_text()?.replace("\r\n", "\n");
+    for (job, key, expected) in [
+        ("route", "if:", "proof-event guard"),
+        ("detect-docs-only", "if:", "proof-event guard"),
+        ("result", "if:", "proof-event guard"),
+        ("result", "name:", "required result name"),
+    ] {
+        let start = workflow
+            .find(&format!("\n  {job}:\n"))
+            .ok_or("canonical workflow lacks the selected job")?;
+        let rest = &workflow[start + 1..];
+        let mut end = rest.len();
+        let mut offset = 0;
+        for line in rest.split_inclusive('\n') {
+            if offset > 0 && line.starts_with("  ") && !line.starts_with("   ") {
+                end = offset;
+                break;
+            }
+            offset += line.len();
+        }
+        let block = &rest[..end];
+        let control = block
+            .lines()
+            .find(|line| line.starts_with(&format!("    {key}")))
+            .ok_or("canonical workflow lacks the selected direct control")?;
+        let step = if key == "name:" {
+            format!(
+                "      - id: scope_control\n        {}\n        run: echo scope-control\n",
+                control.trim()
+            )
+        } else {
+            format!(
+                "      - name: Scope control\n        {}\n        run: echo scope-control\n",
+                control.trim()
+            )
+        };
+        let relocated = block.replacen(&format!("{control}\n"), "", 1).replacen(
+            "    steps:\n",
+            &format!("    steps:\n{step}"),
+            1,
+        );
+        let mutated = workflow.replacen(block, &relocated, 1);
+        assert_ne!(mutated, workflow);
+        assert!(
+            routed_rust_workflow_contract_violations(&mutated, None, None)
+                .iter()
+                .any(|violation| violation.contains(expected)),
+            "relocated {job}.{key} must be rejected"
+        );
+    }
+    let group = workflow
+        .lines()
+        .find(|line| line.starts_with("  group:"))
+        .ok_or("canonical workflow lacks its concurrency group")?;
+    let without_group = workflow.replacen(&format!("{group}\n"), "", 1);
+    for relocated in [
+        without_group.replacen("env:\n", &format!("env:\n{group}\n"), 1),
+        without_group.replacen("    steps:\n", &format!("    steps:\n      - name: Scope control\n        env:\n        {group}\n        run: echo scope-control\n"), 1),
+    ] {
+        assert_ne!(relocated, workflow);
+        assert!(
+            routed_rust_workflow_contract_violations(&relocated, None, None)
+                .iter()
+                .any(|violation| violation.contains("concurrency isolation")),
+            "group outside workflow concurrency must be rejected"
+        );
+    }
+    let scoped = "jobs:\n  route:\n\n    # direct mapping key\n    if: exact\n    steps:\n      - run: echo test\nenv:\n  route:\n    if: wrong\n";
+    assert!(crate::routed_rust_job_block_any(
+        scoped,
+        "route",
+        |line| line.trim() == "if: exact"
+    ));
+    assert!(!crate::routed_rust_job_block_any(
+        scoped,
+        "route",
+        |line| line.trim() == "if: wrong"
+    ));
+    for unsupported in [
+        "jobs:\n  route:\n   if: exact\n",
+        "jobs:\n  route:\n    if: >-\n      exact\n",
+        "env:\n  route:\n    if: exact\n",
+    ] {
+        assert!(!crate::routed_rust_job_block_any(
+            unsupported,
+            "route",
+            |line| line.trim() == "if: exact"
+        ));
+    }
+    let isolation = format!(
+        "${{{{ {} && '-label-ignore' || '' }}}}",
+        crate::SOURCE_RUST_IGNORED_EVENT
+    );
+    for value in [
+        format!("shared # {isolation}"),
+        format!("shared\t# {isolation}"),
+        format!("\"shared{isolation}\""),
+        format!("'shared{isolation}'"),
+        format!(">-\n    shared{isolation}"),
+    ] {
+        let mutated = workflow.replacen(group, &format!("  group: {value}"), 1);
+        assert_ne!(mutated, workflow);
+        assert!(
+            !crate::routed_rust_concurrency_group_has_isolation(&mutated, &isolation),
+            "inline comment or unsupported scalar must not establish isolation"
+        );
+        assert!(
+            routed_rust_workflow_contract_violations(&mutated, None, None)
+                .iter()
+                .any(|violation| violation.contains("concurrency isolation"))
+        );
+    }
+    for comment in [" # retained explanation", "\t# retained explanation"] {
+        let annotated = workflow.replacen(group, &format!("{group}{comment}"), 1);
+        assert_ne!(annotated, workflow);
+        assert!(
+            crate::routed_rust_concurrency_group_has_isolation(&annotated, &isolation),
+            "a real plain group value retains isolation before a trailing comment"
+        );
+        assert_eq!(
+            routed_rust_workflow_contract_violations(&annotated, None, None).len(),
+            0
+        );
     }
     Ok(())
 }
@@ -46017,6 +46250,136 @@ fn write_packaging_test_vsix(
     writer
         .finish()
         .map_err(|err| format!("failed to seal {}: {err}", path.display()))?;
+    Ok(())
+}
+
+fn vsix_entry(name: &str, size: u64) -> super::VsixEntry {
+    super::VsixEntry {
+        name: name.to_string(),
+        size,
+        compressed_size: size / 4,
+    }
+}
+
+#[test]
+fn vsix_inventory_rejects_workspace_build_output_sentinel() -> Result<(), String> {
+    with_temp_cwd("vsix-inventory-sentinel", |root| {
+        let approved = [
+            ("[Content_Types].xml", "<Types/>"),
+            ("extension.vsixmanifest", "<PackageManifest/>"),
+            ("extension/package.json", "{}"),
+            ("extension/distribution.json", "{\"schema\":2}"),
+            ("extension/out/src/client.js", "exports.x = 1;"),
+            // A dependency's own `target/` directory is not workspace output.
+            (
+                "extension/node_modules/dep/target/index.js",
+                "module.exports = 1;",
+            ),
+        ];
+        let clean = root.join("clean.vsix");
+        write_packaging_test_vsix(&clean, &approved)?;
+        let entries = super::read_vsix_inventory(&clean)?;
+        assert_eq!(entries.len(), approved.len());
+        super::check_vsix_inventory(
+            &entries,
+            super::VSIX_MAX_ENTRIES,
+            super::VSIX_MAX_UNCOMPRESSED_BYTES,
+        )?;
+
+        let sentinel = "extension/target/debug/ripr-1775-sentinel.bin";
+        let mut polluted_members = approved.to_vec();
+        polluted_members.push((sentinel, "cargo build output"));
+        let polluted = root.join("polluted.vsix");
+        write_packaging_test_vsix(&polluted, &polluted_members)?;
+        let entries = super::read_vsix_inventory(&polluted)?;
+        let Err(error) = super::check_vsix_inventory(
+            &entries,
+            super::VSIX_MAX_ENTRIES,
+            super::VSIX_MAX_UNCOMPRESSED_BYTES,
+        ) else {
+            return Err("a packaged editors/vscode/target sentinel must be rejected".to_string());
+        };
+        assert!(error.contains(sentinel), "{error}");
+        assert!(error.contains("1 workspace build-output"), "{error}");
+        Ok(())
+    })
+}
+
+#[test]
+fn vsix_inventory_rejects_cargo_artifacts_outside_target() -> Result<(), String> {
+    for name in [
+        "extension/out/libripr-0123.rlib",
+        "extension/out/libripr-0123.rmeta",
+        "extension/build/.fingerprint/ripr-0123/lib-ripr",
+        "extension/build/incremental/ripr-0123/s-abc/query-cache.bin",
+    ] {
+        let entries = vec![
+            vsix_entry("extension/package.json", 2),
+            vsix_entry(name, 10),
+        ];
+        let Err(error) = super::check_vsix_inventory(&entries, 10, 1_000) else {
+            return Err(format!("{name} must be rejected as build output"));
+        };
+        assert!(error.contains(name), "{error}");
+    }
+    Ok(())
+}
+
+#[test]
+fn vsix_inventory_bounds_entry_count_and_unpacked_size() -> Result<(), String> {
+    let three = vec![
+        vsix_entry("extension/package.json", 10),
+        vsix_entry("extension/out/a.js", 10),
+        vsix_entry("extension/out/b.js", 10),
+    ];
+    super::check_vsix_inventory(&three, 3, 30)?;
+    let Err(count) = super::check_vsix_inventory(&three, 2, 30) else {
+        return Err("an entry count above the bound must be rejected".to_string());
+    };
+    assert!(
+        count.contains("3 entries, above the 2-entry bound"),
+        "{count}"
+    );
+    let Err(size) = super::check_vsix_inventory(&three, 3, 29) else {
+        return Err("an unpacked size above the bound must be rejected".to_string());
+    };
+    assert!(size.contains("30 bytes, above the 29-byte bound"), "{size}");
+    // The production bounds sit between the observed 0.11 package (about 410
+    // entries, 3 MiB) and the #1775 defect (2,805 entries, about 2.3 GB).
+    const { assert!(super::VSIX_MAX_ENTRIES > 410 && super::VSIX_MAX_ENTRIES < 2_805) };
+    const {
+        assert!(
+            super::VSIX_MAX_UNCOMPRESSED_BYTES > 3 * 1024 * 1024
+                && super::VSIX_MAX_UNCOMPRESSED_BYTES < 2_300 * 1024 * 1024
+        )
+    };
+    Ok(())
+}
+
+#[test]
+fn vsix_inventory_rejects_size_totals_that_overflow_u64() -> Result<(), String> {
+    let overflowing = vec![
+        vsix_entry("extension/package.json", u64::MAX),
+        vsix_entry("extension/out/a.js", 1),
+    ];
+    let Err(error) = super::check_vsix_inventory(&overflowing, 10, u64::MAX) else {
+        return Err("a size total that overflows u64 must be rejected".to_string());
+    };
+    assert!(error.contains("overflows u64"), "{error}");
+    Ok(())
+}
+
+#[test]
+fn vsix_inventory_rejects_compressed_totals_that_overflow_u64() -> Result<(), String> {
+    let mut inflated = vsix_entry("extension/package.json", 1);
+    inflated.compressed_size = u64::MAX;
+    let mut tail = vsix_entry("extension/out/a.js", 1);
+    tail.compressed_size = 1;
+    let overflowing = vec![inflated, tail];
+    let Err(error) = super::vsix_size_totals(&overflowing) else {
+        return Err("a compressed total that overflows u64 must be rejected".to_string());
+    };
+    assert!(error.contains("overflows u64"), "{error}");
     Ok(())
 }
 

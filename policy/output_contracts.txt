@@ -1,5 +1,9 @@
 # kind|value|reason
 
+release_final_server_schema|ripr.release_final_server_subject_inventory.v1|Exact nonpublishing server upload-set inventory; no provenance or publication authority.
+release_final_server_schema|ripr.release_final_server_provenance_inputs.v1|Prepared final server attestation inputs; no signing or verification execution.
+release_final_server_schema|ripr.release_final_server_subject_receipt.v1|Bounded successful/rejected final server preparation receipt; publication remains ineligible.
+
 confidence_label|ambiguous_runtime_join|Mutation calibration confidence label.
 confidence_label|contradicts_static_clean|Mutation calibration confidence label.
 confidence_label|contradicts_static_gap|Mutation calibration confidence label.

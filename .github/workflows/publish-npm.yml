@@ -176,7 +176,7 @@ jobs:
           NPM_CONFIG_USERCONFIG: ${{ runner.temp }}/npm-stage.npmrc
           NPM_CONFIG_GLOBALCONFIG: ${{ runner.temp }}/npm-stage-global.npmrc
           NPM_CONFIG_CACHE: ${{ runner.temp }}/npm-stage-cache
-        run: npm stage publish "dist/$FILENAME" --ignore-scripts --registry=https://registry.npmjs.org --access=public --tag=next --fetch-retries=0 --provenance --json > stage-result.json
+        run: npm stage publish "./dist/$FILENAME" --ignore-scripts --registry=https://registry.npmjs.org --access=public --tag=next --fetch-retries=0 --provenance --json > stage-result.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         id: result
         if: ${{ always() }}

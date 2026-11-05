@@ -36,9 +36,13 @@ mod recommendation;
 pub(crate) mod release;
 mod release_control;
 mod release_denominator;
+pub(crate) mod release_final_subjects;
+#[cfg(test)]
+mod release_final_subjects_tests;
 mod release_negative;
 mod release_scope;
 pub(crate) mod release_server;
+pub(crate) mod release_vsix;
 mod repo;
 #[cfg(test)]
 mod reverse_authorization;
@@ -46,6 +50,7 @@ mod review_comments;
 mod rust_repair_trust;
 mod sarif;
 mod source_promotion;
+mod source_promotion_acceptance;
 mod source_promotion_admission_fixture;
 mod source_promotion_admission_workflow;
 mod source_promotion_control;

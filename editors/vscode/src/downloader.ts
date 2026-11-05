@@ -159,22 +159,12 @@ async function downloadAdmittedAsset(
   progress: vscode.Progress<{ message?: string; increment?: number }>
 ): Promise<ResolvedArchive> {
   const expectedDigest = distribution.manifestSha256 as string;
-  const [preferred, ...fallbacks] = manifestCandidatesForDistribution(config.downloadBaseUrl, distribution, version);
-  let admitted: { manifest: AdmittedServerManifest; manifestUrl: string };
-  try {
-    admitted = {
-      manifest: await fetchAdmittedManifest(preferred, expectedDigest),
-      manifestUrl: preferred
-    };
-  } catch (error) {
-    const fallback = fallbacks[0];
-    if (fallback === undefined || !isDirectManifestNotFound(error)) {
-      throw error;
-    }
-    throw new Error(
-      `Preferred placement manifest is unpublished and the fallback carries no admitted digest; refusing unadmitted fallback ${fallback}.`
-    );
-  }
+  const admitted = await fetchAdmittedManifestForDistribution(
+    config.downloadBaseUrl,
+    distribution,
+    version,
+    expectedDigest
+  );
   if (admitted.manifest.productVersion !== version) {
     throw new Error(
       `Admitted manifest product version ${admitted.manifest.productVersion} does not match requested version ${version}.`
@@ -190,7 +180,66 @@ async function downloadAdmittedAsset(
   progress.report({ message: `Downloading ${platform.executableName}…` });
   const { body: bytes } = await fetchBuffer(assetUrl, asset.archiveSize, fetchPolicyFor(assetUrl));
   progress.report({ message: 'Verifying checksum…' });
-  return { manifestVersion: admitted.manifest.productVersion, expectedSha256: asset.sha256, bytes, admittedManifestSha256: expectedDigest };
+  return {
+    manifestVersion: admitted.manifest.productVersion,
+    expectedSha256: asset.sha256,
+    bytes,
+    admittedManifestSha256: expectedDigest,
+    selectedManifestUrl: admitted.manifestUrl,
+    manifestSelection: admitted.manifestSelection,
+    preferredManifestObservation: admitted.preferredManifestObservation,
+    fallbackManifestObservation: admitted.fallbackManifestObservation
+  };
+}
+
+export type FetchAdmittedManifest = (
+  url: string,
+  expectedDigest: string
+) => Promise<AdmittedServerManifest>;
+
+export interface AdmittedManifestSelection {
+  readonly manifest: AdmittedServerManifest;
+  readonly manifestUrl: string;
+  readonly manifestSelection: 'preferred_exact' | 'fallback_exact_after_preferred_absent';
+  readonly preferredManifestObservation: 'accepted' | 'direct_not_found';
+  readonly fallbackManifestObservation: 'not_requested' | 'accepted';
+}
+
+/**
+ * Fetches the descriptor-bound manifest from the preferred exact placement.
+ * Only an authoritative direct 404 may select the one predeclared fallback.
+ * Both placements are admitted against the same embedded manifest digest, so
+ * fallback changes the observed location without changing content authority.
+ */
+export async function fetchAdmittedManifestForDistribution(
+  baseUrl: string,
+  distribution: ResolvedDistributionRequest,
+  version: string,
+  expectedDigest: string,
+  fetchImpl: FetchAdmittedManifest = fetchAdmittedManifest
+): Promise<AdmittedManifestSelection> {
+  const [preferred, ...fallbacks] = manifestCandidatesForDistribution(baseUrl, distribution, version);
+  try {
+    return {
+      manifest: await fetchImpl(preferred, expectedDigest),
+      manifestUrl: preferred,
+      manifestSelection: 'preferred_exact',
+      preferredManifestObservation: 'accepted',
+      fallbackManifestObservation: 'not_requested'
+    };
+  } catch (error) {
+    const fallback = fallbacks[0];
+    if (fallback === undefined || !isDirectManifestNotFound(error)) {
+      throw error;
+    }
+    return {
+      manifest: await fetchImpl(fallback, expectedDigest),
+      manifestUrl: fallback,
+      manifestSelection: 'fallback_exact_after_preferred_absent',
+      preferredManifestObservation: 'direct_not_found',
+      fallbackManifestObservation: 'accepted'
+    };
+  }
 }
 
 export async function fetchAdmittedManifest(url: string, expectedDigest: string): Promise<AdmittedServerManifest> {

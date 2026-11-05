@@ -229,52 +229,27 @@ Each orchestrator should:
 
 ## Promotion Back To Source
 
-Promotion remains a source-repository pull request. Follow the canonical
-[Source Promotion](SOURCE_PROMOTION.md) runbook rather than reconstructing the
-procedure from historical handoffs or issue comments.
-
-Freeze one exact swarm candidate first. Open swarm PRs do not block promotion by
-themselves, but each must be classified as included, deferred, superseded, or
-not release-relevant.
-
-There are two valid promotion modes:
+Use the [staged Source Promotion runbook](SOURCE_PROMOTION.md#staged-integration):
 
 ```text
-fast_forward
-  source parent is already an ancestor of the frozen swarm candidate
-  and no source-only divergence must survive
-
-two_parent_join
-  source and swarm have diverged
-  source parent remains first
-  frozen swarm candidate remains second
+capture current public main P and swarm base B
+→ merge P into swarm with ancestry preserved
+→ resolve conflicts and repair through meaningful swarm PRs
+→ qualify exact swarm candidate S/tree T, with P an ancestor
+→ recheck current public main still equals P
+→ return S through a protected ancestry-preserving public PR
+→ verify actual public ancestry and tree T
 ```
 
-The `0.11.0` release train requires `two_parent_join` because source contains
-release and analyzer work that must survive alongside the frozen swarm history.
+Keep public-only release/distribution work, swarm improvements and the original
+history. Sync PRs carrying foreign history use merge commits; ordinary feature
+PR policy stays unchanged. Multiple integration/repair PRs are allowed before
+qualification. A moved public head returns to swarm integration and affected
+proof, not a fresh conflict resolution on the public promotion branch.
 
-Non-negotiable history rules:
-
-```text
-never squash
-never rebase
-never cherry-pick or reconstruct the swarm range
-merge the source-promotion PR with Create a merge commit
-```
-
-Before opening the source PR, record:
-
-- exact source parent, frozen swarm candidate, and merge base;
-- included swarm range and check receipts;
-- conflicts and their planned resolution;
-- source-only commits and paths that must survive;
-- swarm-only workflows/settings that must remain excluded or source-owned;
-- version and changelog state, which must not change in the source-sync PR.
-
-The source PR review focuses on identity, conflict resolution, survivors,
-exclusions, and current source proof. It does not treat already-reviewed swarm
-commits as one new opaque patch.
-
-The source repository CI remains the final release and publish proof. A green
-swarm route proves development readiness; it does not replace source release
-authority.
+The older divergent direct-J/pin/controller contracts require the
+[explicit reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+recorded under source #1768/#1627. Current verifier or required-check refusals
+remain failures until their reviewed source contracts support the chosen path.
+A fast-forward-capable graph does not authorize bypassing protected PR checks.
+Source release/package qualification and later publication remain separate.

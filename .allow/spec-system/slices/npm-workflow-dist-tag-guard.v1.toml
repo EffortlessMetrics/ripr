@@ -1,0 +1,65 @@
+schema_version = "2.0"
+id = "ripr.slice.npm-workflow-dist-tag-guard.v1"
+generation = 1
+
+source_issue = "issue:1781"
+design_reference = "EffortlessMetrics/ripr-swarm#9663"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds one static scanner to the existing `cargo xtask check-workflows` gate so
+every in-tree workflow — including the real npm publish workflow
+`.github/workflows/publish-npm.yml` — must publish npm with exactly one
+literal non-`latest` `--tag` and must keep `npm dist-tag add`/`set` on a
+literal non-`latest` tag. Variables, `${{ }}` expressions, command
+substitution and quoting tricks are refused. `--dry-run` publishes are
+exempt. YAML folding, quoted `run:` values and block-scalar header comments
+are decoded before shell tokenization so those forms cannot bypass the scan.
+This is the source-repository equivalent of the swarm
+`check-release-targets` npm guard, which cannot see this repository's
+workflows before the swarm-to-source integration. It changes no workflow, no
+publish behavior, and moves no dist-tag.
+"""
+
+non_goals = [
+  "any npm publish, stage, dist-tag move, tag or registry action",
+  "changing `.github/workflows/publish-npm.yml` or any workflow file",
+  "the package-manifest `publishConfig.tag` rule (enforced on the publish path by `.github/scripts/npm_package.py`)",
+  "pnpm/yarn publish, NPM_CONFIG_TAG, and composite or reusable actions",
+  "stable `latest` promotion; that stays a separate maintainer decision",
+  "the promoted swarm guard over this tree (arrives with the swarm-to-source integration)",
+]
+
+return_conditions = [
+  "Return to root if the scan cannot keep the checked-in workflow tree green without weakening a refusal.",
+  "Return to root if folded or quoted YAML forms cannot be decoded without broadening the parser beyond workflow run text.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:workflow-npm-tags",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:check-workflows",
+  "seam:ripr:docs:ci-workflow-content-policy",
+  "seam:ripr:spec:npm-native-bootstrap",
+]
+
+forbidden_seams = [
+  "seam:ripr:workflows:publish-npm",
+  "seam:ripr:scripts:npm-package-admission",
+  "seam:ripr:agent:registry-write",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:1781#npm-dist-tag-guard"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

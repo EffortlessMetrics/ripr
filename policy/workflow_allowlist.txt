@@ -9,7 +9,7 @@
 
 .github/workflows/badge-endpoints.yml|1|Badge endpoint refresh delegates generation to cargo xtask and opens a PR.
 .github/workflows/ci.yml|3|CI run blocks call direct Cargo or npm commands.
-.github/workflows/coverage.yml|1|Coverage workflow keeps each run block to one coverage command.
+.github/workflows/coverage.yml|11|Coverage Generate coverage runs the supported show-env/clean/build/bind/test/report recipe with strict instrumented-analyzer identity in one 11-line run block, capturing show-env output before eval so a producer failure propagates under set -e.
 .github/workflows/droid-review.yml|20|Droid auto-review workflow writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid-security-scan.yml|20|Droid scheduled security scan writes local Factory BYOK settings, then uses reusable actions.
 .github/workflows/droid.yml|20|Droid tag-response workflow writes local Factory BYOK settings, then uses reusable actions.
@@ -30,5 +30,5 @@
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
 .github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.
 .github/workflows/windows-packaged-qualification.yml|50|On-demand exact-candidate Windows package and VSIX rehearsal must retain identity checks, isolated CLI/editor journeys, and Actions-only receipts in one workflow.
-.github/workflows/python-wheel-qualification.yml|218|Canonical reusable Linux wheel build, auditwheel compliance, explicit feature/source identity and installed pip/uv journey proof; read-only with bounded native evidence and five-day retention.
+.github/workflows/python-wheel-qualification.yml|218|Canonical reusable Linux wheel build, auditwheel compliance, explicit feature/source identity and installed pip/uv journey proof; read-only with bounded native and per-client diagnostic evidence and five-day retention.
 .github/workflows/npm-package-qualification.yml|6|Read-only npm preparation, two checkout-free clients, pinned workflow-schema validation and real staging CLI loopback transport; no external registry write or OIDC permission.

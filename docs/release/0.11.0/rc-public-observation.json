@@ -1,0 +1,193 @@
+{
+  "record_kind": "dated_public_observation_not_activation",
+  "observed_on": "2026-10-13",
+  "repository": "EffortlessMetrics/ripr",
+  "source_head": "9c1ab075b392e34e3dc71377900dbef5a6676363",
+  "source_tree": "8c186b53626067c3cdb5229f1f950326605b17e2",
+  "observed_source_product": "0.11.0-alpha.2",
+  "queries": {
+    "tag_refs": {
+      "url": "https://api.github.com/repos/EffortlessMetrics/ripr/git/refs/tags",
+      "result": [
+        {
+          "ref": "refs/tags/v0.1.0",
+          "object_type": "commit",
+          "object_sha": "12d0e527f8e506c0a00eb7e4254f97e93ae3f8e8"
+        },
+        {
+          "ref": "refs/tags/v0.10.0",
+          "object_type": "commit",
+          "object_sha": "c08d474a92d0edf97ad1e3d444ecb73fc5d439de"
+        },
+        {
+          "ref": "refs/tags/v0.2.0",
+          "object_type": "commit",
+          "object_sha": "70c2a0fbe89b775aa72a1894f5b79e1938e96144"
+        },
+        {
+          "ref": "refs/tags/v0.3.0",
+          "object_type": "commit",
+          "object_sha": "af9968334ca86e060b0471847ae7a0459e2e710a"
+        },
+        {
+          "ref": "refs/tags/v0.3.1",
+          "object_type": "commit",
+          "object_sha": "34fd3eb1d4cbb1c4577de5fbdcfb4d3dc49d7029"
+        },
+        {
+          "ref": "refs/tags/v0.4.0",
+          "object_type": "commit",
+          "object_sha": "697ddd5d1f3ad05623384b5deebf466631d3f712"
+        },
+        {
+          "ref": "refs/tags/v0.5.0",
+          "object_type": "tag",
+          "object_sha": "71bb6974a7dbb97a993375fadb4040dba3e1dcaf"
+        },
+        {
+          "ref": "refs/tags/v0.6.0",
+          "object_type": "commit",
+          "object_sha": "fd4d9cb1b65c3f17a1a931bebaabc5fda4d6af74"
+        },
+        {
+          "ref": "refs/tags/v0.7.0",
+          "object_type": "commit",
+          "object_sha": "ea629a95d8cc97de4c5c76a4d77b8ca64163703e"
+        },
+        {
+          "ref": "refs/tags/v0.8.0",
+          "object_type": "tag",
+          "object_sha": "b89594a3e989c73418a6195ecd73b1a2735811ca"
+        },
+        {
+          "ref": "refs/tags/v0.9.0",
+          "object_type": "tag",
+          "object_sha": "41e2289c459f0cd5595e085866a5389c2c412ba9"
+        }
+      ]
+    },
+    "release_list": {
+      "url": "https://api.github.com/repos/EffortlessMetrics/ripr/releases?per_page=100",
+      "page": 1,
+      "per_page": 100,
+      "result": [
+        {
+          "id": 339699640,
+          "tag": "v0.10.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-06-15T17:26:17Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0"
+        },
+        {
+          "id": 337607723,
+          "tag": "v0.9.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-06-11T01:09:25Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.9.0"
+        },
+        {
+          "id": 333399516,
+          "tag": "v0.8.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-06-02T22:03:24Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.8.0"
+        },
+        {
+          "id": 326340678,
+          "tag": "v0.7.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-20T23:45:59Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.7.0"
+        },
+        {
+          "id": 324113400,
+          "tag": "v0.6.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-18T07:50:45Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.6.0"
+        },
+        {
+          "id": 320192885,
+          "tag": "v0.5.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-10T21:21:55Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.5.0"
+        },
+        {
+          "id": 319032072,
+          "tag": "v0.4.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-07T15:48:02Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.4.0"
+        },
+        {
+          "id": 318731954,
+          "tag": "v0.3.1",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-07T03:15:23Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.3.1"
+        },
+        {
+          "id": 316727171,
+          "tag": "v0.3.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-02T17:12:55Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.3.0"
+        },
+        {
+          "id": 316399441,
+          "tag": "v0.2.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-01T14:01:57Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.2.0"
+        },
+        {
+          "id": 316363955,
+          "tag": "v0.1.0",
+          "draft": false,
+          "prerelease": false,
+          "published_at": "2026-05-01T11:35:36Z",
+          "url": "https://github.com/EffortlessMetrics/ripr/releases/tag/v0.1.0"
+        }
+      ]
+    },
+    "matching_011_tags": {
+      "url": "https://api.github.com/repos/EffortlessMetrics/ripr/git/matching-refs/tags/v0.11.0",
+      "result": []
+    }
+  },
+  "historical_conditional_ruling": {
+    "ref": "refs/tags/v0.11.0-rc.1",
+    "url": "https://github.com/EffortlessMetrics/ripr/issues/1606#issuecomment-5465404692",
+    "exercised_by_this_record": false
+  },
+  "tentative_intent": {
+    "ref": "refs/tags/v0.11.0-rc.2",
+    "url": "https://github.com/EffortlessMetrics/ripr/issues/1606#issuecomment-6088242959",
+    "new_exact_ruling_established": false
+  },
+  "controller_hold": {
+    "url": "https://github.com/EffortlessMetrics/ripr-swarm/issues/2379#issuecomment-6121797869",
+    "state": "do_not_cut_yet"
+  },
+  "selected_release_ref": null,
+  "frozen_candidate": null,
+  "final_package_qualification": "not_established",
+  "disposition": "hold",
+  "claim_limits": [
+    "API inventory observation only; no public-byte download or hash",
+    "No registry or marketplace inventory observed",
+    "No cut/version/ref selected; no publication authority granted",
+    "Historical receipts remain bound to their original subjects"
+  ]
+}

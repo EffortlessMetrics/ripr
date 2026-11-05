@@ -269,7 +269,7 @@ implement and validate the lane-selection logic.
 | --- | --- |
 | `full-ci` | Run required, advisory, and release-like lanes. Demotes `ripr-waive` for this PR. Expected to cost more. |
 | `release-check` | Run the currently wired release-surface proof without opting into every `full-ci` lane: package list, publish dry-run, and release-readiness. |
-| `vscode` | Run editor extension lanes even when no editor path changed. |
+| `vscode` | Run the existing hosted editor compile, admitted VSIX package, and editor-host test job without opting into the other `full-ci` jobs. |
 | `coverage` | Run coverage lanes and upload coverage artifacts. |
 | `ripr-waive` | Acknowledge a soft static exposure finding for this PR. Does not skip CI and does not apply when `full-ci` is present. |
 | `ci-budget-ack` | Acknowledge that this PR intentionally exceeds the expected LEM band. |
@@ -281,7 +281,7 @@ budget/risk-pack policy files in the same PR.
 
 These labels are the documented target vocabulary. Today, `release-check` and
 `full-ci` activate the Rust workflow's package list, publish dry-run, and
-release-readiness steps on pull requests. Other label effects remain target vocabulary until a later PR
+release-readiness steps on pull requests. `vscode` now activates only the CI editor job. Other label effects remain target vocabulary until a later PR
 wires them into a PR plan or workflow condition. The GitHub Settings App
 contract in `.github/settings.yml` codifies these label names, descriptions,
 and colors so the reviewable vocabulary does not drift in the GitHub UI.
@@ -416,6 +416,28 @@ If rollback requires branch-protection changes, the PR must say so explicitly
 and should usually be split.
 
 ## Current Workflows
+
+### Workflow content policy
+
+`cargo xtask check-workflows` scans every `.github/workflows/*.yml` file in
+this repository, including the real npm publish workflow
+`.github/workflows/publish-npm.yml`. Since the npm dist-tag guard
+(ripr-swarm#9663, `xtask/src/policy/workflow_npm_tags.rs`), it refuses:
+
+- any workflow `npm publish` that does not pass exactly one literal
+  non-`latest` `--tag`/`--tag=` (an omitted tag defaults to `latest`);
+- any workflow `npm dist-tag add`/`set` whose tag is missing or not a literal
+  non-`latest` word;
+- tags carried by variables, `${{ }}` expressions, command substitution or
+  quoting tricks, because they can expand to `latest` at run time.
+
+`--dry-run` publishes are exempt. YAML folding (`run: >`), quoted `run:`
+values, and trailing comments after a block scalar header are decoded before
+shell tokenization so those forms cannot bypass the scan. Out of scope, as
+upstream: `pnpm`/`yarn` publish, `NPM_CONFIG_TAG`, and composite or reusable
+actions. The current publish workflow satisfies the guard by staging with the
+literal `--tag=next`; moving npm `latest` remains a separate maintainer
+decision outside CI.
 
 ### Routed Rust
 
@@ -722,12 +744,31 @@ The VS Code extension build and extension publish workflows use Node 24. This
 is separate from the VS Code extension-host compatibility declared in
 `editors/vscode/package.json`.
 
-The coverage workflow currently runs:
+The coverage workflow currently runs the supported external-test recipe in
+one shell (show-env first, clean after that environment, plain instrumented
+build/test, then report), binding the analyzer-consuming xtask tests to the
+actual instrumented executable through an absolute explicit override:
 
 ```bash
+set -euo pipefail
+llvm_cov_env="$(cargo llvm-cov show-env --export-prefix)"
+eval "$llvm_cov_env"
 cargo llvm-cov clean --workspace
-cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+cargo build --workspace --all-features
+export RIPR_TEST_BINARY="$CARGO_LLVM_COV_TARGET_DIR/debug/ripr"
+test -f "$RIPR_TEST_BINARY"
+"$RIPR_TEST_BINARY" --version
+sha256sum "$RIPR_TEST_BINARY"
+cargo test --workspace --all-features --tests
+cargo llvm-cov report --lcov --output-path lcov.info
 ```
+
+The show-env output is captured in a standalone assignment before `eval`
+so a producer failure propagates under `set -e` instead of being masked
+by `eval`.
+
+`report` takes no build flags, and at this virtual workspace root it covers
+all members even without `--workspace`.
 
 It uploads `lcov.info` as the `rust-lcov` GitHub Actions artifact and uploads
 the same file to Codecov with the `rust` flag and `rust-workspace` upload name.
@@ -2497,3 +2538,17 @@ A branch is ready to merge when:
 Local `--allow-dirty` packaging checks are useful during review but are not a
 substitute for plain package and publish dry-run checks on the final committed
 branch.
+
+### Scoped source editor qualification
+
+Use the existing `vscode` label for a selected source editor candidate. The
+`ci.yml` editor job runs its existing compile, admitted-package and editor-host
+commands. Rust, MSRV and release-check conditions are unchanged; the label is
+not an integrated release qualification or publication decision.
+
+In Routed Rust, opened/synchronize/reopened, `full-ci` label additions, pushes
+and manual dispatches retain the existing typed receipt/aggregate path. Other
+label additions and removals use a separate concurrency group, skip proof
+selection, and never post `Ripr Rust Small Result`, including as a skipped job.
+Their cheap ignored-event summary proves no Rust subject. Existing proof for an
+exact head remains its own evidence and cannot be replaced by a label event.

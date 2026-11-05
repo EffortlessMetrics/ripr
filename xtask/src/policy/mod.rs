@@ -16,6 +16,7 @@ pub(crate) mod proof_packs;
 mod release_targets;
 mod static_language;
 mod test_inventory;
+pub(crate) mod workflow_npm_tags;
 mod workflows;
 
 pub(crate) use allow_attributes::check_allow_attributes;

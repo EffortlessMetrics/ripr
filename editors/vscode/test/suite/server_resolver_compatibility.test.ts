@@ -5,10 +5,45 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { RiprConfig } from '../../src/config';
 import { currentRiprPlatform } from '../../src/platform';
-import { resolveServer, ServerResolverRuntime } from '../../src/serverResolver';
+import { ManagedServerInstallation } from '../../src/managedServerInstall';
+import {
+  managedManifestPlacementDetail,
+  resolveServer,
+  ServerResolverRuntime
+} from '../../src/serverResolver';
 import { compatibleLspEvidence } from './testCompatibility';
 
 suite('Server resolver compatibility fallback', () => {
+  test('renders the exact managed manifest placement into user-visible server detail', () => {
+    const selectedManifestUrl =
+      'https://github.com/EffortlessMetrics/ripr/releases/download/v0.11.0-rc.1/ripr-server-manifest-v0.11.0.json';
+    const installation = {
+      executablePath: '/tmp/ripr',
+      receiptPath: '/tmp/install-receipt.json',
+      receipt: {
+        schemaVersion: 1,
+        installationState: 'complete',
+        requestedVersion: '0.11.0',
+        manifestVersion: '0.11.0',
+        platformTarget: 'x86_64-unknown-linux-gnu',
+        executableName: 'ripr',
+        archiveSha256: 'a'.repeat(64),
+        executableSha256: 'b'.repeat(64),
+        binaryVersion: 'ripr 0.11.0',
+        selectedManifestUrl,
+        manifestSelection: 'fallback_exact_after_preferred_absent',
+        preferredManifestObservation: 'direct_not_found',
+        fallbackManifestObservation: 'accepted'
+      }
+    } satisfies ManagedServerInstallation;
+
+    const detail = managedManifestPlacementDetail(installation);
+    assert.ok(detail?.includes('exact fallback after preferred absence'));
+    assert.ok(detail?.includes(selectedManifestUrl));
+    assert.ok(detail?.includes('preferred=direct 404'));
+    assert.ok(detail?.includes('fallback=accepted'));
+  });
+
   test('skips an incompatible bundled candidate and selects the next allowed channel', async function () {
     const platform = currentRiprPlatform();
     if (!platform) {

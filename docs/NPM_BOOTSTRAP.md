@@ -69,8 +69,10 @@ Yarn, Bun, macOS, Windows, ARM64 or Alpine/musl.
 Artifacts are bound to run attempt. Re-run all jobs if any row needs retry;
 partial retries cannot consume a previous attempt's package. The native build and pip/uv jobs, both npm rows, the
 staging-client transport job and the whole run must pass. The transport job uses
-npm 11.15.0 against a loopback mock registry, checks exact submitted tar bytes
-and lifecycle suppression, and has no npm credentials or OIDC permission. It
+the workflow's actual shell command and relative `./dist/` tarball layout with
+npm 11.15.0 against a loopback mock registry. Only the registry and live
+provenance request differ; Git transports are refused. It checks exact submitted
+tar bytes and lifecycle suppression, and has no npm credentials or OIDC permission. It
 does not test live staging, OIDC exchange or Sigstore. The same job runs pinned,
 SHA-256-verified actionlint 1.7.12 for workflow syntax and expression-context
 validation; repository workflow-budget checks alone do not establish that.
@@ -156,10 +158,12 @@ must verify that setting in GitHub's UI before enabling the trust grant.
 The stage job receives only the admitted `.tgz`. It has `id-token: write`, no
 checkout and no package/native execution. Pinned Node 24.19.0/npm 11.15.0 uses
 fresh empty npm configuration, rechecks the sole file's SHA-256, and runs
-`npm stage publish` on that **file** with fixed registry, public access, `next`,
+`npm stage publish "./dist/$FILENAME"` on that **file** with fixed registry, public access, `next`,
 ignored lifecycle scripts and provenance enabled. It never calls `npm publish`,
 `npm stage approve`, registry administration or a build command. No npm token
-fallback is configured.
+fallback is configured. The `./` prefix is required: npm interprets a bare
+`dist/name.tgz` argument as a GitHub repository shortcut before fetching the
+package manifest, rather than opening the admitted local tarball.
 
 Immediately before the stage command, trusted inline code repeats the anonymous
 registry read after environment approval. It rejects missing/wrong package

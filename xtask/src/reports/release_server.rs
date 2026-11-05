@@ -120,9 +120,35 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
             )
         })?;
     }
-    let receipt_set = validate_release_server_receipts(dist_dir, &version)?;
+    let outputs = render_release_server_assembly(dist_dir, &version, &repository)?;
+    write_release_server_outputs_transactional(&[
+        (&manifest_path, outputs.manifest.as_str()),
+        (&sha256sums_path, outputs.checksums.as_str()),
+        (&assembly_receipt_path, outputs.assembly_receipt.as_str()),
+    ])?;
+    eprintln!("wrote {}", manifest_path.display());
+    eprintln!("wrote {}", sha256sums_path.display());
+    eprintln!("wrote {}", assembly_receipt_path.display());
+    Ok(())
+}
+
+/// Deterministic outputs of the one validated server assembler.
+pub(crate) struct ReleaseServerAssemblyOutputs {
+    pub(crate) manifest: String,
+    pub(crate) checksums: String,
+    pub(crate) assembly_receipt: String,
+}
+
+/// Shared assembler authority. Performs no writes or public subject changes.
+pub(crate) fn render_release_server_assembly(
+    dist_dir: &Path,
+    version: &str,
+    repository: &str,
+) -> Result<ReleaseServerAssemblyOutputs, String> {
+    let manifest_path = dist_dir.join(format!("ripr-server-manifest-v{version}.json"));
+    let receipt_set = validate_release_server_receipts(dist_dir, version)?;
     let receipt_targets = &receipt_set.targets;
-    let discovered_assets = release_server_assets(dist_dir, &version)?;
+    let discovered_assets = release_server_assets(dist_dir, version)?;
     validate_configured_release_server_targets(&discovered_assets)?;
     let asset_targets = discovered_assets
         .iter()
@@ -136,7 +162,7 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     }
     validate_release_server_staging_inventory(
         dist_dir,
-        &version,
+        version,
         &discovered_assets,
         receipt_targets,
     )?;
@@ -146,7 +172,7 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     let mut target_set_names = release_server_target_set().to_vec();
     target_set_names.sort_unstable();
     let distribution_generation = release_distribution_generation(
-        &version,
+        version,
         &build_identity.candidate_sha,
         &build_identity.candidate_tree,
         &target_set_digest,
@@ -293,15 +319,11 @@ pub(crate) fn release_server_manifest(args: &[String]) -> Result<(), String> {
     let assembly_text = serde_json::to_string_pretty(&assembly_receipt)
         .map_err(|err| format!("failed to render assembly receipt: {err}"))?;
     let assembly_text = format!("{assembly_text}\n");
-    write_release_server_outputs_transactional(&[
-        (&manifest_path, manifest_text.as_str()),
-        (&sha256sums_path, checksum_text.as_str()),
-        (&assembly_receipt_path, assembly_text.as_str()),
-    ])?;
-    eprintln!("wrote {}", manifest_path.display());
-    eprintln!("wrote {}", sha256sums_path.display());
-    eprintln!("wrote {}", assembly_receipt_path.display());
-    Ok(())
+    Ok(ReleaseServerAssemblyOutputs {
+        manifest: manifest_text,
+        checksums: checksum_text,
+        assembly_receipt: assembly_text,
+    })
 }
 
 pub(crate) fn release_upload_assets(args: &[String]) -> Result<(), String> {
@@ -584,8 +606,11 @@ pub(crate) fn create_zip_archive(package_dir: &Path, asset_path: &Path) -> Resul
     let file = fs::File::create(asset_path)
         .map_err(|err| format!("failed to create {}: {err}", asset_path.display()))?;
     let mut writer = zip::ZipWriter::new(file);
-    let options: zip::write::FileOptions<'_, ()> =
-        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    // Retain Unix permission metadata on every host, including Windows, so
+    // archive readback preserves the executable role's mode.
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .system(zip::System::Unix);
 
     let entries = fs::read_dir(package_dir)
         .map_err(|err| format!("failed to read {}: {err}", package_dir.display()))?;
@@ -797,13 +822,16 @@ fn archive_member_inventory(
                 let mut entry = archive
                     .by_index(index)
                     .map_err(|err| format!("failed to read zip member {index}: {err}"))?;
+                let name = entry
+                    .name()
+                    .map_err(|err| format!("failed to read zip member {index} name: {err}"))?
+                    .trim_start_matches("./")
+                    .to_string();
                 if entry.is_dir() {
                     return Err(format!(
-                        "release server archive contains directory `{}`",
-                        entry.name()
+                        "release server archive contains directory `{name}`"
                     ));
                 }
-                let name = entry.name().trim_start_matches("./").to_string();
                 let mode = entry.unix_mode().unwrap_or_else(|| package_mode(&name));
                 members.push(archive_member(
                     &name,

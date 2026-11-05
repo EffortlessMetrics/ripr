@@ -213,7 +213,18 @@ fn run(args: &[String]) -> Result<(), String> {
         "--out",
         &path_text(&builder_out)?,
     ]);
-    let builder_result = invoke_controller(&options.controller_repo, &builder_args);
+    let builder_result = match options.synthetic_fixture.as_ref() {
+        Some(fixture)
+            if fixture.profile
+                == super::source_promotion_admission_fixture::SyntheticProfile::Positive =>
+        {
+            super::source_promotion_control::run_source_owned_fixture(
+                fixture.context(),
+                &builder_args,
+            )
+        }
+        _ => invoke_controller(&options.controller_repo, &builder_args),
+    };
 
     let admission_args = strings(&[
         "admit-resolved-tree",
@@ -243,7 +254,18 @@ fn run(args: &[String]) -> Result<(), String> {
         &path_text(&admission_out)?,
     ]);
     let admission_result = if builder_result.is_ok() {
-        invoke_controller(&options.controller_repo, &admission_args)
+        match options.synthetic_fixture.as_ref() {
+            Some(fixture)
+                if fixture.profile
+                    == super::source_promotion_admission_fixture::SyntheticProfile::Positive =>
+            {
+                super::source_promotion_control::run_source_owned_fixture(
+                    fixture.context(),
+                    &admission_args,
+                )
+            }
+            _ => invoke_controller(&options.controller_repo, &admission_args),
+        }
     } else {
         builder_result.as_ref().map(|_| ()).map_err(Clone::clone)
     };
@@ -442,7 +464,22 @@ fn finalize(args: &[String]) -> Result<(), String> {
             &path_text(&construction_out)?,
         ]);
         construction_error = match controller_repository_path(&workspace, &report) {
-            Ok(controller_repo) => invoke_controller(&controller_repo, &command).err(),
+            Ok(controller_repo) => {
+                if json_string(&report, "execution_profile") == Some("positive_synthetic") {
+                    super::source_promotion_admission_fixture::context_from_verified_workflow(
+                        &controller_repo,
+                        &report,
+                    )
+                    .and_then(|context| {
+                        super::source_promotion_control::run_source_owned_fixture(
+                            &context, &command,
+                        )
+                    })
+                    .err()
+                } else {
+                    invoke_controller(&controller_repo, &command).err()
+                }
+            }
             Err(error) => Some(error),
         };
         construction_report =
@@ -620,17 +657,38 @@ fn verify_command(args: &[String]) -> Result<(), String> {
 }
 
 fn enforce_command(args: &[String]) -> Result<(), String> {
-    let values = parse_args(args, ENFORCE, &["--packet", "--expected-status"])?;
+    let values = parse_args(
+        args,
+        ENFORCE,
+        &["--packet", "--expected-status", "--workspace-root"],
+    )?;
     let expected = required(&values, "--expected-status")?;
     if expected != "admitted" {
         return Err("--expected-status must be admitted".to_string());
     }
-    let report = verify_packet(Path::new(required(&values, "--packet")?))?;
+    let root = Path::new(required(&values, "--packet")?);
+    let report = verify_packet(root)?;
     if json_string(&report, "status") != Some(expected) {
         return Err(format!(
             "source-promotion admission workflow disposition is {}; expected {expected}",
             json_string(&report, "status").unwrap_or("missing")
         ));
+    }
+    let preflight = root.join("evidence/locators/preflight/input");
+    let expected_digest = required_json_string(&report["locators"]["preflight"], "sha256")?;
+    let workspace = PathBuf::from(required(&values, "--workspace-root")?);
+    let repo = controller_repository_path(&workspace, &report)?;
+    if json_string(&report, "execution_profile") == Some("positive_synthetic") {
+        let context = super::source_promotion_admission_fixture::context_from_verified_workflow(
+            &repo, &report,
+        )?;
+        context.validate_preflight(&preflight, &repo)?;
+    } else {
+        super::source_promotion_verify::revalidate_bound_preflight(
+            &preflight,
+            expected_digest,
+            &repo,
+        )?;
     }
     Ok(())
 }
@@ -2337,7 +2395,7 @@ fn parse_args(
 }
 
 fn usage() -> String {
-    "usage: cargo xtask source-promotion (run-admission-workflow <exact inputs and requested identity> | verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest> | enforce-admission-workflow --packet <dir> --expected-status admitted)".to_string()
+    "usage: cargo xtask source-promotion (run-admission-workflow <exact inputs and requested identity> | verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest> | enforce-admission-workflow --packet <dir> --workspace-root <dir> --expected-status admitted)".to_string()
 }
 
 fn required<'a>(values: &'a BTreeMap<String, String>, key: &str) -> Result<&'a str, String> {
@@ -4420,11 +4478,18 @@ mod tests {
             ENFORCE,
             "--packet",
             &path_text(&partial_packet)?,
+            "--workspace-root",
+            &path_text(&partial_root)?,
             "--expected-status",
             "admitted",
         ]);
-        if enforce_command(&enforce_args).is_ok() {
-            return Err("rejected constructor packet escaped terminal enforcement".to_string());
+        let reason = enforce_command(&enforce_args)
+            .err()
+            .ok_or_else(|| "rejected packet escaped terminal enforcement".to_string())?;
+        if !reason.contains("disposition is rejected") {
+            return Err(format!(
+                "partial constructor enforcement refused the wrong boundary: {reason}"
+            ));
         }
         fs::remove_dir_all(&partial_root)
             .map_err(|error| format!("failed to clean partial constructor fixture: {error}"))?;
@@ -4446,11 +4511,18 @@ mod tests {
             ENFORCE,
             "--packet",
             &path_text(&absent_packet)?,
+            "--workspace-root",
+            &path_text(&absent_root)?,
             "--expected-status",
             "admitted",
         ]);
-        if enforce_command(&enforce_args).is_ok() {
-            return Err("absent-output rejection escaped terminal enforcement".to_string());
+        let reason = enforce_command(&enforce_args)
+            .err()
+            .ok_or_else(|| "rejected packet escaped terminal enforcement".to_string())?;
+        if !reason.contains("disposition is rejected") {
+            return Err(format!(
+                "absent constructor enforcement refused the wrong boundary: {reason}"
+            ));
         }
         fs::remove_dir_all(&absent_root)
             .map_err(|error| format!("failed to clean absent constructor fixture: {error}"))?;

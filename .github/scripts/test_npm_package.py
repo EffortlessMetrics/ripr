@@ -59,7 +59,11 @@ def zip_bytes(files, link=None, no_exec=False):
     with zipfile.ZipFile(out, "w") as archive:
         for name, data in files.items():
             entry = zipfile.ZipInfo(name)
-            entry.external_attr = (0o100755 if name.endswith("/ripr") and not no_exec else 0o100644) << 16
+            # Preserve the wire name: ZipInfo normalizes backslashes on Windows
+            # and truncates NUL suffixes before a malformed fixture is written.
+            entry.filename = name
+            logical_name = name.split("\x00", 1)[0].replace("\\", "/")
+            entry.external_attr = (0o100755 if logical_name.endswith("/ripr") and not no_exec else 0o100644) << 16
             if name == link:
                 entry.external_attr = 0o120755 << 16
             archive.writestr(entry, data)
@@ -490,6 +494,36 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data))
 
+    def test_artifact_zip_rejects_wire_names_normalized_by_zipinfo(self):
+        for separator in ("/", "\\"):
+            for name in ("a\\b", "consumer.json\x00suffix"):
+                data = zip_bytes({name: b"{}"})
+                with self.subTest(separator=separator, name=name):
+                    # Exercise both reader behaviors on every host. Native
+                    # Windows execution also reaches its real normalization.
+                    with mock.patch.object(zipfile.os, "sep", separator):
+                        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                            self.assertEqual(archive.infolist()[0].orig_filename, name)
+                        with self.assertRaises(ValueError):
+                            PACKAGE.read_qualification_zip(data, "sha256:" + PACKAGE.digest(data))
+
+    def test_wheel_zip_rejects_wire_alias_of_expected_member(self):
+        pin, files = wheel_fixture()
+        native = next(name for name in files if name.endswith("/scripts/ripr"))
+        for separator in ("/", "\\"):
+            for alias in (native.replace("/", "\\"), native + "\x00suffix"):
+                malformed = dict(files)
+                malformed[alias] = malformed.pop(native)
+                data = zip_bytes(malformed)
+                expected = dict(pin, wheel_sha256=PACKAGE.digest(data))
+                with self.subTest(separator=separator, alias=alias):
+                    with mock.patch.object(zipfile.os, "sep", separator):
+                        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                            entry = next(item for item in archive.infolist() if item.orig_filename == alias)
+                            self.assertTrue(entry.external_attr >> 16 & 0o111)
+                        with self.assertRaises(ValueError):
+                            PACKAGE.inspect_wheel(data, expected)
+
     def proof(self):
         rows = [dict(route=route, probes=1, findings=1, follow_up_finding="probe:fixture")
                 for route in ("local", "global", "npm-exec", "npx")]
@@ -501,8 +535,18 @@ class NpmReleaseAdmissionTests(unittest.TestCase):
         files = {"consumer.json": PACKAGE.canonical(proof), "lsp-stderr.txt": b""}
         for row in rows + [proof["reinstall_journey"]]:
             files[row["route"] + "-check.json"] = PACKAGE.canonical({"summary": {"probes": 1, "findings": 1}, "findings": [{"id": "probe:fixture"}]})
-            files[row["route"] + "-explain.txt"] = b"Useful explanation of the selected finding"
+            files[row["route"] + "-explain.txt"] = b"Useful explanation of probe:fixture"
         return proof, files
+
+    def test_retained_explanations_require_the_selected_follow_up_finding(self):
+        _, files = self.proof()
+        for route in (*PACKAGE.ROUTES, "fresh-reinstall"):
+            for explanation in (b"Useful explanation without a finding identity",
+                                b"ERROR: unrelated finding probe:wrong was not found"):
+                changed = dict(files, **{route + "-explain.txt": explanation})
+                with self.subTest(route=route, explanation=explanation):
+                    with self.assertRaisesRegex(ValueError, "follow-up finding absent from retained explanation"):
+                        PACKAGE.validate_consumer_proof(changed, "20.20.1", "10.8.2", "c" * 64, "e" * 64)
 
     def test_consumer_receipts_require_executed_distinct_routes_and_retained_journeys(self):
         proof, files = self.proof()
@@ -722,6 +766,17 @@ class NpmStageCliTests(unittest.TestCase):
         self.assertEqual(PACKAGE.digest(tar.read_bytes()), receipt["tarball"]["sha256"])
         npm = shutil.which("npm"); self.assertIsNotNone(npm)
         self.assertEqual(subprocess.check_output([npm, "--version"], text=True).strip(), "11.15.0")
+        workflow = (PACKAGE.ROOT / ".github/workflows/publish-npm.yml").read_text()
+        commands = [line.strip().removeprefix("run: ") for line in workflow.splitlines()
+                    if line.strip().startswith("run: npm stage publish ")]
+        self.assertEqual(len(commands), 1)
+        command = commands[0]
+        # Exercise the actual workflow's shell invocation. Only the registry and
+        # live attestation request differ in this credential-free loopback test.
+        for flag in ("--registry=https://registry.npmjs.org", "--provenance", "--ignore-scripts"):
+            self.assertEqual(command.count(flag), 1)
+        command = command.replace("--registry=https://registry.npmjs.org", '--registry="$TEST_REGISTRY"')
+        command = command.replace(" --provenance", "")
         requests = []
         class Registry(http.server.BaseHTTPRequestHandler):
             def log_message(self, *_args): pass
@@ -743,7 +798,10 @@ class NpmStageCliTests(unittest.TestCase):
                 config.write_text(f"//127.0.0.1:{server.server_port}/:_authToken=local-fixture-only\n")
                 environment = {"PATH": os.environ["PATH"], "HOME": str(root), "NPM_CONFIG_USERCONFIG": str(config),
                                "NPM_CONFIG_GLOBALCONFIG": str(root / "empty-global"),
-                               "NPM_CONFIG_CACHE": str(root / "cache"), "NPM_CONFIG_UPDATE_NOTIFIER": "false"}
+                               "NPM_CONFIG_CACHE": str(root / "cache"), "NPM_CONFIG_UPDATE_NOTIFIER": "false",
+                               "TEST_REGISTRY": registry, "GIT_CONFIG_COUNT": "1",
+                               "GIT_CONFIG_KEY_0": "protocol.allow", "GIT_CONFIG_VALUE_0": "never"}
+                (root / "dist").mkdir()
                 scripted = root / "scripted.tgz"
                 with tarfile.open(scripted, "w:gz") as archive:
                     package = dict(name=PACKAGE.PACKAGE_NAME, version=receipt["version"],
@@ -751,11 +809,12 @@ class NpmStageCliTests(unittest.TestCase):
                     data = PACKAGE.canonical(package); entry = tarfile.TarInfo("package/package.json"); entry.size = len(data)
                     archive.addfile(entry, io.BytesIO(data))
                 for source in (tar, scripted):
-                    result = subprocess.run([npm, "stage", "publish", str(source), "--registry=" + registry,
-                                             "--ignore-scripts", "--tag=next", "--access=public", "--fetch-retries=0", "--json"],
+                    shutil.copyfile(source, root / "dist" / source.name)
+                    environment["FILENAME"] = source.name
+                    result = subprocess.run(["bash", "-c", command],
                                             cwd=root, env=environment, capture_output=True, text=True, timeout=60, check=False)
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    output = json.loads(result.stdout)[PACKAGE.PACKAGE_NAME]
+                    output = json.loads((root / "stage-result.json").read_text())[PACKAGE.PACKAGE_NAME]
                     self.assertEqual(output["stageId"], "01234567-89ab-4cde-8fab-0123456789ab")
                     self.assertEqual(output["integrity"], "sha512-" + base64.b64encode(hashlib.sha512(source.read_bytes()).digest()).decode())
                     path, posted = requests[-1]

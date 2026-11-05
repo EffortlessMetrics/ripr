@@ -181,44 +181,7 @@ fn request(
 }
 
 fn worktree_binary() -> Result<String, String> {
-    // FIX fqGSK (CodeRabbit #3681): resolve the binary cargo actually
-    // built for this run — the RIPR_TEST_BINARY override first, then the
-    // active CARGO_TARGET_DIR (the required rust-gates workflow points it
-    // at an external directory), then the repo-local target directory —
-    // selecting the profile from the test build itself (`cargo test
-    // --release` puts the binary under `release`, not `debug`).
-    let profile = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-    let file_name = format!("ripr{}", std::env::consts::EXE_SUFFIX);
-    let mut candidates = Vec::new();
-    if let Ok(override_path) = std::env::var("RIPR_TEST_BINARY") {
-        candidates.push(PathBuf::from(override_path));
-    }
-    if let Ok(target_root) = std::env::var("CARGO_TARGET_DIR") {
-        candidates.push(Path::new(&target_root).join(profile).join(&file_name));
-    }
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("xtask manifest has no repository parent")?;
-    candidates.push(root.join("target").join(profile).join(&file_name));
-    let attempted = candidates
-        .iter()
-        .map(|candidate| candidate.display().to_string())
-        .collect::<Vec<_>>()
-        .join("`, `");
-    for candidate in &candidates {
-        if candidate.is_file() {
-            return std::path::absolute(candidate)
-                .map(|path| path.to_string_lossy().into_owned())
-                .map_err(|error| format!("resolve worktree ripr binary: {error}"));
-        }
-    }
-    Err(format!(
-        "no built ripr binary found (looked at `{attempted}`); run `cargo build -p ripr` first (report tests resolve the binary and never spawn a nested build)"
-    ))
+    crate::test_binary::resolve_built_ripr_binary_from_env()
 }
 
 fn ensure(condition: bool, message: &str) -> Result<(), String> {

@@ -202,7 +202,10 @@ impl PacketWorkspace {
         let json = serde_json::to_string_pretty(report)
             .map_err(|error| format!("failed to serialize resolved-tree receipt: {error}"))?;
         let markdown = render_markdown(report)?;
-        write_new_file(&self.staging.join(REPORT_JSON), format!("{json}\n").as_bytes())?;
+        write_new_file(
+            &self.staging.join(REPORT_JSON),
+            format!("{json}\n").as_bytes(),
+        )?;
         write_new_file(&self.staging.join(REPORT_MD), markdown.as_bytes())?;
 
         let entries = packet_entries(&self.staging)?;
@@ -253,6 +256,20 @@ impl Drop for PacketWorkspace {
 }
 
 pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result<(), String> {
+    run_validation_packet(args, None)
+}
+
+pub(super) fn validate_source_owned_fixture(
+    args: &[String],
+    context: &super::source_promotion_admission_fixture::OwnedFixtureContext,
+) -> Result<(), String> {
+    run_validation_packet(args, Some(context))
+}
+
+fn run_validation_packet(
+    args: &[String],
+    context: Option<&super::source_promotion_admission_fixture::OwnedFixtureContext>,
+) -> Result<(), String> {
     let echo = input_echo(args);
     let out = output_path_from_args(args)
         .unwrap_or_else(|| PathBuf::from(SOURCE_PROMOTION_RESOLVED_TREE_DEFAULT_OUT));
@@ -262,7 +279,7 @@ pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result
         .unwrap_or("unparsed-resolved-tree");
     let mut packet = PacketWorkspace::create(&out, packet_identity)?;
 
-    let options = match parse_args(args) {
+    let mut options = match parse_args(args) {
         Ok(options) => options,
         Err(reason) => {
             let mut state = ValidationState::new(echo);
@@ -276,8 +293,12 @@ pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result
             };
         }
     };
+    if let Some(context) = context {
+        options.repo = context.repository().to_path_buf();
+    }
     if options.out != out {
-        let reason = "resolved-tree output path changed between packet selection and argument parsing";
+        let reason =
+            "resolved-tree output path changed between packet selection and argument parsing";
         let mut state = ValidationState::new(input_echo_from_options(&options));
         state.failure_reasons.push(reason.to_string());
         let report = report_value(&state);
@@ -290,12 +311,22 @@ pub(crate) fn source_promotion_validate_resolved_tree(args: &[String]) -> Result
     }
 
     let mut state = ValidationState::new(input_echo_from_options(&options));
-    let mut validation = validate(&options, &mut state, packet.root());
+    let mut validation = match context {
+        Some(context) => context
+            .validate_preflight(&options.preflight, &options.repo)
+            .and_then(|()| {
+                validate_with_final_authority(&options, &mut state, packet.root(), |options, _| {
+                    context.validate_preflight(&options.preflight, &options.repo)
+                })
+            }),
+        None => validate(&options, &mut state, packet.root()),
+    };
     if let Err(reason) = &validation {
         push_failure_once(&mut state, reason);
     }
     if validation.is_ok() && !state_earns_validated(&state) {
-        let reason = "validation completed without earning every validated-state predicate".to_string();
+        let reason =
+            "validation completed without earning every validated-state predicate".to_string();
         push_failure_once(&mut state, &reason);
         validation = Err(reason);
     }

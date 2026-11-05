@@ -62,3 +62,28 @@ Source, documentation, and issue tracking remain under the
 [`EffortlessMetrics/ripr`](https://github.com/EffortlessMetrics/ripr)
 repository.
 
+## Retained consumer diagnostics
+
+The source wheel qualification workflow retains separate `pypi-consumer-pip`
+and `pypi-consumer-uv` artifacts, suffixed with the run ID and attempt, for five
+days. Each records the selected install, native-identity, preview, explain,
+disable, reinstall, and uninstall command groups. A group passes only after its
+existing shell assertions succeed. An interrupted active group is failed;
+later groups remain `not_run`.
+
+The diagnostic receipt binds the existing producer JSON digests, source, run,
+attempt, wheel digest, and native digest. Check JSON, explanation text, and
+disabled-language JSON are retained with digests, up to 1 MiB each; truncation
+is explicit and cannot complete the diagnostic proof. These artifacts grant
+no release eligibility, including when every group passes. Existing publisher
+admission remains authoritative and still requires a successful qualification
+run. Failures before recorder initialization and runner loss may leave no
+consumer artifact; absence is never a pass.
+Integrity refusals still bound the permitted outputs and persist a rejected
+terminal diagnostic. Original producer and output bindings are preserved;
+changed output bytes are identified separately as `observed_output`. A rejected
+receipt cannot become complete on a later finalization, even if bytes are restored.
+
+This retains evidence from the existing checkout-free, offline pip/uv installs;
+it adds no network namespace isolation or broader platform qualification.
+Local recorder fixtures do not qualify an installed release candidate.

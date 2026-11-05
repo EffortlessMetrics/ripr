@@ -179,6 +179,8 @@ jobs:
         if: always() && steps.build.outcome == 'success'
         continue-on-error: true
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           "${{ steps.build.outputs.controller }}" source-promotion run-admission-workflow \
@@ -282,6 +284,8 @@ jobs:
         id: enforce
         if: always()
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "${{ steps.checkout.outcome }}" = success
@@ -292,6 +296,7 @@ jobs:
           test "${{ steps.verify.outcome }}" = success
           "${{ steps.build.outputs.controller }}" source-promotion enforce-admission-workflow \
             --packet "$ADMISSION_ROOT/downloaded/workflow-packet" \
+            --workspace-root "$ADMISSION_ROOT" \
             --expected-status admitted
 
       - name: Finalize guarded constructor disposition after admission
@@ -299,6 +304,8 @@ jobs:
         if: always() && steps.enforce.outcome == 'success'
         continue-on-error: true
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set +e
           "${{ steps.build.outputs.controller }}" source-promotion finalize-admission-workflow \
@@ -364,6 +371,8 @@ jobs:
       - name: Enforce final normalized workflow disposition
         if: always()
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           test "${{ steps.enforce.outcome }}" = success
@@ -372,4 +381,5 @@ jobs:
           test "${{ steps.final-verify.outcome }}" = success
           "${{ steps.build.outputs.controller }}" source-promotion enforce-admission-workflow \
             --packet "$ADMISSION_FINAL_EVIDENCE" \
+            --workspace-root "$ADMISSION_ROOT" \
             --expected-status admitted

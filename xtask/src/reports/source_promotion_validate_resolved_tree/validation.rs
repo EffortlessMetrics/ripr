@@ -3,6 +3,20 @@ fn validate(
     state: &mut ValidationState,
     evidence_root: &Path,
 ) -> Result<(), String> {
+    validate_with_final_authority(
+        options,
+        state,
+        evidence_root,
+        require_current_acceptance_after_diagnostics,
+    )
+}
+
+fn validate_with_final_authority(
+    options: &Options,
+    state: &mut ValidationState,
+    evidence_root: &Path,
+    mut final_authority: impl FnMut(&Options, &Value) -> Result<(), String>,
+) -> Result<(), String> {
     let (preflight, preflight_path) = read_bound_json(
         &options.repo,
         &options.preflight,
@@ -11,6 +25,14 @@ fn validate(
     )?;
     state.inputs.preflight_path = Some(preflight_path);
     validate_preflight(&preflight, &options.source_parent)?;
+    // Historical v1 may exercise disposable geometry diagnostics (including
+    // the J5 known-negative), but cannot earn successful validation: the
+    // final native v2 gate below remains unconditional after green commands.
+    // Current v2 inputs also require acceptance before diagnostics begin.
+    if preflight.get("schema").and_then(Value::as_str) == Some("ripr.source_promotion_preflight.v2")
+    {
+        super::source_promotion_acceptance::revalidate(&preflight, &options.repo)?;
+    }
     if string_field(&preflight, "swarm_parent")? != options.swarm_parent {
         return Err("preflight swarm parent does not match exact input".to_string());
     }
@@ -81,13 +103,9 @@ fn validate(
     state.materialized_tree = Some(options.reviewed_tree.clone());
     state.disposable_commit = Some(materialized.commit.clone());
 
-    let execution_result = validate_materialized_tree(
-        options,
-        state,
-        &checker,
-        &materialized.root,
-        evidence_root,
-    );
+    let execution_result =
+        validate_materialized_tree(options, state, &checker, &materialized.root, evidence_root);
+    let execution_result = execution_result.and_then(|()| final_authority(options, &preflight));
 
     let cleanup = materialized.cleanup();
     state.worktree_remove_succeeded = cleanup.worktree_remove_succeeded;
@@ -222,8 +240,9 @@ fn validate_materialized_tree(
     state.materialization_clean_before = true;
 
     let logs_dir = evidence_root.join("commands");
-    fs::create_dir(&logs_dir)
-        .map_err(|error| format!("failed to create exclusive command evidence directory: {error}"))?;
+    fs::create_dir(&logs_dir).map_err(|error| {
+        format!("failed to create exclusive command evidence directory: {error}")
+    })?;
 
     let mut prior_failure: Option<String> = None;
     for (index, command) in REQUIRED_COMMANDS.iter().enumerate() {
@@ -336,8 +355,8 @@ mod manifest_disposition_tests {
     }
 
     #[test]
-    fn production_manifest_contract_uses_bare_preflight_digest_and_rejects_mismatch(
-    ) -> Result<(), String> {
+    fn production_manifest_contract_uses_bare_preflight_digest_and_rejects_mismatch()
+    -> Result<(), String> {
         let digest = "a".repeat(64);
         let preflight = preflight();
         let manifest = bound_manifest(&digest);
@@ -402,10 +421,11 @@ mod manifest_disposition_tests {
     #[test]
     fn integrated_requires_typed_digest_bound_evidence() -> Result<(), String> {
         let mut integrated = row("integrated");
-        let Err(_) =
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
+        let Err(_) = validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
         else {
-            return Err("integrated disposition without typed evidence unexpectedly passed".to_string());
+            return Err(
+                "integrated disposition without typed evidence unexpectedly passed".to_string(),
+            );
         };
 
         integrated["integration_evidence"] = serde_json::json!({
@@ -416,15 +436,13 @@ mod manifest_disposition_tests {
         validate_resolution_manifest_dispositions(&manifest(integrated.clone()))?;
 
         integrated["integration_evidence"]["type"] = serde_json::json!("free_form");
-        let Err(_) =
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
+        let Err(_) = validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
         else {
             return Err("free-form integration evidence unexpectedly passed".to_string());
         };
         integrated["integration_evidence"]["type"] = serde_json::json!("digest_bound_artifact");
         integrated["integration_evidence"]["sha256"] = serde_json::json!("deadbeef");
-        let Err(_) =
-            validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
+        let Err(_) = validate_resolution_manifest_dispositions(&manifest(integrated.clone()))
         else {
             return Err("short integration evidence digest unexpectedly passed".to_string());
         };
@@ -435,4 +453,21 @@ mod manifest_disposition_tests {
         };
         Ok(())
     }
+}
+
+fn require_current_acceptance_after_diagnostics(
+    options: &Options,
+    preflight: &Value,
+) -> Result<(), String> {
+    let final_bytes = super::source_promotion_verify::revalidate_bound_preflight(
+        &options.preflight,
+        &options.preflight_sha256,
+        &options.repo,
+    )?;
+    let final_preflight: Value = serde_json::from_slice(&final_bytes)
+        .map_err(|error| format!("decode final acceptance preflight: {error}"))?;
+    if &final_preflight != preflight {
+        return Err("native acceptance preflight changed during resolved-tree validation".into());
+    }
+    Ok(())
 }

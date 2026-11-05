@@ -1,4 +1,10 @@
 fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, String> {
+    parse_construction_options_in(args, current_repo()?)
+}
+fn parse_construction_options_in(
+    args: &[String],
+    repo: PathBuf,
+) -> Result<ConstructionOptions, String> {
     let parsed = parse_command_args(
         args,
         SOURCE_PROMOTION_CONSTRUCT_EXACT_JOIN_SUBCOMMAND,
@@ -18,7 +24,6 @@ fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, St
         ],
         &[],
     )?;
-    let repo = current_repo()?;
     let resolve = |key: &str| -> Result<PathBuf, String> {
         Ok(resolve_candidate_path(
             &repo,
@@ -35,11 +40,7 @@ fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, St
     let validation_packet = resolve("--validation-packet")?;
     let integration_index = resolve("--integration-index")?;
     let integration_index_sha256 = parsed.required("--integration-index-sha256")?;
-    validate_exact_hex(
-        "--integration-index-sha256",
-        &integration_index_sha256,
-        64,
-    )?;
+    validate_exact_hex("--integration-index-sha256", &integration_index_sha256, 64)?;
     let preflight = resolve("--preflight")?;
     let resolution_manifest = resolve("--resolution-manifest")?;
     let qualification_receipt = resolve("--qualification-receipt")?;
@@ -70,21 +71,52 @@ fn parse_construction_options(args: &[String]) -> Result<ConstructionOptions, St
 }
 
 fn construct_exact_join(args: &[String]) -> Result<(), String> {
+    construct_exact_join_in(args, None)
+}
+fn construct_exact_join_in(
+    args: &[String],
+    context: Option<&super::source_promotion_admission_fixture::OwnedFixtureContext>,
+) -> Result<(), String> {
     let out = control_out_from_args(args, DEFAULT_CONSTRUCTION_OUT)?;
-    let options = match parse_construction_options(args) {
+    let options = match context.map_or_else(
+        || parse_construction_options(args),
+        |context| parse_construction_options_in(args, context.repository().to_path_buf()),
+    ) {
         Ok(options) => options,
         Err(reason) => {
-            let repo = current_repo()?;
+            let repo = context.map_or_else(current_repo, |context| {
+                Ok(context.repository().to_path_buf())
+            })?;
             let owned_roots = supplied_protected_roots(
                 &repo,
                 args,
                 &[
-                    ("--admission-packet", "resolved-tree admission packet", false),
-                    ("--validation-packet", "resolved-tree validation packet", false),
-                    ("--integration-index", "integration receipt sidecar directory", true),
+                    (
+                        "--admission-packet",
+                        "resolved-tree admission packet",
+                        false,
+                    ),
+                    (
+                        "--validation-packet",
+                        "resolved-tree validation packet",
+                        false,
+                    ),
+                    (
+                        "--integration-index",
+                        "integration receipt sidecar directory",
+                        true,
+                    ),
                     ("--preflight", "finalized P1 preflight", false),
-                    ("--resolution-manifest", "complete resolution manifest", false),
-                    ("--qualification-receipt", "tree qualification receipt", false),
+                    (
+                        "--resolution-manifest",
+                        "complete resolution manifest",
+                        false,
+                    ),
+                    (
+                        "--qualification-receipt",
+                        "tree qualification receipt",
+                        false,
+                    ),
                 ],
             );
             let protected_roots = borrowed_protected_roots(&owned_roots);
@@ -104,9 +136,10 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
             );
         }
     };
-    let integration_root = options.integration_index.parent().ok_or_else(|| {
-        "integration receipt index has no protected parent directory".to_string()
-    })?;
+    let integration_root = options
+        .integration_index
+        .parent()
+        .ok_or_else(|| "integration receipt index has no protected parent directory".to_string())?;
     let protected_roots: [(&Path, &str); 7] = [
         (
             options.admission_packet.as_path(),
@@ -179,9 +212,53 @@ fn construct_exact_join(args: &[String]) -> Result<(), String> {
         );
     }
 
-    match construct_exact_join_inner(&options, Some(&reconciliation_context)) {
+    match construct_exact_join_with_acceptance(
+        &options,
+        Some(&reconciliation_context),
+        |options, identity| {
+            if let Some(context) = context {
+                return context.validate_preflight(&options.preflight, &options.repo);
+            }
+            super::source_promotion_verify::revalidate_bound_preflight(
+                &options.preflight,
+                &identity.preflight_sha256,
+                &options.repo,
+            )
+            .map(|_| ())
+        },
+    ) {
         Ok(evidence) => {
-            let report = construction_success_report(&evidence);
+            let mut report = construction_success_report(&evidence);
+            if context.is_none() {
+                let bytes = match super::source_promotion_verify::revalidate_bound_preflight(
+                    &options.preflight,
+                    &evidence.identity.preflight_sha256,
+                    &options.repo,
+                ) {
+                    Ok(bytes) => bytes,
+                    Err(reason) => {
+                        let report = construction_rejection_report(
+                            Some(&evidence.identity),
+                            Some(&options.candidate_ref),
+                            &reason,
+                            true,
+                        );
+                        return write_reserved_rejection_or_combine(
+                            &reservation,
+                            "exact_join_construction",
+                            CONSTRUCTION_REPORT,
+                            &report,
+                            "Exact-join construction",
+                            "A rejected construction packet grants no ref, merge, release, or publication authority.",
+                            reason,
+                        );
+                    }
+                };
+                report["native_acceptance_preflight_bytes"] =
+                    Value::String(String::from_utf8(bytes).map_err(|error| {
+                        format!("native acceptance preflight is not UTF-8: {error}")
+                    })?);
+            }
             write_reserved_control_packet(
                 &reservation,
                 "exact_join_construction",
@@ -243,10 +320,8 @@ fn construction_reconciliation_context(options: &ConstructionOptions) -> Result<
         return Err("source or W7 ref differs from the admitted construction identity".to_string());
     }
     let commit_timestamp = canonical_join_timestamp(&options.repo, &identity)?;
-    let qualification_sha256 = file_sha256(
-        &options.qualification_receipt,
-        "tree qualification receipt",
-    )?;
+    let qualification_sha256 =
+        file_sha256(&options.qualification_receipt, "tree qualification receipt")?;
     require_expected_qualification_sha256(
         &options.qualification_receipt_sha256,
         &qualification_sha256,
@@ -316,9 +391,18 @@ fn construction_reconciliation_value(
     }))
 }
 
+#[cfg(test)]
 fn construct_exact_join_inner(
     options: &ConstructionOptions,
     expected_reconciliation_context: Option<&Value>,
+) -> Result<ConstructionEvidence, ConstructionFailure> {
+    construct_exact_join_with_acceptance(options, expected_reconciliation_context, |_, _| Ok(()))
+}
+
+fn construct_exact_join_with_acceptance(
+    options: &ConstructionOptions,
+    expected_reconciliation_context: Option<&Value>,
+    mut acceptance: impl FnMut(&ConstructionOptions, &PromotionIdentity) -> Result<(), String>,
 ) -> Result<ConstructionEvidence, ConstructionFailure> {
     let admission_packet = read_indexed_packet(
         &options.admission_packet,
@@ -393,6 +477,7 @@ fn construct_exact_join_inner(
     validate_preflight(&preflight, &identity.source_parent)
         .and_then(|()| validate_preflight_identity(&preflight, &identity))
         .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    acceptance(options, &identity).map_err(|reason| (reason, Some(identity.clone()), false))?;
     let (manifest, _) = read_bound_json(
         &options.resolution_manifest,
         &identity.resolution_sha256,
@@ -477,7 +562,7 @@ fn construct_exact_join_inner(
             false,
         ));
     }
-    construct_validated_join(
+    construct_validated_join_with_acceptance(
         options,
         ValidatedConstructionInputs {
             identity,
@@ -488,6 +573,7 @@ fn construct_exact_join_inner(
             qualification_sha256,
         },
         expected_reconciliation_context,
+        acceptance,
     )
 }
 
@@ -500,10 +586,25 @@ struct ValidatedConstructionInputs {
     qualification_sha256: String,
 }
 
+#[cfg(test)]
 fn construct_validated_join(
     options: &ConstructionOptions,
     inputs: ValidatedConstructionInputs,
     expected_reconciliation_context: Option<&Value>,
+) -> Result<ConstructionEvidence, ConstructionFailure> {
+    construct_validated_join_with_acceptance(
+        options,
+        inputs,
+        expected_reconciliation_context,
+        |_, _| Ok(()),
+    )
+}
+
+fn construct_validated_join_with_acceptance(
+    options: &ConstructionOptions,
+    inputs: ValidatedConstructionInputs,
+    expected_reconciliation_context: Option<&Value>,
+    mut acceptance: impl FnMut(&ConstructionOptions, &PromotionIdentity) -> Result<(), String>,
 ) -> Result<ConstructionEvidence, ConstructionFailure> {
     let ValidatedConstructionInputs {
         identity,
@@ -568,6 +669,7 @@ fn construct_validated_join(
     .map_err(|reason| (reason, Some(identity.clone()), false))?;
     validate_construction_snapshot(options, &identity, &final_snapshot)
         .map_err(|reason| (reason, Some(identity.clone()), false))?;
+    acceptance(options, &identity).map_err(|reason| (reason, Some(identity.clone()), false))?;
     let join_commit = create_exact_join_object(&options.repo, &identity)
         .map_err(|reason| (reason, Some(identity.clone()), true))?;
     verify_constructed_join(&options.repo, &join_commit, &identity)
@@ -642,16 +744,34 @@ fn validate_admission_receipt(
         admission,
         "admission receipt",
         &[
-            "schema", "status", "source_parent", "swarm_parent", "join_tree",
-            "preflight_sha256", "resolution_manifest_sha256", "swarm_ref",
-            "resolved_tree_packet_index_sha256", "resolved_tree_validation_receipt_sha256",
-            "trusted_builder_packet_index_sha256", "trusted_builder_receipt_sha256",
-            "integration_index_sha256", "integration_receipts", "checker_executable_sha256",
-            "all_required_typed_integration_receipts_present", "final_identity_reread_passed",
-            "constructor_eligible_after_tree_qualification", "authoritative_commit_attempted",
-            "commit_tree_attempts", "local_ref_attempts", "remote_push_attempts",
-            "merge_command_attempts", "ref_mutation_attempted", "push_attempted", "merge_command",
-            "failure_reasons", "invalidation_rules",
+            "schema",
+            "status",
+            "source_parent",
+            "swarm_parent",
+            "join_tree",
+            "preflight_sha256",
+            "resolution_manifest_sha256",
+            "swarm_ref",
+            "resolved_tree_packet_index_sha256",
+            "resolved_tree_validation_receipt_sha256",
+            "trusted_builder_packet_index_sha256",
+            "trusted_builder_receipt_sha256",
+            "integration_index_sha256",
+            "integration_receipts",
+            "checker_executable_sha256",
+            "all_required_typed_integration_receipts_present",
+            "final_identity_reread_passed",
+            "constructor_eligible_after_tree_qualification",
+            "authoritative_commit_attempted",
+            "commit_tree_attempts",
+            "local_ref_attempts",
+            "remote_push_attempts",
+            "merge_command_attempts",
+            "ref_mutation_attempted",
+            "push_attempted",
+            "merge_command",
+            "failure_reasons",
+            "invalidation_rules",
         ],
         &["non_claims"],
     )?;
@@ -954,9 +1074,9 @@ fn create_exact_join_object(repo: &Path, identity: &PromotionIdentity) -> Result
     if lines.len() != 1 {
         return Err("git commit-tree did not return exactly one object identity".to_string());
     }
-    let join_commit = lines
-        .first()
-        .ok_or_else(|| "commit-tree identity disappeared after cardinality validation".to_string())?;
+    let join_commit = lines.first().ok_or_else(|| {
+        "commit-tree identity disappeared after cardinality validation".to_string()
+    })?;
     validate_exact_hex("constructed join commit", join_commit, 40)?;
     Ok((*join_commit).to_string())
 }

@@ -52,6 +52,8 @@ mod ripr_swarm;
 mod run;
 mod rust_judged_panel;
 mod rust_region_scan;
+#[cfg(test)]
+mod test_binary;
 mod verification_contracts;
 mod version;
 mod windows_advisory;
@@ -1383,6 +1385,11 @@ fn vscode_package_admitted(
     let vsix_path = extension_dir.join("dist").join(&vsix_name);
     let packaged = read_vsix_catalog(&vsix_path)?;
     verify_packaged_catalog_against_admission(&packaged, &admission_value)?;
+    let inventory = read_vsix_inventory(&vsix_path)?;
+    check_vsix_inventory(&inventory, VSIX_MAX_ENTRIES, VSIX_MAX_UNCOMPRESSED_BYTES)
+        .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
+    let (inventory_uncompressed, inventory_compressed) = vsix_size_totals(&inventory)
+        .map_err(|err| format!("packaged VSIX {} {err}", vsix_path.display()))?;
     let vsix_sha256 = sha256_file(&vsix_path)?;
     let receipt = serde_json::json!({
         "schema_version": "package-receipt/1",
@@ -1397,6 +1404,11 @@ fn vscode_package_admitted(
             "sha256": admission_value.get("catalogSha256").cloned().unwrap_or(Value::Null),
         },
         "admission": admission_value,
+        "inventory": {
+            "entries": inventory.len(),
+            "uncompressed_bytes": inventory_uncompressed,
+            "compressed_bytes": inventory_compressed,
+        },
         "tracked_template_restored": staged_release,
         "publication_mutation_attempted": false,
     });
@@ -1446,6 +1458,110 @@ fn admit_distribution_catalog(
         .map_err(|err| format!("admission receipt is not UTF-8: {err}"))
 }
 
+/// Upper bounds on the packaged VSIX. The 0.11 extension packs about 410
+/// entries and 3 MiB uncompressed. Packing `editors/vscode/target/` (#1775)
+/// produced 2,805 entries and about 2.3 GB. The bounds leave room for
+/// dependency growth and still fail that class of regression without pinning
+/// one machine's compressed size.
+const VSIX_MAX_ENTRIES: usize = 1_500;
+const VSIX_MAX_UNCOMPRESSED_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct VsixEntry {
+    name: String,
+    size: u64,
+    compressed_size: u64,
+}
+
+fn read_vsix_inventory(vsix_path: &Path) -> Result<Vec<VsixEntry>, String> {
+    let file = fs::File::open(vsix_path)
+        .map_err(|err| format!("packaged VSIX {} is missing: {err}", vsix_path.display()))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|err| format!("packaged VSIX {} is not a zip: {err}", vsix_path.display()))?;
+    let mut entries = Vec::with_capacity(archive.len());
+    for index in 0..archive.len() {
+        let member = archive.by_index_raw(index).map_err(|err| {
+            format!(
+                "failed to read {} member {index}: {err}",
+                vsix_path.display()
+            )
+        })?;
+        entries.push(VsixEntry {
+            name: member
+                .name()
+                .map_err(|err| format!("failed to read archive member name: {err}"))?
+                .into_owned(),
+            size: member.size(),
+            compressed_size: member.compressed_size(),
+        });
+    }
+    Ok(entries)
+}
+
+/// Checked totals for the packaged VSIX inventory. Wrapping or panicking
+/// sums would let hostile archive metadata slip past the fail-closed size
+/// bound, so both totals accumulate with u64 checked addition and reject
+/// the archive on overflow.
+fn vsix_size_totals(entries: &[VsixEntry]) -> Result<(u64, u64), String> {
+    let mut uncompressed: u64 = 0;
+    let mut compressed: u64 = 0;
+    for entry in entries {
+        uncompressed = uncompressed
+            .checked_add(entry.size)
+            .ok_or_else(|| format!("size total overflows u64 at entry {}", entry.name))?;
+        compressed = compressed
+            .checked_add(entry.compressed_size)
+            .ok_or_else(|| format!("size total overflows u64 at entry {}", entry.name))?;
+    }
+    Ok((uncompressed, compressed))
+}
+
+fn check_vsix_inventory(
+    entries: &[VsixEntry],
+    max_entries: usize,
+    max_uncompressed_bytes: u64,
+) -> Result<(), String> {
+    let build_output: Vec<&str> = entries
+        .iter()
+        .map(|entry| entry.name.as_str())
+        .filter(|name| is_workspace_build_output(name))
+        .collect();
+    if !build_output.is_empty() {
+        let shown: Vec<&str> = build_output.iter().take(5).copied().collect();
+        return Err(format!(
+            "carries {} workspace build-output entries (first: {})",
+            build_output.len(),
+            shown.join(", ")
+        ));
+    }
+    if entries.len() > max_entries {
+        return Err(format!(
+            "carries {} entries, above the {max_entries}-entry bound",
+            entries.len()
+        ));
+    }
+    let (uncompressed, _) = vsix_size_totals(entries)?;
+    if uncompressed > max_uncompressed_bytes {
+        return Err(format!(
+            "unpacks to {uncompressed} bytes, above the {max_uncompressed_bytes}-byte bound"
+        ));
+    }
+    Ok(())
+}
+
+fn is_workspace_build_output(name: &str) -> bool {
+    if name.starts_with("extension/target/") {
+        return true;
+    }
+    if name
+        .split('/')
+        .any(|segment| segment == ".fingerprint" || segment == "incremental")
+    {
+        return true;
+    }
+    name.ends_with(".rlib") || name.ends_with(".rmeta")
+}
+
 /// Reads the single packaged `extension/distribution.json` from a VSIX and
 /// rejects duplicate or shadow catalogs.
 fn read_vsix_catalog(vsix_path: &Path) -> Result<Vec<u8>, String> {
@@ -1461,7 +1577,10 @@ fn read_vsix_catalog(vsix_path: &Path) -> Result<Vec<u8>, String> {
                 vsix_path.display()
             )
         })?;
-        let name = member.name().to_string();
+        let name = member
+            .name()
+            .map_err(|err| format!("failed to read archive member name: {err}"))?
+            .into_owned();
         if name == "extension/distribution.json" {
             if found.is_some() {
                 return Err(format!(
@@ -1515,10 +1634,20 @@ fn vscode_test_e2e() -> Result<(), String> {
     };
     vscode_compile()?;
     let workspace_path = vscode_test_workspace_path()?;
-    let mut envs = vec![(
-        "RIPR_TEST_WORKSPACE_PATH",
-        path_to_utf8(&workspace_path, "VS Code test workspace path")?,
-    )];
+    // The catalog contract test must invoke this owning Rust producer, not
+    // rebuild through nested Cargo or discover an unrelated binary on PATH.
+    let xtask_path = std::env::current_exe()
+        .map_err(|err| format!("failed to resolve VS Code test catalog producer: {err}"))?;
+    let mut envs = vec![
+        (
+            "RIPR_TEST_WORKSPACE_PATH",
+            path_to_utf8(&workspace_path, "VS Code test workspace path")?,
+        ),
+        (
+            "RIPR_TEST_XTASK_PATH",
+            path_to_utf8(&xtask_path, "VS Code test catalog producer path")?,
+        ),
+    ];
     if provided_server.is_none() {
         let packaged = packaged_server.as_ref().ok_or_else(|| {
             "default VS Code test server was not staged through the release archive shape"
@@ -1589,10 +1718,13 @@ fn stage_vscode_test_server_archive(
     let mut member = zip
         .by_index(0)
         .map_err(|err| format!("failed to read archive member: {err}"))?;
-    if Path::new(member.name()).file_name() != Some(executable_name) {
+    let member_name = member
+        .name()
+        .map_err(|err| format!("failed to read archive member name: {err}"))?
+        .into_owned();
+    if Path::new(&member_name).file_name() != Some(executable_name) {
         return Err(format!(
-            "VS Code server proof archive member `{}` did not match the built executable",
-            member.name()
+            "VS Code server proof archive member `{member_name}` did not match the built executable"
         ));
     }
     let executable = extracted.join(executable_name);
@@ -2283,7 +2415,8 @@ fn workflow_run_xtask_invocation(line: &str) -> Option<WorkflowXtaskInvocation> 
     };
     let rest = line
         .strip_prefix("cargo xtask ")
-        .or_else(|| line.strip_prefix("cargo run --locked -p xtask -- "))?;
+        .or_else(|| line.strip_prefix("cargo run --locked -p xtask -- "))
+        .or_else(|| line.strip_prefix("target/vsix-attachment-tools/debug/xtask "))?;
     let mut tokens = rest.split_whitespace();
     let root = tokens.next()?.trim_matches('"');
     if root.is_empty() || root.starts_with('$') {
@@ -5417,6 +5550,11 @@ fn check_workflows_impl() -> Result<(), String> {
             continue;
         };
         let text = read_text_lossy(&path)?;
+        crate::policy::workflow_npm_tags::validate_workflow_npm_tags(
+            &normalized,
+            &text,
+            &mut violations,
+        );
         violations.extend(workflow_runtime_violations(
             &normalized,
             &text,
@@ -7521,21 +7659,57 @@ fn routed_rust_job_block_any(
     mut predicate: impl FnMut(&str) -> bool,
 ) -> bool {
     let job_header = format!("{job}:");
+    let mut in_jobs = false;
     let mut in_block = false;
     for line in workflow.lines() {
+        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
+            in_jobs = line.trim() == "jobs:";
+            in_block = false;
+            continue;
+        }
         let job_level_key = line.starts_with("  ")
             && !line.starts_with("   ")
             && line.trim_end().ends_with(':')
             && !line.trim_start().starts_with('-');
         if job_level_key {
-            in_block = line.trim() == job_header;
+            in_block = in_jobs && line.trim() == job_header;
             continue;
         }
         if in_block && !line.is_empty() && !line.starts_with(' ') {
             break;
         }
-        if in_block && predicate(line) {
+        if in_block && line.starts_with("    ") && !line.starts_with("     ") && predicate(line) {
             return true;
+        }
+    }
+    false
+}
+
+fn routed_rust_concurrency_group_has_isolation(workflow: &str, isolation: &str) -> bool {
+    let mut in_concurrency = false;
+    for line in workflow.lines() {
+        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('#') {
+            in_concurrency = line.trim() == "concurrency:";
+            continue;
+        }
+        if in_concurrency && let Some(value) = line.strip_prefix("  group: ") {
+            let value = value.trim_start();
+            // Only the workflow's plain scalar style is supported. Text in
+            // a YAML comment must never satisfy the isolation contract.
+            if value.starts_with(['\'', '"', '|', '>']) {
+                return false;
+            }
+            let comment = value.char_indices().find_map(|(index, character)| {
+                (character == '#'
+                    && (index == 0
+                        || value[..index]
+                            .chars()
+                            .next_back()
+                            .is_some_and(char::is_whitespace)))
+                .then_some(index)
+            });
+            let value = &value[..comment.unwrap_or(value.len())];
+            return value.trim_end().ends_with(isolation);
         }
     }
     false
@@ -7556,6 +7730,9 @@ fn routed_rust_workflow_contract_violations(
     routed_rust_workflow_contract_violations_with_reusable(workflow, None, settings, lane_whitelist)
 }
 
+const SOURCE_RUST_EVENT_GUARD: &str = r#"github.event_name != 'pull_request' || contains(fromJSON('["opened", "synchronize", "reopened"]'), github.event.action) || (github.event.action == 'labeled' && github.event.label.name == 'full-ci')"#;
+const SOURCE_RUST_IGNORED_EVENT: &str = "github.event_name == 'pull_request' && (github.event.action == 'unlabeled' || (github.event.action == 'labeled' && github.event.label.name != 'full-ci'))";
+
 fn routed_rust_workflow_contract_violations_with_reusable(
     workflow: &str,
     _reusable_workflow: Option<&str>,
@@ -7563,6 +7740,33 @@ fn routed_rust_workflow_contract_violations_with_reusable(
     lane_whitelist: Option<&str>,
 ) -> Vec<String> {
     let mut violations = Vec::new();
+
+    for job in ["route", "detect-docs-only"] {
+        if !routed_rust_job_block_any(workflow, job, |line| {
+            line.trim() == format!("if: {SOURCE_RUST_EVENT_GUARD}")
+        }) {
+            violations.push(format!(
+                "source routed Rust job `{job}` lacks the exact proof-event guard"
+            ));
+        }
+    }
+    if !routed_rust_job_block_any(workflow, "result", |line| {
+        line.trim() == format!("if: always() && ({SOURCE_RUST_EVENT_GUARD})")
+    }) {
+        violations.push("source routed Rust result lacks the exact proof-event guard".to_string());
+    }
+    let result_name = format!(
+        "name: ${{{{ {SOURCE_RUST_IGNORED_EVENT} && 'Ripr Rust Small Ignored Label Event' || 'Ripr Rust Small Result' }}}}"
+    );
+    if !routed_rust_job_block_any(workflow, "result", |line| line.trim() == result_name) {
+        violations.push(
+            "source ignored label event must not occupy the required result name".to_string(),
+        );
+    }
+    let isolation = format!("${{{{ {SOURCE_RUST_IGNORED_EVENT} && '-label-ignore' || '' }}}}");
+    if !routed_rust_concurrency_group_has_isolation(workflow, &isolation) {
+        violations.push("source ignored label event lacks concurrency isolation".to_string());
+    }
 
     // ripr#1446: the source repository proves its own pull requests on
     // GitHub-hosted runners. Self-hosted capacity is `ripr-swarm` authority. This
@@ -7583,7 +7787,7 @@ fn routed_rust_workflow_contract_violations_with_reusable(
             "org runner query negative assertion",
             "org_runner_query_attempted=false",
         ),
-        ("normalized result job", "name: Ripr Rust Small Result"),
+        ("normalized result job", "Ripr Rust Small Result"),
         (
             "hosted rust route predicate",
             "needs.route.outputs.route == 'github_hosted_rust'",
@@ -15104,6 +15308,18 @@ fn check_output_contracts() -> Result<(), String> {
                     &mut violations,
                 );
             }
+            "release_final_server_schema" => {
+                let path = "xtask/src/reports/release_final_subjects.rs";
+                let source = read_text_lossy(Path::new(path))?;
+                require_contract_value(path, &source, value, kind, &mut violations);
+                require_contract_value(
+                    "docs/OUTPUT_SCHEMA.md",
+                    &schema,
+                    value,
+                    kind,
+                    &mut violations,
+                );
+            }
             other => violations.push(format!(
                 "policy/output_contracts.txt uses unsupported kind `{other}`"
             )),
@@ -22275,6 +22491,26 @@ pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
 }
 
 pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
+    if matches!(
+        path,
+        ".github/scripts/source-promotion-composition.sh"
+            | "xtask/tests/source_promotion_composition.py"
+    ) {
+        return Some(
+            "The trusted public-base promotion validator needs the runner Git/jq shell before product code executes; standard-library Python fixtures exercise real Git graph and digest refusals without publication authority.",
+        );
+    }
+
+    if matches!(
+        path,
+        ".github/scripts/python_consumer_evidence.py"
+            | ".github/scripts/test_python_consumer_evidence.py"
+    ) {
+        return Some(
+            "Checkout-free Python wheel consumers retain bounded diagnostic command states and output digests using the runner standard library; fixtures execute no installed package and diagnostics grant no admission.",
+        );
+    }
+
     if matches!(
         path,
         ".github/scripts/pypi_admission.py" | ".github/scripts/test_pypi_admission.py"

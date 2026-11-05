@@ -27,9 +27,15 @@ relabelled or used as a fallback. Version authority remains Cargo. Packaging com
 fields. Package creation fails on an uncommitted tracked tree, wrong input
 bytes, unsupported metadata, unsafe archive entries, stale RECORD, missing
 notices, or tarball identity/mode/provenance drift.
+ZIP member names must retain their literal wire identity: backslashes and NUL
+suffixes cannot be normalized into an otherwise expected artifact or wheel member.
+This refusal applies on both Unix and Windows readers before member bytes are read.
 
 Native execution and qualification retain explicit denominators. Each selected
-client must independently install the actual tarball project-locally, globally,
+route, including fresh reinstall, retains an explanation naming its selected
+follow-up finding from the retained check output. Unrelated nonempty explanation
+bytes cannot satisfy that journey.
+Each selected client must independently install the actual tarball project-locally, globally,
 through npm exec and the actual public npx executable, then produce nonempty
 findings and a follow-up action. A missing or broken npx wrapper fails
 qualification. Reinstallation requires observed package/bin-link absence before
@@ -129,6 +135,10 @@ cargo xtask check-spec-numbering
 - `.github/scripts/test_npm_package.py`: malformed wheel/tar and identity controls.
 - `.github/scripts/npm_consumer.py`: measured installs, use, disablement and cleanup.
 - `xtask/src/policy/file_policy.rs`: exact non-Rust runtime exception boundary.
+- `xtask/src/policy/workflow_npm_tags.rs`: in-tree workflow npm publish/dist-tag
+  dist-tag guard; every negative and positive control in its test corpus,
+  including the checked-in `publish-npm.yml` good path and its `latest`
+  mutations.
 
 ## Implementation Mapping
 
@@ -139,6 +149,8 @@ cargo xtask check-spec-numbering
 - `.github/workflows/npm-package-qualification.yml`: exact-head, attempt-bound proof.
 - `.github/workflows/publish-npm.yml`: default read-only admission and isolated
   explicitly requested stage-only OIDC, followed by a read-only response record.
+- `xtask/src/main.rs` `check_workflows_impl`: wired npm dist-tag guard scan over
+  every workflow file (ripr-swarm#9663).
 
 ## Metrics
 
