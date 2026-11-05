@@ -36,6 +36,12 @@ qualification and publication histories.
 
 [Full development diff since v0.10.0](https://github.com/EffortlessMetrics/ripr/compare/v0.10.0...main).
 
+### Security
+
+- Update the VS Code extension's `brace-expansion` dependency to 5.0.12 and
+  Mocha's development copy to 2.1.7. The updated parsers use iterative comma
+  handling and bound nesting and rewrite work for crafted brace patterns.
+
 ### Distribution and installation
 
 - Fix npm staging's tarball argument to use an explicit local `./dist/` path.
