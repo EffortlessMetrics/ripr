@@ -50,7 +50,7 @@ Most adopters should choose one of these first-hour paths:
 
 | Path | Use when | Start with | First success |
 | --- | --- | --- | --- |
-| CLI first | You want one local before/after proof. | `ripr check --base origin/main` | Top Rust gap or an honest no-action/limited state, followed by one bounded repair attempt. |
+| CLI first | You want feedback on tracked local edits. | `ripr check --base HEAD --worktree` | Top Rust gap or an honest no-action/limited state, followed by one bounded repair attempt. |
 | PR first | You want reviewers to see advisory evidence in GitHub. | `ripr init --ci github` | Non-blocking summary, repair card, artifact packet. |
 | Editor or agent first | You are repairing while coding, or handing work to an LLM. | VS Code `ripr: Show Status` or `ripr agent repair --seam-id <id> --phase before` | Current gap, related test, edit cage, verify route, and receipt. |
 
@@ -133,31 +133,110 @@ Deep links: [CI strategy](CI.md), [PR review guidance](PR_REVIEW_GUIDANCE.md),
 
 Use this path when you want the reproducible local proof loop.
 
-Install:
+### Install and identify the CLI
+
+For installation with Cargo, use Rust 1.95 or newer and Cargo. Git must be on
+`PATH` for the Git-based checks below. Run the analysis commands from your
+project's checkout, with at least one commit.
 
 ```bash
 cargo install ripr --locked
+ripr --version
 ```
 
 Keep `--locked` to use the published dependency lockfile. Without it, Cargo
 can select incompatible transitive dependency updates before RIPR first runs.
 
-From this repository, use:
+For prebuilt installation, choose the `ripr-server` archive for your operating
+system and CPU from [GitHub Releases](https://github.com/EffortlessMetrics/ripr/releases),
+verify it against the published checksum, and extract it. Add the directory
+containing `ripr` (or `ripr.exe` on Windows) to `PATH`, then run `ripr --version`.
+The archive contains the same CLI used here. A Rust compiler is not needed to
+install it; the toolchain needed to execute your project's tests is a separate
+requirement.
+
+When developing RIPR from this repository's root, use:
 
 ```bash
-cargo install --path crates/ripr
+cargo install --path crates/ripr --locked
 ```
 
-Inspect the current change:
+These docs follow the current source tree. An installed release may have a
+different set of commands; check `ripr --version`, `ripr check --help`, and the
+[changelog](../CHANGELOG.md) before following a source-only workflow.
+
+### Choose the change to analyze
+
+For edits you have not committed yet:
 
 ```bash
-ripr check --base origin/main
+ripr check --base HEAD --worktree
 ```
+
+This compares `HEAD` with the tracked working tree, including staged and
+unstaged edits. It works without an `origin` remote. New untracked files are
+excluded; add the intended files to Git before expecting them in this check.
+
+| What you want to inspect | Command | Scope |
+| --- | --- | --- |
+| Tracked edits since the current commit | `ripr check --base HEAD --worktree` | Staged and unstaged tracked changes relative to `HEAD`. |
+| A committed branch change | `ripr check --base origin/main` | The merge base of `origin/main` and `HEAD` through `HEAD`, equivalent to the scope of `git diff origin/main...HEAD`. Local edits are excluded. |
+| The current tracked tree against a chosen base | `ripr check --base origin/main --worktree` | The base commit directly against the working tree, including committed, staged, and unstaged differences. This is not a merge-base comparison. |
+| A saved unified diff | `ripr check --diff change.patch` | The supplied patch, interpreted against the selected project root. Keep the patch and project sources aligned. |
+
+Replace `origin/main` with the target branch or commit that actually exists in
+your clone. If it is missing, fetch the intended branch or pass another valid
+`--base`. An explicitly selected base never falls back silently.
+
+Without `--base` or `--diff`, RIPR resolves the local `origin/HEAD` reference,
+then tries `origin/main`, `origin/master`, `main`, and `master`. This selects a
+base; it does not opt into local edits. `--worktree` is still needed for those.
+`--worktree` and `--diff` cannot be combined.
+
+For reproducible review evidence, choose a base explicitly and record the
+command with the output. Use `--root <path>` when selecting another project,
+and quote paths that contain spaces.
+
+The table covers diff-scoped output such as the default human view and
+`--format json`. Repository-wide formats such as `repo-exposure-json` analyze
+the repository regardless of `--base` or `--diff`; they are not a shortcut to
+more detail about the same diff. Use `--format human-full` for that.
+
+### Read the result before starting a repair
 
 The bounded human output begins with one `Start here:` state. It either names
 the top repair-ready gap, reports an honest no-action state, or names the
 limitation that prevents current guidance. Use `--format human-full` for the
 complete evidence and `--format json` for machine data.
+
+| Result | What to do next |
+| --- | --- |
+| A gap with a complete repair route | Read the changed behavior, related test, and missing assertion; then use the supplied repair guidance. |
+| A finding with weak or unknown evidence | Inspect the full evidence and static limits before choosing a test. A finding does not guarantee an executable repair route. |
+| No findings, no scope, or omitted local edits | Check the selected base and diff. For local edits, use `--base HEAD --worktree`; staging alone does not include them in a committed-only check. |
+| A partial or limited result | Follow the reported limitation or retry action. Do not interpret incomplete analysis as a clean result. |
+
+`ripr check` is advisory: a successful command can return findings, warnings,
+or an empty result with exit code `0`. Exit code `2` indicates a command error;
+a separate `ripr gate evaluate` command can also reject a policy decision.
+See [Exit codes](EXIT_CODES.md) and [Finding triage](how-to/triage-a-finding.md).
+
+If your installed `ripr check --help` lists `--write-artifact`, you can keep
+worktree findings available for `explain` and `context` by writing a reusable
+analysis artifact:
+
+```bash
+ripr check --base HEAD --worktree --write-artifact ripr-check.json
+```
+
+Copy the printed navigation commands so the original input and finding ID
+stay together. This artifact is distinct from `--format json` output; a
+redirected JSON report is not a substitute for `--write-artifact`. Regenerate
+the artifact when its inputs change instead of reusing stale evidence.
+On older builds without this option, rerun the same scoped check with
+`--format human-full` to inspect the full evidence.
+
+### Complete one bounded repair
 
 For a repair-ready gap, start the ordinary repair transaction:
 
@@ -174,6 +253,10 @@ ripr agent repair --root . --attempt <repair-attempt-id> --phase after
 The before phase writes the pre-edit snapshot and repair packet. The after phase
 writes the post-edit snapshot, persists static verification JSON, and emits a
 receipt. RIPR does not author or apply the test edit.
+
+Run the focused test command supplied by the repair guidance separately. The
+receipt records static evidence movement; it does not show that a test or a
+mutant executed.
 
 For guided repository adoption and materialized pilot reports, use:
 
@@ -265,6 +348,10 @@ See [LLM operator guide](LLM_OPERATOR_GUIDE.md).
 
 | Symptom | First check |
 | --- | --- |
+| `ripr` is not found after installation. | Check that the Cargo binary directory or extracted archive directory is on `PATH`, open a new terminal if needed, then run `ripr --version`. |
+| `origin/main` cannot be resolved. | Fetch the intended target branch or pass a valid local `--base`; for tracked edits since the current commit, use `ripr check --base HEAD --worktree`. |
+| A local change produces no findings. | Check `git status --short` and the [selected scope](#choose-the-change-to-analyze). Committed-only checks exclude staged and unstaged changes; worktree checks exclude untracked files. An empty result does not establish test strength. |
+| A JSON command exits with `2`. | Read stderr and the [exit-code guide](EXIT_CODES.md). The redirected file may be empty or incomplete; do not treat it as a successful analysis report. |
 | VS Code shows no RIPR state, or shows no focused test gap. | Run `ripr: Show Status`, then `ripr: Show Output`. Confirm a Rust/Cargo workspace is open and saved. |
 | VS Code cannot start the server. | Check [Server provisioning](SERVER_PROVISIONING.md) for configured path, bundled or cached assets, GitHub Release download, and PATH fallback. |
 | Diagnostics look stale. | Save the workspace file or run `Refresh Analysis - Saved Workspace Check`. |
@@ -315,3 +402,4 @@ RIPR findings.
 - [Language adapter preview workflow](LANGUAGE_ADAPTER_PREVIEW.md) for opt-in
   TypeScript, JavaScript, and Python evidence.
 - [Output schema](OUTPUT_SCHEMA.md) for JSON contracts.
+- [Exit codes](EXIT_CODES.md) for command completion, errors, and policy decisions.

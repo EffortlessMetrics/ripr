@@ -36,9 +36,18 @@
 
 ## Prerequisites
 
-- **Rust ≥ 1.95** (2024 edition). Check with `rustc --version`; update with `rustup update stable`.
+- **For installation with Cargo:** Rust ≥ 1.95 and Cargo (2024 edition).
+  Check with `rustc --version`; update with `rustup update stable`. Prebuilt
+  binaries do not require a Rust compiler to install; running Rust tests still
+  requires the project toolchain.
 - **Git** on your `PATH`.
-- Run inside a **Git repository**. By default, ripr looks for `origin/main`, `origin/master`, `main`, or `master` as the diff base; pass `--base <ref>` when you need a different base.
+- Run Git-based checks from your **project's checkout**, with at least one
+  commit. Choose the diff scope explicitly below; `ripr.toml` is optional.
+
+This README follows the current source tree. Check `ripr --version` and
+`ripr check --help` when using an installed release. Prebuilt archives and
+checksums are available on [GitHub Releases](https://github.com/EffortlessMetrics/ripr/releases).
+See the [changelog](CHANGELOG.md) for release-specific changes.
 
 ## The first useful run
 
@@ -56,19 +65,29 @@ docs expands on them:
 
 | Term | One-line meaning |
 | --- | --- |
-| **gap** | a place the code needs a test (or an existing test is too weak) |
-| **card** | the per-gap unit an agent acts on — what to assert, where, and why the current proof is weak |
+| **gap** | a place where static evidence suggests a focused assertion may be missing or weak |
+| **card** | the per-gap unit an agent acts on — what to assert, where, and why the current evidence is weak |
 | **packet** | the bundle of evidence and guidance for one change (a bounded, test-only work order) |
-| **verify** | re-check that a fix actually closed the gap |
-| **receipt** | the durable before/after proof of what was checked |
+| **verify** | re-check static evidence after the test edit; run the focused test separately |
+| **receipt** | the durable before/after record of what was checked and what remains uncertain |
 
 ```bash
 cargo install ripr --locked
-ripr check --base origin/main
+ripr --version
+
+# From your project's checkout: include staged and unstaged tracked edits.
+ripr check --base HEAD --worktree
 ```
 
 `--locked` uses the published dependency lockfile, avoiding incompatible
 transitive dependency updates during installation.
+
+For a committed branch change, use `ripr check --base origin/main` instead
+(replace `origin/main` with your target branch). That compares the merge base
+with `HEAD`; it excludes staged and unstaged edits. `--worktree` compares the
+chosen base directly with the tracked working tree. Neither path includes
+untracked files. See [choosing a diff scope](docs/QUICKSTART.md#choose-the-change-to-analyze)
+for the complete command table and empty-result recovery.
 
 `ripr check` is the ordinary first-value command: it analyzes the current
 change and returns one bounded `Start here:` route — a named state, one selected
@@ -76,6 +95,11 @@ gap or safe next action, the omitted-finding count, and explicit pointers to
 `--format human-full` for exhaustive evidence and `--format json` for machine
 data. `ripr.toml` is optional; the zero-config run is the intended first
 interface.
+
+An exit code of `0` means the command completed; findings and limitations can
+still be present. Read the reported scope and next action before treating an
+empty result as useful evidence. [Exit codes](docs/EXIT_CODES.md) explains the
+separate analysis and policy decisions.
 
 When the selected gap is repair-ready, use the dedicated two-phase transaction:
 
@@ -130,11 +154,11 @@ draft-time question between them.
 
 | Term | What it is |
 | --- | --- |
-| **gap** | a changed behavior whose tests are too weak to notice it breaking, with a stable canonical ID |
-| **card** | the repair — what to assert, where, and why the current proof is weak |
+| **gap** | a changed behavior whose static evidence suggests a missing or weak assertion, with a stable canonical ID |
+| **card** | the repair guidance — what to assert, where, and why the current evidence is weak |
 | **packet** | a bounded, test-only work order for a human or agent: allowed files, forbidden files, stop conditions |
-| **verify** | the focused command that checks the repair (`cargo test …`, `pytest …`) |
-| **receipt** | the before/after record of whether the gap actually closed |
+| **verify** | the static re-check after a test edit; the supplied test command (`cargo test …`, `pytest …`) runs separately |
+| **receipt** | the before/after record of static evidence movement; runtime test results are separate |
 
 ## Example output
 
@@ -183,7 +207,7 @@ and gaps; it does not claim runtime mutation outcomes.
 | --- | --- | --- |
 | VS Code user | Install `EffortlessMetrics.ripr`, open a Rust workspace, use the status bar, Problems, and hover evidence. | [Quickstart](docs/QUICKSTART.md#vs-code-first-hour) |
 | CI owner | `ripr init --ci github` for an advisory PR summary and artifact packet. | [Quickstart](docs/QUICKSTART.md#ci-first-hour) |
-| CLI user | `ripr check --base origin/main`, then repair the selected named gap. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
+| CLI user | `ripr check --base HEAD --worktree` for tracked local edits, then inspect the selected gap or limitation. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
 | Agent operator | `ripr agent repair --seam-id <id> --phase before`, then finish after the focused test edit. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
 
 ## Status
@@ -214,6 +238,8 @@ release and distribution authority.
 | Map plain language to the internal model | [Terminology](docs/TERMINOLOGY.md) |
 | Understand the model (discrimination vs coverage) | [Static exposure model](docs/STATIC_EXPOSURE_MODEL.md) |
 | Know what is usable / preview / advisory | [Support tiers](docs/status/SUPPORT_TIERS.md) |
+| Choose the diff and recover from an empty result | [Check scope](docs/QUICKSTART.md#choose-the-change-to-analyze) · [Troubleshooting](docs/QUICKSTART.md#troubleshooting) |
+| Interpret command success and policy failure | [Exit codes](docs/EXIT_CODES.md) |
 | Understand JSON / context output | [Output schema](docs/OUTPUT_SCHEMA.md) |
 | Turn a gap into a test | [Targeted test workflow](docs/TARGETED_TEST_WORKFLOW.md) |
 | Prove one real PR's adoption | [First successful PR workflow](docs/FIRST_PR_WORKFLOW.md) |
@@ -251,4 +277,4 @@ and [Agent instructions](AGENTS.md).
 
 `ripr` is licensed under MIT OR Apache-2.0, at your option.
 
-It targets Rust 2024 and requires Rust `1.95` or newer.
+Building from source targets Rust 2024 and requires Rust `1.95` or newer.
