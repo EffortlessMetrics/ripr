@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Add candidate source-promotion checks that distinguish the live PR head,
+  preview and actual merge, with runbook guidance for each identity. Promotion
+  remains blocked until a trusted required check cannot be redefined by the
+  candidate and live enforcement is verified.
+
 - `cargo xtask source-promotion verify` now verifies the staged public-to-swarm return preview (a `fast_forward` preflight: ordered parents `[P, S]`, tree equal to S's tree) and records the preflight `mode` in its receipt; `two_parent_join` verification is unchanged (#1627).
 
 - Reconcile 0.11 RC guidance with dated public tag/release state, historical
