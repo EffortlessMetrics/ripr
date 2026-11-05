@@ -1,5 +1,9 @@
 # Exit Codes
 
+This reference describes the current source tree. Check `ripr --version` and
+the installed command's `--help` when using an older release; the
+[Quickstart](QUICKSTART.md) includes a compatible `0.10.0` first-check path.
+
 RIPR uses `0` for command completion and `2` for a reported error or a
 command-specific policy rejection. **The exit code is not a finding
 classification.** In particular, `ripr check` is advisory: it can report weak

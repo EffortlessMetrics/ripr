@@ -75,12 +75,17 @@ docs expands on them:
 cargo install ripr --locked
 ripr --version
 
-# From your project's checkout: include staged and unstaged tracked edits.
-ripr check --base HEAD --worktree
+# From your project's repository root: capture staged and unstaged tracked edits.
+git diff --no-ext-diff --submodule=short --output=ripr-local.diff HEAD -- && ripr check --diff ripr-local.diff
 ```
 
 `--locked` uses the published dependency lockfile, avoiding incompatible
 transitive dependency updates during installation.
+
+The saved-diff recipe also works with the published `0.10.0` CLI. Regenerate
+`ripr-local.diff` after editing files. If `ripr check --help` lists
+`--worktree`, the equivalent shortcut is `ripr check --base HEAD --worktree`.
+The `&&` runs RIPR only if Git successfully writes the patch.
 
 For a committed branch change, use `ripr check --base origin/main` instead
 (replace `origin/main` with your target branch). That compares the merge base
@@ -89,19 +94,24 @@ chosen base directly with the tracked working tree. Neither path includes
 untracked files. See [choosing a diff scope](docs/QUICKSTART.md#choose-the-change-to-analyze)
 for the complete command table and empty-result recovery.
 
-`ripr check` is the ordinary first-value command: it analyzes the current
-change and returns one bounded `Start here:` route — a named state, one selected
+`ripr check` is the ordinary first-value command. Current source builds return
+one bounded `Start here:` route — a named state, one selected
 gap or safe next action, the omitted-finding count, and explicit pointers to
 `--format human-full` for exhaustive evidence and `--format json` for machine
-data. `ripr.toml` is optional; the zero-config run is the intended first
-interface.
+data. On older releases without `human-full`, use
+`ripr check --diff ripr-local.diff --json` to inspect the saved-diff findings.
+`ripr.toml` is optional; the zero-config run is the intended first interface.
 
 An exit code of `0` means the command completed; findings and limitations can
 still be present. Read the reported scope and next action before treating an
 empty result as useful evidence. [Exit codes](docs/EXIT_CODES.md) explains the
 separate analysis and policy decisions.
 
-When the selected gap is repair-ready, use the dedicated two-phase transaction:
+For any release, use the finding to write one focused test, run that test,
+regenerate the patch, and re-check the same scope. Current source builds also
+offer a two-phase repair transaction. Use the commands below only when
+`ripr agent repair --help` lists the before/after phases and `--attempt`;
+the published `0.10.0` CLI does not have this subcommand.
 
 ```bash
 ripr agent repair --root . --seam-id <seam-id> --phase before
@@ -162,7 +172,8 @@ draft-time question between them.
 
 ## Example output
 
-Illustrative bounded `ripr check --format human` output (paths shortened):
+Illustrative bounded output from the current source's `ripr check --format human`
+(paths shortened; older releases use different presentation):
 
 ```text
 Start here:
@@ -207,8 +218,8 @@ and gaps; it does not claim runtime mutation outcomes.
 | --- | --- | --- |
 | VS Code user | Install `EffortlessMetrics.ripr`, open a Rust workspace, use the status bar, Problems, and hover evidence. | [Quickstart](docs/QUICKSTART.md#vs-code-first-hour) |
 | CI owner | `ripr init --ci github` for an advisory PR summary and artifact packet. | [Quickstart](docs/QUICKSTART.md#ci-first-hour) |
-| CLI user | `ripr check --base HEAD --worktree` for tracked local edits, then inspect the selected gap or limitation. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
-| Agent operator | `ripr agent repair --seam-id <id> --phase before`, then finish after the focused test edit. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
+| CLI user | Create the local diff above, run `ripr check --diff ripr-local.diff`, and inspect the finding or limitation. | [Quickstart](docs/QUICKSTART.md#cli-first-hour) |
+| Agent operator | Inspect a finding, add and run a focused test, then re-check; use the repair transaction when the installed CLI supports it. | [LLM operator guide](docs/LLM_OPERATOR_GUIDE.md) |
 
 ## Status
 
