@@ -22,6 +22,14 @@ selection (#1609) and complete-bundle acceptance (#2769) must bind that exact
 candidate, manifest, owner roster and retained packet bytes. No acceptance
 record is manufactured by the controller or inferred from CI.
 
+Before entering the 0.11 transaction, consume the
+[RC authority reconciliation](release/0.11.0/rc-authority-reconciliation.md).
+The historical #1818 carrier, fresh #1768–#1773 second sync, #1467 source freeze,
+#1578 package qualification and public RC are separate subjects. An ordinary
+source merge or accepted RC placement syntax establishes none of the later
+states. The dated observation is not an activation packet; re-read the live
+#2379/#1606 rulings and exact public ref/release inventory before proceeding.
+
 ## Authority and command labels
 
 `EffortlessMetrics/ripr-swarm` is development authority and preserves every
@@ -38,8 +46,10 @@ Every command is marked:
   branch, or receipt file.
 - **[EXTERNAL-PUBLISHING]** — changes a remote ref, policy, tag, release,
   registry, marketplace, or other external state. Public artifact, tag,
-  release, and store operations require explicit channel authorization in
-  source issue [#1470](https://github.com/EffortlessMetrics/ripr/issues/1470);
+  release, and store operations require exact channel authorization: GitHub-only
+  public RC through the source [#1606](https://github.com/EffortlessMetrics/ripr/issues/1606)
+  ruling and [#1634](https://github.com/EffortlessMetrics/ripr/issues/1634), stable
+  channels through [#1470](https://github.com/EffortlessMetrics/ripr/issues/1470);
   control-plane ref and policy operations require owner approval and a receipt.
 
 Examples use POSIX shell syntax. On Windows, translate syntax but preserve

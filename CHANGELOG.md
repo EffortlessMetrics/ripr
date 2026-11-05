@@ -7,24 +7,36 @@ user-visible behavior, compatibility notes, and migration guidance. Internal
 planning, ADR, and spec changes are called out when they affect how future PRs
 are scoped or reviewed.
 
+`Unreleased` and the 0.11.0 draft describe merged development and preparation
+for the next stable release. They do not establish availability on every
+package registry or editor marketplace; alpha distributions have separate
+qualification and publication histories.
+
+**Current development:** [Unreleased](#unreleased) ·
+[0.11.0 draft](#0110---swarm-promotion-and-fail-closed-output-hardening) ·
+[Superseded 0.10.1 draft](#0101---bounded-subprocess-adapter-analysis).
+
+**Published GitHub releases** (source release state checked 2026-11-04):
+
+| Version notes | GitHub release | Changes from the previous release |
+| --- | --- | --- |
+| [0.10.0](#0100---honest-by-construction-evidence-and-downstream-gate-adoption) | [v0.10.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0) | [0.9.0 → 0.10.0](https://github.com/EffortlessMetrics/ripr/compare/v0.9.0...v0.10.0) |
+| [0.9.0](#090---multi-language-evidence-to-repair-preview) | [v0.9.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.9.0) | [0.8.0 → 0.9.0](https://github.com/EffortlessMetrics/ripr/compare/v0.8.0...v0.9.0) |
+| [0.8.0](#080---evidence-to-repair-foundation) | [v0.8.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.8.0) | [0.7.0 → 0.8.0](https://github.com/EffortlessMetrics/ripr/compare/v0.7.0...v0.8.0) |
+| [0.7.0](#070---2026-05-20) | [v0.7.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.7.0) | [0.6.0 → 0.7.0](https://github.com/EffortlessMetrics/ripr/compare/v0.6.0...v0.7.0) |
+| [0.6.0](#060---2026-05-18) | [v0.6.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.6.0) | [0.5.0 → 0.6.0](https://github.com/EffortlessMetrics/ripr/compare/v0.5.0...v0.6.0) |
+| [0.5.0](#050---2026-05-10) | [v0.5.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.5.0) | [0.4.0 → 0.5.0](https://github.com/EffortlessMetrics/ripr/compare/v0.4.0...v0.5.0) |
+| [0.4.0](#040---2026-05-07) | [v0.4.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.4.0) | [0.3.1 → 0.4.0](https://github.com/EffortlessMetrics/ripr/compare/v0.3.1...v0.4.0) |
+| [0.3.1](#031---defaults-first-adoption) | [v0.3.1](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.3.1) | [0.3.0 → 0.3.1](https://github.com/EffortlessMetrics/ripr/compare/v0.3.0...v0.3.1) |
+| [0.3.0](#030---2026-05-02) | [v0.3.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.3.0) | [0.2.0 → 0.3.0](https://github.com/EffortlessMetrics/ripr/compare/v0.2.0...v0.3.0) |
+| [0.2.0](#020---2026-05-01) | [v0.2.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.2.0) | [0.1.0 → 0.2.0](https://github.com/EffortlessMetrics/ripr/compare/v0.1.0...v0.2.0) |
+| [0.1.0](#010---2026-05-01) | [v0.1.0](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.1.0) | Initial release |
+
 ## Unreleased
 
-- Clarify contribution review and finalization guidance: match proof to the
-  changed behavior, preserve valid author wording, and distinguish independent
-  discoveries from defects that defeat the candidate's claim. Add synthetic
-  maintenance evaluation cases without changing qualification or merge rules.
+[Full development diff since v0.10.0](https://github.com/EffortlessMetrics/ripr/compare/v0.10.0...main).
 
-- Document staged public-to-swarm integration, qualification and return promotion;
-  route agent guidance through the same runbook and identify the existing
-  direct-J contract reconciliation without changing runtime gates (#1768).
-
-- Tightened release distribution catalog admission so schema-2 RC/stable catalogs must carry the canonical producer identity, and the Rust producer now rejects uppercase SHA-256 input before emitting a catalog that the closed VS Code parser would reject.
-
-- Add `xtask release-final-server-subjects` to prepare the exact twelve existing
-  server upload subjects from canonical assembler output. The nonpublishing
-  inventory, provenance inputs and checksum list are bound by the terminal
-  preparation receipt; rejection retains diagnostics without successful files.
-  This does not attest, verify provenance, authorize uploads or close #1502.
+### Distribution and installation
 
 - Fix npm staging's tarball argument to use an explicit local `./dist/` path.
   The real CLI transport test now runs the workflow's shell command from the
@@ -58,17 +70,60 @@ are scoped or reviewed.
   Publication uses the registered PyPI trusted publisher without rebuilding;
   qualification alone does not publish a release.
 
+### Release integrity
+
+- Release workflow supply-chain hardening: `release-server-binaries.yml` now
+  assembles the final subjects read-only, attests them with GitHub build
+  provenance in a dedicated OIDC-only job, verifies every attestation, and only
+  then uploads in a job that holds `contents: write` and no OIDC token.
+  Third-party actions in CI workflows are pinned to full commit SHAs, and
+  `badge-endpoints.yml` scopes its write permissions to its one job. This is a
+  step toward #1502 and does not close it (no typed inventory/receipt yet).
+- Tightened release distribution catalog admission so schema-2 RC/stable
+  catalogs must carry the canonical producer identity. The Rust producer now
+  rejects uppercase SHA-256 input before emitting a catalog that the closed
+  VS Code parser would reject.
+- Add `xtask release-final-server-subjects` to prepare the exact twelve existing
+  server upload subjects from canonical assembler output. The nonpublishing
+  inventory, provenance inputs and checksum list are bound by the terminal
+  preparation receipt; rejection retains diagnostics without successful files.
+  This does not attest, verify provenance, authorize uploads or close #1502.
+
+### Release coordination
+
+- `cargo xtask source-promotion verify` now verifies the staged public-to-swarm
+  return preview (a `fast_forward` preflight: ordered parents `[P, S]`, tree equal
+  to S's tree) and records the preflight `mode` in its receipt;
+  `two_parent_join` verification is unchanged (#1627).
+- Reconcile 0.11 RC guidance with dated public tag/release state, historical
+  conditional RC1 authority and tentative next-cut intent. Require exact
+  candidate-bound authority and qualification; ordinary source integration
+  does not authorize a cut.
+- Document staged public-to-swarm integration, qualification and return promotion;
+  route agent guidance through the same runbook and identify the existing
+  direct-J contract reconciliation without changing runtime gates (#1768).
+
+### Documentation
+
+- Clarify contribution review and finalization guidance: match proof to the
+  changed behavior, preserve valid author wording, and distinguish independent
+  discoveries from defects that defeat the candidate's claim. Add synthetic
+  maintenance evaluation cases without changing qualification or merge rules.
+
 ## 0.11.0 - Swarm promotion and fail-closed output hardening
 
 Release date: staged (unreleased).
 
-RIPR 0.11.0 promotes the swarm development line through the reviewed
+These are draft notes for the planned stable 0.11.0 release. Separate alpha
+packaging work is recorded under [Unreleased](#unreleased); this section is
+not a publication receipt or an immutable release-scope manifest.
+
+The 0.11.0 development line incorporates swarm work through the reviewed
 source join: a repository-governed Rust test-harness registry
 (`[analysis.test_harnesses]`, exact registrations only), Python
 repo-mode evidence, complete direct propagation witnesses, and the
 currentness-gated actionability surfaces. It supersedes the staged-only
-0.10.1 (no 0.10.1 tag or crate was published) and includes its bounded
-subprocess-adapter analysis.
+0.10.1 draft and includes its bounded subprocess-adapter analysis.
 
 User-visible hardening on top of the join: generated shell renderers
 fail closed on unsupported tokens and withheld PowerShell forms
@@ -80,19 +135,20 @@ Python repair-trust binding hashes the live driver image through
 `/proc/self/exe` on Linux/Android.
 
 Version plumbing is a single source of truth again: `crates/ripr`
-inherits the workspace package version, so the released binary
+inherits the workspace package version, so the built binary
 identity matches the release metadata.
 
-## 0.10.1 - Bounded subprocess adapter analysis
+### 0.10.1 - Bounded subprocess adapter analysis
 
-Release date: staged (unreleased).
+Status: superseded unpublished draft, folded into the planned 0.11.0 release.
+There is no separate 0.10.1 source tag or GitHub release.
 
-RIPR 0.10.1 adds a narrow, deny-by-default boundary for recognizing bounded
-allowlisted subprocess adapters as observable side effects during static
-analysis. The boundary preserves strict exposure behavior for dynamic, shell,
-unbounded, or otherwise unsupported subprocess shapes.
+The former 0.10.1 draft adds a narrow, deny-by-default boundary for recognizing
+bounded allowlisted subprocess adapters as observable side effects during
+static analysis. The boundary preserves strict exposure behavior for dynamic,
+shell, unbounded, or otherwise unsupported subprocess shapes.
 
-### Fixed
+#### Fixed
 
 - **Bounded subprocess adapter classification** (RIPR-SPEC-0112, #1454):
   receipt-producing adapters with a literal allowlisted command, arguments,
@@ -101,15 +157,17 @@ unbounded, or otherwise unsupported subprocess shapes.
   dispatch remain unclassified and continue through the conservative exposure
   path.
 
-### Non-claims
+#### Non-claims
 
-- RIPR remains static mutation-exposure analysis; this release does not execute
+- RIPR remains static mutation-exposure analysis; this analysis does not execute
   subprocesses, prove runtime subprocess safety, run mutation testing, or add a
   network client.
 
 ## 0.10.0 - Honest-by-construction evidence and downstream gate adoption
 
-Release date: staged (unreleased).
+Release date: 2026-06-15.
+
+[Published GitHub release](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.10.0).
 
 RIPR 0.10.0 hardens the central promise that evidence is only credited to a seam
 it actually observes. The headline is honesty-by-construction: across Rust,
@@ -2502,6 +2560,22 @@ tell the same conservative static-exposure story.
 - Added a boundary-gap targeted-test case study showing one focused test, the
   before/after receipt, and the current static evidence gap when the class stays
   `weakly_gripped`.
+
+## 0.3.1 - Defaults-first adoption
+
+Published on GitHub: 2026-05-07 (UTC).
+
+[Release notes](https://github.com/EffortlessMetrics/ripr/releases/tag/v0.3.1)
+describe the first published defaults-first operator loop.
+
+- Added the installed `ripr pilot` → focused test → `ripr outcome` workflow
+  and advisory `ripr calibrate cargo-mutants` command.
+- Enabled bounded saved-workspace LSP seam diagnostics through the default
+  policy surface.
+- Shipped a VSIX, cross-platform server archives, a manifest, and checksums.
+- Useful conservative defaults work without a `ripr.toml`; `ripr init` records
+  explicit repository policy. CI/SARIF and calibration remain advisory by
+  default.
 
 ## 0.3.0 - 2026-05-02
 
