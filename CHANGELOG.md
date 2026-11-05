@@ -16,6 +16,12 @@ are scoped or reviewed.
 
 - Release workflow supply-chain hardening: `release-server-binaries.yml` now assembles the final subjects read-only, attests them with GitHub build provenance in a dedicated OIDC-only job, verifies every attestation, and only then uploads in a job that holds `contents: write` and no OIDC token; third-party actions in CI workflows are pinned to full commit SHAs and `badge-endpoints.yml` scopes its write permissions to its one job. This is a step toward #1502 and does not close it (no typed inventory/receipt yet).
 
+- Update pinned Actions for package artifact retrieval and coverage reporting,
+  including artifact download retries and Codecov verification-key import
+  handling. Keep generic tool installers explicit (`cargo-deny`, `cargo-llvm-cov`
+  and `nextest`) and align exact artifact-pin contract checks with the selected
+  download action (#1891).
+
 - Document staged public-to-swarm integration, qualification and return promotion;
   route agent guidance through the same runbook and identify the existing
   direct-J contract reconciliation without changing runtime gates (#1768).
