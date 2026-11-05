@@ -20,14 +20,22 @@ fixed `EffortlessMetrics/ripr` source repository, and consumes only these fixed
 paths from that immutable commit:
 
 - `docs/release/source-promotion/contract-inputs.json`;
-- `docs/release/source-promotion/preflight.json`; and
-- `docs/release/source-promotion/resolution-manifest.json`.
+- `docs/release/source-promotion/preflight.json`;
+- `docs/release/source-promotion/resolution-manifest.json`; and
+- for `fast_forward` only, `docs/release/source-promotion/preview-commit.git-object`,
+  the retained raw bytes of GitHub's exact preview K.
 
 The control manifest uses schema `ripr.source_promotion_ci_inputs.v2` and binds
 exact `source_main`, `join_head`, fixed paths, and the SHA-256 digest of each
-receipt. `join_head` must equal the live PR head and `source_main` must equal
-the live PR base. The control commit must not be an ancestor or descendant of
-J. On manual dispatch, `source_parent` must equal the sidecar's `source_main`
+JSON receipt. The preflight selects `mode: two_parent_join` or
+`mode: fast_forward`. In `two_parent_join`, `join_head` must equal the live
+PR head J with parents [source P, swarm S]. In `fast_forward`, the live PR
+head is S descending from P, while `join_head` is K, the live two-parent
+GitHub preview [P, S]; K and S must have the reviewed tree. The retained K
+object must hash to the declared K and bind those parents and that tree.
+`source_main` must equal the live PR base in either mode. The control commit
+must not be an ancestor or descendant of the PR head. On manual dispatch,
+`source_parent` must equal the sidecar's `source_main`
 before the verifier is built. The control files are external to J's tree: the workflow
 rejects candidate-provided paths and does not require a tracked input file in
 the promotion PR. This avoids a circular fixed-point contract in which a file
@@ -35,8 +43,9 @@ containing J also changes `J^{tree}`.
 
 The workflow's `validate_tracked_regular_file` helper performs the mode-100644
 and canonical-path checks in the fixed source repository before any sidecar
-bytes are copied into runner-temporary files. It is called for all three fixed
-sidecars and must never be pointed at a candidate-checkout `INPUTS_PATH`.
+bytes are copied into runner-temporary files. It is called for all three
+common sidecars and, for staged fast-forward, the retained preview object.
+It must never be pointed at a candidate-checkout `INPUTS_PATH`.
 
 The resolution schema is keyed by `kind:key`, so one workflow path may
 legitimately have rows in several reviewed categories. For every workflow path
@@ -64,6 +73,14 @@ Rejected evidence is therefore retained before the hosted job fails; a missing,
 malformed, rejected, candidate-supplied, or non-zero-verifier receipt cannot
 produce a green `Source Promotion Contract` check.
 
+The separate `Source Promotion Composition` workflow executes a validator
+from the trusted public base against the GitHub PR merge subject and the
+immutable sidecar's preflight digest. It runs on body `edited` events as well
+as opened, synchronized and reopened PRs: a changed marker must never reuse
+an earlier ordinary-PR pass. In staged mode, post-merge verification treats
+preview K and actual main merge A as different commit identities and writes
+`ripr.source_promotion_staged_post_merge_contract.v1`.
+
 Before invoking the verifier, the workflow resolves the declared `swarm_ref`
 with `git ls-remote --refs` against the fixed public
 `EffortlessMetrics/ripr-swarm` remote and requires exactly one result whose SHA
@@ -80,13 +97,18 @@ and the only supported copy-safe command:
 ```bash
 gh pr merge <PR> --repo EffortlessMetrics/ripr \
   --merge \
-  --match-head-commit <JOIN_SHA>
+  --match-head-commit <PR_HEAD_SHA>
 ```
 
-The summary explicitly requires Create a merge commit and forbids squash and
-rebase. The command is printed only; the workflow never executes it. A manual
+`PR_HEAD_SHA` is J for `two_parent_join` and S for `fast_forward`; preview K
+remains a verification/control input and must never replace the live PR head
+in this command. The summary explicitly requires Create a merge commit and forbids
+squash and rebase. The command is printed only; the workflow never executes it. A manual
 workflow-dispatch lane reruns the verifier with `--main-head` and requires the
-exact J object to remain reachable from merged source `main`.
+exact J object to remain reachable from merged source `main` in
+`two_parent_join`. In `fast_forward`, it verifies retained preview K and actual
+merge A separately, requires A to be the live source tip with ordered parents
+[P, S], and compares both trees to the qualified tree T.
 
 ### Resolved-tree preconstruction gate
 
@@ -383,6 +405,20 @@ control.
   verifier;
 - a valid two-parent join passes the verifier;
 - a single-parent or equivalent-tree flattened history fails post-merge;
+- the staged `fast_forward` route distinguishes GitHub's exact PR preview K
+  from the actual merged main commit A; the preview must have ordered parents
+  `[P,S]` and the qualified tree T, and the control sidecar must retain K's
+  exact regular Git commit object (not just its SHA);
+- the post-merge gate imports retained K without substituting A, verifies both
+  against the trusted source-parent verifier and T, and requires A to be the
+  live origin `main` tip with exact `[P,S]` parents; wrong-parent A, tampered K,
+  missing K, and forged verifier-tree controls reject;
+- the staged post-merge receipt has schema
+  `ripr.source_promotion_staged_post_merge_contract.v1`, binds the exact
+  `control_commit`, K, P, S, T, and A, and cannot report `verified` when
+  the post-merge gate fails;
+- GitHub PR-body `edited` events retrigger composition validation, including a
+  body-only control-marker mutation that does not change the PR head;
 - uploaded receipts retain exact heads, ordered parents, input digests, checks,
   failure reasons, and claim boundaries;
 - the retained verified `ripr.source_promotion_verification.v2` shape passes the
@@ -447,6 +483,13 @@ control.
 
 ## Non-Goals
 
+The candidate-supplied `pull_request` composition workflow is not, by itself,
+an independently trusted or required promotion gate. Checking out a trusted
+base script does not make the workflow definition immutable: the PR can alter
+or omit its own job. Activation requires a separately enforced, trusted-source
+check and a live no-op-workflow substitution canary before promotion relies on
+that result. The candidate's passing check is contract evidence only.
+
 ## Acceptance Examples
 
 - A marked promotion PR with one exact source-control marker, canonical
@@ -482,6 +525,14 @@ completeness, duplicate
 `kind:key`, and flattened-history controls remain covered by the verifier tests
 mapped in `.ripr/traceability.toml`.
 
+The staged K/A route is exercised by
+`xtask/tests/staged_promotion_workflow.rs`: live Git-graph preview and
+post-merge tests, retained commit-object validation, wrong-parent and moved
+origin-main negatives, receipt identity, and the `edited` trigger contract.
+`xtask/tests/source_promotion_composition.py` covers the
+trusted-base composition script against real Git objects, including body-only
+marker editing, K's ordered parents and T, and stale control packets.
+
 The permanent admission transport is covered by the same workflow-contract
 integration target and by production-harness tests in
 `xtask/src/reports/source_promotion_admission_workflow.rs`. Those tests pin the
@@ -493,6 +544,10 @@ publication authority.
 ## Implementation Mapping
 
 - Workflow: `.github/workflows/source-promotion-contract.yml`
+- Staged pre-merge workflow: `.github/workflows/source-promotion-composition.yml`
+- Staged pre-merge trusted-base script:
+  `.github/scripts/source-promotion-composition.sh`
+- Staged Git-object workflow tests: `xtask/tests/staged_promotion_workflow.rs`
 - Trusted admission workflow:
   `.github/workflows/source-promotion-admission.yml`
 - Admission workflow harness:

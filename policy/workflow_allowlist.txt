@@ -26,6 +26,7 @@
 .github/workflows/server-archive-qualification.yml|82|Exact measured largest run block after preserving curl transport status, bounded rate-limit tokens, response digests, and strict public ruleset shape diagnostics; credential-free, artifact-only qualification delegates packaging and manifest generation to Rust xtask commands.
 .github/workflows/source-of-truth.yml|15|Advisory source-of-truth workflow runs two xtask doc checks, publishes the bounded spec maintenance digest, and annotates an instrument failure as a failed advisory observation (#3467).
 .github/workflows/source-promotion-admission.yml|44|Trusted read-only admission workflow binds the pre-producer request and exact identities, retains runner-owned evidence before enforcement, and delegates deterministic admission and dry-run semantics to the source-owned Rust harness.
+.github/workflows/source-promotion-composition.yml|1|Read-only promotion composition validation delegates to a trusted base script.
 .github/workflows/source-promotion-contract.yml|170|Source-promotion contract keeps exact-head receipt binding, fail-closed validation diagnostics, complete receipt-shape validation, and manual post-merge verification in one bounded, read-only workflow.
 .github/workflows/test-analytics.yml|1|Test analytics workflow keeps each run block to one cargo or echo command.
 .github/workflows/windows-advisory.yml|15|Advisory Windows lane runs a multi-step log-to-verdict pipeline in YAML; the cargo xtask windows-advisory-summary command is the verdict authority.

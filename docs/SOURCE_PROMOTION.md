@@ -737,14 +737,16 @@ marker; it is one HTML comment with a full lowercase SHA:
 <!-- source-promotion-control: <exact-control-commit-SHA> -->
 ```
 
-That control commit is a durable sidecar, not an ancestor or child of J and
-not a commit in J's tree. It is fetched only from the fixed source repository
+That control commit is a durable sidecar, not an ancestor or descendant of the
+PR head and not a commit in the candidate tree. It is fetched only from the fixed source repository
 `https://github.com/EffortlessMetrics/ripr.git`. It must contain these tracked
 regular files at these fixed paths:
 
 - `docs/release/source-promotion/contract-inputs.json`
 - `docs/release/source-promotion/preflight.json`
 - `docs/release/source-promotion/resolution-manifest.json`
+- `docs/release/source-promotion/preview-commit.git-object` when the
+  preflight selects `fast_forward` (retained raw preview commit bytes)
 
 The sidecar's `contract-inputs.json` has this shape:
 
@@ -752,7 +754,7 @@ The sidecar's `contract-inputs.json` has this shape:
 {
   "schema": "ripr.source_promotion_ci_inputs.v2",
   "source_main": "<exact-40-character-source-parent-SHA>",
-  "join_head": "<exact-40-character-J-SHA>",
+  "join_head": "<exact-40-character-J-or-K-SHA>",
   "preflight": "docs/release/source-promotion/preflight.json",
   "resolution_manifest": "docs/release/source-promotion/resolution-manifest.json",
   "preflight_sha256": "<64-character-lowercase-SHA-256>",
@@ -760,16 +762,32 @@ The sidecar's `contract-inputs.json` has this shape:
 }
 ```
 
+The preflight's `mode` is `two_parent_join` or `fast_forward`. In
+`two_parent_join`, `join_head` is J, the exact PR head with ordered parents
+[source P, swarm S]. In `fast_forward`, the PR head is S, already descending
+from P, and `join_head` is K, GitHub's distinct two-parent preview [P, S].
+Both K and S must have the qualified preflight tree; the retained K object
+must hash to the declared K and have the declared parents and tree.
+
 The `Source Promotion Contract` workflow checks out the exact PR head with
 full history, fetches the sidecar control commit from source origin, verifies
-that each fixed path is a mode-100644 regular file, rejects a control commit
-that is an ancestor or descendant of J, extracts the files by object id,
-verifies their digests, and requires both `source_main` and
-`join_head` to match the live base/head. It then runs the read-only verifier
+that the three common paths (and the mode-specific fourth path) are mode-100644
+regular files, rejects a control commit that is an ancestor or descendant of
+the PR head, extracts the files by object id, verifies their digests, and
+requires `source_main` to match the live base and `join_head` to match J
+or the live K according to the declared mode. It then runs the read-only verifier
 and uploads JSON/Markdown receipts under an artifact name containing the
 PR-head SHA. No candidate-provided path is read, and no input file is required
-in J's tree; this avoids the impossible fixed-point construction where an
-input file contains `J` while also contributing bytes to `J^{tree}`.
+in the candidate tree; this avoids the impossible fixed-point construction
+where an input file contains the candidate SHA while contributing bytes to
+that candidate's own tree.
+
+The separate `Source Promotion Composition` workflow runs the trusted-base
+shell validator against the live synthetic PR merge before the candidate can
+qualify. It re-runs on PR-body edits so changed control markers cannot reuse a
+prior green result. After a staged merge, post-merge verification binds the
+actual merged main commit A separately from preview K and writes the
+`ripr.source_promotion_staged_post_merge_contract.v1` receipt.
 
 The PR body must also contain the live-head guarded merge command and these
 warnings:
