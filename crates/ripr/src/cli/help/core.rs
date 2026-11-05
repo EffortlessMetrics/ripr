@@ -217,7 +217,7 @@ Examples:
   ripr check
   ripr check --base HEAD~1
   ripr check --base HEAD --worktree
-  ripr check --diff crates/ripr/examples/sample/example.diff --format github
+  ripr check --base HEAD --worktree --format github
   ripr check --mode ready --json
   ripr check --base origin/main --json --suppression-policy policy/ripr-suppressions.toml
   ripr check --diff d.patch --write-artifact target/ripr/last-check.json
