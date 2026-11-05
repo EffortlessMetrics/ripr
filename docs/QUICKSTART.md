@@ -356,7 +356,8 @@ those phases and `--attempt`. On `0.10.0`, start with the
 [manual test-and-recheck loop](#complete-one-bounded-repair); its existing
 lower-level `agent start` workflow is also available below.
 
-When the repair command is supported and a current finding supplies a seam ID:
+When the repair command is supported and a current finding supplies a seam ID,
+use the primary repair command:
 
 ```bash
 ripr agent repair --root . --seam-id <seam_id> --phase before

@@ -108,8 +108,8 @@ empty result as useful evidence. [Exit codes](docs/EXIT_CODES.md) explains the
 separate analysis and policy decisions.
 
 For any release, use the finding to write one focused test, run that test,
-regenerate the patch, and re-check the same scope. Current source builds also
-offer a two-phase repair transaction. Use the commands below only when
+regenerate the patch, and re-check the same scope. On current source builds,
+use the dedicated two-phase transaction below. Use these commands only when
 `ripr agent repair --help` lists the before/after phases and `--attempt`;
 the published `0.10.0` CLI does not have this subcommand.
 
