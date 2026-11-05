@@ -70,6 +70,13 @@ qualification and publication histories.
   Publication uses the registered PyPI trusted publisher without rebuilding;
   qualification alone does not publish a release.
 
+### Continuous integration
+
+- Publish the docs-only routed CI child's plan, execution receipt and command
+  logs under the artifact identity required by the aggregate. Contract tests
+  reject missing, misnamed or failure-masked uploads; the aggregate continues
+  to reject incomplete evidence.
+
 ### Release integrity
 
 - Release workflow supply-chain hardening: `release-server-binaries.yml` now
