@@ -36,7 +36,7 @@
 
 ## Prerequisites
 
-- **For installation with Cargo:** Rust ≥ 1.95 and Cargo (2024 edition).
+- **For installation with Cargo:** Rust ≥ 1.95 (Rust 2024 edition) and Cargo.
   Check with `rustc --version`; update with `rustup update stable`. Prebuilt
   binaries do not require a Rust compiler to install; running Rust tests still
   requires the project toolchain.

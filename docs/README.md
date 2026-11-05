@@ -36,7 +36,7 @@ agent path that matches how you work.
 | Interpret command success and failure | [Exit codes](EXIT_CODES.md) |
 | Consume machine-readable output | [Output schema](OUTPUT_SCHEMA.md) |
 | Use the broader agent workflows | [Agent workflows](AGENT_WORKFLOWS.md) |
-| Connect a standard LSP client | [Neovim standard-LSP recipe](interop/neovim-lsp.md) |
+| Evaluate the Neovim standard-LSP proof recipe | [Neovim standard-LSP recipe](interop/neovim-lsp.md) |
 | Integrate sibling tools | [Interop and learning ledger](interop/sibling-tools.md) |
 
 ## Contribute and maintain
