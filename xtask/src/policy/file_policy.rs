@@ -152,6 +152,59 @@ mod tests {
     }
 
     #[test]
+    fn source_promotion_composition_retention_is_exactly_scoped() {
+        for path in [
+            ".github/scripts/source-promotion-composition.sh",
+            "xtask/tests/source_promotion_composition.py",
+        ] {
+            assert!(
+                crate::non_rust_programming_retention_reason(path).is_some(),
+                "approved source-promotion helper lacks retention: {path}"
+            );
+        }
+        for path in [
+            ".github/scripts/source-promotion-composition.py",
+            ".github/scripts/source-promotion-composition.sh.bak",
+            ".github/scripts/other-source-promotion-composition.sh",
+            ".github/workflows/source-promotion-composition.sh",
+            "xtask/tests/source_promotion_composition.sh",
+            "xtask/tests/other_source_promotion_composition.py",
+            "scripts/source-promotion-composition.sh",
+        ] {
+            assert!(
+                crate::non_rust_programming_retention_reason(path).is_none(),
+                "unapproved source-promotion lookalike retained: {path}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn source_promotion_composition_python_controls_execute() -> Result<(), String> {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/source_promotion_composition.py");
+        let arguments = [path.to_string_lossy().into_owned(), "-q".to_string()];
+        let output = super::capture_output_with_timeout(
+            "python3",
+            &arguments,
+            &[],
+            Duration::from_mins(3),
+            "source-promotion real-Git composition controls",
+        )?;
+        if output.timed_out
+            || !output.status.is_some_and(|status| status.success())
+            || !output.stderr.contains("Ran 27 tests in")
+            || !output.stderr.lines().any(|line| line.trim() == "OK")
+        {
+            return Err(format!(
+                "source-promotion Python controls failed or lacked the expected test denominator: timeout={}, status={:?}, stdout={}, stderr={}",
+                output.timed_out, output.status, output.stdout, output.stderr
+            ));
+        }
+        Ok(())
+    }
+
+    #[test]
     fn npm_qualification_retention_is_exactly_scoped() {
         for path in [
             ".github/scripts/npm_package.py",

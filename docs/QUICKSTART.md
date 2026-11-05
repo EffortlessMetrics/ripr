@@ -136,8 +136,11 @@ Use this path when you want the reproducible local proof loop.
 Install:
 
 ```bash
-cargo install ripr
+cargo install ripr --locked
 ```
+
+Keep `--locked` to use the published dependency lockfile. Without it, Cargo
+can select incompatible transitive dependency updates before RIPR first runs.
 
 From this repository, use:
 

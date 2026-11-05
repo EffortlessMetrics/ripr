@@ -63,9 +63,12 @@ docs expands on them:
 | **receipt** | the durable before/after proof of what was checked |
 
 ```bash
-cargo install ripr
+cargo install ripr --locked
 ripr check --base origin/main
 ```
+
+`--locked` uses the published dependency lockfile, avoiding incompatible
+transitive dependency updates during installation.
 
 `ripr check` is the ordinary first-value command: it analyzes the current
 change and returns one bounded `Start here:` route — a named state, one selected

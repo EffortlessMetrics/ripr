@@ -22603,6 +22603,16 @@ pub(crate) fn is_non_rust_programming_candidate(path: &str) -> bool {
 pub(crate) fn non_rust_programming_retention_reason(path: &str) -> Option<&'static str> {
     if matches!(
         path,
+        ".github/scripts/source-promotion-composition.sh"
+            | "xtask/tests/source_promotion_composition.py"
+    ) {
+        return Some(
+            "The trusted public-base promotion validator needs the runner Git/jq shell before product code executes; standard-library Python fixtures exercise real Git graph and digest refusals without publication authority.",
+        );
+    }
+
+    if matches!(
+        path,
         ".github/scripts/python_consumer_evidence.py"
             | ".github/scripts/test_python_consumer_evidence.py"
     ) {
