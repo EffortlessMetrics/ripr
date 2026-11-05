@@ -60,7 +60,7 @@ can answer these questions from the repository instead of from chat history:
 - [Implementation plan template](../templates/implementation-plan.md)
 - [Plan item template](../templates/plan-item.md)
 - [Closeout template](../templates/closeout.md)
-- [PR body template](../templates/pr-body.md)
+- [PR body guidance](../templates/pr-body.md)
 
 ## Current repo path
 
