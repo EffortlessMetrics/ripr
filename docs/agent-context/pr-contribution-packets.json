@@ -105,7 +105,7 @@
       "request": "Review this internal candidate and an external submission with the same small fix.",
       "observations": [
         "The internal repository consumes the required inspection fields by name and requires exact-head evidence. The external destination has no such comment schema.",
-        "Both have adequate inspectable evidence and no actionable finding. The user requests review records on both, not body rewrites."
+        "Both have sufficient inspectable evidence and no actionable finding. The user requests review records on both, not body rewrites."
       ]
     },
     {
