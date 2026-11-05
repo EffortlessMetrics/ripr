@@ -771,6 +771,11 @@ PR-head SHA. No candidate-provided path is read, and no input file is required
 in J's tree; this avoids the impossible fixed-point construction where an
 input file contains `J` while also contributing bytes to `J^{tree}`.
 
+The composition validator requires `python3` with its standard-library `json`
+module on the promotion route to reject duplicate keys in both JSON sidecars.
+If `python3` is unavailable, promotion validation fails closed with an
+explicit diagnostic. Ordinary PR routing does not require Python.
+
 The PR body must also contain the live-head guarded merge command and these
 warnings:
 
