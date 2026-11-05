@@ -9,6 +9,12 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Reject malformed event head refs and duplicate JSON keys in both source-promotion
+  sidecars before binding composition identities. Python 3 is required only for
+  promotion validation; valid ordinary routing remains independent of Python.
+  This hardening does not activate a workflow, establish trusted required-check
+  enforcement, or authorize promotion or release (#1893).
+
 - `cargo xtask source-promotion verify` now verifies the staged public-to-swarm return preview (a `fast_forward` preflight: ordered parents `[P, S]`, tree equal to S's tree) and records the preflight `mode` in its receipt; `two_parent_join` verification is unchanged (#1627).
 
 - Reconcile 0.11 RC guidance with dated public tag/release state, historical
