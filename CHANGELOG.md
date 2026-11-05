@@ -9,6 +9,11 @@ are scoped or reviewed.
 
 ## Unreleased
 
+- Clarify contribution review and finalization guidance: match proof to the
+  changed behavior, preserve valid author wording, and distinguish independent
+  discoveries from defects that defeat the candidate's claim. Add synthetic
+  maintenance evaluation cases without changing qualification or merge rules.
+
 - Document staged public-to-swarm integration, qualification and return promotion;
   route agent guidance through the same runbook and identify the existing
   direct-J contract reconciliation without changing runtime gates (#1768).
