@@ -120,8 +120,11 @@ The goal is fast, honest oracle-gap feedback while code is still changing.
 Install from crates.io:
 
 ```bash
-cargo install ripr
+cargo install ripr --locked
 ```
+
+`--locked` uses the published dependency lockfile, avoiding incompatible
+transitive dependency updates during installation.
 
 Links:
 
