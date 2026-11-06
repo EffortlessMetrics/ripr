@@ -1,0 +1,80 @@
+diff --git a/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml b/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+index 6de99411c..9d1706951 100644
+--- a/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
++++ b/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0374"
+-scope = "out"
+-reason = "npm native bootstrap packaging; not a verdict example"
++unmeasured = true
++reason = "npm native bootstrap packaging; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml b/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+index d8c6f12fb..5658f91d7 100644
+--- a/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
++++ b/fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0375"
+-scope = "out"
+-reason = "source-promotion verifier for release automation; not a verdict example"
++unmeasured = true
++reason = "source-promotion verifier for release automation; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml b/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+index 6de99411c..9d1706951 100644
+--- a/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
++++ b/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0374"
+-scope = "out"
+-reason = "npm native bootstrap packaging; not a verdict example"
++unmeasured = true
++reason = "npm native bootstrap packaging; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml b/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+index d8c6f12fb..5658f91d7 100644
+--- a/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
++++ b/fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0375"
+-scope = "out"
+-reason = "source-promotion verifier for release automation; not a verdict example"
++unmeasured = true
++reason = "source-promotion verifier for release automation; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml b/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+index 6de99411c..9d1706951 100644
+--- a/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
++++ b/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0374"
+-scope = "out"
+-reason = "npm native bootstrap packaging; not a verdict example"
++unmeasured = true
++reason = "npm native bootstrap packaging; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml b/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+index d8c6f12fb..5658f91d7 100644
+--- a/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
++++ b/fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0375"
+-scope = "out"
+-reason = "source-promotion verifier for release automation; not a verdict example"
++unmeasured = true
++reason = "source-promotion verifier for release automation; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml b/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+index 6de99411c..9d1706951 100644
+--- a/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
++++ b/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0374"
+-scope = "out"
+-reason = "npm native bootstrap packaging; not a verdict example"
++unmeasured = true
++reason = "npm native bootstrap packaging; acceptance examples are unnumbered prose; verdict coverage is unmeasured"
+diff --git a/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml b/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+index d8c6f12fb..5658f91d7 100644
+--- a/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
++++ b/fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml
+@@ -1,3 +1,3 @@
+ id = "RIPR-SPEC-0375"
+-scope = "out"
+-reason = "source-promotion verifier for release automation; not a verdict example"
++unmeasured = true
++reason = "source-promotion verifier for release automation; acceptance examples are unnumbered prose; verdict coverage is unmeasured"

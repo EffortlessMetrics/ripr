@@ -1,0 +1,427 @@
+.github/workflows/badge-endpoints.yml
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+
+.github/workflows/ci.yml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+
+.github/workflows/coverage.yml
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+
+
+.github/workflows/droid-review.yml
+on:
+  pull_request_target:
+    types: [opened, synchronize, ready_for_review, reopened, labeled, unlabeled]
+
+
+.github/workflows/droid-security-scan.yml
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * 1"
+
+
+.github/workflows/droid.yml
+on:
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened]
+
+
+.github/workflows/future-clippy.yml
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+  workflow_dispatch:
+
+
+.github/workflows/npm-package-qualification.yml
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/scripts/npm_*.py'
+      - '.github/scripts/test_npm_package.py'
+      - '.github/workflows/npm-package-qualification.yml'
+      - '.github/workflows/publish-npm.yml'
+      - '.github/workflows/python-wheel-qualification.yml'
+      - '.github/scripts/pypi_admission.py'
+      - '.github/scripts/test_pypi_admission.py'
+      - 'packaging/npm/**'
+      - 'packaging/python/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'crates/ripr/**'
+      - 'rust-toolchain.toml'
+      - 'LICENSE-*'
+      - 'fixtures/python/basic/**'
+
+
+.github/workflows/pr-plan.yml
+on:
+  pull_request:
+    branches: [main, master]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+
+.github/workflows/publish-extension.yml
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version label for the VSIX artifact, for example 0.2.0"
+        required: true
+      publish_vs_marketplace:
+        description: "Publish to VS Marketplace"
+        required: false
+        default: "true"
+      publish_open_vsx:
+        description: "Publish to Open VSX"
+        required: false
+        default: "true"
+  push:
+    tags:
+      - "v*"
+
+
+.github/workflows/publish-npm.yml
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Inspect qualification, or explicitly stage the exact tarball for later maintainer approval
+        type: choice
+        options: [admit_only, stage]
+        default: admit_only
+        required: true
+      qualification_run_id:
+        description: Successful source-main npm qualification run ID
+        type: string
+        required: true
+      qualification_run_attempt:
+        description: Exact successful whole-run attempt number
+        type: string
+        required: true
+      source_sha:
+        description: Exact current-main source SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      source_tree:
+        description: Exact qualified source tree SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      version:
+        description: Exact native/npm prerelease, for example 0.11.0-alpha.2
+        type: string
+        required: true
+      tarball_sha256:
+        description: Qualified tarball SHA-256 (64 lowercase hex characters)
+        type: string
+        required: true
+      confirmation:
+        description: For stage only, type stage @effortlessmetrics/ripr VERSION next SHA256 with the exact values
+        type: string
+        required: false
+
+
+.github/workflows/publish-pypi.yml
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Admit evidence only, or explicitly publish the exact qualified wheel
+        type: choice
+        options: [admit_only, publish]
+        default: admit_only
+        required: true
+      qualification_run_id:
+        description: Successful source-main Python wheel qualification run ID
+        type: string
+        required: true
+      source_sha:
+        description: Exact qualified source commit SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      source_tree:
+        description: Exact qualified source tree SHA (40 lowercase hex characters)
+        type: string
+        required: true
+      version:
+        description: Canonical Python prerelease version, for example 0.11.0rc1
+        type: string
+        required: true
+      wheel_sha256:
+        description: Exact qualified wheel SHA-256 (64 lowercase hex characters)
+        type: string
+        required: true
+      confirmation:
+        description: For publication only, type publish ripr-rs followed by a space and the exact version
+        type: string
+        required: false
+
+
+.github/workflows/python-wheel-qualification.yml
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/python-wheel-qualification.yml"
+      - ".github/workflows/publish-pypi.yml"
+      - ".github/scripts/pypi_admission.py"
+      - ".github/scripts/test_pypi_admission.py"
+      - ".github/scripts/python_consumer_evidence.py"
+      - ".github/scripts/test_python_consumer_evidence.py"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - "crates/ripr/**"
+      - "fixtures/python/**"
+      - "packaging/python/**"
+      - "policy/dependency_allowlist.txt"
+      - "policy/distribution.toml"
+      - "policy/non-rust-allowlist.toml"
+      - "policy/workflow_allowlist.txt"
+      - "rust-toolchain.toml"
+      - "xtask/**"
+
+# This workflow builds and consumes local artifacts only. It cannot publish,
+# mint an OIDC token, create a release, mutate a tag, or write repository data.
+
+.github/workflows/release-server-binaries.yml
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release placement, for example v0.11.0 or v0.11.0-rc.2; product identity comes from checked-out source"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+# Default-deny: each job below declares the narrow scopes it needs.
+
+.github/workflows/routed-rust.yml
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+
+.github/workflows/rust-gates.yml
+on:
+  workflow_call:
+    inputs:
+      runner-config:
+        description: JSON string or object accepted by jobs.<job_id>.runs-on.
+        required: true
+        type: string
+      cargo-build-jobs:
+        description: Parallel Cargo build jobs for the selected runner.
+        required: false
+        default: "8"
+        type: string
+      disk-guard-threshold:
+        description: Minimum free GiB required on self-hosted scratch.
+        required: false
+        default: 35
+        type: number
+      use-scratch:
+        description: Configure self-hosted scratch and sccache.
+        required: false
+        default: true
+        type: boolean
+      artifact-name:
+        description: Name for the optional RIPR evidence artifact.
+        required: true
+        type: string
+      job-timeout-minutes:
+        description: Hard deadline for the implementation job.
+        required: false
+        default: 60
+        type: number
+      run-advisory-reports:
+        description: Generate broad advisory report families after required proof passes.
+        required: false
+        default: false
+        type: boolean
+      upload-success-artifacts:
+        description: Upload report artifacts after a successful run.
+        required: false
+        default: false
+        type: boolean
+    outputs:
+      scratch_status:
+        value: ${{ jobs.rust-gates.outputs.scratch_status }}
+      scratch_message:
+        value: ${{ jobs.rust-gates.outputs.scratch_message }}
+
+
+.github/workflows/scratch-gc.yml
+on:
+  schedule:
+    - cron: "17,47 * * * *"
+  workflow_dispatch:
+
+
+.github/workflows/security.yml
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+
+.github/workflows/server-archive-qualification.yml
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Exact 40-character candidate commit to qualify"
+        required: true
+        type: string
+      candidate_tag:
+        description: "Optional immutable tag that must resolve to candidate_sha"
+        required: false
+        default: ""
+        type: string
+      version:
+        description: "Archive version label, for example 0.11.0"
+        required: true
+        type: string
+
+# Qualification is intentionally unable to write releases, tags, or repository
+# contents. The only external writes are scoped Actions artifacts below.
+
+.github/workflows/source-of-truth.yml
+on:
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/source-of-truth.yml'
+      - '.ripr/traceability.toml'
+      - '.allow/spec-system/**'
+      - 'docs/specs/**'
+      - 'docs/status/SUPPORT_TIERS.md'
+      - 'docs/templates/**'
+  push:
+    branches: [main, master]
+    paths:
+      - '.github/workflows/source-of-truth.yml'
+      - '.ripr/traceability.toml'
+      - '.allow/spec-system/**'
+      - 'docs/specs/**'
+      - 'docs/status/SUPPORT_TIERS.md'
+      - 'docs/templates/**'
+  schedule:
+    # Bounded weekly review cadence (#3467): no more frequent than weekly.
+    - cron: '37 6 * * 1'
+  workflow_dispatch:
+
+
+.github/workflows/source-promotion-admission.yml
+on:
+  workflow_call:
+    inputs: &admission_inputs
+      source_repository: {description: Exact owner/repository containing the trusted controller, required: true, type: string}
+      source_parent_sha: {description: Exact source parent commit, required: true, type: string}
+      workflow_source_sha: {description: Exact source commit containing this workflow and controller, required: true, type: string}
+      swarm_repository: {description: Exact owner/repository containing frozen W7, required: true, type: string}
+      protected_w7_ref: {description: Exact protected W7 ref, required: true, type: string}
+      w7_peeled_sha: {description: Exact peeled W7 commit, required: true, type: string}
+      reviewed_tree_sha: {description: Exact reviewed tree object, required: true, type: string}
+      reviewed_tree_carrier_sha: {description: Exact source commit carrying the live reviewed tree with ordered source and W7 parents; not_required for synthetic profiles, required: true, type: string}
+      preflight_locator: {description: Immutable preflight locator, required: false, default: '', type: string}
+      resolution_manifest_locator: {description: Immutable resolution-manifest locator, required: false, default: '', type: string}
+      validation_packet_locator: {description: Immutable validation-packet locator, required: false, default: '', type: string}
+      integration_packet_locator: {description: Immutable integration-packet locator, required: false, default: '', type: string}
+      qualification_receipt_locator: {description: Immutable qualification-receipt locator, required: false, default: '', type: string}
+      receipt_schema: {description: Supported normalized receipt schema, required: true, type: string}
+      operation_mode: {description: Closed operation mode admit_only or constructor_dry_run, required: true, type: string}
+      execution_profile: {description: Closed execution profile live positive_synthetic or j5_negative, required: true, type: string}
+      trusted_checker_identity: {description: Exact source-owned checker identity, required: true, type: string}
+  workflow_dispatch:
+    inputs: *admission_inputs
+
+
+.github/workflows/source-promotion-contract.yml
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      control_commit:
+        description: Exact source-repository control commit containing immutable promotion inputs
+        required: true
+        type: string
+      join_head:
+        description: Exact 40-character join commit J
+        required: true
+        type: string
+      source_main:
+        description: Exact 40-character source parent SHA
+        required: true
+        type: string
+      source_parent:
+        description: Exact trusted verifier source SHA
+        required: true
+        type: string
+      main_head:
+        description: Exact merged source-main SHA for post-merge reachability
+        required: true
+        type: string
+
+
+.github/workflows/test-analytics.yml
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  push:
+    branches: [main, master]
+
+
+.github/workflows/windows-advisory.yml
+on:
+  schedule:
+    - cron: "17 5 * * *"
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+  workflow_dispatch:
+
+
+.github/workflows/windows-packaged-qualification.yml
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_sha:
+        description: "Immutable candidate commit SHA (40 hexadecimal characters)"
+        required: true
+        type: string
+      candidate_ref:
+        description: "Immutable candidate tag/ref that must resolve to candidate_sha"
+        required: true
+        type: string
+
+# Actions-only rehearsal for #2769/#2379. This never creates a release,
+# uploads a release asset, publishes a VSIX, uses a secret, or changes a ref.

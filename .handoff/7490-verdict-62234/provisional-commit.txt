@@ -1,0 +1,17 @@
+commit 62234ac13b0f7a8ff7e30d239f59215b808775b3
+Author:     S Z <szim92@gmail.com>
+AuthorDate: Fri Nov 6 00:12:26 2026 +0000
+Commit:     S Z <szim92@gmail.com>
+CommitDate: Fri Nov 6 00:12:26 2026 +0000
+
+    Record prose-only release specs as unmeasured verdict coverage
+
+ fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml       | 4 ++--
+ fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml       | 4 ++--
+ fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml     | 4 ++--
+ fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml     | 4 ++--
+ fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml       | 4 ++--
+ fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml       | 4 ++--
+ fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml | 4 ++--
+ fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml | 4 ++--
+ 8 files changed, 16 insertions(+), 16 deletions(-)
