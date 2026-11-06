@@ -1,0 +1,48 @@
+{
+  "candidate": "17ba8c4e68ae07fc53a76e8013ac3c572988b5f0",
+  "tree": "b95cd9a8323c4847d27c42b3dd5c312350f01162",
+  "commands": [
+    {
+      "command": "cargo build --locked -p xtask",
+      "exit": 0
+    },
+    {
+      "command": "xtask verdict-corpus check-all",
+      "exit": 1
+    },
+    {
+      "command": "xtask verdict-corpus report --language rust --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "xtask verdict-corpus report --language typescript --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "xtask verdict-corpus report --language python --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "xtask verdict-corpus report --language perl --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "independent CLI capture over every corpus case",
+      "cases": 1698,
+      "native_nonzero": 0,
+      "exit": 0
+    },
+    {
+      "command": "retained-byte/diff/routing/completeness audit",
+      "cases": 1698,
+      "exit": 0
+    }
+  ],
+  "raw_archive_policy": "No raw output, host/environment metadata, private paths, process logs or binaries published. Private archive, if retained, is not a qualification transfer. Published records are the whitelisted minimal repair/test dataset only.",
+  "prior_actions_status": "Prior proxy403 remains; no retry or bypass.",
+  "no_source_or_expectation_or_baseline_mutation": true
+}

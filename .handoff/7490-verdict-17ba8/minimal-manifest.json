@@ -1,0 +1,18 @@
+{
+  "MEASUREMENT.md": {
+    "bytes": 6787,
+    "sha256": "5b225b20a36dce948b97f24cd1211ddb5bba255023479040717418e5e8d068f1"
+  },
+  "execution-receipt.json": {
+    "bytes": 1539,
+    "sha256": "86350d2667b59d861f51b80804c1a49c270c5e2f2365870d7c38c06e33ced630"
+  },
+  "test-records.json": {
+    "bytes": 533948,
+    "sha256": "d973c32e52b18a8ac0750fbc1f1f32ac0c961267ab0f95c3235f4dc20825cefc"
+  },
+  "minimal-test-records.zip": {
+    "bytes": 31142,
+    "sha256": "832d016429bc6e9530a08ebcf2ce881850828faa11dbe8d7d0cee2585830b90e"
+  }
+}
