@@ -1,0 +1,50 @@
+{
+  "candidate": "a157a1d33fca88187e532cba4f1e3f49b97b0f02",
+  "tree": "7d17ca7d4dcbd420cbfbd13426b8f6f580cc3773",
+  "commands": [
+    {
+      "command": "cargo build --locked -p xtask",
+      "exit": 0
+    },
+    {
+      "command": "xtask verdict-corpus check-all",
+      "exit": 1
+    },
+    {
+      "command": "xtask verdict-corpus report --language rust --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "xtask verdict-corpus report --language typescript --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "xtask verdict-corpus report --language python --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "xtask verdict-corpus report --language perl --out <owned>",
+      "exit": 0,
+      "semantic_repeat_identical": true
+    },
+    {
+      "command": "independent CLI capture over every corpus case",
+      "cases": 1698,
+      "native_nonzero": 0,
+      "exit": 0
+    },
+    {
+      "command": "retained-byte/diff/routing/completeness audit",
+      "cases": 1698,
+      "exit": 0
+    }
+  ],
+  "all_commands_terminal": true,
+  "resource_guard_triggered": false,
+  "raw_archive_policy": "Raw analyzer outputs, paths, environment/process metadata, logs and executable bytes remain private; only minimal sanitized records published.",
+  "prior_actions_status": "Proxy403 not retried or bypassed.",
+  "no_source_or_expectation_or_baseline_mutation": true
+}
