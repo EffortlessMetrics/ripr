@@ -1,0 +1,18 @@
+{
+  "missed-credit-map.json": {
+    "bytes": 32213,
+    "sha256": "734ece3abf6e64142e5c0493e5680bfafec20ecf73cfaf7c69db5cc9a25b2569"
+  },
+  "disposition-map.zip": {
+    "bytes": 7668,
+    "sha256": "c41ee589230ec1d70da7343e3556f1445910127b4c305840ddfd99e6c05ba4a7"
+  },
+  "expected-row-drift.json": {
+    "bytes": 12520,
+    "sha256": "35ba7bced4c65372e0ecede36146d59206fc651cdcd840c15a94d4f0256eb38b"
+  },
+  "DISPOSITION-MAP.md": {
+    "bytes": 8136,
+    "sha256": "93a89e05ac06505ada32f90e1397e47d5177a4d301e646afa1ef43fb4ea22741"
+  }
+}

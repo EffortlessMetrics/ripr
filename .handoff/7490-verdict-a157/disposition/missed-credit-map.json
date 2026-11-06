@@ -1,0 +1,886 @@
+{
+  "source": "a157a1d33fca88187e532cba4f1e3f49b97b0f02",
+  "tree": "7d17ca7d4dcbd420cbfbd13426b8f6f580cc3773",
+  "records": [
+    {
+      "case_id": "accounts-balance-add",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "field_construction",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "static_probe_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "field-write-observation",
+      "source_authority": [
+        "RIPR-SPEC-0228 (Owner: product / analysis; no linked issue in spec)",
+        "classifier/evidence.rs assigned_field_weakly_read and final field-assignment abstention gate",
+        "classify/activation.rs assigned_field_of / assigned_field_weak_read_start"
+      ],
+      "disposition": "Concrete shared repair lead: preserve same-receiver field-write\u2192subsequent direct/getter/enum assertion identity. Positive obligations exist in spec; safe abstention does not discharge them. No patch or accepted cost established.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "cell-0005-wrapper-field-binding",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "gap",
+          "observed_classifications": [
+            "weakly_exposed"
+          ],
+          "outcome": "false_actionable"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "propagation_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "propagation_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "new abstention from false-actionable relative to62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "field_construction",
+          "classification": "propagation_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "unknown",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {
+            "propagate": "Transformed-field arithmetic unproved: `quote` field `total` reaches `with_tax` via `with_tax(quote(3))` and the existing assertion `assert_eq!(q.total, 33);` at src/lib.rs:262 through `q.total+q.total/10`; preservation of distinct u32 field values is unestablished because the overflow configuration is unknown (transformed_field_arithmetic_unresolved)"
+          },
+          "static_limit_kind": "rust_value_propagation_unresolved",
+          "stop_reasons": [
+            "propagation_evidence_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "arithmetic-preservation",
+      "source_authority": [
+        "classify/helper_transfer/field_projection/arithmetic_limit.rs",
+        "classifier/finding.rs arithmetic-transfer missing evidence",
+        "exact producer commits2229605e0 and2189d7a1b"
+      ],
+      "disposition": "Deliberate safe limitation: arithmetic observer is located but distinction preservation under actual overflow configuration is unproved. Repair requires authenticated overflow/type/domain/preservation authority; one observed value is not proof. Explicit acceptance needed if deferred.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "grid-delete-exact",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "field_construction",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "static_probe_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "field-write-observation",
+      "source_authority": [
+        "RIPR-SPEC-0228 (Owner: product / analysis; no linked issue in spec)",
+        "classifier/evidence.rs assigned_field_weakly_read and final field-assignment abstention gate",
+        "classify/activation.rs assigned_field_of / assigned_field_weak_read_start"
+      ],
+      "disposition": "Concrete shared repair lead: preserve same-receiver field-write\u2192subsequent direct/getter/enum assertion identity. Positive obligations exist in spec; safe abstention does not discharge them. No patch or accepted cost established.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "grid-flow-field-opaque",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed",
+          "infection_unknown"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "gap",
+          "observed_classifications": [
+            "infection_unknown",
+            "weakly_exposed"
+          ],
+          "outcome": "false_actionable"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "infection_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "infection_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "new abstention from false-actionable relative to62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "predicate",
+          "classification": "infection_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "unknown",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "yes"
+          },
+          "unresolved_stages": {
+            "infect": "Changed boundary input is unresolved: boundary operand `manifest.version` is a local or computed value ripr cannot map to the related tests' inputs, so it cannot tell which side of the boundary a test reaches; activation/infection is unknown; a related test that passes literal inputs on each side of the boundary would let ripr decide"
+          },
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "infection_evidence_unknown"
+          ]
+        },
+        {
+          "probe_family": "return_value",
+          "classification": "infection_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "unknown",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "yes"
+          },
+          "unresolved_stages": {
+            "infect": "Changed boundary input is unresolved: boundary operand `manifest.version` is a local or computed value ripr cannot map to the related tests' inputs, so it cannot tell which side of the boundary a test reaches; activation/infection is unknown; a related test that passes literal inputs on each side of the boundary would let ripr decide"
+          },
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "infection_evidence_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "boundary-value-transfer",
+      "source_authority": [
+        "RIPR-SPEC-0158 #3295 (parent #3215; activation relation #3294)",
+        "classify/value_transfer.rs and activation.rs",
+        "classifier/evidence.rs returned_boundary_input"
+      ],
+      "disposition": "Deliberate safe refusal for opaque lookup calls; case reasoning explicitly expects unresolved assignment values. Requires explicit missed-credit acceptance if retained; do not invent exact values from lookup operands.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "hex-from-hex-odd-variant",
+      "language": "rust",
+      "origin": "upstream",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "error_path",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": "rust_assertion_context_unresolved",
+          "stop_reasons": [
+            "gap_evidence_unresolved"
+          ]
+        },
+        {
+          "probe_family": "return_value",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": "rust_assertion_context_unresolved",
+          "stop_reasons": [
+            "gap_evidence_unresolved"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "assertion-context",
+      "source_authority": [
+        "RIPR-SPEC-0240",
+        "classify/gap_admission.rs assertion-context refusal owner"
+      ],
+      "disposition": "Deliberate safe feature-cfg/assertion-context refusal. Repair lead is attributable execution/configuration and exact error-variant sink identity, not bypassing macro/cfg gates. Explicit acceptance needed if deferred.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "shape-op-add-impl",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "return_value",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": "rust_implicit_call_unresolved",
+          "stop_reasons": [
+            "gap_evidence_unresolved"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "implicit-operator",
+      "source_authority": [
+        "RIPR-SPEC-0240",
+        "classify/implicit_call.rs"
+      ],
+      "disposition": "Deliberate safe unresolved implicit Add dispatch. Concrete bounded repair could prove operand nominal types, Add impl and result observer under closed expansion authority; do not credit from type-name proximity. Explicit acceptance needed if deferred.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "shape-refcell-interior-mutation",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "gap",
+          "observed_classifications": [
+            "weakly_exposed"
+          ],
+          "outcome": "false_actionable"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "new abstention from false-actionable relative to62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "call_deletion",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": "rust_observer_dispatch_unresolved",
+          "stop_reasons": [
+            "gap_evidence_unresolved"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "refcell-observer-dispatch",
+      "source_authority": [
+        "classify/effect_carrier/refcell_counter.rs observer_dispatch_refusal / withhold_observer_dispatch_gap",
+        "classify/builder_override.rs getter_dispatch_body",
+        "exact producer commit2229605e0"
+      ],
+      "disposition": "Deliberate named workspace-expansion refusal after local counter observer matching. Repair lead is threading complete authenticated fixture/workspace expansion and getter dispatch authority; no evidence licenses weakening that authority. Explicit acceptance needed if deferred.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "spec-b-0158-strip-prefix-absent",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed",
+          "infection_unknown"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "gap",
+          "observed_classifications": [
+            "infection_unknown",
+            "weakly_exposed"
+          ],
+          "outcome": "false_actionable"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "infection_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "infection_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "new abstention from false-actionable relative to62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "predicate",
+          "classification": "infection_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "unknown",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "yes"
+          },
+          "unresolved_stages": {
+            "infect": "Changed boundary input is unresolved: boundary operand `n` is a local or computed value ripr cannot map to the related tests' inputs, so it cannot tell which side of the boundary a test reaches; activation/infection is unknown; a related test that passes literal inputs on each side of the boundary would let ripr decide"
+          },
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "infection_evidence_unknown"
+          ]
+        },
+        {
+          "probe_family": "return_value",
+          "classification": "infection_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "unknown",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "yes"
+          },
+          "unresolved_stages": {
+            "infect": "Changed boundary input is unresolved: boundary operand `n` is a local or computed value ripr cannot map to the related tests' inputs, so it cannot tell which side of the boundary a test reaches; activation/infection is unknown; a related test that passes literal inputs on each side of the boundary would let ripr decide"
+          },
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "infection_evidence_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "boundary-value-transfer",
+      "source_authority": [
+        "RIPR-SPEC-0158 #3295 (parent #3215; activation relation #3294)",
+        "classify/value_transfer.rs and activation.rs",
+        "classifier/evidence.rs returned_boundary_input"
+      ],
+      "disposition": "Concrete bounded-transfer repair lead: literal strip_prefix/len/default chain is within spec0158 families. Trace row identity, intrinsic types and selected default arm before extending credit. Current unknown is safe; acceptance remains explicit if deferred.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "spec0228-field-write-direct-read",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "field_construction",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "static_probe_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "field-write-observation",
+      "source_authority": [
+        "RIPR-SPEC-0228 (Owner: product / analysis; no linked issue in spec)",
+        "classifier/evidence.rs assigned_field_weakly_read and final field-assignment abstention gate",
+        "classify/activation.rs assigned_field_of / assigned_field_weak_read_start"
+      ],
+      "disposition": "Concrete shared repair lead: preserve same-receiver field-write\u2192subsequent direct/getter/enum assertion identity. Positive obligations exist in spec; safe abstention does not discharge them. No patch or accepted cost established.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "spec0228-field-write-enum-variant",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "field_construction",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "static_probe_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "field-write-observation",
+      "source_authority": [
+        "RIPR-SPEC-0228 (Owner: product / analysis; no linked issue in spec)",
+        "classifier/evidence.rs assigned_field_weakly_read and final field-assignment abstention gate",
+        "classify/activation.rs assigned_field_of / assigned_field_weak_read_start"
+      ],
+      "disposition": "Concrete shared repair lead: preserve same-receiver field-write\u2192subsequent direct/getter/enum assertion identity. Positive obligations exist in spec; safe abstention does not discharge them. No patch or accepted cost established.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "spec0228-field-write-getter-read",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "static_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "already abstained at62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "field_construction",
+          "classification": "static_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "yes",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "weak"
+          },
+          "unresolved_stages": {},
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "static_probe_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "field-write-observation",
+      "source_authority": [
+        "RIPR-SPEC-0228 (Owner: product / analysis; no linked issue in spec)",
+        "classifier/evidence.rs assigned_field_weakly_read and final field-assignment abstention gate",
+        "classify/activation.rs assigned_field_of / assigned_field_weak_read_start"
+      ],
+      "disposition": "Concrete shared repair lead: preserve same-receiver field-write\u2192subsequent direct/getter/enum assertion identity. Positive obligations exist in spec; safe abstention does not discharge them. No patch or accepted cost established.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    },
+    {
+      "case_id": "tokens-long-flag-strip-prefix",
+      "language": "rust",
+      "origin": "authored",
+      "truth": "discriminated",
+      "population_eligible": true,
+      "definitions_unchanged": true,
+      "committed_expected": {
+        "observed_verdict": "credited",
+        "observed_classifications": [
+          "exposed",
+          "infection_unknown"
+        ],
+        "outcome": "ideal"
+      },
+      "observations": {
+        "62234": {
+          "observed_verdict": "gap",
+          "observed_classifications": [
+            "infection_unknown",
+            "weakly_exposed"
+          ],
+          "outcome": "false_actionable"
+        },
+        "17ba8": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "infection_unknown"
+          ],
+          "outcome": "abstained"
+        },
+        "a157": {
+          "observed_verdict": "limited",
+          "observed_classifications": [
+            "infection_unknown"
+          ],
+          "outcome": "abstained"
+        }
+      },
+      "history": "new abstention from false-actionable relative to62234; unchanged from17ba8",
+      "findings": [
+        {
+          "probe_family": "predicate",
+          "classification": "infection_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "unknown",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "yes"
+          },
+          "unresolved_stages": {
+            "infect": "Changed boundary input is unresolved: boundary operand `name.len()` is a local or computed value ripr cannot map to the related tests' inputs, so it cannot tell which side of the boundary a test reaches; activation/infection is unknown; a related test that passes literal inputs on each side of the boundary would let ripr decide"
+          },
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "infection_evidence_unknown"
+          ]
+        },
+        {
+          "probe_family": "return_value",
+          "classification": "infection_unknown",
+          "stages": {
+            "reach": "yes",
+            "infect": "unknown",
+            "propagate": "yes",
+            "observe": "yes",
+            "discriminate": "yes"
+          },
+          "unresolved_stages": {
+            "infect": "Changed boundary input is unresolved: boundary operand `name.len()` is a local or computed value ripr cannot map to the related tests' inputs, so it cannot tell which side of the boundary a test reaches; activation/infection is unknown; a related test that passes literal inputs on each side of the boundary would let ripr decide"
+          },
+          "static_limit_kind": null,
+          "stop_reasons": [
+            "infection_evidence_unknown"
+          ]
+        }
+      ],
+      "proposed_disjoint_repair_surface": "boundary-value-transfer",
+      "source_authority": [
+        "RIPR-SPEC-0158 #3295 (parent #3215; activation relation #3294)",
+        "classify/value_transfer.rs and activation.rs",
+        "classifier/evidence.rs returned_boundary_input"
+      ],
+      "disposition": "Concrete bounded-transfer repair lead: literal strip_prefix/len/default chain is within spec0158 families. Trace row identity, intrinsic types and selected default arm before extending credit. Current unknown is safe; acceptance remains explicit if deferred.",
+      "acceptance_status": "not_accepted_by_this_packet",
+      "live_issue_assignee": "not verified: live GitHub read Forbidden; no retry"
+    }
+  ],
+  "case_count": 12,
+  "new_from_62234": 5,
+  "preexisting_at_62234": 7,
+  "new_from_17ba8": 0,
+  "source_repairs_executed": false,
+  "acceptances_granted": false
+}

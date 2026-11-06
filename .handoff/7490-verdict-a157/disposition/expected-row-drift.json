@@ -1,0 +1,625 @@
+[
+  {
+    "case_id": "accounts-balance-add",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "cell-0005-wrapper-field-binding",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "propagation_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "checkout-review-split-boundary-tests",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "grid-boundary-property",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "grid-delete-exact",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "grid-flow-field-direct",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "grid-flow-field-opaque",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "infection_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "grid-iter-property",
+    "delta": {
+      "observed_verdict": {
+        "expected": "gap",
+        "actual": "limited"
+      },
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "hex-from-hex-odd-variant",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "lib-rstest-named-cases-skip-boundary",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "macro-export-crate-call",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "macro-export-group-import",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "macro-export-path-boundary",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "macro-module-child-boundary",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "macro-module-child-far-rows",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "macro-module-import-boundary",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "shape-default-impl-one-field",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "shape-op-add-impl",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "shape-refcell-interior-mutation",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "spec-b-0158-dynamic-default",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec-b-0158-method-outside-families",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec-b-0158-non-identity-closure",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec-b-0158-shadowed-binding",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "infection_unknown",
+          "propagation_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec-b-0158-strip-prefix-absent",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "infection_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "spec0186-ex03-discarded-boundary-result",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec0186-ex04-dead-branch-argument",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec0226-gate-split-boundary-agreement",
+    "delta": {
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  },
+  {
+    "case_id": "spec0228-field-write-direct-read",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "spec0228-field-write-enum-variant",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "spec0228-field-write-getter-read",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "changed_since_labeling": {
+        "expected": true,
+        "actual": false
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed"
+        ],
+        "actual": [
+          "static_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "tokens-long-flag-strip-prefix",
+    "delta": {
+      "observed_verdict": {
+        "expected": "credited",
+        "actual": "limited"
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "infection_unknown"
+        ],
+        "actual": [
+          "infection_unknown"
+        ]
+      },
+      "outcome": {
+        "expected": "ideal",
+        "actual": "abstained"
+      }
+    }
+  },
+  {
+    "case_id": "trap-iter-boundary-missing",
+    "delta": {
+      "changed_since_labeling": {
+        "expected": false,
+        "actual": true
+      },
+      "observed_classifications": {
+        "expected": [
+          "exposed",
+          "weakly_exposed"
+        ],
+        "actual": [
+          "weakly_exposed"
+        ]
+      }
+    }
+  }
+]
