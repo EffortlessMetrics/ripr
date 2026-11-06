@@ -1,0 +1,23 @@
+{
+  "ripr": {
+    "source": "/workspace/ripr-swarm/target/debug/ripr",
+    "retained": "/workspace/scratch/verdict-62234/actors/ripr",
+    "bytes": 341593424,
+    "sha256": "84b87f91226965dbc4e91c7b09d880c0398b4154e474e3a7baec6d254ff8f0c4",
+    "version": "ripr 0.11.0 (62234ac13b0f7a8ff7e30d239f59215b808775b3)"
+  },
+  "ripr-lang-perl": {
+    "source": "/workspace/ripr-swarm/target/debug/ripr-lang-perl",
+    "retained": "/workspace/scratch/verdict-62234/actors/ripr-lang-perl",
+    "bytes": 344739120,
+    "sha256": "832ecf745ce0630d296ab115250d681dacf1bfb352b5061dcfcf9c7b984a60d8",
+    "version": "ripr 0.11.0 (62234ac13b0f7a8ff7e30d239f59215b808775b3)"
+  },
+  "xtask": {
+    "source": "/workspace/ripr-swarm/target/debug/xtask",
+    "retained": "/workspace/scratch/verdict-62234/actors/xtask",
+    "bytes": 476035360,
+    "sha256": "c5e1a4539a7a88f5d096de477fb932095b7597a4d4a0ee40cfcea84c9359efaa",
+    "version": null
+  }
+}

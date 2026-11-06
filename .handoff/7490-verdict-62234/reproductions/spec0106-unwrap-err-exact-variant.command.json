@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/workspace/ripr-swarm/target/debug/ripr",
+    "check",
+    "--root",
+    "/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/spec0106-unwrap-err-exact-variant",
+    "--diff",
+    "/workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/spec0106-unwrap-err-exact-variant.diff",
+    "--json"
+  ],
+  "exit": 0
+}

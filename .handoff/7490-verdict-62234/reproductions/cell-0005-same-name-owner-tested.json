@@ -1,0 +1,402 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/cell-0005-same-name-owner-tested",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:4e57210cdfe41000d184169d648c107ce87a41c8244dd940bf429516a4d3b21b","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:field_construction:c532ad6d",
+      "canonical_gap_id": "gap:rust:src/lib.rs:retail::price_quote:field_construction:field_construction:total_12*items",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:rust:src/lib.rs:retail::price_quote:field_construction:field_construction:total_12*items",
+        "language": "rust",
+        "file": "src/lib.rs",
+        "owner": "retail::price_quote",
+        "behavior_kind": "field_construction",
+        "probe_kind": "field_construction",
+        "normalized_discriminator": "total_12*items"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:field_construction:c532ad6d",
+        "family": "field_construction",
+        "delta": "value",
+        "file": "./src/lib.rs",
+        "line": 109,
+        "expression": "total: 12 * items"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach price_quote: retail_quote_charges_twelve_each"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches constructed field: total: 12 * items"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach price_quote: retail_quote_charges_twelve_each", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches constructed field: total: 12 * items", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)", "local flow reaches constructed field: total: 12 * items (line 109)", "related test src/lib.rs:274 retail_quote_charges_twelve_each uses strong exact value oracle: assert_eq!(price_quote(3).total, 36);", "related test src/lib.rs:234 audit_logs_the_scaled_amount uses strong exact value oracle: assert!(lines.iter().any(|l| l == \"audited 42\"), \"{lines:?}\");", "related test src/lib.rs:222 bonus_beats_the_multiplier_and_is_twelve uses weak relational check oracle: assert!(b > MULTIPLIER);", "related test src/lib.rs:280 fixed_reader_returns_its_own_word uses strong exact value oracle: assert_eq!(Fixed.next_word(), 7);", "related test src/lib.rs:242 low_stock_is_flagged uses weak relational check oracle: assert!(warn_low(1));", "source assertion argument value 3 at line 218", "source assertion argument value 12 at line 225", "source assertion argument value \"audited 42\" at line 238", "source assertion argument value \"{lines:?}\" at line 238", "source assertion argument value 1 at line 243", "source assertion argument value 5 at line 244", "source assertion argument value 1 at line 249", "source assertion argument value 2 at line 249"],
+      "flow_sinks": [
+        {"kind":"struct_field","text":"total: 12 * items","line":109}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches constructed field: total: 12 * items", "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach price_quote: retail_quote_charges_twelve_each"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "218": "assert_eq!(compute_score(3), 3 * SCALE_FACTOR);",
+        "225": "assert_eq!(b, 12);",
+        "238": "assert!(lines.iter().any(|l| l == \"audited 42\"), \"{lines:?}\");",
+        "243": "assert!(warn_low(1));",
+        "244": "assert!(!warn_low(5));",
+        "249": "assert_eq!(tally(&[1, 2, 3]), 6);",
+        "256": "assert_eq!(ledger.entries, vec![45]);",
+        "262": "assert_eq!(q.total, 33);",
+        "269": "assert_eq!(q.total, 99);",
+        "270": "assert_eq!(q.items, 3);",
+        "276": "assert_eq!(price_quote(3).total, 36);",
+        "281": "assert_eq!(Fixed.next_word(), 7);",
+        "286": "assert_eq!(Unit.advance(), 8);",
+        "291": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+        "296": "assert_eq!(checked_third(9), Ok(3));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 218,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 225,
+            "value": "12",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 238,
+            "value": "\"audited 42\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 238,
+            "value": "\"{lines:?}\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 243,
+            "value": "1",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 244,
+            "value": "5",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 249,
+            "value": "1",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 249,
+            "value": "2",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 249,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 249,
+            "value": "6",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 256,
+            "value": "45",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 262,
+            "value": "33",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 269,
+            "value": "99",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 270,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 276,
+            "value": "36",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 276,
+            "value": "items = 3",
+            "context": "function_argument"
+          },
+          {
+            "line": 281,
+            "value": "7",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 286,
+            "value": "8",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 291,
+            "value": "-4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 291,
+            "value": "HalfError::Negative",
+            "context": "enum_variant"
+          },
+          {
+            "line": 296,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 296,
+            "value": "9",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 218,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 225,
+          "value": "12",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 238,
+          "value": "\"audited 42\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 238,
+          "value": "\"{lines:?}\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 243,
+          "value": "1",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 244,
+          "value": "5",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 249,
+          "value": "1",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 249,
+          "value": "2",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 249,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 249,
+          "value": "6",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 256,
+          "value": "45",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 262,
+          "value": "33",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 269,
+          "value": "99",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 270,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 276,
+          "value": "36",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 276,
+          "value": "items = 3",
+          "context": "function_argument"
+        },
+        {
+          "line": 281,
+          "value": "7",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 286,
+          "value": "8",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 291,
+          "value": "-4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 291,
+          "value": "HalfError::Negative",
+          "context": "enum_variant"
+        },
+        {
+          "line": 296,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 296,
+          "value": "9",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 17,
+      "related_tests": [
+        {
+          "name": "retail_quote_charges_twelve_each",
+          "file": "src/lib.rs",
+          "line": 274,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(price_quote(3).total, 36);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "audit_logs_the_scaled_amount",
+          "file": "src/lib.rs",
+          "line": 234,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert!(lines.iter().any(|l| l == \"audited 42\"), \"{lines:?}\");",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "bonus_beats_the_multiplier_and_is_twelve",
+          "file": "src/lib.rs",
+          "line": 222,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(b > MULTIPLIER);",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no established call path to the changed code; linked by file location only"
+        },
+        {
+          "name": "fixed_reader_returns_its_own_word",
+          "file": "src/lib.rs",
+          "line": 280,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(Fixed.next_word(), 7);",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no established call path to the changed code; linked by file location only"
+        },
+        {
+          "name": "low_stock_is_flagged",
+          "file": "src/lib.rs",
+          "line": 242,
+          "oracle_strength": "weak",
+          "oracle_kind": "relational_check",
+          "oracle": "assert!(warn_low(1));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no established call path to the changed code; linked by file location only"
+        },
+        {
+          "name": "negative_half_is_refused",
+          "file": "src/lib.rs",
+          "line": 290,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no established call path to the changed code; linked by file location only"
+        },
+        {
+          "name": "overridden_bundle_keeps_its_item_count",
+          "file": "src/lib.rs",
+          "line": 266,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(q.total, 99);",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "no_call_path",
+          "why": "no established call path to the changed code; linked by file location only"
+        },
+        {
+          "name": "record_stores_the_scaled_amount",
+          "file": "src/lib.rs",
+          "line": 253,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(ledger.entries, vec![45]);",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "suggested_next_action": "Strengthen the related assertion so it discriminates the changed behavior.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+,
+  "language_completeness": {"completeness":"complete","languages":[{"disclosure":"silent","findings":1,"language":"rust","limitations":[],"status":"complete"}],"mode":"diff","schema_version":"language_completeness.v1","total_findings":1},
+  "canonical_next_action": {"schema_version":"canonical_next_action.v1","producer":"check_top_result","subject":{"root":"/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/cell-0005-same-name-owner-tested","diff_source":{"committed":{"base":null,"head":null}},"item":"probe:src_lib.rs:field_construction:c532ad6d"},"currentness":{"head_expected":null,"head_observed":null,"config_expected":null,"config_observed":null},"action_class":"inspect_details","stop":{"kind":"check_triage","case":"top_gap","detail_route":"ripr explain --root /workspace/ripr-swarm/target/ripr/verdict-corpus/rust/cell-0005-same-name-owner-tested --diff /workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/cell-0005-same-name-owner-tested.diff probe:src_lib.rs:field_construction:c532ad6d"},"non_claim":"Advisory selection from producer-bound state; it does not execute, complete, or prove the repair, and the display string is never execution authority."}
+}

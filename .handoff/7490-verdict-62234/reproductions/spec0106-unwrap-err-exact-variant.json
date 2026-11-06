@@ -1,0 +1,440 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/spec0106-unwrap-err-exact-variant",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":2,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:9e993853aca4054c4bb8f4e28af53e586c9c215f3459267eabea8392607f6e85","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:error_path:6abfad7c",
+      "canonical_gap_id": "gap:rust:src/lib.rs:root_floor:error_variant:error_path:err<i64_calcerror>calcerror_negative",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:rust:src/lib.rs:root_floor:error_variant:error_path:err<i64_calcerror>calcerror_negative",
+        "language": "rust",
+        "file": "src/lib.rs",
+        "owner": "root_floor",
+        "behavior_kind": "error_variant",
+        "probe_kind": "error_path",
+        "normalized_discriminator": "err<i64_calcerror>calcerror_negative"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:6abfad7c",
+        "family": "error_path",
+        "delta": "value",
+        "file": "./src/lib.rs",
+        "line": 16,
+        "expression": "return Err::<i64, CalcError>(CalcError::Negative)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach root_floor: negative_root_is_the_negative_error"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach root_floor: negative_root_is_the_negative_error", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)", "local flow reaches error variant: Result::Err(CalcError::Negative) (line 16)", "related test src/lib.rs:101 negative_root_is_the_negative_error uses strong exact error variant oracle: assert_eq!(err, CalcError::Negative);", "related test src/lib.rs:125 empty_frame_routes_to_empty uses strong guarded result match oracle: match read_status(..) { Err(..) => StatusError::Empty, _ => .. }", "related test src/lib.rs:107 mismatched_id_is_invalid_data uses strong guarded result match oracle: match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData) }", "related test src/lib.rs:133 tally_adds_the_counts uses strong guarded result match oracle: match tally_pinned(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }", "related test src/lib.rs:145 tally_runs_without_error uses strong guarded result match oracle: match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }", "source function argument value x = -4 at line 102", "source enum variant value CalcError::Negative at line 103", "source enum variant value ParseError::InvalidData at line 108", "source assertion argument value 7 at line 110", "source assertion argument value 2 at line 111", "source enum variant value StatusError::Empty at line 126", "source enum variant value ParseError::InvalidData at line 134", "source assertion argument value 3 at line 135"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(CalcError::Negative)","line":16}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)", "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach root_floor: negative_root_is_the_negative_error", "assertion not credited: `assert_eq!` in mismatched_id_is_invalid_data at src/lib.rs:110: the assertion is inside a `match` arm"],
+      "missing": ["No exact error variant discriminator was detected"],
+      "assertion_texts": {
+        "102": "let err = root_floor(-4).unwrap_err();",
+        "103": "assert_eq!(err, CalcError::Negative);",
+        "108": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData) }",
+        "110": "assert_eq!(response.id, 7);",
+        "111": "assert_eq!(response.len, 2);",
+        "126": "match read_status(..) { Err(..) => StatusError::Empty, _ => .. }",
+        "134": "match tally_pinned(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+        "135": "assert_eq!(v, 3)",
+        "146": "match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 102,
+            "value": "x = -4",
+            "context": "function_argument"
+          },
+          {
+            "line": 103,
+            "value": "CalcError::Negative",
+            "context": "enum_variant"
+          },
+          {
+            "line": 108,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 110,
+            "value": "7",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 111,
+            "value": "2",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 126,
+            "value": "StatusError::Empty",
+            "context": "enum_variant"
+          },
+          {
+            "line": 134,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 135,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 146,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 102,
+          "value": "x = -4",
+          "context": "function_argument"
+        },
+        {
+          "line": 103,
+          "value": "CalcError::Negative",
+          "context": "enum_variant"
+        },
+        {
+          "line": 108,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 110,
+          "value": "7",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 111,
+          "value": "2",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 126,
+          "value": "StatusError::Empty",
+          "context": "enum_variant"
+        },
+        {
+          "line": 134,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 135,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 146,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 5,
+      "related_tests": [
+        {
+          "name": "negative_root_is_the_negative_error",
+          "file": "src/lib.rs",
+          "line": 101,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(err, CalcError::Negative);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "empty_frame_routes_to_empty",
+          "file": "src/lib.rs",
+          "line": 125,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match read_status(..) { Err(..) => StatusError::Empty, _ => .. }",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "mismatched_id_is_invalid_data",
+          "file": "src/lib.rs",
+          "line": 107,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData) }",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "tally_adds_the_counts",
+          "file": "src/lib.rs",
+          "line": 133,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match tally_pinned(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "tally_runs_without_error",
+          "file": "src/lib.rs",
+          "line": 145,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "guarded_result_match",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Assert the exact error variant or payload instead of only is_err().",
+      "suggested_next_action": "Assert the exact error variant or payload instead of only is_err().",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:25b702e4",
+      "canonical_gap_id": "gap:rust:src/lib.rs:root_floor:return_value:return_value:err<i64_calcerror>calcerror_negative",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:rust:src/lib.rs:root_floor:return_value:return_value:err<i64_calcerror>calcerror_negative",
+        "language": "rust",
+        "file": "src/lib.rs",
+        "owner": "root_floor",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "err<i64_calcerror>calcerror_negative"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:25b702e4",
+        "family": "return_value",
+        "delta": "value",
+        "file": "./src/lib.rs",
+        "line": 16,
+        "expression": "return Err::<i64, CalcError>(CalcError::Negative)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach root_floor: negative_root_is_the_negative_error"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach root_floor: negative_root_is_the_negative_error", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)", "local flow reaches error variant: Result::Err(CalcError::Negative) (line 16)", "related test src/lib.rs:101 negative_root_is_the_negative_error uses strong exact error variant oracle: assert_eq!(err, CalcError::Negative);", "related test src/lib.rs:125 empty_frame_routes_to_empty uses strong guarded result match oracle: match read_status(..) { Err(..) => StatusError::Empty, _ => .. }", "related test src/lib.rs:107 mismatched_id_is_invalid_data uses no oracle", "related test src/lib.rs:133 tally_adds_the_counts uses no oracle", "related test src/lib.rs:145 tally_runs_without_error uses strong guarded result match oracle: match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }", "source function argument value x = -4 at line 102", "source enum variant value CalcError::Negative at line 103", "source enum variant value ParseError::InvalidData at line 108", "source assertion argument value 7 at line 110", "source assertion argument value 2 at line 111", "source enum variant value StatusError::Empty at line 126", "source enum variant value ParseError::InvalidData at line 134", "source assertion argument value 3 at line 135"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(CalcError::Negative)","line":16}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: Result::Err(CalcError::Negative)", "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach root_floor: negative_root_is_the_negative_error", "assertion not credited: `assert_eq!` in mismatched_id_is_invalid_data at src/lib.rs:110: the assertion is inside a `match` arm"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "102": "let err = root_floor(-4).unwrap_err();",
+        "103": "assert_eq!(err, CalcError::Negative);",
+        "108": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData) }",
+        "110": "assert_eq!(response.id, 7);",
+        "111": "assert_eq!(response.len, 2);",
+        "126": "match read_status(..) { Err(..) => StatusError::Empty, _ => .. }",
+        "134": "match tally_pinned(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+        "135": "assert_eq!(v, 3)",
+        "146": "match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 102,
+            "value": "x = -4",
+            "context": "function_argument"
+          },
+          {
+            "line": 103,
+            "value": "CalcError::Negative",
+            "context": "enum_variant"
+          },
+          {
+            "line": 108,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 110,
+            "value": "7",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 111,
+            "value": "2",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 126,
+            "value": "StatusError::Empty",
+            "context": "enum_variant"
+          },
+          {
+            "line": 134,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          },
+          {
+            "line": 135,
+            "value": "3",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 146,
+            "value": "ParseError::InvalidData",
+            "context": "enum_variant"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 102,
+          "value": "x = -4",
+          "context": "function_argument"
+        },
+        {
+          "line": 103,
+          "value": "CalcError::Negative",
+          "context": "enum_variant"
+        },
+        {
+          "line": 108,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 110,
+          "value": "7",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 111,
+          "value": "2",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 126,
+          "value": "StatusError::Empty",
+          "context": "enum_variant"
+        },
+        {
+          "line": 134,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        },
+        {
+          "line": 135,
+          "value": "3",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 146,
+          "value": "ParseError::InvalidData",
+          "context": "enum_variant"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 5,
+      "related_tests": [
+        {
+          "name": "negative_root_is_the_negative_error",
+          "file": "src/lib.rs",
+          "line": 101,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "assert_eq!(err, CalcError::Negative);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "empty_frame_routes_to_empty",
+          "file": "src/lib.rs",
+          "line": 125,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match read_status(..) { Err(..) => StatusError::Empty, _ => .. }",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "mismatched_id_is_invalid_data",
+          "file": "src/lib.rs",
+          "line": 107,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "assertion_not_credited",
+          "why": "assertion not credited: ripr could not establish that this assertion counts here"
+        },
+        {
+          "name": "tally_adds_the_counts",
+          "file": "src/lib.rs",
+          "line": 133,
+          "oracle_strength": "none",
+          "oracle_kind": "unknown",
+          "oracle": "",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium",
+          "miss": "assertion_not_credited",
+          "why": "assertion not credited: ripr could not establish that this assertion counts here"
+        },
+        {
+          "name": "tally_runs_without_error",
+          "file": "src/lib.rs",
+          "line": 145,
+          "oracle_strength": "strong",
+          "oracle_kind": "guarded_result_match",
+          "oracle": "match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+          "relation_reason": "same_test_file",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "guarded_result_match",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
+      "suggested_next_action": "Add a test input that reaches the changed error path and assert the exact error variant it returns.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+,
+  "language_completeness": {"completeness":"complete","languages":[{"disclosure":"silent","findings":2,"language":"rust","limitations":[],"status":"complete"}],"mode":"diff","schema_version":"language_completeness.v1","total_findings":2},
+  "canonical_next_action": {"schema_version":"canonical_next_action.v1","producer":"check_top_result","subject":{"root":"/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/spec0106-unwrap-err-exact-variant","diff_source":{"committed":{"base":null,"head":null}},"item":"probe:src_lib.rs:error_path:6abfad7c"},"currentness":{"head_expected":null,"head_observed":null,"config_expected":null,"config_observed":null},"action_class":"inspect_details","stop":{"kind":"check_triage","case":"top_gap","detail_route":"ripr explain --root /workspace/ripr-swarm/target/ripr/verdict-corpus/rust/spec0106-unwrap-err-exact-variant --diff /workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/spec0106-unwrap-err-exact-variant.diff probe:src_lib.rs:error_path:6abfad7c"},"alternatives":[{"label":"considered finding probe:src_lib.rs:return_value:25b702e4","route":"ripr explain --root /workspace/ripr-swarm/target/ripr/verdict-corpus/rust/spec0106-unwrap-err-exact-variant --diff /workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/spec0106-unwrap-err-exact-variant.diff probe:src_lib.rs:return_value:25b702e4"}],"non_claim":"Advisory selection from producer-bound state; it does not execute, complete, or prove the repair, and the display string is never execution authority."}
+}

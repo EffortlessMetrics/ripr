@@ -1,0 +1,151 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/forwarder-hop-forwarded-hit",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":null,"input_identity":"sha256:88c44a89a570de7961b92b98f4a979276aba302b0e65695dd4ba4b65adf3c1bb","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:25d859e4",
+      "canonical_gap_id": "gap:rust:src/lib.rs:impl Pool::try_grow:predicate_boundary:predicate:wanted==4",
+      "canonical_gap_group_size": 1,
+      "canonical_gap": {
+        "id": "gap:rust:src/lib.rs:impl Pool::try_grow:predicate_boundary:predicate:wanted==4",
+        "language": "rust",
+        "file": "src/lib.rs",
+        "owner": "impl Pool::try_grow",
+        "behavior_kind": "predicate_boundary",
+        "probe_kind": "predicate",
+        "normalized_discriminator": "wanted==4"
+
+      },
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:25d859e4",
+        "family": "predicate",
+        "delta": "control",
+        "file": "./src/lib.rs",
+        "line": 17,
+        "expression": "wanted >= 4"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach try_grow: grow_keeps_four_inline_and_spills_five"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Detected related test input at the changed boundary"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: Ok(true)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach try_grow: grow_keeps_four_inline_and_spills_five", "infection yes: Detected related test input at the changed boundary", "propagation yes: Changed behavior appears to influence returned value: Ok(true)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)", "local flow reaches returned value: Ok(true) (line 19)", "related test tests/main.rs:4 grow_keeps_four_inline_and_spills_five uses strong exact value oracle: assert_eq!(pool.grow(4), Ok(false));", "related test tests/main.rs:4 grow_keeps_four_inline_and_spills_five uses strong exact value oracle: assert_eq!(pool.grow(5), Ok(true));", "source assertion argument value 4 at line 6", "source assertion argument value false at line 6", "source function argument value wanted == 4 at line 6", "source assertion argument value 5 at line 7", "source assertion argument value true at line 7"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Ok(true)","line":19}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: Ok(true)", "Detected related test input at the changed boundary", "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)", "Related tests appear to reach try_grow: grow_keeps_four_inline_and_spills_five"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "assert_eq!(pool.grow(4), Ok(false));",
+        "7": "assert_eq!(pool.grow(5), Ok(true));"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "4",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 6,
+            "value": "false",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 6,
+            "value": "wanted == 4",
+            "context": "function_argument",
+            "provenance": "assert_eq!(pool.grow(4), Ok(false)); | exact input wanted = 4; literal operand 4 = 4"
+          },
+          {
+            "line": 7,
+            "value": "5",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 7,
+            "value": "true",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "4",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 6,
+          "value": "false",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 6,
+          "value": "wanted == 4",
+          "context": "function_argument",
+          "provenance": "assert_eq!(pool.grow(4), Ok(false)); | exact input wanted = 4; literal operand 4 = 4"
+        },
+        {
+          "line": 7,
+          "value": "5",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 7,
+          "value": "true",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "grow_keeps_four_inline_and_spills_five",
+          "file": "tests/main.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(pool.grow(4), Ok(false));",
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "grow_keeps_four_inline_and_spills_five",
+          "file": "tests/main.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(pool.grow(5), Ok(true));",
+          "relation_reason": "helper_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "suggested_next_action": "Add boundary tests for below, equal, and above the changed threshold with exact assertions.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+,
+  "language_completeness": {"completeness":"complete","languages":[{"disclosure":"silent","findings":1,"language":"rust","limitations":[],"status":"complete"}],"mode":"diff","schema_version":"language_completeness.v1","total_findings":1},
+  "canonical_next_action": {"schema_version":"canonical_next_action.v1","producer":"check_top_result","subject":{"root":"/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/forwarder-hop-forwarded-hit","diff_source":{"committed":{"base":null,"head":null}},"item":"probe:src_lib.rs:predicate:25d859e4"},"currentness":{"head_expected":null,"head_observed":null,"config_expected":null,"config_observed":null},"action_class":"inspect_details","stop":{"kind":"check_triage","case":"top_gap","detail_route":"ripr explain --root /workspace/ripr-swarm/target/ripr/verdict-corpus/rust/forwarder-hop-forwarded-hit --diff /workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/forwarder-hop-forwarded-hit.diff probe:src_lib.rs:predicate:25d859e4"},"non_claim":"Advisory selection from producer-bound state; it does not execute, complete, or prove the repair, and the display string is never execution authority."}
+}

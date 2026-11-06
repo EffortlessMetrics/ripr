@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/workspace/ripr-swarm/target/debug/ripr",
+    "check",
+    "--root",
+    "/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/cell-0005-same-name-owner-tested",
+    "--diff",
+    "/workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/cell-0005-same-name-owner-tested.diff",
+    "--json"
+  ],
+  "exit": 0
+}

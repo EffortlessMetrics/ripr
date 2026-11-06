@@ -1,0 +1,26 @@
+{
+  "rust": {
+    "cases": 846,
+    "hash_differences": [],
+    "added": [],
+    "removed": []
+  },
+  "typescript": {
+    "cases": 373,
+    "hash_differences": [],
+    "added": [],
+    "removed": []
+  },
+  "python": {
+    "cases": 385,
+    "hash_differences": [],
+    "added": [],
+    "removed": []
+  },
+  "perl": {
+    "cases": 94,
+    "hash_differences": [],
+    "added": [],
+    "removed": []
+  }
+}

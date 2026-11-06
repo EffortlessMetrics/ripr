@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "/workspace/ripr-swarm/target/debug/ripr",
+    "check",
+    "--root",
+    "/workspace/ripr-swarm/target/ripr/verdict-corpus/rust/forwarder-hop-forwarded-hit",
+    "--diff",
+    "/workspace/ripr-swarm/fixtures/rust-verdict-corpus/cases/forwarder-hop-forwarded-hit.diff",
+    "--json"
+  ],
+  "exit": 0
+}
