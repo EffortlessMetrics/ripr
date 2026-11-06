@@ -1,0 +1,70 @@
+{
+  "MEASUREMENT.md": {
+    "bytes": 10341,
+    "sha256": "d7c5d44f74d8744e9b13bbb7d68dcc7c5ffda878b4b69c4d3fb0a1df6f651647"
+  },
+  "CLUSTERS.md": {
+    "bytes": 6893,
+    "sha256": "5963a0d1872d90cbc7524bbca62fd25afd4b27a9f60e796abb44a7be6c970f64"
+  },
+  "packet.json": {
+    "bytes": 52686,
+    "sha256": "e09882de1b6526f5782d91355e2729e62bc66e3d25fcb24368b5bf718577c482"
+  },
+  "clusters.json": {
+    "bytes": 1008,
+    "sha256": "101b90434c34b6a24fe3f8a8ea61b2521134ba3c0bf311d124bf6a47fe2dd2ea"
+  },
+  "shared-authority-evidence.json": {
+    "bytes": 28014,
+    "sha256": "4670819237c58be55f246cac8b7752f13344abe2633f37d51f7115c9dc3fc034"
+  },
+  "denominators-and-missed-credit.json": {
+    "bytes": 11824,
+    "sha256": "f10ecc170bb881d4666227d8515234e9eb026b363f948e2badce744c5cc70cd2"
+  },
+  "all-language-984-comparison.json": {
+    "bytes": 2294,
+    "sha256": "64dbb3355a8a983e7ecaaeeacff875c52a410fdff3d76885610cbc4bcd7bf5da"
+  },
+  "product-tree-parity.json": {
+    "bytes": 919,
+    "sha256": "c3490694444b7e7b0bf3c9ce2e29740aee4c5e234e3ca0853ccf0106d4008115"
+  },
+  "runtime-summary.json": {
+    "bytes": 2382,
+    "sha256": "26ba6be8c16674ef11d6cee13842ff1a4dd18af1cc59c7b89f555651e21bbcfc"
+  },
+  "integrity.json": {
+    "bytes": 1009,
+    "sha256": "a2c35b176a422e4f8e1cacc83e3ec057be262f5d1b34c77e47885c286b9c3f25"
+  },
+  "raw-summary.json": {
+    "bytes": 809,
+    "sha256": "fa41c597cedc5b2430c6772f102a648c55c2088eab9a9949e216f2e954f7252a"
+  },
+  "raw-reparse.json": {
+    "bytes": 110,
+    "sha256": "c5b070d3bb29c2d4fd480a5471258aa0b8a767083e3b0c997f9a0d35f1b8dad3"
+  },
+  "commands.json": {
+    "bytes": 4690,
+    "sha256": "f046aa4ceb49eaa3d5573c753b1d63cb10846998bbe1ab39cf88787a1c3a85f9"
+  },
+  "terminal.json": {
+    "bytes": 372,
+    "sha256": "74199aee527f044ba2d0ef999c65c4c8909aa3bff0d2974f5874fb2ccf925ff9"
+  },
+  "resources.json": {
+    "bytes": 1262,
+    "sha256": "cb9ba444fd00da2367a951f59e706bd88fd8f74da86b747693dea64ba9625cb7"
+  },
+  "complete-archive.json": {
+    "bytes": 216,
+    "sha256": "9e025bb1e8b16f34e233436e04df87565c1f81c5d7962a69523ff07cbe86bb91"
+  },
+  "complete-packet.zip": {
+    "bytes": 6912638,
+    "sha256": "5755bdcbce7241d0cd84776cebf6fd3b2619c5c6939e3e13b1a192bd57cf29bf"
+  }
+}

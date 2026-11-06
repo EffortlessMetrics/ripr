@@ -1,0 +1,33 @@
+{
+  "released": [
+    {
+      "path": "/workspace/scratch/verdict-62234/raw-cache",
+      "files": 22350,
+      "logical_bytes": 155274422,
+      "reason": "Lane-owned memoized raw-capture cache; capture process terminated, no remaining consumers. Every original output, argv/status/digest, input identity and frozen actor remains retained. Cache is reproducible, not a unique execution witness."
+    }
+  ],
+  "retained": [
+    {
+      "path": "/workspace/scratch/verdict-62234/actors",
+      "reason": "Original exact-byte analyzer/producer witnesses for the open 24-case repair claim"
+    },
+    {
+      "path": "/workspace/ripr-swarm/target",
+      "reason": "Mixed seeded/current warm build state for this lane continuation; not deleted or claimed exclusively owned"
+    },
+    {
+      "path": "/workspace/scratch/verdict-62234/runtime-work",
+      "reason": "Four-case runtime witness reconstruction"
+    },
+    {
+      "path": "/workspace/scratch/verdict-62234/regression-runtime-work",
+      "reason": "Nine-case positive/negative runtime witnesses"
+    },
+    {
+      "path": "/workspace/scratch/verdict-62234",
+      "reason": "Complete packet, raw outputs and repair/provenance artifacts for integration owner"
+    }
+  ],
+  "running_lane_commands": 0
+}

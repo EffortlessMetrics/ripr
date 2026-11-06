@@ -1,0 +1,32 @@
+{
+  "identity_unresolved": [
+    "cell-0005-same-name-owner-tested",
+    "cell-0005-wrapper-field-binding",
+    "forwarder-hop-forwarded-hit",
+    "forwarder-hop-std-named-owner-type",
+    "forwarder-hop-unwrap-diverging-handler",
+    "ledger-ship-log-push",
+    "method-hop-field-read-hit",
+    "method-hop-field-read-name-collision",
+    "method-hop-field-read-nonliteral",
+    "method-hop-multi-caller-hit",
+    "mined-multi-line-struct-literal-field",
+    "mined-one-line-struct-literal-field",
+    "shape-refcell-interior-mutation",
+    "spec-b-0159-recursive-helper",
+    "spec0094-effect-confirmed",
+    "spec0106-unwrap-err-exact-variant",
+    "spec0228-pushed-literal-whole-equality"
+  ],
+  "same_test_pairing_missing": [
+    "grid-flow-field-opaque",
+    "spec-b-0158-strip-prefix-absent",
+    "tokens-long-flag-strip-prefix"
+  ],
+  "observation_unverified": [
+    "grid-returns-helper",
+    "lib-pretty-total-path-qualified",
+    "old-deps-type-path-glob-import",
+    "shape-from-impl-exact"
+  ]
+}

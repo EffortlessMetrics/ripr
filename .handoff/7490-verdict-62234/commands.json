@@ -1,0 +1,206 @@
+[
+  {
+    "name": "build-xtask",
+    "argv": [
+      "/workspace/.cargo/bin/cargo",
+      "build",
+      "--locked",
+      "-p",
+      "xtask"
+    ],
+    "exit": 0,
+    "seconds": 240.04756593704224,
+    "peak_cgroup_bytes": 7844130816,
+    "guard": null
+  },
+  {
+    "name": "check-all",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "verdict-corpus",
+      "check-all"
+    ],
+    "exit": 1,
+    "seconds": 422.1595666408539,
+    "peak_cgroup_bytes": 9636773888,
+    "guard": null
+  },
+  {
+    "name": "repeat-rust",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "verdict-corpus",
+      "report",
+      "--language",
+      "rust",
+      "--out",
+      "/workspace/scratch/verdict-62234/repeat/rust"
+    ],
+    "exit": 0,
+    "seconds": 64.02078223228455,
+    "peak_cgroup_bytes": 6642376704,
+    "guard": null
+  },
+  {
+    "name": "repeat-typescript",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "verdict-corpus",
+      "report",
+      "--language",
+      "typescript",
+      "--out",
+      "/workspace/scratch/verdict-62234/repeat/typescript"
+    ],
+    "exit": 0,
+    "seconds": 16.005361795425415,
+    "peak_cgroup_bytes": 6603210752,
+    "guard": null
+  },
+  {
+    "name": "repeat-python",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "verdict-corpus",
+      "report",
+      "--language",
+      "python",
+      "--out",
+      "/workspace/scratch/verdict-62234/repeat/python"
+    ],
+    "exit": 0,
+    "seconds": 28.006203174591064,
+    "peak_cgroup_bytes": 6615293952,
+    "guard": null
+  },
+  {
+    "name": "repeat-perl",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "verdict-corpus",
+      "report",
+      "--language",
+      "perl",
+      "--out",
+      "/workspace/scratch/verdict-62234/repeat/perl"
+    ],
+    "exit": 0,
+    "seconds": 2.0010826587677,
+    "peak_cgroup_bytes": 6571462656,
+    "guard": null
+  },
+  {
+    "name": "raw-capture",
+    "argv": [
+      "python3",
+      "/workspace/scratch/verdict-62234/raw_capture.py"
+    ],
+    "exit": 1,
+    "seconds": 106.04122042655945,
+    "peak_cgroup_bytes": 6928752640,
+    "guard": null
+  },
+  {
+    "name": "integrity-controls",
+    "argv": [
+      "/workspace/.cargo/bin/cargo",
+      "test",
+      "--locked",
+      "-p",
+      "xtask",
+      "--bin",
+      "xtask",
+      "--",
+      "population_tests",
+      "case_output_",
+      "spec_scope_files",
+      "ledger_must_name_every_spec",
+      "drift_names_moved_missing",
+      "--test-threads=1"
+    ],
+    "exit": 0,
+    "seconds": 364.1429579257965,
+    "peak_cgroup_bytes": 14008184832,
+    "guard": null
+  },
+  {
+    "name": "runtime-controls",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "verdict-corpus",
+      "relabel",
+      "--case",
+      "trap-const-fn-self-expected",
+      "--case",
+      "spec0231-oracle-helper-assert-json-eq",
+      "--case",
+      "spec0231-oracle-events-sent-len-eq",
+      "--case",
+      "spec0226-gate-split-boundary-agreement",
+      "--repeat",
+      "2",
+      "--out",
+      "/workspace/scratch/verdict-62234/runtime-controls",
+      "--work-dir",
+      "/workspace/scratch/verdict-62234/runtime-work"
+    ],
+    "exit": 0,
+    "seconds": 8.006083011627197,
+    "peak_cgroup_bytes": 8438759424,
+    "guard": null
+  },
+  {
+    "name": "trust-gate",
+    "argv": [
+      "/workspace/ripr-swarm/target/debug/xtask",
+      "dx-scoreboard",
+      "--boards",
+      "trust",
+      "--ripr-bin",
+      "/workspace/ripr-swarm/target/debug/ripr",
+      "--baseline",
+      "metrics/dx-scoreboard/baseline.json",
+      "--gate"
+    ],
+    "exit": 1,
+    "seconds": 250.10484528541565,
+    "peak_cgroup_bytes": 14642814976,
+    "guard": null
+  },
+  {
+    "name": "regression-runtime",
+    "argv": [
+      "/workspace/scratch/verdict-62234/actors/xtask",
+      "verdict-corpus",
+      "relabel",
+      "--case",
+      "cell-0005-same-name-owner-tested",
+      "--case",
+      "cell-0005-same-name-owner-unreached",
+      "--case",
+      "forwarder-hop-forwarded-hit",
+      "--case",
+      "forwarder-hop-swallowed-result",
+      "--case",
+      "spec0106-unwrap-err-exact-variant",
+      "--case",
+      "grid-returns-helper",
+      "--case",
+      "grid-returns-none",
+      "--case",
+      "spec-b-0158-strip-prefix-absent",
+      "--case",
+      "spec-b-0158-rfind-boundary",
+      "--repeat",
+      "2",
+      "--out",
+      "/workspace/scratch/verdict-62234/regression-runtime",
+      "--work-dir",
+      "/workspace/scratch/verdict-62234/regression-runtime-work"
+    ],
+    "exit": 0,
+    "seconds": 16.014673471450806,
+    "peak_cgroup_bytes": 8983171072,
+    "guard": null
+  }
+]

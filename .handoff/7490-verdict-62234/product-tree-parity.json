@@ -1,0 +1,22 @@
+{
+  "crates": {
+    "b51_tree": "78c461c7248ab59d77f1381f68ec725e56ed2d17",
+    "provisional_tree": "78c461c7248ab59d77f1381f68ec725e56ed2d17",
+    "equal": true
+  },
+  "xtask": {
+    "b51_tree": "fc6b11110c240c38f101ceb4ba687ae2eb9d31b9",
+    "provisional_tree": "fc6b11110c240c38f101ceb4ba687ae2eb9d31b9",
+    "equal": true
+  },
+  "full_delta_paths": [
+    "fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml",
+    "fixtures/perl-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml",
+    "fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml",
+    "fixtures/python-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml",
+    "fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml",
+    "fixtures/rust-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml",
+    "fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0374.toml",
+    "fixtures/typescript-verdict-corpus/spec-scopes/RIPR-SPEC-0375.toml"
+  ]
+}

@@ -1,0 +1,85 @@
+[
+  {
+    "report": "runtime-controls",
+    "selected": 4,
+    "repeat": 2,
+    "drifted": 0,
+    "test_command_observations": 34,
+    "cases": [
+      {
+        "case_id": "trap-const-fn-self-expected",
+        "labeled_truth": "not_discriminated",
+        "observed_truth": "not_discriminated"
+      },
+      {
+        "case_id": "spec0231-oracle-helper-assert-json-eq",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      },
+      {
+        "case_id": "spec0231-oracle-events-sent-len-eq",
+        "labeled_truth": "partially_discriminated",
+        "observed_truth": "partially_discriminated"
+      },
+      {
+        "case_id": "spec0226-gate-split-boundary-agreement",
+        "labeled_truth": "partially_discriminated",
+        "observed_truth": "partially_discriminated"
+      }
+    ]
+  },
+  {
+    "report": "regression-runtime",
+    "selected": 9,
+    "repeat": 2,
+    "drifted": 0,
+    "test_command_observations": 66,
+    "cases": [
+      {
+        "case_id": "cell-0005-same-name-owner-tested",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      },
+      {
+        "case_id": "cell-0005-same-name-owner-unreached",
+        "labeled_truth": "not_discriminated",
+        "observed_truth": "not_discriminated"
+      },
+      {
+        "case_id": "forwarder-hop-forwarded-hit",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      },
+      {
+        "case_id": "forwarder-hop-swallowed-result",
+        "labeled_truth": "not_discriminated",
+        "observed_truth": "not_discriminated"
+      },
+      {
+        "case_id": "spec0106-unwrap-err-exact-variant",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      },
+      {
+        "case_id": "grid-returns-helper",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      },
+      {
+        "case_id": "grid-returns-none",
+        "labeled_truth": "not_discriminated",
+        "observed_truth": "not_discriminated"
+      },
+      {
+        "case_id": "spec-b-0158-strip-prefix-absent",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      },
+      {
+        "case_id": "spec-b-0158-rfind-boundary",
+        "labeled_truth": "discriminated",
+        "observed_truth": "discriminated"
+      }
+    ]
+  }
+]

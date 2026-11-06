@@ -1,0 +1,771 @@
+[
+  {
+    "case_id": "cell-0005-same-name-owner-tested",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "retail_quote_charges_twelve_each",
+        "oracle": "assert_eq!(price_quote(3).total, 36);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "audit_logs_the_scaled_amount",
+        "oracle": "assert!(lines.iter().any(|l| l == \"audited 42\"), \"{lines:?}\");",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "fixed_reader_returns_its_own_word",
+        "oracle": "assert_eq!(Fixed.next_word(), 7);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_half_is_refused",
+        "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "overridden_bundle_keeps_its_item_count",
+        "oracle": "assert_eq!(q.total, 99);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "record_stores_the_scaled_amount",
+        "oracle": "assert_eq!(ledger.entries, vec![45]);",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "cell-0005-wrapper-field-binding",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "taxed_quote_adds_a_tenth",
+        "oracle": "assert_eq!(q.total, 33);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "audit_logs_the_scaled_amount",
+        "oracle": "assert!(lines.iter().any(|l| l == \"audited 42\"), \"{lines:?}\");",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "fixed_reader_returns_its_own_word",
+        "oracle": "assert_eq!(Fixed.next_word(), 7);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_half_is_refused",
+        "oracle": "assert_eq!(checked_half(-4), Err(HalfError::Negative));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "overridden_bundle_keeps_its_item_count",
+        "oracle": "assert_eq!(q.total, 99);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "record_stores_the_scaled_amount",
+        "oracle": "assert_eq!(ledger.entries, vec![45]);",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "forwarder-hop-forwarded-hit",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "grow_keeps_four_inline_and_spills_five",
+        "oracle": "assert_eq!(pool.grow(4), Ok(false));",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "grow_keeps_four_inline_and_spills_five",
+        "oracle": "assert_eq!(pool.grow(5), Ok(true));",
+        "relation_reason": "helper_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "forwarder-hop-std-named-owner-type",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "gate_insert_pins_the_boundary",
+        "oracle": "assert_eq!(gate.insert(4), Ok(false));",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "gate_insert_pins_the_boundary",
+        "oracle": "assert_eq!(gate.insert(5), Ok(true));",
+        "relation_reason": "helper_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "forwarder-hop-unwrap-diverging-handler",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "bay_dock_pins_the_boundary",
+        "oracle": "assert_eq!(bay.dock(4), false);",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "bay_dock_pins_the_boundary",
+        "oracle": "assert_eq!(bay.dock(5), true);",
+        "relation_reason": "helper_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "grid-flow-field-opaque",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "old_manifests_need_upgrade",
+        "oracle": "assert_eq!(needs_upgrade(&manifest), true);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "old_manifests_need_upgrade",
+        "oracle": "assert_eq!(needs_upgrade(&manifest), false);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "heavy_parcels_pay_the_surcharge",
+        "oracle": "assert_eq!(shipping_fee(2_000), 160);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "manifests_older_than_current_are_stale",
+        "oracle": "assert_eq!(is_stale(&manifest), true);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "manifests_older_than_current_are_stale",
+        "oracle": "assert_eq!(is_stale(&manifest), false);",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "grid-returns-helper",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "tags_are_trimmed",
+        "oracle": "assert_eq!(tags(list), want);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "first_word_table",
+        "oracle": "assert_eq!(first_word(text), want, \"{text:?}\");",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "greets_by_name",
+        "oracle": "assert_eq!(greeting(\"Ada\"), \"Hello, Ada!\");",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "ledger-ship-log-push",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "history_records_every_movement_in_order",
+        "oracle": "assert_eq!(\n            inv.history(),\n            &[\n                Event::Received { sku: \"NUT-M8\".to_string(), qty: 5 },\n                Event::Shipped { sku: \"NUT-M8\".to_string(), qty: 2 },\n            ]\n        );",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "shipping_more_than_on_hand_is_refused",
+        "oracle": "assert_eq!(inv.on_hand(\"WASHER\"), 4);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "shipping_returns_a_receipt_and_lowers_stock",
+        "oracle": "assert_eq!(\n            receipt,\n            Receipt {\n                sku: \"BOLT-M8\".to_string(),\n                qty: 3,\n                remaining: 7,\n            }\n        );",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "unknown_sku_cannot_ship",
+        "oracle": "assert_eq!(\n            inv.ship(\"GHOST\", 1),\n            Err(StockError::UnknownSku(\"GHOST\".to_string()))\n        );",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "sku_family_is_the_text_before_the_first_dash",
+        "oracle": "assert_eq!(sku_family(\"BOLT-M8\"), \"BOLT\");",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "lib-pretty-total-path-qualified",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "line_trims_the_label",
+        "oracle": "assert_eq!(line(\"  tea \", 250), Line { label: \"tea\".to_string(), cents: 250 });",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "renders_aligned_columns",
+        "oracle": "assert_eq!(render(&lines), \"tea        250\\ncake      1200\\n\");",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "method-hop-field-read-hit",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "hit_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.hit_as(si));",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "collide_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.collide_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "masked_reports_a_non_empty_label",
+        "oracle": "assert_eq!(expected, size.masked_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "nonliteral_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.nonliteral_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "pretty_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.pretty_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "rebound_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.rebound_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "shifted_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.shifted_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "trap_never_sits_on_the_selected_unit",
+        "oracle": "assert_eq!(expected, size.trap_as(si));",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "method-hop-field-read-name-collision",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "collide_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.collide_as(si));",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "hit_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.hit_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "masked_reports_a_non_empty_label",
+        "oracle": "assert_eq!(expected, size.masked_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "nonliteral_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.nonliteral_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "pretty_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.pretty_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "rebound_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.rebound_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "shifted_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.shifted_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "trap_never_sits_on_the_selected_unit",
+        "oracle": "assert_eq!(expected, size.trap_as(si));",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "method-hop-field-read-nonliteral",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "nonliteral_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.nonliteral_as(si));",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "collide_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.collide_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "hit_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.hit_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "masked_reports_a_non_empty_label",
+        "oracle": "assert_eq!(expected, size.masked_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "pretty_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.pretty_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "rebound_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.rebound_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "shifted_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.shifted_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "trap_never_sits_on_the_selected_unit",
+        "oracle": "assert_eq!(expected, size.trap_as(si));",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "method-hop-multi-caller-hit",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "pretty_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.pretty_as(si));",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "collide_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected.to_string(), size.collide_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "hit_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.hit_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "masked_reports_a_non_empty_label",
+        "oracle": "assert_eq!(expected, size.masked_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "nonliteral_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.nonliteral_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "rebound_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.rebound_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "shifted_formats_one_binary_unit",
+        "oracle": "assert_eq!(expected, size.shifted_as(si));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "trap_never_sits_on_the_selected_unit",
+        "oracle": "assert_eq!(expected, size.trap_as(si));",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "mined-multi-line-struct-literal-field",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "fresh_ids_carry_version_two",
+        "oracle": "assert_eq!(id.version(), 2);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "encode_runs_over_every_byte",
+        "oracle": "assert_eq!(out.len(), 10);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "fresh_ids_carry_version_one",
+        "oracle": "assert_eq!(id.version(), 1);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_zero_keeps_its_sign",
+        "oracle": "assert_eq!((-0.0f64).to_text(), \"-0.0\");",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_zero_keeps_its_sign",
+        "oracle": "assert_eq!(1.5f64.to_text(), \"1.5\");",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "mined-one-line-struct-literal-field",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "fresh_ids_carry_version_one",
+        "oracle": "assert_eq!(id.version(), 1);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "encode_runs_over_every_byte",
+        "oracle": "assert_eq!(out.len(), 10);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "fresh_ids_carry_version_two",
+        "oracle": "assert_eq!(id.version(), 2);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_zero_keeps_its_sign",
+        "oracle": "assert_eq!((-0.0f64).to_text(), \"-0.0\");",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_zero_keeps_its_sign",
+        "oracle": "assert_eq!(1.5f64.to_text(), \"1.5\");",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "old-deps-type-path-glob-import",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "lamp_gives_eight_hundred_lumens",
+        "oracle": "assert_eq!(Lamp::lumens(), 800);",
+        "relation_reason": "direct_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "shape-from-impl-exact",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "boiling_point_converts",
+        "oracle": "assert_eq!(Fahrenheit::from(Celsius(100)), Fahrenheit(212));",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "countdown_yields_descending",
+        "oracle": "assert_eq!(Countdown(3).collect::<Vec<_>>(), vec![3, 2, 1]);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "guard_counts_its_drop",
+        "oracle": "assert_eq!(counter.get(), 1);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "money_adds_through_the_operator",
+        "oracle": "assert_eq!(Money(2) + Money(3), Money(5));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "retries_default",
+        "oracle": "assert_eq!(Settings::default().retries, 3);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "small_ports_parse",
+        "oracle": "assert_eq!(\"80\".parse::<Port>(), Ok(Port(80)));",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "shape-refcell-interior-mutation",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "tally_counts_hits",
+        "oracle": "assert_eq!(t.hits(), 2);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "adder_adds",
+        "oracle": "assert_eq!(make_adder(2)(3), 5);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "bump_saturates",
+        "oracle": "assert_eq!(bump(250), 255);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "ends_of_longer_slices",
+        "oracle": "assert_eq!(ends(&[1, 2, 3]), Some((1, 3)));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "find_cell_in_second_row",
+        "oracle": "assert_eq!(find_cell(&grid, 3), Some((1, 0)));",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "low_byte_of_a_word",
+        "oracle": "assert_eq!(low_byte(0x1234), 0x34);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "name_len_of_some",
+        "oracle": "assert_eq!(name_len(Some(\"abc\")), 3);",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "offset_of_zero",
+        "oracle": "assert_eq!(make_offset(0)(7), 7);",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "spec-b-0158-strip-prefix-absent",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "a_two_letter_flag_is_long_enough_v_strip",
+        "oracle": "assert!(flag_long_enough(\"--ab\"));",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "an_unprefixed_argument_is_not_v_strip",
+        "oracle": "assert!(!flag_long_enough(\"ab\"));",
+        "relation_reason": "direct_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "spec-b-0159-recursive-helper",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through helper_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "rows_straddle_four_recursion_h_recursion",
+        "oracle": "assert_eq!(classify_recursive(\"abcd\"), \"wide\");",
+        "relation_reason": "helper_owner_call"
+      },
+      {
+        "name": "rows_straddle_four_recursion_h_recursion",
+        "oracle": "assert_eq!(classify_recursive(\"abc\"), \"narrow\");",
+        "relation_reason": "helper_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "spec0094-effect-confirmed",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)",
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "placing_records_the_order",
+        "oracle": "assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "placing_records_the_order",
+        "oracle": "assert_eq!(*notifier.sent.borrow(), vec![\"order-42\".to_string()]);",
+        "relation_reason": "direct_owner_call"
+      }
+    ]
+  },
+  {
+    "case_id": "spec0106-unwrap-err-exact-variant",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)",
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "negative_root_is_the_negative_error",
+        "oracle": "assert_eq!(err, CalcError::Negative);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "empty_frame_routes_to_empty",
+        "oracle": "match read_status(..) { Err(..) => StatusError::Empty, _ => .. }",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "mismatched_id_is_invalid_data",
+        "oracle": "match expect_response(..) { Ok(..) => .., Err(..) => Some(ParseError::InvalidData) }",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "tally_adds_the_counts",
+        "oracle": "match tally_pinned(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "tally_runs_without_error",
+        "oracle": "match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "negative_root_is_the_negative_error",
+        "oracle": "assert_eq!(err, CalcError::Negative);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "empty_frame_routes_to_empty",
+        "oracle": "match read_status(..) { Err(..) => StatusError::Empty, _ => .. }",
+        "relation_reason": "same_test_file"
+      },
+      {
+        "name": "tally_runs_without_error",
+        "oracle": "match tally_ignored(..) { Ok(..) => .., Err(..) => ParseError::InvalidData }",
+        "relation_reason": "same_test_file"
+      }
+    ]
+  },
+  {
+    "case_id": "spec0228-pushed-literal-whole-equality",
+    "has_identity_unresolved": true,
+    "discriminator_summaries": [
+      "Discriminator uncredited: strongest oracle reaches only through direct_owner_call linkage without sink-level evidence (identity_unresolved)",
+      "Discriminator unconfirmed: no field-value assertion observes the constructed field"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "add_records_the_line",
+        "oracle": "assert_eq!(order.lines(), &[Line { sku: \"BOLT\".to_string(), qty: 2 }]);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "tag_adds_one_tag",
+        "oracle": "assert_eq!(order.tags().len(), 1);",
+        "relation_reason": "owner_named_test"
+      },
+      {
+        "name": "add_records_the_line",
+        "oracle": "assert_eq!(order.lines(), &[Line { sku: \"BOLT\".to_string(), qty: 2 }]);",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "tag_adds_one_tag",
+        "oracle": "assert_eq!(order.tags().len(), 1);",
+        "relation_reason": "owner_named_test"
+      }
+    ]
+  },
+  {
+    "case_id": "tokens-long-flag-strip-prefix",
+    "has_identity_unresolved": false,
+    "discriminator_summaries": [
+      "Discriminator unconfirmed: no admitted discriminating oracle is paired with the owner's boundary call (same_test_pairing_missing); a boundary input and a separate exact oracle do not establish that discriminator"
+    ],
+    "related_strong_observers": [
+      {
+        "name": "long_flags_have_two_letters",
+        "oracle": "assert!(long_flag(\"--ab\"));",
+        "relation_reason": "direct_owner_call"
+      },
+      {
+        "name": "long_flags_have_two_letters",
+        "oracle": "assert!(!long_flag(\"--a\"));",
+        "relation_reason": "direct_owner_call"
+      }
+    ]
+  }
+]

@@ -1,0 +1,25 @@
+{
+  "executed": 1698,
+  "outcomes": {
+    "rust": {
+      "complete_with_findings": 832,
+      "no_behavioral_candidates": 13,
+      "partial_with_limitations": 1
+    },
+    "typescript": {
+      "complete_with_findings": 309,
+      "partial_with_limitations": 64
+    },
+    "python": {
+      "complete_with_findings": 385
+    },
+    "perl": {
+      "partial_with_limitations": 92,
+      "complete_with_findings": 2
+    }
+  },
+  "native_nonzero": 0,
+  "failures": [],
+  "collector_note": "Initial collector exit 1 read analysis_outcome.kind instead of analysis_outcome.outcome.kind. Original metadata, all native statuses and output bytes/digests retained. Corrected metadata derived from the same bytes with full diff-identity/routing/completeness checks; no analyzer rerun.",
+  "legitimate_zero_cases": 13
+}

@@ -1,0 +1,7 @@
+{
+  "completed_at": "2026-11-06T00:39:38.938470+00:00",
+  "candidate": "62234ac13b0f7a8ff7e30d239f59215b808775b3",
+  "tree": "ef7221a5c23a73670d23bc9998cfe1496b4e38f0",
+  "source_clean": true,
+  "hold": "24 false-actionable Rust cases, 7 additional missed-credit cases and 5 incomparable operational Perl baseline projections; central owner repair/adjudication required"
+}

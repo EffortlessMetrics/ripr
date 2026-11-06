@@ -1,0 +1,38 @@
+{
+  "positive_packet_accepted": true,
+  "selected": 1698,
+  "raw_executed": 1698,
+  "challenges": [
+    {
+      "name": "dropped case",
+      "rejected": true,
+      "reason": "missing/dropped/duplicate case"
+    },
+    {
+      "name": "changed scoring expectation",
+      "rejected": true,
+      "reason": "changed scoring expectation/definition"
+    },
+    {
+      "name": "stale candidate",
+      "rejected": true,
+      "reason": "stale source"
+    },
+    {
+      "name": "zero executed rows",
+      "rejected": true,
+      "reason": "zero executed rows"
+    },
+    {
+      "name": "mismatched corpus identity",
+      "rejected": true,
+      "reason": "corpus inventory mismatch"
+    },
+    {
+      "name": "abstention substituted for repaired credit",
+      "rejected": true,
+      "reason": "former false-exposed/false-actionable control changed; abstention is not repaired credit"
+    }
+  ],
+  "scope": "analytical custody audit only; repository admission/population controls are separately executed"
+}

@@ -1,0 +1,90 @@
+{
+  "rust": {
+    "cases": 846,
+    "historical_outcomes": {
+      "ideal": 525,
+      "abstained": 321
+    },
+    "current_outcomes": {
+      "abstained": 328,
+      "false_actionable": 24,
+      "ideal": 494
+    },
+    "movements": {
+      "ideal -> abstained": 7,
+      "ideal -> false_actionable": 24
+    },
+    "changed_observed_verdicts": [
+      "accounts-balance-add",
+      "cell-0005-same-name-owner-tested",
+      "cell-0005-wrapper-field-binding",
+      "forwarder-hop-forwarded-hit",
+      "forwarder-hop-std-named-owner-type",
+      "forwarder-hop-unwrap-diverging-handler",
+      "grid-delete-exact",
+      "grid-flow-field-opaque",
+      "grid-returns-helper",
+      "hex-from-hex-odd-variant",
+      "ledger-ship-log-push",
+      "lib-pretty-total-path-qualified",
+      "method-hop-field-read-hit",
+      "method-hop-field-read-name-collision",
+      "method-hop-field-read-nonliteral",
+      "method-hop-multi-caller-hit",
+      "mined-multi-line-struct-literal-field",
+      "mined-one-line-struct-literal-field",
+      "old-deps-type-path-glob-import",
+      "shape-from-impl-exact",
+      "shape-op-add-impl",
+      "shape-refcell-interior-mutation",
+      "spec-b-0158-strip-prefix-absent",
+      "spec-b-0159-recursive-helper",
+      "spec0094-effect-confirmed",
+      "spec0106-unwrap-err-exact-variant",
+      "spec0228-field-write-direct-read",
+      "spec0228-field-write-enum-variant",
+      "spec0228-field-write-getter-read",
+      "spec0228-pushed-literal-whole-equality",
+      "tokens-long-flag-strip-prefix"
+    ]
+  },
+  "typescript": {
+    "cases": 373,
+    "historical_outcomes": {
+      "ideal": 323,
+      "abstained": 50
+    },
+    "current_outcomes": {
+      "abstained": 50,
+      "ideal": 323
+    },
+    "movements": {},
+    "changed_observed_verdicts": []
+  },
+  "python": {
+    "cases": 385,
+    "historical_outcomes": {
+      "ideal": 302,
+      "abstained": 83
+    },
+    "current_outcomes": {
+      "abstained": 83,
+      "ideal": 302
+    },
+    "movements": {},
+    "changed_observed_verdicts": []
+  },
+  "perl": {
+    "cases": 94,
+    "historical_outcomes": {
+      "ideal": 45,
+      "abstained": 49
+    },
+    "current_outcomes": {
+      "abstained": 49,
+      "ideal": 45
+    },
+    "movements": {},
+    "changed_observed_verdicts": []
+  }
+}
