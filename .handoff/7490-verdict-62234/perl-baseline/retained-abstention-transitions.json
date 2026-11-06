@@ -1,0 +1,128 @@
+{
+  "scope": "Retained IDs with changed packet/producer definitions; descriptive only, not a same-definition regression comparison",
+  "retained_eligible_cases": 27,
+  "movements": {
+    "ideal -> abstained": 2,
+    "false_exposed -> ideal": 2,
+    "false_actionable -> abstained": 5,
+    "false_exposed -> abstained": 1
+  },
+  "case_movements": [
+    {
+      "case_id": "perl-test2-close-month-subtest",
+      "old_truth": "discriminated",
+      "current_truth": "discriminated",
+      "old_outcome": "ideal",
+      "current_outcome": "abstained",
+      "old_verdict": "credited",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-test2-fee-isnt-zero",
+      "old_truth": "not_discriminated",
+      "current_truth": "not_discriminated",
+      "old_outcome": "false_exposed",
+      "current_outcome": "ideal",
+      "old_verdict": "credited",
+      "current_verdict": "gap"
+    },
+    {
+      "case_id": "perl-test2-withdraw-dies-like-message",
+      "old_truth": "discriminated",
+      "current_truth": "discriminated",
+      "old_outcome": "false_actionable",
+      "current_outcome": "abstained",
+      "old_verdict": "gap",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-testexception-freeze-class",
+      "old_truth": "discriminated",
+      "current_truth": "discriminated",
+      "old_outcome": "false_actionable",
+      "current_outcome": "abstained",
+      "old_verdict": "gap",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-testexception-transfer-boundary-pair",
+      "old_truth": "discriminated",
+      "current_truth": "discriminated",
+      "old_outcome": "false_actionable",
+      "current_outcome": "abstained",
+      "old_verdict": "gap",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-testexception-withdraw-throws-message",
+      "old_truth": "discriminated",
+      "current_truth": "discriminated",
+      "old_outcome": "false_actionable",
+      "current_outcome": "abstained",
+      "old_verdict": "gap",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-testmore-clamp-isnt",
+      "old_truth": "not_discriminated",
+      "current_truth": "not_discriminated",
+      "old_outcome": "false_exposed",
+      "current_outcome": "ideal",
+      "old_verdict": "credited",
+      "current_verdict": "gap"
+    },
+    {
+      "case_id": "perl-testmore-points-cmp-ok-positive",
+      "old_truth": "not_discriminated",
+      "current_truth": "not_discriminated",
+      "old_outcome": "ideal",
+      "current_outcome": "abstained",
+      "old_verdict": "gap",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-testmore-quote-is-deeply-total",
+      "old_truth": "discriminated",
+      "current_truth": "discriminated",
+      "old_outcome": "false_actionable",
+      "current_outcome": "abstained",
+      "old_verdict": "gap",
+      "current_verdict": "limited"
+    },
+    {
+      "case_id": "perl-testmore-tier-far-from-boundary",
+      "old_truth": "not_discriminated",
+      "current_truth": "not_discriminated",
+      "old_outcome": "false_exposed",
+      "current_outcome": "abstained",
+      "old_verdict": "credited",
+      "current_verdict": "limited"
+    }
+  ],
+  "formerly_accepted_four_current": [
+    {
+      "case_id": "perl-test2-format-entry-like",
+      "truth": "not_discriminated",
+      "observed_verdict": "gap",
+      "outcome": "ideal"
+    },
+    {
+      "case_id": "perl-testexception-close-out-dies-ok",
+      "truth": "not_discriminated",
+      "observed_verdict": "gap",
+      "outcome": "ideal"
+    },
+    {
+      "case_id": "perl-testmore-points-cmp-ok-positive",
+      "truth": "not_discriminated",
+      "observed_verdict": "limited",
+      "outcome": "abstained"
+    },
+    {
+      "case_id": "perl-testmore-round-cents-like",
+      "truth": "partially_discriminated",
+      "observed_verdict": "gap",
+      "outcome": "ideal"
+    }
+  ]
+}

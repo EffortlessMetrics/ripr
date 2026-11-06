@@ -1,0 +1,2782 @@
+{
+  "subject": "62234ac13b0f7a8ff7e30d239f59215b808775b3",
+  "tree": "ef7221a5c23a73670d23bc9998cfe1496b4e38f0",
+  "baseline_sha256": "c7727f589838d1142532a555ba261b45aa0f36b23b252ec3487df9a6bd40a86b",
+  "baseline_top_level_revision_NOT_perl_source": "10e56371911a4e6ef8020fbcd7e5f2692fc9b7f1",
+  "current_native_report_sha256": "4d7ab341ba235974d8a7d8fb33c8155092ef66454db9e2c8497aebe25c74420a",
+  "comparisons": [
+    {
+      "metric": "trust.perl_verdict_corpus_false_verdict",
+      "baseline_provenance": {
+        "approved": "EffortlessMetrics/ripr-swarm#10809",
+        "corpus_blob": "6b0da537f6aa117f126cb732c7e19acee7c24f8f",
+        "kind": "committed_expected_rows",
+        "revision": "ea5229fba660d284841b3954f73ca7948a88d0ea",
+        "rows_tree": "5b1718f4c61eb369f055d938d26421102ba79c50"
+      },
+      "baseline_cases": 88,
+      "current_cases": 94,
+      "shared_case_ids": 88,
+      "unchanged_definitions": 0,
+      "changed_definitions": [
+        "perl-0235-ex01-sink-unconfirmed",
+        "perl-0235-ex03-smoke-ok-strong-exact",
+        "perl-0235-ex04-dies-only-strong-exact",
+        "perl-0235-ex05-exception-observer-strong-exact",
+        "perl-0235-ex06-hash-field-assertion",
+        "perl-0235-ex06-output-observer",
+        "perl-0235-ex07-like-weak-broad",
+        "perl-0235-ex08-mention-only",
+        "perl-0235-ex09-oracle-without-owner",
+        "perl-0235-ex10-relation-without-oracle",
+        "perl-0235-ex11-weakly-reachable-no-sink",
+        "perl-0235-ex12-static-unknown-hint",
+        "perl-0235-ex13-method-receiver",
+        "perl-0235-ex14-helper-call",
+        "perl-0235-ex15-package-reference",
+        "perl-0235-ex15-test-name-match",
+        "perl-0235-ex16-no-relations",
+        "perl-0235-ex16-no-relations-complete",
+        "perl-0235-ex17-aligned-sinks-complete-packet",
+        "perl-0235-ex18-reversed-sinks",
+        "perl-0235-ex19-sink-whitespace",
+        "perl-0235-ex20-method-receiver-aligned-sinks",
+        "perl-0235-ex21-weakly-reachable-aligned-sinks",
+        "perl-0235-ex23-missing-test-runner",
+        "perl-0235-ex24-framework-indirection",
+        "perl-0235-ex25-dynamic-dispatch",
+        "perl-0235-ex26-partial-inference",
+        "perl-0235-ex27-file-proximity-control",
+        "perl-0235-ex27-weakly-reachable-and-package-reference",
+        "perl-0235-ex28-cross-test-oracle",
+        "perl-0235-ex29-low-confidence-relation",
+        "perl-0235-ex29-unknown-framework",
+        "perl-0235-ex30-rangeless-owner-id",
+        "perl-0235-ex31-unknown-owner-kind",
+        "perl-bless-counter-inc",
+        "perl-bless-counter-start",
+        "perl-hostile-autoload-field",
+        "perl-hostile-constant-tax",
+        "perl-hostile-glob-double",
+        "perl-hostile-glob-triple-unexercised",
+        "perl-hostile-heredoc-greeting",
+        "perl-hostile-line-directive-pad",
+        "perl-hostile-string-eval-quad",
+        "perl-hostile-unicode-sub-name",
+        "perl-idiom-banner-repeat",
+        "perl-idiom-closure-counter",
+        "perl-idiom-eval-safe-div",
+        "perl-idiom-local-separator",
+        "perl-idiom-regex-version",
+        "perl-idiom-slugify-subst",
+        "perl-idiom-wantarray-exact",
+        "perl-idiom-wantarray-smoke",
+        "perl-moose-birthday-smoke",
+        "perl-moose-builder-join",
+        "perl-moose-is-adult-boundary",
+        "perl-test2-close-month-subtest",
+        "perl-test2-deposit-lives-only",
+        "perl-test2-fee-isnt-zero",
+        "perl-test2-format-entry-like",
+        "perl-test2-net-change-imported",
+        "perl-test2-overdrawn-ok-smoke",
+        "perl-test2-summary-deep-is-count",
+        "perl-test2-withdraw-dies-like-message",
+        "perl-testdeep-adjust-exact-hash",
+        "perl-testdeep-label-pair-code",
+        "perl-testdeep-record-ignore",
+        "perl-testdeep-restock-superhashof",
+        "perl-testdeep-sku-re",
+        "perl-testdeep-tag-list-bag",
+        "perl-testexception-close-out-dies-ok",
+        "perl-testexception-freeze-class",
+        "perl-testexception-interest-lives-ok",
+        "perl-testexception-lives-and-is",
+        "perl-testexception-transfer-boundary-pair",
+        "perl-testexception-withdraw-throws-message",
+        "perl-testmore-bulk-subtest",
+        "perl-testmore-bundle-helper-sub",
+        "perl-testmore-can-ok-only",
+        "perl-testmore-cart-dynamic-dispatch",
+        "perl-testmore-cart-method-total",
+        "perl-testmore-clamp-isnt",
+        "perl-testmore-discount-imported-boundary",
+        "perl-testmore-points-cmp-ok-positive",
+        "perl-testmore-quote-is-deeply-total",
+        "perl-testmore-round-cents-like",
+        "perl-testmore-shipping-smoke-ok",
+        "perl-testmore-tax-table-loop",
+        "perl-testmore-tier-far-from-boundary"
+      ],
+      "added": [
+        "perl-testexception-class-only-message",
+        "perl-testexception-class-then-message",
+        "perl-testexception-eval-like-dollar-at",
+        "perl-testexception-eval-ok-no-error",
+        "perl-testexception-lives-and-weak-ok",
+        "perl-testexception-prefix-only-regex"
+      ],
+      "removed": [],
+      "eligibility_changes": [],
+      "baseline_fraction": [
+        1,
+        54
+      ],
+      "current_retained_id_fraction_NOT_definition_comparable": [
+        0,
+        0
+      ],
+      "added_fraction": [
+        0,
+        0
+      ],
+      "current_full_fraction": [
+        0,
+        60
+      ],
+      "native_comparison": {
+        "added": {
+          "denominator": 6,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "changed_definitions": [
+          "perl-0235-ex01-sink-unconfirmed",
+          "perl-0235-ex03-smoke-ok-strong-exact",
+          "perl-0235-ex04-dies-only-strong-exact",
+          "perl-0235-ex05-exception-observer-strong-exact",
+          "perl-0235-ex06-hash-field-assertion",
+          "perl-0235-ex06-output-observer",
+          "perl-0235-ex07-like-weak-broad",
+          "perl-0235-ex08-mention-only",
+          "perl-0235-ex09-oracle-without-owner",
+          "perl-0235-ex10-relation-without-oracle",
+          "perl-0235-ex11-weakly-reachable-no-sink",
+          "perl-0235-ex12-static-unknown-hint",
+          "perl-0235-ex13-method-receiver",
+          "perl-0235-ex14-helper-call",
+          "perl-0235-ex15-package-reference",
+          "perl-0235-ex15-test-name-match",
+          "perl-0235-ex16-no-relations",
+          "perl-0235-ex16-no-relations-complete",
+          "perl-0235-ex17-aligned-sinks-complete-packet",
+          "perl-0235-ex18-reversed-sinks",
+          "perl-0235-ex19-sink-whitespace",
+          "perl-0235-ex20-method-receiver-aligned-sinks",
+          "perl-0235-ex21-weakly-reachable-aligned-sinks",
+          "perl-0235-ex23-missing-test-runner",
+          "perl-0235-ex24-framework-indirection",
+          "perl-0235-ex25-dynamic-dispatch",
+          "perl-0235-ex26-partial-inference",
+          "perl-0235-ex27-file-proximity-control",
+          "perl-0235-ex27-weakly-reachable-and-package-reference",
+          "perl-0235-ex28-cross-test-oracle",
+          "perl-0235-ex29-low-confidence-relation",
+          "perl-0235-ex29-unknown-framework",
+          "perl-0235-ex30-rangeless-owner-id",
+          "perl-0235-ex31-unknown-owner-kind",
+          "perl-bless-counter-inc",
+          "perl-bless-counter-start",
+          "perl-hostile-autoload-field",
+          "perl-hostile-constant-tax",
+          "perl-hostile-glob-double",
+          "perl-hostile-glob-triple-unexercised",
+          "perl-hostile-heredoc-greeting",
+          "perl-hostile-line-directive-pad",
+          "perl-hostile-string-eval-quad",
+          "perl-hostile-unicode-sub-name",
+          "perl-idiom-banner-repeat",
+          "perl-idiom-closure-counter",
+          "perl-idiom-eval-safe-div",
+          "perl-idiom-local-separator",
+          "perl-idiom-regex-version",
+          "perl-idiom-slugify-subst",
+          "perl-idiom-wantarray-exact",
+          "perl-idiom-wantarray-smoke",
+          "perl-moose-birthday-smoke",
+          "perl-moose-builder-join",
+          "perl-moose-is-adult-boundary",
+          "perl-test2-close-month-subtest",
+          "perl-test2-deposit-lives-only",
+          "perl-test2-fee-isnt-zero",
+          "perl-test2-format-entry-like",
+          "perl-test2-net-change-imported",
+          "perl-test2-overdrawn-ok-smoke",
+          "perl-test2-summary-deep-is-count",
+          "perl-test2-withdraw-dies-like-message",
+          "perl-testdeep-adjust-exact-hash",
+          "perl-testdeep-label-pair-code",
+          "perl-testdeep-record-ignore",
+          "perl-testdeep-restock-superhashof",
+          "perl-testdeep-sku-re",
+          "perl-testdeep-tag-list-bag",
+          "perl-testexception-close-out-dies-ok",
+          "perl-testexception-freeze-class",
+          "perl-testexception-interest-lives-ok",
+          "perl-testexception-lives-and-is",
+          "perl-testexception-transfer-boundary-pair",
+          "perl-testexception-withdraw-throws-message",
+          "perl-testmore-bulk-subtest",
+          "perl-testmore-bundle-helper-sub",
+          "perl-testmore-can-ok-only",
+          "perl-testmore-cart-dynamic-dispatch",
+          "perl-testmore-cart-method-total",
+          "perl-testmore-clamp-isnt",
+          "perl-testmore-discount-imported-boundary",
+          "perl-testmore-points-cmp-ok-positive",
+          "perl-testmore-quote-is-deeply-total",
+          "perl-testmore-round-cents-like",
+          "perl-testmore-shipping-smoke-ok",
+          "perl-testmore-tax-table-loop",
+          "perl-testmore-tier-far-from-boundary"
+        ],
+        "common": {
+          "baseline": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "cases_total": 0,
+          "current": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "comparable": false,
+        "comparison_failed": true,
+        "new_cases": [
+          "perl-testexception-class-only-message",
+          "perl-testexception-class-then-message",
+          "perl-testexception-eval-like-dollar-at",
+          "perl-testexception-eval-ok-no-error",
+          "perl-testexception-lives-and-weak-ok",
+          "perl-testexception-prefix-only-regex"
+        ],
+        "reason": "no eligible unchanged common cases; additions, removals and changed definitions cannot substitute for comparison evidence",
+        "removed": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "removed_cases": []
+      }
+    },
+    {
+      "metric": "trust.perl_verdict_corpus_false_actionable",
+      "baseline_provenance": {
+        "approved": "EffortlessMetrics/ripr-swarm#10809",
+        "corpus_blob": "6b0da537f6aa117f126cb732c7e19acee7c24f8f",
+        "kind": "committed_expected_rows",
+        "revision": "ea5229fba660d284841b3954f73ca7948a88d0ea",
+        "rows_tree": "5b1718f4c61eb369f055d938d26421102ba79c50"
+      },
+      "baseline_cases": 88,
+      "current_cases": 94,
+      "shared_case_ids": 88,
+      "unchanged_definitions": 0,
+      "changed_definitions": [
+        "perl-0235-ex01-sink-unconfirmed",
+        "perl-0235-ex03-smoke-ok-strong-exact",
+        "perl-0235-ex04-dies-only-strong-exact",
+        "perl-0235-ex05-exception-observer-strong-exact",
+        "perl-0235-ex06-hash-field-assertion",
+        "perl-0235-ex06-output-observer",
+        "perl-0235-ex07-like-weak-broad",
+        "perl-0235-ex08-mention-only",
+        "perl-0235-ex09-oracle-without-owner",
+        "perl-0235-ex10-relation-without-oracle",
+        "perl-0235-ex11-weakly-reachable-no-sink",
+        "perl-0235-ex12-static-unknown-hint",
+        "perl-0235-ex13-method-receiver",
+        "perl-0235-ex14-helper-call",
+        "perl-0235-ex15-package-reference",
+        "perl-0235-ex15-test-name-match",
+        "perl-0235-ex16-no-relations",
+        "perl-0235-ex16-no-relations-complete",
+        "perl-0235-ex17-aligned-sinks-complete-packet",
+        "perl-0235-ex18-reversed-sinks",
+        "perl-0235-ex19-sink-whitespace",
+        "perl-0235-ex20-method-receiver-aligned-sinks",
+        "perl-0235-ex21-weakly-reachable-aligned-sinks",
+        "perl-0235-ex23-missing-test-runner",
+        "perl-0235-ex24-framework-indirection",
+        "perl-0235-ex25-dynamic-dispatch",
+        "perl-0235-ex26-partial-inference",
+        "perl-0235-ex27-file-proximity-control",
+        "perl-0235-ex27-weakly-reachable-and-package-reference",
+        "perl-0235-ex28-cross-test-oracle",
+        "perl-0235-ex29-low-confidence-relation",
+        "perl-0235-ex29-unknown-framework",
+        "perl-0235-ex30-rangeless-owner-id",
+        "perl-0235-ex31-unknown-owner-kind",
+        "perl-bless-counter-inc",
+        "perl-bless-counter-start",
+        "perl-hostile-autoload-field",
+        "perl-hostile-constant-tax",
+        "perl-hostile-glob-double",
+        "perl-hostile-glob-triple-unexercised",
+        "perl-hostile-heredoc-greeting",
+        "perl-hostile-line-directive-pad",
+        "perl-hostile-string-eval-quad",
+        "perl-hostile-unicode-sub-name",
+        "perl-idiom-banner-repeat",
+        "perl-idiom-closure-counter",
+        "perl-idiom-eval-safe-div",
+        "perl-idiom-local-separator",
+        "perl-idiom-regex-version",
+        "perl-idiom-slugify-subst",
+        "perl-idiom-wantarray-exact",
+        "perl-idiom-wantarray-smoke",
+        "perl-moose-birthday-smoke",
+        "perl-moose-builder-join",
+        "perl-moose-is-adult-boundary",
+        "perl-test2-close-month-subtest",
+        "perl-test2-deposit-lives-only",
+        "perl-test2-fee-isnt-zero",
+        "perl-test2-format-entry-like",
+        "perl-test2-net-change-imported",
+        "perl-test2-overdrawn-ok-smoke",
+        "perl-test2-summary-deep-is-count",
+        "perl-test2-withdraw-dies-like-message",
+        "perl-testdeep-adjust-exact-hash",
+        "perl-testdeep-label-pair-code",
+        "perl-testdeep-record-ignore",
+        "perl-testdeep-restock-superhashof",
+        "perl-testdeep-sku-re",
+        "perl-testdeep-tag-list-bag",
+        "perl-testexception-close-out-dies-ok",
+        "perl-testexception-freeze-class",
+        "perl-testexception-interest-lives-ok",
+        "perl-testexception-lives-and-is",
+        "perl-testexception-transfer-boundary-pair",
+        "perl-testexception-withdraw-throws-message",
+        "perl-testmore-bulk-subtest",
+        "perl-testmore-bundle-helper-sub",
+        "perl-testmore-can-ok-only",
+        "perl-testmore-cart-dynamic-dispatch",
+        "perl-testmore-cart-method-total",
+        "perl-testmore-clamp-isnt",
+        "perl-testmore-discount-imported-boundary",
+        "perl-testmore-points-cmp-ok-positive",
+        "perl-testmore-quote-is-deeply-total",
+        "perl-testmore-round-cents-like",
+        "perl-testmore-shipping-smoke-ok",
+        "perl-testmore-tax-table-loop",
+        "perl-testmore-tier-far-from-boundary"
+      ],
+      "added": [
+        "perl-testexception-class-only-message",
+        "perl-testexception-class-then-message",
+        "perl-testexception-eval-like-dollar-at",
+        "perl-testexception-eval-ok-no-error",
+        "perl-testexception-lives-and-weak-ok",
+        "perl-testexception-prefix-only-regex"
+      ],
+      "removed": [],
+      "eligibility_changes": [],
+      "baseline_fraction": [
+        0,
+        28
+      ],
+      "current_retained_id_fraction_NOT_definition_comparable": [
+        0,
+        0
+      ],
+      "added_fraction": [
+        0,
+        0
+      ],
+      "current_full_fraction": [
+        0,
+        30
+      ],
+      "native_comparison": {
+        "added": {
+          "denominator": 2,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "changed_definitions": [
+          "perl-0235-ex01-sink-unconfirmed",
+          "perl-0235-ex03-smoke-ok-strong-exact",
+          "perl-0235-ex04-dies-only-strong-exact",
+          "perl-0235-ex05-exception-observer-strong-exact",
+          "perl-0235-ex06-hash-field-assertion",
+          "perl-0235-ex06-output-observer",
+          "perl-0235-ex07-like-weak-broad",
+          "perl-0235-ex08-mention-only",
+          "perl-0235-ex09-oracle-without-owner",
+          "perl-0235-ex10-relation-without-oracle",
+          "perl-0235-ex11-weakly-reachable-no-sink",
+          "perl-0235-ex12-static-unknown-hint",
+          "perl-0235-ex13-method-receiver",
+          "perl-0235-ex14-helper-call",
+          "perl-0235-ex15-package-reference",
+          "perl-0235-ex15-test-name-match",
+          "perl-0235-ex16-no-relations",
+          "perl-0235-ex16-no-relations-complete",
+          "perl-0235-ex17-aligned-sinks-complete-packet",
+          "perl-0235-ex18-reversed-sinks",
+          "perl-0235-ex19-sink-whitespace",
+          "perl-0235-ex20-method-receiver-aligned-sinks",
+          "perl-0235-ex21-weakly-reachable-aligned-sinks",
+          "perl-0235-ex23-missing-test-runner",
+          "perl-0235-ex24-framework-indirection",
+          "perl-0235-ex25-dynamic-dispatch",
+          "perl-0235-ex26-partial-inference",
+          "perl-0235-ex27-file-proximity-control",
+          "perl-0235-ex27-weakly-reachable-and-package-reference",
+          "perl-0235-ex28-cross-test-oracle",
+          "perl-0235-ex29-low-confidence-relation",
+          "perl-0235-ex29-unknown-framework",
+          "perl-0235-ex30-rangeless-owner-id",
+          "perl-0235-ex31-unknown-owner-kind",
+          "perl-bless-counter-inc",
+          "perl-bless-counter-start",
+          "perl-hostile-autoload-field",
+          "perl-hostile-constant-tax",
+          "perl-hostile-glob-double",
+          "perl-hostile-glob-triple-unexercised",
+          "perl-hostile-heredoc-greeting",
+          "perl-hostile-line-directive-pad",
+          "perl-hostile-string-eval-quad",
+          "perl-hostile-unicode-sub-name",
+          "perl-idiom-banner-repeat",
+          "perl-idiom-closure-counter",
+          "perl-idiom-eval-safe-div",
+          "perl-idiom-local-separator",
+          "perl-idiom-regex-version",
+          "perl-idiom-slugify-subst",
+          "perl-idiom-wantarray-exact",
+          "perl-idiom-wantarray-smoke",
+          "perl-moose-birthday-smoke",
+          "perl-moose-builder-join",
+          "perl-moose-is-adult-boundary",
+          "perl-test2-close-month-subtest",
+          "perl-test2-deposit-lives-only",
+          "perl-test2-fee-isnt-zero",
+          "perl-test2-format-entry-like",
+          "perl-test2-net-change-imported",
+          "perl-test2-overdrawn-ok-smoke",
+          "perl-test2-summary-deep-is-count",
+          "perl-test2-withdraw-dies-like-message",
+          "perl-testdeep-adjust-exact-hash",
+          "perl-testdeep-label-pair-code",
+          "perl-testdeep-record-ignore",
+          "perl-testdeep-restock-superhashof",
+          "perl-testdeep-sku-re",
+          "perl-testdeep-tag-list-bag",
+          "perl-testexception-close-out-dies-ok",
+          "perl-testexception-freeze-class",
+          "perl-testexception-interest-lives-ok",
+          "perl-testexception-lives-and-is",
+          "perl-testexception-transfer-boundary-pair",
+          "perl-testexception-withdraw-throws-message",
+          "perl-testmore-bulk-subtest",
+          "perl-testmore-bundle-helper-sub",
+          "perl-testmore-can-ok-only",
+          "perl-testmore-cart-dynamic-dispatch",
+          "perl-testmore-cart-method-total",
+          "perl-testmore-clamp-isnt",
+          "perl-testmore-discount-imported-boundary",
+          "perl-testmore-points-cmp-ok-positive",
+          "perl-testmore-quote-is-deeply-total",
+          "perl-testmore-round-cents-like",
+          "perl-testmore-shipping-smoke-ok",
+          "perl-testmore-tax-table-loop",
+          "perl-testmore-tier-far-from-boundary"
+        ],
+        "common": {
+          "baseline": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "cases_total": 0,
+          "current": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "comparable": false,
+        "comparison_failed": true,
+        "new_cases": [
+          "perl-testexception-class-only-message",
+          "perl-testexception-class-then-message",
+          "perl-testexception-eval-like-dollar-at",
+          "perl-testexception-eval-ok-no-error",
+          "perl-testexception-lives-and-weak-ok",
+          "perl-testexception-prefix-only-regex"
+        ],
+        "reason": "no eligible unchanged common cases; additions, removals and changed definitions cannot substitute for comparison evidence",
+        "removed": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "removed_cases": []
+      }
+    },
+    {
+      "metric": "trust.perl_verdict_corpus_false_exposed",
+      "baseline_provenance": {
+        "approved": "EffortlessMetrics/ripr-swarm#10809",
+        "corpus_blob": "6b0da537f6aa117f126cb732c7e19acee7c24f8f",
+        "kind": "committed_expected_rows",
+        "revision": "ea5229fba660d284841b3954f73ca7948a88d0ea",
+        "rows_tree": "5b1718f4c61eb369f055d938d26421102ba79c50"
+      },
+      "baseline_cases": 88,
+      "current_cases": 94,
+      "shared_case_ids": 88,
+      "unchanged_definitions": 0,
+      "changed_definitions": [
+        "perl-0235-ex01-sink-unconfirmed",
+        "perl-0235-ex03-smoke-ok-strong-exact",
+        "perl-0235-ex04-dies-only-strong-exact",
+        "perl-0235-ex05-exception-observer-strong-exact",
+        "perl-0235-ex06-hash-field-assertion",
+        "perl-0235-ex06-output-observer",
+        "perl-0235-ex07-like-weak-broad",
+        "perl-0235-ex08-mention-only",
+        "perl-0235-ex09-oracle-without-owner",
+        "perl-0235-ex10-relation-without-oracle",
+        "perl-0235-ex11-weakly-reachable-no-sink",
+        "perl-0235-ex12-static-unknown-hint",
+        "perl-0235-ex13-method-receiver",
+        "perl-0235-ex14-helper-call",
+        "perl-0235-ex15-package-reference",
+        "perl-0235-ex15-test-name-match",
+        "perl-0235-ex16-no-relations",
+        "perl-0235-ex16-no-relations-complete",
+        "perl-0235-ex17-aligned-sinks-complete-packet",
+        "perl-0235-ex18-reversed-sinks",
+        "perl-0235-ex19-sink-whitespace",
+        "perl-0235-ex20-method-receiver-aligned-sinks",
+        "perl-0235-ex21-weakly-reachable-aligned-sinks",
+        "perl-0235-ex23-missing-test-runner",
+        "perl-0235-ex24-framework-indirection",
+        "perl-0235-ex25-dynamic-dispatch",
+        "perl-0235-ex26-partial-inference",
+        "perl-0235-ex27-file-proximity-control",
+        "perl-0235-ex27-weakly-reachable-and-package-reference",
+        "perl-0235-ex28-cross-test-oracle",
+        "perl-0235-ex29-low-confidence-relation",
+        "perl-0235-ex29-unknown-framework",
+        "perl-0235-ex30-rangeless-owner-id",
+        "perl-0235-ex31-unknown-owner-kind",
+        "perl-bless-counter-inc",
+        "perl-bless-counter-start",
+        "perl-hostile-autoload-field",
+        "perl-hostile-constant-tax",
+        "perl-hostile-glob-double",
+        "perl-hostile-glob-triple-unexercised",
+        "perl-hostile-heredoc-greeting",
+        "perl-hostile-line-directive-pad",
+        "perl-hostile-string-eval-quad",
+        "perl-hostile-unicode-sub-name",
+        "perl-idiom-banner-repeat",
+        "perl-idiom-closure-counter",
+        "perl-idiom-eval-safe-div",
+        "perl-idiom-local-separator",
+        "perl-idiom-regex-version",
+        "perl-idiom-slugify-subst",
+        "perl-idiom-wantarray-exact",
+        "perl-idiom-wantarray-smoke",
+        "perl-moose-birthday-smoke",
+        "perl-moose-builder-join",
+        "perl-moose-is-adult-boundary",
+        "perl-test2-close-month-subtest",
+        "perl-test2-deposit-lives-only",
+        "perl-test2-fee-isnt-zero",
+        "perl-test2-format-entry-like",
+        "perl-test2-net-change-imported",
+        "perl-test2-overdrawn-ok-smoke",
+        "perl-test2-summary-deep-is-count",
+        "perl-test2-withdraw-dies-like-message",
+        "perl-testdeep-adjust-exact-hash",
+        "perl-testdeep-label-pair-code",
+        "perl-testdeep-record-ignore",
+        "perl-testdeep-restock-superhashof",
+        "perl-testdeep-sku-re",
+        "perl-testdeep-tag-list-bag",
+        "perl-testexception-close-out-dies-ok",
+        "perl-testexception-freeze-class",
+        "perl-testexception-interest-lives-ok",
+        "perl-testexception-lives-and-is",
+        "perl-testexception-transfer-boundary-pair",
+        "perl-testexception-withdraw-throws-message",
+        "perl-testmore-bulk-subtest",
+        "perl-testmore-bundle-helper-sub",
+        "perl-testmore-can-ok-only",
+        "perl-testmore-cart-dynamic-dispatch",
+        "perl-testmore-cart-method-total",
+        "perl-testmore-clamp-isnt",
+        "perl-testmore-discount-imported-boundary",
+        "perl-testmore-points-cmp-ok-positive",
+        "perl-testmore-quote-is-deeply-total",
+        "perl-testmore-round-cents-like",
+        "perl-testmore-shipping-smoke-ok",
+        "perl-testmore-tax-table-loop",
+        "perl-testmore-tier-far-from-boundary"
+      ],
+      "added": [
+        "perl-testexception-class-only-message",
+        "perl-testexception-class-then-message",
+        "perl-testexception-eval-like-dollar-at",
+        "perl-testexception-eval-ok-no-error",
+        "perl-testexception-lives-and-weak-ok",
+        "perl-testexception-prefix-only-regex"
+      ],
+      "removed": [],
+      "eligibility_changes": [],
+      "baseline_fraction": [
+        1,
+        26
+      ],
+      "current_retained_id_fraction_NOT_definition_comparable": [
+        0,
+        0
+      ],
+      "added_fraction": [
+        0,
+        0
+      ],
+      "current_full_fraction": [
+        0,
+        30
+      ],
+      "native_comparison": {
+        "added": {
+          "denominator": 4,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "changed_definitions": [
+          "perl-0235-ex01-sink-unconfirmed",
+          "perl-0235-ex03-smoke-ok-strong-exact",
+          "perl-0235-ex04-dies-only-strong-exact",
+          "perl-0235-ex05-exception-observer-strong-exact",
+          "perl-0235-ex06-hash-field-assertion",
+          "perl-0235-ex06-output-observer",
+          "perl-0235-ex07-like-weak-broad",
+          "perl-0235-ex08-mention-only",
+          "perl-0235-ex09-oracle-without-owner",
+          "perl-0235-ex10-relation-without-oracle",
+          "perl-0235-ex11-weakly-reachable-no-sink",
+          "perl-0235-ex12-static-unknown-hint",
+          "perl-0235-ex13-method-receiver",
+          "perl-0235-ex14-helper-call",
+          "perl-0235-ex15-package-reference",
+          "perl-0235-ex15-test-name-match",
+          "perl-0235-ex16-no-relations",
+          "perl-0235-ex16-no-relations-complete",
+          "perl-0235-ex17-aligned-sinks-complete-packet",
+          "perl-0235-ex18-reversed-sinks",
+          "perl-0235-ex19-sink-whitespace",
+          "perl-0235-ex20-method-receiver-aligned-sinks",
+          "perl-0235-ex21-weakly-reachable-aligned-sinks",
+          "perl-0235-ex23-missing-test-runner",
+          "perl-0235-ex24-framework-indirection",
+          "perl-0235-ex25-dynamic-dispatch",
+          "perl-0235-ex26-partial-inference",
+          "perl-0235-ex27-file-proximity-control",
+          "perl-0235-ex27-weakly-reachable-and-package-reference",
+          "perl-0235-ex28-cross-test-oracle",
+          "perl-0235-ex29-low-confidence-relation",
+          "perl-0235-ex29-unknown-framework",
+          "perl-0235-ex30-rangeless-owner-id",
+          "perl-0235-ex31-unknown-owner-kind",
+          "perl-bless-counter-inc",
+          "perl-bless-counter-start",
+          "perl-hostile-autoload-field",
+          "perl-hostile-constant-tax",
+          "perl-hostile-glob-double",
+          "perl-hostile-glob-triple-unexercised",
+          "perl-hostile-heredoc-greeting",
+          "perl-hostile-line-directive-pad",
+          "perl-hostile-string-eval-quad",
+          "perl-hostile-unicode-sub-name",
+          "perl-idiom-banner-repeat",
+          "perl-idiom-closure-counter",
+          "perl-idiom-eval-safe-div",
+          "perl-idiom-local-separator",
+          "perl-idiom-regex-version",
+          "perl-idiom-slugify-subst",
+          "perl-idiom-wantarray-exact",
+          "perl-idiom-wantarray-smoke",
+          "perl-moose-birthday-smoke",
+          "perl-moose-builder-join",
+          "perl-moose-is-adult-boundary",
+          "perl-test2-close-month-subtest",
+          "perl-test2-deposit-lives-only",
+          "perl-test2-fee-isnt-zero",
+          "perl-test2-format-entry-like",
+          "perl-test2-net-change-imported",
+          "perl-test2-overdrawn-ok-smoke",
+          "perl-test2-summary-deep-is-count",
+          "perl-test2-withdraw-dies-like-message",
+          "perl-testdeep-adjust-exact-hash",
+          "perl-testdeep-label-pair-code",
+          "perl-testdeep-record-ignore",
+          "perl-testdeep-restock-superhashof",
+          "perl-testdeep-sku-re",
+          "perl-testdeep-tag-list-bag",
+          "perl-testexception-close-out-dies-ok",
+          "perl-testexception-freeze-class",
+          "perl-testexception-interest-lives-ok",
+          "perl-testexception-lives-and-is",
+          "perl-testexception-transfer-boundary-pair",
+          "perl-testexception-withdraw-throws-message",
+          "perl-testmore-bulk-subtest",
+          "perl-testmore-bundle-helper-sub",
+          "perl-testmore-can-ok-only",
+          "perl-testmore-cart-dynamic-dispatch",
+          "perl-testmore-cart-method-total",
+          "perl-testmore-clamp-isnt",
+          "perl-testmore-discount-imported-boundary",
+          "perl-testmore-points-cmp-ok-positive",
+          "perl-testmore-quote-is-deeply-total",
+          "perl-testmore-round-cents-like",
+          "perl-testmore-shipping-smoke-ok",
+          "perl-testmore-tax-table-loop",
+          "perl-testmore-tier-far-from-boundary"
+        ],
+        "common": {
+          "baseline": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "cases_total": 0,
+          "current": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "comparable": false,
+        "comparison_failed": true,
+        "new_cases": [
+          "perl-testexception-class-only-message",
+          "perl-testexception-class-then-message",
+          "perl-testexception-eval-like-dollar-at",
+          "perl-testexception-eval-ok-no-error",
+          "perl-testexception-lives-and-weak-ok",
+          "perl-testexception-prefix-only-regex"
+        ],
+        "reason": "no eligible unchanged common cases; additions, removals and changed definitions cannot substitute for comparison evidence",
+        "removed": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "removed_cases": []
+      }
+    },
+    {
+      "metric": "trust.perl_verdict_corpus_false_silent",
+      "baseline_provenance": {
+        "approved": "EffortlessMetrics/ripr-swarm#10809",
+        "corpus_blob": "6b0da537f6aa117f126cb732c7e19acee7c24f8f",
+        "kind": "committed_expected_rows",
+        "revision": "ea5229fba660d284841b3954f73ca7948a88d0ea",
+        "rows_tree": "5b1718f4c61eb369f055d938d26421102ba79c50"
+      },
+      "baseline_cases": 88,
+      "current_cases": 94,
+      "shared_case_ids": 88,
+      "unchanged_definitions": 0,
+      "changed_definitions": [
+        "perl-0235-ex01-sink-unconfirmed",
+        "perl-0235-ex03-smoke-ok-strong-exact",
+        "perl-0235-ex04-dies-only-strong-exact",
+        "perl-0235-ex05-exception-observer-strong-exact",
+        "perl-0235-ex06-hash-field-assertion",
+        "perl-0235-ex06-output-observer",
+        "perl-0235-ex07-like-weak-broad",
+        "perl-0235-ex08-mention-only",
+        "perl-0235-ex09-oracle-without-owner",
+        "perl-0235-ex10-relation-without-oracle",
+        "perl-0235-ex11-weakly-reachable-no-sink",
+        "perl-0235-ex12-static-unknown-hint",
+        "perl-0235-ex13-method-receiver",
+        "perl-0235-ex14-helper-call",
+        "perl-0235-ex15-package-reference",
+        "perl-0235-ex15-test-name-match",
+        "perl-0235-ex16-no-relations",
+        "perl-0235-ex16-no-relations-complete",
+        "perl-0235-ex17-aligned-sinks-complete-packet",
+        "perl-0235-ex18-reversed-sinks",
+        "perl-0235-ex19-sink-whitespace",
+        "perl-0235-ex20-method-receiver-aligned-sinks",
+        "perl-0235-ex21-weakly-reachable-aligned-sinks",
+        "perl-0235-ex23-missing-test-runner",
+        "perl-0235-ex24-framework-indirection",
+        "perl-0235-ex25-dynamic-dispatch",
+        "perl-0235-ex26-partial-inference",
+        "perl-0235-ex27-file-proximity-control",
+        "perl-0235-ex27-weakly-reachable-and-package-reference",
+        "perl-0235-ex28-cross-test-oracle",
+        "perl-0235-ex29-low-confidence-relation",
+        "perl-0235-ex29-unknown-framework",
+        "perl-0235-ex30-rangeless-owner-id",
+        "perl-0235-ex31-unknown-owner-kind",
+        "perl-bless-counter-inc",
+        "perl-bless-counter-start",
+        "perl-hostile-autoload-field",
+        "perl-hostile-constant-tax",
+        "perl-hostile-glob-double",
+        "perl-hostile-glob-triple-unexercised",
+        "perl-hostile-heredoc-greeting",
+        "perl-hostile-line-directive-pad",
+        "perl-hostile-string-eval-quad",
+        "perl-hostile-unicode-sub-name",
+        "perl-idiom-banner-repeat",
+        "perl-idiom-closure-counter",
+        "perl-idiom-eval-safe-div",
+        "perl-idiom-local-separator",
+        "perl-idiom-regex-version",
+        "perl-idiom-slugify-subst",
+        "perl-idiom-wantarray-exact",
+        "perl-idiom-wantarray-smoke",
+        "perl-moose-birthday-smoke",
+        "perl-moose-builder-join",
+        "perl-moose-is-adult-boundary",
+        "perl-test2-close-month-subtest",
+        "perl-test2-deposit-lives-only",
+        "perl-test2-fee-isnt-zero",
+        "perl-test2-format-entry-like",
+        "perl-test2-net-change-imported",
+        "perl-test2-overdrawn-ok-smoke",
+        "perl-test2-summary-deep-is-count",
+        "perl-test2-withdraw-dies-like-message",
+        "perl-testdeep-adjust-exact-hash",
+        "perl-testdeep-label-pair-code",
+        "perl-testdeep-record-ignore",
+        "perl-testdeep-restock-superhashof",
+        "perl-testdeep-sku-re",
+        "perl-testdeep-tag-list-bag",
+        "perl-testexception-close-out-dies-ok",
+        "perl-testexception-freeze-class",
+        "perl-testexception-interest-lives-ok",
+        "perl-testexception-lives-and-is",
+        "perl-testexception-transfer-boundary-pair",
+        "perl-testexception-withdraw-throws-message",
+        "perl-testmore-bulk-subtest",
+        "perl-testmore-bundle-helper-sub",
+        "perl-testmore-can-ok-only",
+        "perl-testmore-cart-dynamic-dispatch",
+        "perl-testmore-cart-method-total",
+        "perl-testmore-clamp-isnt",
+        "perl-testmore-discount-imported-boundary",
+        "perl-testmore-points-cmp-ok-positive",
+        "perl-testmore-quote-is-deeply-total",
+        "perl-testmore-round-cents-like",
+        "perl-testmore-shipping-smoke-ok",
+        "perl-testmore-tax-table-loop",
+        "perl-testmore-tier-far-from-boundary"
+      ],
+      "added": [
+        "perl-testexception-class-only-message",
+        "perl-testexception-class-then-message",
+        "perl-testexception-eval-like-dollar-at",
+        "perl-testexception-eval-ok-no-error",
+        "perl-testexception-lives-and-weak-ok",
+        "perl-testexception-prefix-only-regex"
+      ],
+      "removed": [],
+      "eligibility_changes": [],
+      "baseline_fraction": [
+        0,
+        26
+      ],
+      "current_retained_id_fraction_NOT_definition_comparable": [
+        0,
+        0
+      ],
+      "added_fraction": [
+        0,
+        0
+      ],
+      "current_full_fraction": [
+        0,
+        30
+      ],
+      "native_comparison": {
+        "added": {
+          "denominator": 4,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "changed_definitions": [
+          "perl-0235-ex01-sink-unconfirmed",
+          "perl-0235-ex03-smoke-ok-strong-exact",
+          "perl-0235-ex04-dies-only-strong-exact",
+          "perl-0235-ex05-exception-observer-strong-exact",
+          "perl-0235-ex06-hash-field-assertion",
+          "perl-0235-ex06-output-observer",
+          "perl-0235-ex07-like-weak-broad",
+          "perl-0235-ex08-mention-only",
+          "perl-0235-ex09-oracle-without-owner",
+          "perl-0235-ex10-relation-without-oracle",
+          "perl-0235-ex11-weakly-reachable-no-sink",
+          "perl-0235-ex12-static-unknown-hint",
+          "perl-0235-ex13-method-receiver",
+          "perl-0235-ex14-helper-call",
+          "perl-0235-ex15-package-reference",
+          "perl-0235-ex15-test-name-match",
+          "perl-0235-ex16-no-relations",
+          "perl-0235-ex16-no-relations-complete",
+          "perl-0235-ex17-aligned-sinks-complete-packet",
+          "perl-0235-ex18-reversed-sinks",
+          "perl-0235-ex19-sink-whitespace",
+          "perl-0235-ex20-method-receiver-aligned-sinks",
+          "perl-0235-ex21-weakly-reachable-aligned-sinks",
+          "perl-0235-ex23-missing-test-runner",
+          "perl-0235-ex24-framework-indirection",
+          "perl-0235-ex25-dynamic-dispatch",
+          "perl-0235-ex26-partial-inference",
+          "perl-0235-ex27-file-proximity-control",
+          "perl-0235-ex27-weakly-reachable-and-package-reference",
+          "perl-0235-ex28-cross-test-oracle",
+          "perl-0235-ex29-low-confidence-relation",
+          "perl-0235-ex29-unknown-framework",
+          "perl-0235-ex30-rangeless-owner-id",
+          "perl-0235-ex31-unknown-owner-kind",
+          "perl-bless-counter-inc",
+          "perl-bless-counter-start",
+          "perl-hostile-autoload-field",
+          "perl-hostile-constant-tax",
+          "perl-hostile-glob-double",
+          "perl-hostile-glob-triple-unexercised",
+          "perl-hostile-heredoc-greeting",
+          "perl-hostile-line-directive-pad",
+          "perl-hostile-string-eval-quad",
+          "perl-hostile-unicode-sub-name",
+          "perl-idiom-banner-repeat",
+          "perl-idiom-closure-counter",
+          "perl-idiom-eval-safe-div",
+          "perl-idiom-local-separator",
+          "perl-idiom-regex-version",
+          "perl-idiom-slugify-subst",
+          "perl-idiom-wantarray-exact",
+          "perl-idiom-wantarray-smoke",
+          "perl-moose-birthday-smoke",
+          "perl-moose-builder-join",
+          "perl-moose-is-adult-boundary",
+          "perl-test2-close-month-subtest",
+          "perl-test2-deposit-lives-only",
+          "perl-test2-fee-isnt-zero",
+          "perl-test2-format-entry-like",
+          "perl-test2-net-change-imported",
+          "perl-test2-overdrawn-ok-smoke",
+          "perl-test2-summary-deep-is-count",
+          "perl-test2-withdraw-dies-like-message",
+          "perl-testdeep-adjust-exact-hash",
+          "perl-testdeep-label-pair-code",
+          "perl-testdeep-record-ignore",
+          "perl-testdeep-restock-superhashof",
+          "perl-testdeep-sku-re",
+          "perl-testdeep-tag-list-bag",
+          "perl-testexception-close-out-dies-ok",
+          "perl-testexception-freeze-class",
+          "perl-testexception-interest-lives-ok",
+          "perl-testexception-lives-and-is",
+          "perl-testexception-transfer-boundary-pair",
+          "perl-testexception-withdraw-throws-message",
+          "perl-testmore-bulk-subtest",
+          "perl-testmore-bundle-helper-sub",
+          "perl-testmore-can-ok-only",
+          "perl-testmore-cart-dynamic-dispatch",
+          "perl-testmore-cart-method-total",
+          "perl-testmore-clamp-isnt",
+          "perl-testmore-discount-imported-boundary",
+          "perl-testmore-points-cmp-ok-positive",
+          "perl-testmore-quote-is-deeply-total",
+          "perl-testmore-round-cents-like",
+          "perl-testmore-shipping-smoke-ok",
+          "perl-testmore-tax-table-loop",
+          "perl-testmore-tier-far-from-boundary"
+        ],
+        "common": {
+          "baseline": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "cases_total": 0,
+          "current": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "comparable": false,
+        "comparison_failed": true,
+        "new_cases": [
+          "perl-testexception-class-only-message",
+          "perl-testexception-class-then-message",
+          "perl-testexception-eval-like-dollar-at",
+          "perl-testexception-eval-ok-no-error",
+          "perl-testexception-lives-and-weak-ok",
+          "perl-testexception-prefix-only-regex"
+        ],
+        "reason": "no eligible unchanged common cases; additions, removals and changed definitions cannot substitute for comparison evidence",
+        "removed": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "removed_cases": []
+      }
+    },
+    {
+      "metric": "trust.perl_verdict_corpus_abstention",
+      "baseline_provenance": {
+        "approved": "EffortlessMetrics/ripr-swarm#8035",
+        "corpus_blob": "186c7d8c3ce2e1766603cd030a37ba273c0a194c",
+        "kind": "committed_expected_rows",
+        "revision": "76651d1cdf9242b301c9ddf28c442838ccf73c59",
+        "rows_tree": "46a0dc499fe0a9e43ac672ad34d1305b68bad33b"
+      },
+      "baseline_cases": 36,
+      "current_cases": 94,
+      "shared_case_ids": 36,
+      "unchanged_definitions": 0,
+      "changed_definitions": [
+        "perl-0235-ex01-sink-unconfirmed",
+        "perl-0235-ex12-static-unknown-hint",
+        "perl-0235-ex13-method-receiver",
+        "perl-0235-ex14-helper-call",
+        "perl-0235-ex19-sink-whitespace",
+        "perl-0235-ex23-missing-test-runner",
+        "perl-0235-ex24-framework-indirection",
+        "perl-0235-ex25-dynamic-dispatch",
+        "perl-0235-ex28-cross-test-oracle",
+        "perl-test2-close-month-subtest",
+        "perl-test2-deposit-lives-only",
+        "perl-test2-fee-isnt-zero",
+        "perl-test2-format-entry-like",
+        "perl-test2-net-change-imported",
+        "perl-test2-overdrawn-ok-smoke",
+        "perl-test2-summary-deep-is-count",
+        "perl-test2-withdraw-dies-like-message",
+        "perl-testexception-close-out-dies-ok",
+        "perl-testexception-freeze-class",
+        "perl-testexception-interest-lives-ok",
+        "perl-testexception-lives-and-is",
+        "perl-testexception-transfer-boundary-pair",
+        "perl-testexception-withdraw-throws-message",
+        "perl-testmore-bulk-subtest",
+        "perl-testmore-bundle-helper-sub",
+        "perl-testmore-can-ok-only",
+        "perl-testmore-cart-dynamic-dispatch",
+        "perl-testmore-cart-method-total",
+        "perl-testmore-clamp-isnt",
+        "perl-testmore-discount-imported-boundary",
+        "perl-testmore-points-cmp-ok-positive",
+        "perl-testmore-quote-is-deeply-total",
+        "perl-testmore-round-cents-like",
+        "perl-testmore-shipping-smoke-ok",
+        "perl-testmore-tax-table-loop",
+        "perl-testmore-tier-far-from-boundary"
+      ],
+      "added": [
+        "perl-0235-ex03-smoke-ok-strong-exact",
+        "perl-0235-ex04-dies-only-strong-exact",
+        "perl-0235-ex05-exception-observer-strong-exact",
+        "perl-0235-ex06-hash-field-assertion",
+        "perl-0235-ex06-output-observer",
+        "perl-0235-ex07-like-weak-broad",
+        "perl-0235-ex08-mention-only",
+        "perl-0235-ex09-oracle-without-owner",
+        "perl-0235-ex10-relation-without-oracle",
+        "perl-0235-ex11-weakly-reachable-no-sink",
+        "perl-0235-ex15-package-reference",
+        "perl-0235-ex15-test-name-match",
+        "perl-0235-ex16-no-relations",
+        "perl-0235-ex16-no-relations-complete",
+        "perl-0235-ex17-aligned-sinks-complete-packet",
+        "perl-0235-ex18-reversed-sinks",
+        "perl-0235-ex20-method-receiver-aligned-sinks",
+        "perl-0235-ex21-weakly-reachable-aligned-sinks",
+        "perl-0235-ex26-partial-inference",
+        "perl-0235-ex27-file-proximity-control",
+        "perl-0235-ex27-weakly-reachable-and-package-reference",
+        "perl-0235-ex29-low-confidence-relation",
+        "perl-0235-ex29-unknown-framework",
+        "perl-0235-ex30-rangeless-owner-id",
+        "perl-0235-ex31-unknown-owner-kind",
+        "perl-bless-counter-inc",
+        "perl-bless-counter-start",
+        "perl-hostile-autoload-field",
+        "perl-hostile-constant-tax",
+        "perl-hostile-glob-double",
+        "perl-hostile-glob-triple-unexercised",
+        "perl-hostile-heredoc-greeting",
+        "perl-hostile-line-directive-pad",
+        "perl-hostile-string-eval-quad",
+        "perl-hostile-unicode-sub-name",
+        "perl-idiom-banner-repeat",
+        "perl-idiom-closure-counter",
+        "perl-idiom-eval-safe-div",
+        "perl-idiom-local-separator",
+        "perl-idiom-regex-version",
+        "perl-idiom-slugify-subst",
+        "perl-idiom-wantarray-exact",
+        "perl-idiom-wantarray-smoke",
+        "perl-moose-birthday-smoke",
+        "perl-moose-builder-join",
+        "perl-moose-is-adult-boundary",
+        "perl-testdeep-adjust-exact-hash",
+        "perl-testdeep-label-pair-code",
+        "perl-testdeep-record-ignore",
+        "perl-testdeep-restock-superhashof",
+        "perl-testdeep-sku-re",
+        "perl-testdeep-tag-list-bag",
+        "perl-testexception-class-only-message",
+        "perl-testexception-class-then-message",
+        "perl-testexception-eval-like-dollar-at",
+        "perl-testexception-eval-ok-no-error",
+        "perl-testexception-lives-and-weak-ok",
+        "perl-testexception-prefix-only-regex"
+      ],
+      "removed": [],
+      "eligibility_changes": [],
+      "baseline_fraction": [
+        8,
+        27
+      ],
+      "current_retained_id_fraction_NOT_definition_comparable": [
+        16,
+        0
+      ],
+      "added_fraction": [
+        27,
+        0
+      ],
+      "current_full_fraction": [
+        43,
+        60
+      ],
+      "native_comparison": {
+        "added": {
+          "denominator": 33,
+          "numerator": 27,
+          "value": 0.8182
+        },
+        "changed_definitions": [
+          "perl-0235-ex01-sink-unconfirmed",
+          "perl-0235-ex12-static-unknown-hint",
+          "perl-0235-ex13-method-receiver",
+          "perl-0235-ex14-helper-call",
+          "perl-0235-ex19-sink-whitespace",
+          "perl-0235-ex23-missing-test-runner",
+          "perl-0235-ex24-framework-indirection",
+          "perl-0235-ex25-dynamic-dispatch",
+          "perl-0235-ex28-cross-test-oracle",
+          "perl-test2-close-month-subtest",
+          "perl-test2-deposit-lives-only",
+          "perl-test2-fee-isnt-zero",
+          "perl-test2-format-entry-like",
+          "perl-test2-net-change-imported",
+          "perl-test2-overdrawn-ok-smoke",
+          "perl-test2-summary-deep-is-count",
+          "perl-test2-withdraw-dies-like-message",
+          "perl-testexception-close-out-dies-ok",
+          "perl-testexception-freeze-class",
+          "perl-testexception-interest-lives-ok",
+          "perl-testexception-lives-and-is",
+          "perl-testexception-transfer-boundary-pair",
+          "perl-testexception-withdraw-throws-message",
+          "perl-testmore-bulk-subtest",
+          "perl-testmore-bundle-helper-sub",
+          "perl-testmore-can-ok-only",
+          "perl-testmore-cart-dynamic-dispatch",
+          "perl-testmore-cart-method-total",
+          "perl-testmore-clamp-isnt",
+          "perl-testmore-discount-imported-boundary",
+          "perl-testmore-points-cmp-ok-positive",
+          "perl-testmore-quote-is-deeply-total",
+          "perl-testmore-round-cents-like",
+          "perl-testmore-shipping-smoke-ok",
+          "perl-testmore-tax-table-loop",
+          "perl-testmore-tier-far-from-boundary"
+        ],
+        "common": {
+          "baseline": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          },
+          "cases_total": 0,
+          "current": {
+            "denominator": 0,
+            "numerator": 0,
+            "value": null
+          }
+        },
+        "comparable": false,
+        "comparison_failed": true,
+        "new_cases": [
+          "perl-0235-ex03-smoke-ok-strong-exact",
+          "perl-0235-ex04-dies-only-strong-exact",
+          "perl-0235-ex05-exception-observer-strong-exact",
+          "perl-0235-ex06-hash-field-assertion",
+          "perl-0235-ex06-output-observer",
+          "perl-0235-ex07-like-weak-broad",
+          "perl-0235-ex08-mention-only",
+          "perl-0235-ex09-oracle-without-owner",
+          "perl-0235-ex10-relation-without-oracle",
+          "perl-0235-ex11-weakly-reachable-no-sink",
+          "perl-0235-ex15-package-reference",
+          "perl-0235-ex15-test-name-match",
+          "perl-0235-ex16-no-relations",
+          "perl-0235-ex16-no-relations-complete",
+          "perl-0235-ex17-aligned-sinks-complete-packet",
+          "perl-0235-ex18-reversed-sinks",
+          "perl-0235-ex20-method-receiver-aligned-sinks",
+          "perl-0235-ex21-weakly-reachable-aligned-sinks",
+          "perl-0235-ex26-partial-inference",
+          "perl-0235-ex27-file-proximity-control",
+          "perl-0235-ex27-weakly-reachable-and-package-reference",
+          "perl-0235-ex29-low-confidence-relation",
+          "perl-0235-ex29-unknown-framework",
+          "perl-0235-ex30-rangeless-owner-id",
+          "perl-0235-ex31-unknown-owner-kind",
+          "perl-bless-counter-inc",
+          "perl-bless-counter-start",
+          "perl-hostile-autoload-field",
+          "perl-hostile-constant-tax",
+          "perl-hostile-glob-double",
+          "perl-hostile-glob-triple-unexercised",
+          "perl-hostile-heredoc-greeting",
+          "perl-hostile-line-directive-pad",
+          "perl-hostile-string-eval-quad",
+          "perl-hostile-unicode-sub-name",
+          "perl-idiom-banner-repeat",
+          "perl-idiom-closure-counter",
+          "perl-idiom-eval-safe-div",
+          "perl-idiom-local-separator",
+          "perl-idiom-regex-version",
+          "perl-idiom-slugify-subst",
+          "perl-idiom-wantarray-exact",
+          "perl-idiom-wantarray-smoke",
+          "perl-moose-birthday-smoke",
+          "perl-moose-builder-join",
+          "perl-moose-is-adult-boundary",
+          "perl-testdeep-adjust-exact-hash",
+          "perl-testdeep-label-pair-code",
+          "perl-testdeep-record-ignore",
+          "perl-testdeep-restock-superhashof",
+          "perl-testdeep-sku-re",
+          "perl-testdeep-tag-list-bag",
+          "perl-testexception-class-only-message",
+          "perl-testexception-class-then-message",
+          "perl-testexception-eval-like-dollar-at",
+          "perl-testexception-eval-ok-no-error",
+          "perl-testexception-lives-and-weak-ok",
+          "perl-testexception-prefix-only-regex"
+        ],
+        "reason": "no eligible unchanged common cases; additions, removals and changed definitions cannot substitute for comparison evidence",
+        "removed": {
+          "denominator": 0,
+          "numerator": 0,
+          "value": null
+        },
+        "removed_cases": []
+      }
+    }
+  ],
+  "packet_custody": {
+    "ea5229fba660d284841b3954f73ca7948a88d0ea": {
+      "verified_packets": 88,
+      "producer_only_changes": 43,
+      "cases": [
+        {
+          "case_id": "perl-0235-ex01-sink-unconfirmed",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-0235-ex03-smoke-ok-strong-exact",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex04-dies-only-strong-exact",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex05-exception-observer-strong-exact",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex06-hash-field-assertion",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex06-output-observer",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex07-like-weak-broad",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex08-mention-only",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex09-oracle-without-owner",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex10-relation-without-oracle",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex11-weakly-reachable-no-sink",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex12-static-unknown-hint",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex13-method-receiver",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-0235-ex14-helper-call",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-0235-ex15-package-reference",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex15-test-name-match",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex16-no-relations-complete",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex16-no-relations",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex17-aligned-sinks-complete-packet",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex18-reversed-sinks",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex19-sink-whitespace",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex20-method-receiver-aligned-sinks",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex21-weakly-reachable-aligned-sinks",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex23-missing-test-runner",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex24-framework-indirection",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex25-dynamic-dispatch",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex26-partial-inference",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex27-file-proximity-control",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex27-weakly-reachable-and-package-reference",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex28-cross-test-oracle",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex29-low-confidence-relation",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex29-unknown-framework",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex30-rangeless-owner-id",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex31-unknown-owner-kind",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-bless-counter-inc",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-bless-counter-start",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-autoload-field",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-constant-tax",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-glob-double",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-glob-triple-unexercised",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-heredoc-greeting",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-line-directive-pad",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-string-eval-quad",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-hostile-unicode-sub-name",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-banner-repeat",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-closure-counter",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-eval-safe-div",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-local-separator",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-regex-version",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-slugify-subst",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-wantarray-exact",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-idiom-wantarray-smoke",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-moose-birthday-smoke",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-moose-builder-join",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-moose-is-adult-boundary",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-test2-close-month-subtest",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-deposit-lives-only",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-fee-isnt-zero",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-format-entry-like",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-net-change-imported",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-overdrawn-ok-smoke",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-summary-deep-is-count",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-withdraw-dies-like-message",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testdeep-adjust-exact-hash",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testdeep-label-pair-code",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testdeep-record-ignore",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testdeep-restock-superhashof",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testdeep-sku-re",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testdeep-tag-list-bag",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testexception-close-out-dies-ok",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-freeze-class",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-interest-lives-ok",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-lives-and-is",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-transfer-boundary-pair",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-withdraw-throws-message",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-bulk-subtest",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-bundle-helper-sub",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-can-ok-only",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-cart-dynamic-dispatch",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-cart-method-total",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-clamp-isnt",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-discount-imported-boundary",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-points-cmp-ok-positive",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-quote-is-deeply-total",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-round-cents-like",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-shipping-smoke-ok",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-tax-table-loop",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        },
+        {
+          "case_id": "perl-testmore-tier-far-from-boundary",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "producer"
+          ],
+          "producer_only_packet_change": true
+        }
+      ]
+    },
+    "76651d1cdf9242b301c9ddf28c442838ccf73c59": {
+      "verified_packets": 36,
+      "producer_only_changes": 0,
+      "cases": [
+        {
+          "case_id": "perl-0235-ex01-sink-unconfirmed",
+          "definition_changed_fields": [
+            "acceptable",
+            "anchor",
+            "diff_sha256",
+            "ideal",
+            "mutants",
+            "perl_facts",
+            "subject",
+            "subject_id",
+            "truth"
+          ],
+          "packet_changed_fields": [
+            "changes",
+            "dynamic_boundaries",
+            "files",
+            "limitations",
+            "oracles",
+            "owners",
+            "packet_fingerprint",
+            "producer",
+            "provenance",
+            "relations",
+            "tests",
+            "verify_commands"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex12-static-unknown-hint",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex13-method-receiver",
+          "definition_changed_fields": [
+            "acceptable",
+            "anchor",
+            "diff_sha256",
+            "ideal",
+            "mutants",
+            "perl_facts",
+            "truth"
+          ],
+          "packet_changed_fields": [
+            "changes",
+            "files",
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer",
+            "relations"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex14-helper-call",
+          "definition_changed_fields": [
+            "acceptable",
+            "anchor",
+            "diff_sha256",
+            "ideal",
+            "mutants",
+            "perl_facts",
+            "truth"
+          ],
+          "packet_changed_fields": [
+            "changes",
+            "files",
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer",
+            "relations"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex19-sink-whitespace",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex23-missing-test-runner",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex24-framework-indirection",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex25-dynamic-dispatch",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-0235-ex28-cross-test-oracle",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-close-month-subtest",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-deposit-lives-only",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-fee-isnt-zero",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-format-entry-like",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-net-change-imported",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-overdrawn-ok-smoke",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-summary-deep-is-count",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-test2-withdraw-dies-like-message",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-close-out-dies-ok",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-freeze-class",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-interest-lives-ok",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-lives-and-is",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-transfer-boundary-pair",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testexception-withdraw-throws-message",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-bulk-subtest",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-bundle-helper-sub",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-can-ok-only",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-cart-dynamic-dispatch",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-cart-method-total",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-clamp-isnt",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "packet_fingerprint",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-discount-imported-boundary",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-points-cmp-ok-positive",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-quote-is-deeply-total",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-round-cents-like",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-shipping-smoke-ok",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-tax-table-loop",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        },
+        {
+          "case_id": "perl-testmore-tier-far-from-boundary",
+          "definition_changed_fields": [
+            "perl_facts"
+          ],
+          "packet_changed_fields": [
+            "limitations",
+            "oracles",
+            "producer"
+          ],
+          "producer_only_packet_change": false
+        }
+      ]
+    }
+  },
+  "conclusion": "Correct fail-closed incomparability after verified producer/packet migration; no scorer/custody repair indicated. Same-ID fractions are descriptive only. Baseline re-admission and abstention acceptance/rejection remain existing owner decisions."
+}

@@ -1,0 +1,26 @@
+{
+  "DIAGNOSIS.md": {
+    "bytes": 9057,
+    "sha256": "3821536addb75c3c341922525cf3f944d512a4aee399888c4789accc6fd8ba42"
+  },
+  "diagnosis.json": {
+    "bytes": 92442,
+    "sha256": "f51d70fdfb4744702ba217b0e4e0cb2f162884b5d097a63b95ba65f42719b26a"
+  },
+  "commands.json": {
+    "bytes": 1295,
+    "sha256": "0d0e0220dfcd7118b2ba52df9cfe5ecbef108c356a0709a0d0db01edcc814978"
+  },
+  "native-contract-controls.log": {
+    "bytes": 447,
+    "sha256": "1439415a33cbd5a2f4f8c12a80eb10f011a72568e944b081f3a2c36d7c61f7ae"
+  },
+  "retained-abstention-transitions.json": {
+    "bytes": 3911,
+    "sha256": "0f5f4f9243fba2663d8215e3667c66b0918bbb93b27d62305d997e0a34207aff"
+  },
+  "diagnosis-packet.zip": {
+    "bytes": 66993,
+    "sha256": "b6521d70528e9e5383a8fbaa3afaac1058c68bc1205d13044c07b1c3fca566d9"
+  }
+}

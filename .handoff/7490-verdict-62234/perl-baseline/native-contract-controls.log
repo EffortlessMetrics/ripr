@@ -1,0 +1,8 @@
+
+running 3 tests
+test reports::dx_scoreboard::population_tests::missing_duplicate_and_incomparable_evidence_block_the_gate ... ok
+test reports::dx_scoreboard::population_tests::no_common_eligible_denominator_is_a_blocking_comparison_failure ... ok
+test reports::dx_scoreboard::population_tests::perl_packet_and_producer_are_scoring_identity ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 5419 filtered out; finished in 0.71s
+

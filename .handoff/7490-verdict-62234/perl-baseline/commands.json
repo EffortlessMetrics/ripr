@@ -1,0 +1,32 @@
+{
+  "subject": "62234ac13b0f7a8ff7e30d239f59215b808775b3",
+  "tree": "ef7221a5c23a73670d23bc9998cfe1496b4e38f0",
+  "commands": [
+    {
+      "argv": [
+        "python3",
+        "/workspace/scratch/perl-baseline-diagnosis/diagnose.py"
+      ],
+      "exit": 0,
+      "scope": "Read-only fingerprints/custody from existing Git objects and retained native report; no analyzer execution"
+    },
+    {
+      "argv": [
+        "/workspace/ripr-swarm/target/debug/deps/xtask-0888e6a57fc9f24d",
+        "--exact",
+        "reports::dx_scoreboard::population_tests::perl_packet_and_producer_are_scoring_identity",
+        "reports::dx_scoreboard::population_tests::missing_duplicate_and_incomparable_evidence_block_the_gate",
+        "reports::dx_scoreboard::population_tests::no_common_eligible_denominator_is_a_blocking_comparison_failure",
+        "--test-threads=1"
+      ],
+      "wrapper": "timeout 60s",
+      "exit": 0,
+      "tests_passed": 3,
+      "tests_failed": 0,
+      "tests_filtered": 5419,
+      "test_binary_sha256": "1a4780d6afcaaac37b1b4015475d63a227ac4e3ec81eef9feb594236b64ae5a1"
+    }
+  ],
+  "mutation": "None; no baseline, truth, outcome, threshold, source, integration or release-selection changes.",
+  "prior_actions_readback": "Proxy403 preserved; not retried or bypassed."
+}
