@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - '.github/jactionlint.yaml'
       - '.github/scripts/npm_*.py'
       - '.github/scripts/test_npm_package.py'
       - '.github/workflows/npm-package-qualification.yml'
@@ -142,7 +143,7 @@ jobs:
           printf '%s\n' "5ac307b0499bb0eab45ae99c23e8e0790874fbc667c75224410954e0e3c6e0f5  $RUNNER_TEMP/jactionlint.tar.gz" > "$RUNNER_TEMP/jactionlint.sha256"
           sha256sum --check "$RUNNER_TEMP/jactionlint.sha256"
           tar -xzf "$RUNNER_TEMP/jactionlint.tar.gz" -C "$RUNNER_TEMP" jactionlint
-          "$RUNNER_TEMP/jactionlint" --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
+          "$RUNNER_TEMP/jactionlint" --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.19.0'
