@@ -1,0 +1,3 @@
+# Keep hosted and local lint independent of user-global rule suppressions.
+# No inherited configuration, rule overrides, ignores, or baseline.
+profile: correctness

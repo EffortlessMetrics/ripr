@@ -74,8 +74,9 @@ npm 11.15.0 against a loopback mock registry. Only the registry and live
 provenance request differ; Git transports are refused. It checks exact submitted
 tar bytes and lifecycle suppression, and has no npm credentials or OIDC permission. It
 does not test live staging, OIDC exchange or Sigstore. The same job runs pinned,
-SHA-256-verified jactionlint 2.5.0 with `--profile correctness --no-online`
-for workflow syntax and expression-context validation; repository workflow-budget
+SHA-256-verified jactionlint 2.5.0 with `--profile correctness --no-online`,
+explicitly using `.github/jactionlint.yaml` for workflow syntax and expression-context
+validation; repository workflow-budget
 checks alone do not establish that. This preserves the existing disabled
 ShellCheck/Pyflakes dimensions; it does not claim embedded-script lint coverage.
 Python consumer authority is the exact successful native pip/uv job set; npm
@@ -87,8 +88,15 @@ successful source-main manual qualification and exact hashes, never a rebuild.
 Run the same workflow checks locally without a project dependency:
 
 ```text
-uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
+uvx --from jactionlint==2.5.0 jactionlint --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
 ```
+
+The repository-owned config replaces personal global defaults; it adds no
+rule suppressions, inherited config or baseline. Config changes are included in
+the qualification workflow's PR path filter. If a checked workflow uses
+`actions/github-script`, its `github-script-syntax` check needs Node 20 or newer
+on `PATH`. Record that dimension as omitted when Node is unavailable; a local
+exit 0 alone does not establish JavaScript syntax coverage.
 
 A user-level `uv tool install jactionlint` also exposes `jactionlint` directly;
 check `jactionlint --version` before comparing it with the pinned hosted result.

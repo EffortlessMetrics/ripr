@@ -227,6 +227,12 @@ qualification and publication histories.
 
 ### Development workflow
 
+- Validate npm-related workflows with checksum-verified jactionlint 2.5.0 and
+  explicit repository-owned correctness configuration, preventing personal
+  global rule suppressions from changing the documented local or hosted check.
+  Record Node-dependent JavaScript syntax coverage separately when Node is absent
+  ([#1899](https://github.com/EffortlessMetrics/ripr/pull/1899),
+  [#1900](https://github.com/EffortlessMetrics/ripr/pull/1900)).
 - Run privileged Droid review and tag workflows from trusted base or
   default-branch definitions behind fresh subject admission and mode-specific
   write permissions. Tag requests use PR/issue conversation comments or
