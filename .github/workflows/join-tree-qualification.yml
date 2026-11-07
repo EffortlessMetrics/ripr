@@ -153,9 +153,11 @@ jobs:
           # The carrier is a parentless commit on a control branch whose tree is
           # the reviewed tree; it is never J and is never merged. Read the raw
           # object: a shallow fetch grafts parents away from `git log --format=%P`.
-          if git cat-file commit FETCH_HEAD | sed '/^$/q' | grep -q '^parent '; then
-            echo "::error::$REVIEWED_TREE_REF carrier has parents"; exit 1
-          fi
+          object="$(git cat-file commit FETCH_HEAD)"
+          case "${object%%$'\n\n'*}" in
+            parent\ *|*$'\n'parent\ *)
+              echo "::error::$REVIEWED_TREE_REF carrier has parents"; exit 1 ;;
+          esac
           fetched="$(git rev-parse 'FETCH_HEAD^{tree}')"
           test "$fetched" = "$REVIEWED_TREE" \
             || { echo "::error::carrier tree is $fetched, not $REVIEWED_TREE"; exit 1; }
