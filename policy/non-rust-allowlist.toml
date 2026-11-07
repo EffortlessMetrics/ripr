@@ -197,6 +197,15 @@ reason = "Dependabot update configuration for Cargo, npm, and GitHub Actions."
 covered_by = []
 
 [[allow]]
+glob = ".github/jactionlint.yaml"
+kind = "workflow_lint_config"
+owner = "release/ci"
+surface = "ci"
+classification = "config"
+reason = "Declarative configuration consumed by pinned jactionlint; keeps local and hosted workflow rule policy repository-owned."
+covered_by = ["uvx --from jactionlint==2.5.0 jactionlint --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml"]
+
+[[allow]]
 glob = ".github/settings.yml"
 kind = "github_settings_contract"
 owner = "repo-process"
