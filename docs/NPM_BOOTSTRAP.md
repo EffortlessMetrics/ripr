@@ -74,13 +74,26 @@ npm 11.15.0 against a loopback mock registry. Only the registry and live
 provenance request differ; Git transports are refused. It checks exact submitted
 tar bytes and lifecycle suppression, and has no npm credentials or OIDC permission. It
 does not test live staging, OIDC exchange or Sigstore. The same job runs pinned,
-SHA-256-verified actionlint 1.7.12 for workflow syntax and expression-context
-validation; repository workflow-budget checks alone do not establish that.
+SHA-256-verified jactionlint 2.5.0 with `--profile correctness --no-online`
+for workflow syntax and expression-context validation; repository workflow-budget
+checks alone do not establish that. This preserves the existing disabled
+ShellCheck/Pyflakes dimensions; it does not claim embedded-script lint coverage.
 Python consumer authority is the exact successful native pip/uv job set; npm
 consumer authority also parses retained nonempty output receipts. Reusable npm
 runs cannot authorize PyPI publication: that publisher still requires its own
 standalone manual-main Python workflow identity. PR runs are rehearsal only. Final publication consumes a
 successful source-main manual qualification and exact hashes, never a rebuild.
+
+Run the same workflow checks locally without a project dependency:
+
+```text
+uvx --from jactionlint==2.5.0 jactionlint --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
+```
+
+A user-level `uv tool install jactionlint` also exposes `jactionlint` directly;
+check `jactionlint --version` before comparing it with the pinned hosted result.
+YAML parsing is not a substitute for this semantic check. Lint success does not
+establish package qualification, release independence, or cold/warm hosted timings.
 
 ## Bootstrap authorization and recovery
 
