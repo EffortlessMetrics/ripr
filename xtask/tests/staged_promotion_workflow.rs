@@ -60,12 +60,14 @@ fn composition_gate_is_base_owned_read_only_pull_request_target_without_skip_tra
         "contents: read",
         "pull-requests: read",
         "allow-unsafe-pr-checkout: false",
-        "ref: ${{ github.event.pull_request.base.sha }}",
+        "ref: ${{ github.sha }}",
         "REQUIRE_TRUSTED_EVENT: \"1\"",
         "WORKFLOW_SOURCE_SHA: ${{ github.sha }}",
         "COMPOSITION_RECEIPT_OUT:",
         "live PR base moved past event base",
         "live PR head moved past event head",
+        "test(\"^[^\\\\r\\\\n]+$\")",
+        "live_preview=\"\"",
     ] {
         if !workflow.contains(required) {
             return Err(format!(

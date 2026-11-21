@@ -536,6 +536,79 @@ pub(crate) fn evaluate_staged_promotion_packet(
     }
 }
 
+struct UniqueKeysOnly;
+
+impl<'de> serde::de::DeserializeSeed<'de> for UniqueKeysOnly {
+    type Value = ();
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        deserializer.deserialize_any(UniqueKeysVisitor)
+    }
+}
+
+struct UniqueKeysVisitor;
+
+impl<'de> serde::de::Visitor<'de> for UniqueKeysVisitor {
+    type Value = ();
+
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("a JSON value without duplicate object keys")
+    }
+
+    fn visit_bool<E>(self, _: bool) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_i64<E>(self, _: i64) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_u64<E>(self, _: u64) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_f64<E>(self, _: f64) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_str<E>(self, _: &str) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_unit<E>(self) -> Result<(), E> {
+        Ok(())
+    }
+    fn visit_seq<A>(self, mut seq: A) -> Result<(), A::Error>
+    where
+        A: serde::de::SeqAccess<'de>,
+    {
+        while seq.next_element_seed(UniqueKeysOnly)?.is_some() {}
+        Ok(())
+    }
+    fn visit_map<A>(self, mut map: A) -> Result<(), A::Error>
+    where
+        A: serde::de::MapAccess<'de>,
+    {
+        let mut seen = BTreeSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if !seen.insert(key.clone()) {
+                return Err(serde::de::Error::custom(format!(
+                    "duplicate JSON object key: {key}"
+                )));
+            }
+            map.next_value_seed(UniqueKeysOnly)?;
+        }
+        Ok(())
+    }
+}
+
+pub(crate) fn parse_staged_promotion_packet(raw: &str) -> Result<StagedPromotionPacket, String> {
+    let mut de = serde_json::Deserializer::from_str(raw);
+    serde::de::DeserializeSeed::deserialize(UniqueKeysOnly, &mut de)
+        .map_err(|err| format!("staged packet JSON rejected: {err}"))?;
+    de.end()
+        .map_err(|err| format!("staged packet JSON has trailing data: {err}"))?;
+    serde_json::from_str(raw).map_err(|err| format!("parse staged packet: {err}"))
+}
+
 pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(), String> {
     if args.first().map(String::as_str) != Some(SOURCE_PROMOTION_VERIFY_STAGED_PACKET_SUBCOMMAND) {
         return Err(format!(
@@ -575,8 +648,8 @@ pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(
     })?;
     let raw = fs::read_to_string(&packet_path)
         .map_err(|err| format!("read staged packet {}: {err}", packet_path.display()))?;
-    let packet: StagedPromotionPacket = serde_json::from_str(&raw)
-        .map_err(|err| format!("parse staged packet {}: {err}", packet_path.display()))?;
+    let packet = parse_staged_promotion_packet(&raw)
+        .map_err(|err| format!("{}: {err}", packet_path.display()))?;
     let verdict = evaluate_staged_promotion_packet(&packet);
     if let Some(dir) = out_dir {
         write_verdict(&dir, &verdict)?;
@@ -869,6 +942,29 @@ mod tests {
             evaluate_staged_promotion_packet(&empty_reason).status,
             "rejected"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn duplicate_json_keys_outer_and_nested_are_rejected() -> Result<(), String> {
+        let packet = valid_packet()?;
+        let valid_json = serde_json::to_string(&packet).map_err(|err| err.to_string())?;
+        let _ = parse_staged_promotion_packet(&valid_json)?;
+
+        let outer_dup = format!(
+            "{{\"schema\":\"{STAGED_PACKET_SCHEMA}\",\"schema\":\"{STAGED_PACKET_SCHEMA}\"}}"
+        );
+        let Err(err) = parse_staged_promotion_packet(&outer_dup) else {
+            return Err("outer duplicate key must be rejected".to_string());
+        };
+        assert!(err.contains("duplicate JSON object key: schema"), "{err}");
+
+        let nested_dup =
+            valid_json.replacen("\"stale\":false", "\"stale\":true,\"stale\":false", 1);
+        let Err(err) = parse_staged_promotion_packet(&nested_dup) else {
+            return Err("nested duplicate key must be rejected".to_string());
+        };
+        assert!(err.contains("duplicate JSON object key: stale"), "{err}");
         Ok(())
     }
 }

@@ -26,10 +26,10 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - name: Check out trusted base source
+      - name: Check out trusted default-branch authority
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
           allow-unsafe-pr-checkout: false
@@ -47,13 +47,15 @@ jobs:
           pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
           live_base=$(jq -er '.base.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<< "$pr_json")
           live_head=$(jq -er '.head.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<< "$pr_json")
-          live_head_ref=$(jq -er '.head.ref | select(type == "string" and length > 0)' <<< "$pr_json")
+          live_head_ref=$(jq -er '.head.ref | select(type == "string" and length > 0 and test("^[^\\r\\n]+$"))' <<< "$pr_json")
           live_body_file="$RUNNER_TEMP/live-pr-body.txt"
           jq -r '.body // ""' <<< "$pr_json" > "$live_body_file"
           test "$live_base" = "$EVENT_BASE_SHA" || { echo "source-promotion composition rejected: live PR base moved past event base" >&2; exit 1; }
           test "$live_head" = "$EVENT_HEAD_SHA" || { echo "source-promotion composition rejected: live PR head moved past event head" >&2; exit 1; }
-          git fetch --no-tags origin "refs/pull/${PR_NUMBER}/merge" >/dev/null
-          live_preview=$(git --no-replace-objects rev-parse 'FETCH_HEAD^{commit}')
+          live_preview=""
+          if git fetch --no-tags origin "refs/pull/${PR_NUMBER}/merge" >/dev/null 2>&1; then
+            live_preview=$(git --no-replace-objects rev-parse 'FETCH_HEAD^{commit}' 2>/dev/null || true)
+          fi
           {
             echo "base_sha=$live_base"
             echo "head_sha=$live_head"
