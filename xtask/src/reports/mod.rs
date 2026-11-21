@@ -59,6 +59,7 @@ mod source_promotion_validate_resolved_tree;
 mod source_promotion_verify;
 mod spec_maintenance;
 mod spec_receipts;
+mod staged_source_promotion;
 mod targeted_rerun;
 mod targeted_test;
 mod test_oracles;
@@ -173,6 +174,9 @@ pub(crate) use spec_maintenance::spec_maintenance;
 pub(crate) use spec_receipts::spec_close;
 #[cfg(test)]
 pub(crate) use spec_receipts::validate_receipt;
+pub(crate) use staged_source_promotion::{
+    SOURCE_PROMOTION_VERIFY_STAGED_PACKET_SUBCOMMAND, source_promotion_verify_staged_packet,
+};
 pub(crate) use targeted_rerun::targeted_rerun_benchmark;
 pub(crate) use targeted_test::targeted_test_outcome;
 pub(crate) use test_oracles::{test_efficiency_report, test_oracle_report};
