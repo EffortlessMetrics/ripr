@@ -281,7 +281,7 @@ jobs:
             --repository "$REPOSITORY" \
             --workflow "$WORKFLOW"
       - name: Install nextest
-        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2
+        uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2
         with:
           tool: nextest
       # Each planned command records its own terminal state before its exit code
