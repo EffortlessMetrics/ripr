@@ -1025,6 +1025,15 @@ fn verify_git_object_store(
     for survivor in &packet.inventory.survivors {
         match survivor.change_kind {
             SurvivorChangeKind::Retained => {
+                if !p_entries.contains_key(&survivor.path) {
+                    return Err((
+                        inv_phase,
+                        format!(
+                            "retained survivor {} was not present in base tree P",
+                            survivor.path
+                        ),
+                    ));
+                }
                 let Some((actual_mode, actual_sha)) = t_entries.get(&survivor.path) else {
                     return Err((
                         inv_phase,
@@ -1077,7 +1086,12 @@ fn verify_git_object_store(
                             format!("renamed survivor previous_path {prev} still exists in tree T"),
                         ));
                     }
-                    accounted_deleted_or_moved.insert(prev.as_str());
+                    if !accounted_deleted_or_moved.insert(prev.as_str()) {
+                        return Err((
+                            inv_phase,
+                            format!("conflicting survivor dispositions for base path {prev}"),
+                        ));
+                    }
                 }
             }
             SurvivorChangeKind::Deleted => {
@@ -1105,7 +1119,15 @@ fn verify_git_object_store(
                         format!("deleted survivor {} still exists in tree T", survivor.path),
                     ));
                 }
-                accounted_deleted_or_moved.insert(survivor.path.as_str());
+                if !accounted_deleted_or_moved.insert(survivor.path.as_str()) {
+                    return Err((
+                        inv_phase,
+                        format!(
+                            "conflicting survivor dispositions for base path {}",
+                            survivor.path
+                        ),
+                    ));
+                }
             }
         }
     }
@@ -1307,6 +1329,17 @@ pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(
                 .to_string(),
         );
     }
+    if let Some(dir) = out_dir.as_deref() {
+        let stale_path = dir.join(REPORT_JSON);
+        if let Err(err) = fs::remove_file(&stale_path)
+            && err.kind() != std::io::ErrorKind::NotFound
+        {
+            return Err(format!(
+                "remove stale staged verdict {}: {err}",
+                stale_path.display()
+            ));
+        }
+    }
     let raw = fs::read_to_string(&packet_path)
         .map_err(|err| format!("read staged packet {}: {err}", packet_path.display()))?;
     let packet = parse_staged_promotion_packet(&raw)
@@ -1470,8 +1503,23 @@ mod tests {
 
     fn git_fixture_cmd(repo: &Path, args: &[&str]) -> Result<String, String> {
         let mut cmd = Command::new("git");
+        for key in [
+            "GIT_DIR",
+            "GIT_WORK_TREE",
+            "GIT_INDEX_FILE",
+            "GIT_COMMON_DIR",
+            "GIT_OBJECT_DIRECTORY",
+            "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+            "GIT_CONFIG_PARAMETERS",
+            "GIT_CONFIG_COUNT",
+        ] {
+            cmd.env_remove(key);
+        }
+        let null_config = if cfg!(windows) { "NUL" } else { "/dev/null" };
         cmd.arg("-C")
             .arg(repo)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", null_config)
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test")
@@ -2000,6 +2048,67 @@ mod tests {
             "{v:?}"
         );
 
+        // Negative 3d: swarm-only file (absent from P^{tree}) declared as Retained survivor -> rejected.
+        let swarm_blob = git_fixture_cmd(
+            &repo,
+            &[
+                "rev-parse",
+                &format!("{}:docs/SWARM_WORK.md", packet.swarm_return_s),
+            ],
+        )?;
+        let mut swarm_as_retained = packet.clone();
+        swarm_as_retained
+            .inventory
+            .survivors
+            .push(PublicSurvivorEntry {
+                path: "docs/SWARM_WORK.md".to_string(),
+                mode: "100644".to_string(),
+                object_sha: Some(swarm_blob),
+                change_kind: SurvivorChangeKind::Retained,
+                previous_path: None,
+                nested_import_commit: packet.inventory.nested_imports[0].import_commit.clone(),
+            });
+        swarm_as_retained.inventory.public_survivors_sha256 =
+            compute_survivors_digest(&swarm_as_retained.inventory.survivors)?;
+        let v = evaluate_staged_promotion_independently(
+            &swarm_as_retained,
+            &subject_of(&swarm_as_retained),
+            &receipt_path,
+            &repo,
+        );
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "git_inventory");
+        assert!(v.reason.contains("was not present in base tree P"), "{v:?}");
+
+        // Negative 3e: base path docs/OLD.md claimed as both Renamed previous_path and Deleted -> rejected.
+        let mut conflicting_disp = packet.clone();
+        conflicting_disp
+            .inventory
+            .survivors
+            .push(PublicSurvivorEntry {
+                path: "docs/OLD.md".to_string(),
+                mode: "100644".to_string(),
+                object_sha: None,
+                change_kind: SurvivorChangeKind::Deleted,
+                previous_path: None,
+                nested_import_commit: packet.inventory.nested_imports[0].import_commit.clone(),
+            });
+        conflicting_disp.inventory.public_survivors_sha256 =
+            compute_survivors_digest(&conflicting_disp.inventory.survivors)?;
+        let v = evaluate_staged_promotion_independently(
+            &conflicting_disp,
+            &subject_of(&conflicting_disp),
+            &receipt_path,
+            &repo,
+        );
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "git_inventory");
+        assert!(
+            v.reason
+                .contains("conflicting survivor dispositions for base path docs/OLD.md"),
+            "{v:?}"
+        );
+
         // Negative 4: swapped K parents [S, P] in real Git object store -> rejected.
         let swapped_k = git_fixture_cmd(
             &repo,
@@ -2051,6 +2160,29 @@ mod tests {
         assert_eq!(v.status, "rejected");
         assert_eq!(v.phase, "git_geometry");
         assert!(v.reason.contains("not an ancestor"), "{v:?}");
+
+        // Negative 6: stale verdict file in --out dir is removed before early parse failure.
+        let out_dir = fixture.root.join("verdict-out");
+        fs::create_dir_all(&out_dir).map_err(|err| err.to_string())?;
+        let stale_verdict = out_dir.join(REPORT_JSON);
+        fs::write(&stale_verdict, "{\"status\":\"admitted\"}\n").map_err(|err| err.to_string())?;
+        let bad_packet = fixture.root.join("malformed-packet.json");
+        fs::write(&bad_packet, "{not-valid-json").map_err(|err| err.to_string())?;
+        let cli_args = vec![
+            "verify-staged-packet".to_string(),
+            "--packet".to_string(),
+            bad_packet.to_string_lossy().into_owned(),
+            "--out".to_string(),
+            out_dir.to_string_lossy().into_owned(),
+        ];
+        let Err(err) = source_promotion_verify_staged_packet(&cli_args) else {
+            return Err("malformed packet unexpectedly succeeded".to_string());
+        };
+        assert!(err.contains("malformed-packet.json"), "{err}");
+        assert!(
+            !stale_verdict.exists(),
+            "stale verdict file must be removed on early failure"
+        );
 
         Ok(())
     }

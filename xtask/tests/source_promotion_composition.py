@@ -393,14 +393,11 @@ class CompositionTests(unittest.TestCase):
         receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
         self.assertEqual(receipt['staged_packet_verdict'], 'admitted')
         recorded = args_log.read_text(encoding='utf-8').splitlines()
-        self.assertIn('--expected-p', recorded)
-        self.assertIn(self.p, recorded)
-        self.assertIn('--expected-s', recorded)
-        self.assertIn(self.s, recorded)
-        self.assertIn('--expected-k', recorded)
-        self.assertIn(self.k, recorded)
-        self.assertIn('--expected-t', recorded)
-        self.assertIn(self.t, recorded)
+        flag_pairs = list(zip(recorded, recorded[1:]))
+        self.assertIn(('--expected-p', self.p), flag_pairs)
+        self.assertIn(('--expected-s', self.s), flag_pairs)
+        self.assertIn(('--expected-k', self.k), flag_pairs)
+        self.assertIn(('--expected-t', self.t), flag_pairs)
 
     def test_staged_packet_consumer_fails_closed_when_verifier_rejects(self) -> None:
         stub = self.root / 'reject-verifier.sh'
