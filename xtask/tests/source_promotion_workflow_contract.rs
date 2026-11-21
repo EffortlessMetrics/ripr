@@ -304,7 +304,7 @@ fn validate_admission_workflow_contract(workflow: &str) -> Result<(), String> {
         "if: always() && steps.enforce.outcome == 'success'",
         "--admission-packet \"$ADMISSION_ROOT/downloaded/workflow-packet\"",
         "--out \"$ADMISSION_FINAL_EVIDENCE\"",
-        "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8",
+        "actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8",
         "sha256sum --check transport-index.sha256",
         "diff --recursive --no-dereference \"$ADMISSION_OUT\" \"$downloaded\"",
         "test \"$TRUSTED_CHECKER_IDENTITY\" = \"source-owned-xtask@$WORKFLOW_SOURCE_SHA\"",

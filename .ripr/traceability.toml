@@ -6637,6 +6637,7 @@ tests = [
   "xtask/src/reports/source_promotion_acceptance/tests.rs::retained_raw_inputs_discriminate_complete_projection_tampering",
   "xtask/src/reports/source_promotion_acceptance/tests.rs::fresh_native_response_cannot_substitute_body_issuer_location_or_author",
   "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
+  "xtask/src/reports/source_promotion_verify.rs::tests::staged_return_accepts_exact_preview_and_rejects_graph_adversaries",
   "xtask/src/reports/source_promotion_verify.rs::tests::producer_receipt_and_empty_ancestry_serialization_are_stable",
   "xtask/src/reports/source_promotion.rs::tests::requires_an_immutable_swarm_ref",
   "xtask/src/reports/source_promotion.rs::tests::rejects_a_branch_or_wrongly_named_swarm_ref",
@@ -6694,6 +6695,7 @@ tests = [
   "xtask/src/command.rs::tests::source_promotion_workflow_refutes_crlf_rewrite_thread",
   "xtask/src/reports/source_promotion_verify.rs::tests::range_and_main_reachability_fail_closed",
   "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
+  "xtask/src/reports/source_promotion_verify.rs::tests::staged_return_accepts_exact_preview_and_rejects_graph_adversaries",
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::canonical_receipt_fixtures_are_byte_stable",
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::command_catalog_requires_exact_order_and_terminal_passes",
   "xtask/src/reports/source_promotion_validate_resolved_tree.rs::tests::git_object_view_ignores_replacement_refs",
@@ -6771,6 +6773,7 @@ tests = [
   "xtask/src/reports/source_promotion_verify.rs::tests::git_object_view_ignores_replacement_refs",
   "xtask/src/reports/source_promotion_verify.rs::tests::metadata_main_and_caller_state_contracts_are_executable",
   "xtask/src/reports/source_promotion_verify.rs::tests::synthetic_join_rejects_graph_and_tree_adversaries",
+  "xtask/src/reports/source_promotion_verify.rs::tests::staged_return_accepts_exact_preview_and_rejects_graph_adversaries",
   "xtask/src/reports/source_promotion_verify.rs::tests::parse_failures_write_rejection_receipts_when_output_is_known",
   "xtask/src/command.rs::tests::source_promotion_verify_cli_entrypoint",
 ]

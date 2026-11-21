@@ -12,8 +12,8 @@ For current sync direction, use the [staged integration guide](SOURCE_PROMOTION.
 For an ancestor P, this preflight retains `fast_forward` when `--resolved-tree`
 is omitted or names the same object as the automatic preview tree. A separately
 supplied, object-verified reviewed tree that differs from that preview selects
-`two_parent_join`. The direct-J verifier still requires `two_parent_join`, so
-the equal/omitted-tree mismatch remains. Selecting join mode does not satisfy
+`two_parent_join`. The verifier checks that `fast_forward` result as the staged
+return preview K (ordered parents `[P, S]`, tree equal to S's tree). Selecting join mode does not satisfy
 the [current native acceptance](#current-native-acceptance) requirements below.
 The [contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
 must be implemented and reviewed before claiming those commands admit the

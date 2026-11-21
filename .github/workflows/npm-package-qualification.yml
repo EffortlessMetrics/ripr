@@ -4,6 +4,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
+      - '.github/jactionlint.yaml'
       - '.github/scripts/npm_*.py'
       - '.github/scripts/test_npm_package.py'
       - '.github/workflows/npm-package-qualification.yml'
@@ -108,7 +109,7 @@ jobs:
         env:
           NPM_VERSION: ${{ matrix.npm }}
         run: npm install --global --ignore-scripts "npm@$NPM_VERSION"
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: npm-prepared-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence
@@ -138,18 +139,18 @@ jobs:
       - name: Validate workflow syntax and expression contexts
         run: |
           set -euo pipefail
-          curl --fail --silent --show-error --location https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o "$RUNNER_TEMP/actionlint.tar.gz"
-          printf '%s\n' "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  $RUNNER_TEMP/actionlint.tar.gz" > "$RUNNER_TEMP/actionlint.sha256"
-          sha256sum --check "$RUNNER_TEMP/actionlint.sha256"
-          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -shellcheck= -pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
+          curl --fail --silent --show-error --location https://github.com/jdx/jactionlint/releases/download/v2.5.0/jactionlint_2.5.0_linux_amd64.tar.gz -o "$RUNNER_TEMP/jactionlint.tar.gz"
+          printf '%s\n' "5ac307b0499bb0eab45ae99c23e8e0790874fbc667c75224410954e0e3c6e0f5  $RUNNER_TEMP/jactionlint.tar.gz" > "$RUNNER_TEMP/jactionlint.sha256"
+          sha256sum --check "$RUNNER_TEMP/jactionlint.sha256"
+          tar -xzf "$RUNNER_TEMP/jactionlint.tar.gz" -C "$RUNNER_TEMP" jactionlint
+          "$RUNNER_TEMP/jactionlint" --config-file .github/jactionlint.yaml --profile correctness --no-online --shellcheck= --pyflakes= .github/workflows/publish-npm.yml .github/workflows/npm-package-qualification.yml .github/workflows/python-wheel-qualification.yml
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.19.0'
           package-manager-cache: false
       - name: Select exact staging client
         run: npm install --global --ignore-scripts npm@11.15.0
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: npm-prepared-${{ github.run_id }}-${{ github.run_attempt }}
           path: evidence

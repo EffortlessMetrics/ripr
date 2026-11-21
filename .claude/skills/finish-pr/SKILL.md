@@ -21,14 +21,7 @@ A committed candidate with `REVIEW_INCOMPLETE` may enter so the PR can be publis
 # Workflow
 
 1. Reuse the PR that already owns the claim. Create another only when no equivalent candidate exists.
-2. Publish a complete PR body with:
-   - production and evidence delta;
-   - acceptance matrix;
-   - issue/spec/ADR authority;
-   - proof actually run;
-   - limitations and non-claims;
-   - rollback boundary;
-   - exact candidate SHA.
+2. Reconcile the current contribution with the [PR-body guidance](../../../docs/templates/pr-body.md). Explain the production/evidence delta, acceptance, relevant rationale and supporting evidence. Include material non-goals, compatibility, migration or non-obvious rollback requirements where needed. The body need not duplicate the structured review record, exact SHA or an acceptance matrix unless a destination requirement makes them necessary. Preserve effective author wording.
 3. Read current review submissions, inline threads, required and advisory checks, mergeability, and head identity.
 4. Locate the current-head `review-pr` inspection record. If it is absent, stale, covers another head, or merely summarizes comments and CI, run `review-pr` before declaring readiness.
 5. Classify findings as valid source defect, test/oracle defect, stale, incorrect, infrastructure/instrument failure, missing review/proof, or not established.
@@ -44,6 +37,29 @@ A committed candidate with `REVIEW_INCOMPLETE` may enter so the PR can be publis
 12. When GitHub owns the next transition, yield instead of polling unchanged state. Arm auto-merge only for the exact published head when `review-pr` says `REVIEW_READY` and required proof is current.
 13. After merge, verify current `main`, update issue and parent acceptance, refresh generated evidence, and close only acceptance-complete issues.
 14. After deliberate closure or supersession, name the winning candidate and preserve residual work.
+
+# Description and metadata updates
+
+After repairs, reconcile body claims with the final diff and applicable evidence.
+Do not leave resolved findings described as open, silently turn a limited check
+into complete qualification, or weaken the accepted requirement to make an
+unfinished implementation appear complete. Keep ordinary findings/replies in
+review. Update the body when the actual explanation or material limitation
+changes. Delete redundant process narration instead of relocating it into more
+comments; required inspection/evidence records remain available.
+
+For authorized body edits, reload the live text and head immediately before
+writing. Compare with the intended edit, preserve newer valid author changes,
+and reconcile conflicts rather than replaying a stale full replacement. Use a
+supported conditional guard when available. Read back the saved text and head,
+check rendering, and only then report the edit as complete. Separate reads and
+writes are not an atomic transaction.
+
+A summary edit normally refreshes public-claim review, not every unchanged test.
+Retained evidence keeps its original run/subject identity; new exact-head gates
+still apply. A late substantive finding affects readiness even without a new
+commit. Source review, submission readiness and merge readiness remain distinct;
+this guidance does not authorize upstream publication or bypass repository gates.
 
 # Release-scope law
 

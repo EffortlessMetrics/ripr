@@ -119,7 +119,9 @@ source preflight retains `fast_forward` if `--resolved-tree` is omitted or
 names the same object as the automatic preview tree. A separately supplied,
 object-verified reviewed tree that differs from that preview selects
 `two_parent_join` (`xtask/src/reports/source_promotion.rs`, receipt construction).
-`source_promotion_verify::validate_preflight` still requires `two_parent_join`.
+`source_promotion_verify` verifies a `fast_forward` preflight as the staged return preview K
+(ordered parents `[P, S]`, tree equal to S's tree) and a `two_parent_join` preflight as a join with a
+verified reviewed tree; any other mode is rejected.
 Selecting that mode does not supply [current native acceptance](SOURCE_PROMOTION_PREFLIGHT.md#current-native-acceptance):
 preflight v2 and handoff acceptance v2 remain required, and historical v1
 geometry grants no current selection or qualification authority.
