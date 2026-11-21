@@ -6734,7 +6734,10 @@ fixtures = [
 ]
 code = [
   ".github/workflows/source-promotion-contract.yml",
+  ".github/workflows/source-promotion-composition.yml",
   ".github/workflows/source-promotion-admission.yml",
+  ".github/scripts/source-promotion-composition.sh",
+  "xtask/src/reports/staged_source_promotion.rs",
   "xtask/src/reports/source_promotion_admission_workflow.rs",
   "xtask/src/reports/source_promotion_admission_fixture.rs",
   "xtask/src/command.rs",

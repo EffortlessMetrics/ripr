@@ -1,10 +1,11 @@
 name: Source Promotion Composition
 
 # #1893: default-branch-defined, read-only pull_request_target gate.
-# The workflow definition and composition script come strictly from the trusted
-# base branch; candidate PR code is never checked out or executed and no secrets
-# are exposed. Do not add a conditional `if:` that can skip this job on subject
-# refusals (GitHub treats a skipped required job as Success).
+# The workflow definition, composition script, and staged-packet verifier come
+# strictly from the trusted default-branch commit (`github.sha`); candidate PR
+# code is never checked out or executed and no secrets are exposed. Do not add
+# a job-level `if:` that can skip this job on subject refusals (GitHub treats a
+# skipped required job as Success).
 on:
   pull_request_target:
     # PR-body control markers and the base can change without a new commit.
@@ -21,7 +22,7 @@ jobs:
   composition-check:
     name: Source Promotion Composition
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     permissions:
       contents: read
       pull-requests: read
@@ -34,7 +35,7 @@ jobs:
           persist-credentials: false
           allow-unsafe-pr-checkout: false
 
-      - name: Refetch live PR metadata and preview commit
+      - name: Refetch live PR metadata and classify promotion candidate
         id: live
         env:
           GH_TOKEN: ${{ github.token }}
@@ -42,6 +43,7 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PREV_PR_BODY: ${{ github.event.changes.body.from }}
         run: |
           set -euo pipefail
           pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
@@ -56,13 +58,38 @@ jobs:
           if git fetch --no-tags origin "refs/pull/${PR_NUMBER}/merge" >/dev/null 2>&1; then
             live_preview=$(git --no-replace-objects rev-parse 'FETCH_HEAD^{commit}' 2>/dev/null || true)
           fi
+          is_promotion=false
+          live_body=$(tr -d '\r' < "$live_body_file")
+          prev_body=${PREV_PR_BODY//$'\r'/}
+          if [[ "$live_head_ref" == promote/0.11.0-* ]] || [[ "$live_body" == *'<!-- source-promotion: true -->'* ]] || [[ "$live_body" == *'<!-- source-promotion-control:'* ]] || [[ "$prev_body" == *'<!-- source-promotion: true -->'* ]] || [[ "$prev_body" == *'<!-- source-promotion-control:'* ]]; then
+            is_promotion=true
+          fi
           {
             echo "base_sha=$live_base"
             echo "head_sha=$live_head"
             echo "head_ref=$live_head_ref"
             echo "merge_sha=$live_preview"
             echo "body_file=$live_body_file"
+            echo "is_promotion=$is_promotion"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Rust toolchain for promotion verification
+        if: steps.live.outputs.is_promotion == 'true'
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
+        with:
+          toolchain: 1.95.0
+
+      - name: Build trusted staged verifier from default-branch checkout
+        id: build-verifier
+        if: steps.live.outputs.is_promotion == 'true'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          target_dir="$RUNNER_TEMP/ripr-staged-verifier-target"
+          CARGO_TARGET_DIR="$target_dir" cargo build --locked -p xtask --bin xtask
+          verifier="$target_dir/debug/xtask"
+          test -x "$verifier"
+          echo "bin=$verifier" >> "$GITHUB_OUTPUT"
 
       - name: Verify promotion merge composition from trusted base script
         id: verify
@@ -79,6 +106,8 @@ jobs:
           WORKFLOW_REF: ${{ github.workflow_ref }}
           EVENT_NAME: ${{ github.event_name }}
           REQUIRE_TRUSTED_EVENT: "1"
+          REQUIRE_STAGED_PACKET: ${{ steps.live.outputs.is_promotion == 'true' && '1' || '0' }}
+          STAGED_VERIFIER_BIN: ${{ steps.build-verifier.outputs.bin }}
           TOKEN_PERMISSIONS: "contents:read,pull-requests:read"
           COMPOSITION_RECEIPT_OUT: ${{ runner.temp }}/source-promotion-composition-receipt.json
         run: |

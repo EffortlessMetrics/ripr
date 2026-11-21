@@ -138,10 +138,18 @@ if [[ "${REQUIRE_STAGED_PACKET:-0}" == "1" ]] || [[ -n "${STAGED_VERIFIER_BIN:-}
   expected_receipt_sha=$(jq -er '.qualification_receipt_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' <<< "$inputs") || fail 'invalid qualification_receipt_sha256 in control inputs'
   [[ $(sha256sum "$staged_packet_file" | cut -d ' ' -f 1) == "$expected_packet_sha" ]] || fail 'staged packet digest mismatch'
   [[ $(sha256sum "$qual_receipt_file" | cut -d ' ' -f 1) == "$expected_receipt_sha" ]] || fail 'qualification receipt digest mismatch'
+  swarm_s="$HEAD_SHA"
+  if [[ "$mode" == "two_parent_join" ]]; then
+    swarm_s="$swarm"
+  fi
   "$STAGED_VERIFIER_BIN" source-promotion verify-staged-packet \
     --packet "$staged_packet_file" \
     --qualification-receipt "$qual_receipt_file" \
-    --repo . >/dev/null || fail 'staged packet independent verification rejected'
+    --repo . \
+    --expected-p "$BASE_SHA" \
+    --expected-s "$swarm_s" \
+    --expected-k "$MERGE_SHA" \
+    --expected-t "$tree" >/dev/null || fail 'staged packet independent verification rejected'
   staged_packet_verdict='admitted'
 fi
 if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then

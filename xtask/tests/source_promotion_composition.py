@@ -367,8 +367,12 @@ class CompositionTests(unittest.TestCase):
         self.check('promotion marker removed by body edit')
 
     def test_staged_packet_consumer_verifies_digests_and_invokes_verifier(self) -> None:
+        args_log = self.root / 'verifier-args.txt'
         stub = self.root / 'stub-verifier.sh'
-        stub.write_text('#!/usr/bin/env bash\nexit 0\n', encoding='utf-8')
+        stub.write_text(
+            f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{args_log}"\nexit 0\n',
+            encoding='utf-8',
+        )
         stub.chmod(0o755)
         pkt_bytes = b'{"schema":"ripr.staged_source_promotion_packet.v1"}\n'
         rec_bytes = b'{"schema":"ripr.swarm_qualification_receipt.v1"}\n'
@@ -388,6 +392,15 @@ class CompositionTests(unittest.TestCase):
         self.check()
         receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
         self.assertEqual(receipt['staged_packet_verdict'], 'admitted')
+        recorded = args_log.read_text(encoding='utf-8').splitlines()
+        self.assertIn('--expected-p', recorded)
+        self.assertIn(self.p, recorded)
+        self.assertIn('--expected-s', recorded)
+        self.assertIn(self.s, recorded)
+        self.assertIn('--expected-k', recorded)
+        self.assertIn(self.k, recorded)
+        self.assertIn('--expected-t', recorded)
+        self.assertIn(self.t, recorded)
 
     def test_staged_packet_consumer_fails_closed_when_verifier_rejects(self) -> None:
         stub = self.root / 'reject-verifier.sh'

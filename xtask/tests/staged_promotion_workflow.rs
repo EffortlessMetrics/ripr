@@ -62,6 +62,8 @@ fn composition_gate_is_base_owned_read_only_pull_request_target_without_skip_tra
         "allow-unsafe-pr-checkout: false",
         "ref: ${{ github.sha }}",
         "REQUIRE_TRUSTED_EVENT: \"1\"",
+        "REQUIRE_STAGED_PACKET: ${{ steps.live.outputs.is_promotion == 'true' && '1' || '0' }}",
+        "STAGED_VERIFIER_BIN: ${{ steps.build-verifier.outputs.bin }}",
         "WORKFLOW_SOURCE_SHA: ${{ github.sha }}",
         "WORKFLOW_RUN_ID: ${{ github.run_id }}",
         "WORKFLOW_REF: ${{ github.workflow_ref }}",
