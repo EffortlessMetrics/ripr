@@ -1,15 +1,18 @@
-//! #1627 Phase 1: Versioned staged P/S/T/K/A source-promotion admission
-//! contract and typed required-result consumer verdict.
+//! #1627 Phase 1 & Phase 2: Versioned staged P/S/T/K/A source-promotion
+//! admission contract, independent qualification-receipt custody verification,
+//! real Git object-store survivor/nested-import verification, and typed
+//! required-result consumer verdict.
 //!
-//! This module validates the staged public-to-swarm-to-public return packet
-//! without mutating any repository ref, raising analysis limits, or renaming
-//! cross-repository swarm qualification as native source proof.
+//! This module is strictly read-only: it never mutates any repository ref,
+//! raises analysis limits, or renames cross-repository swarm qualification as
+//! native source proof.
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 pub(crate) const SOURCE_PROMOTION_VERIFY_STAGED_PACKET_SUBCOMMAND: &str = "verify-staged-packet";
 pub(crate) const STAGED_PACKET_SCHEMA: &str = "ripr.staged_source_promotion_packet.v1";
@@ -66,6 +69,22 @@ pub(crate) struct CrossRepoQualification {
     pub(crate) receipt_sha256: String,
     pub(crate) qualified_s: String,
     pub(crate) qualified_t: String,
+    pub(crate) mandatory_commands_executed: u64,
+    pub(crate) mandatory_commands_skipped: u64,
+    pub(crate) stale: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, Eq, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExternalQualificationReceipt {
+    pub(crate) schema: String,
+    pub(crate) issuer_repository: String,
+    pub(crate) authority_kind: String,
+    pub(crate) instrument: String,
+    pub(crate) receipt_id: String,
+    pub(crate) qualified_s: String,
+    pub(crate) qualified_t: String,
+    pub(crate) outcome: String,
     pub(crate) mandatory_commands_executed: u64,
     pub(crate) mandatory_commands_skipped: u64,
     pub(crate) stale: bool,
@@ -129,6 +148,7 @@ pub(crate) struct StagedPromotionIdentities {
 pub(crate) struct StagedPromotionConsumerVerdict {
     pub(crate) schema: String,
     pub(crate) status: String,
+    pub(crate) verification_scope: String,
     pub(crate) phase: String,
     pub(crate) reason: String,
     pub(crate) qualification_authority: String,
@@ -166,14 +186,16 @@ pub(crate) fn compute_nested_imports_digest(
     Ok(sha256_hex(&encoded))
 }
 
-fn reject(
+fn reject_with_scope(
     packet: &StagedPromotionPacket,
+    scope: &str,
     phase: &str,
     reason: impl Into<String>,
 ) -> StagedPromotionConsumerVerdict {
     StagedPromotionConsumerVerdict {
         schema: STAGED_VERDICT_SCHEMA.to_string(),
         status: "rejected".to_string(),
+        verification_scope: scope.to_string(),
         phase: phase.to_string(),
         reason: reason.into(),
         qualification_authority: packet.qualification.authority_kind.clone(),
@@ -192,8 +214,17 @@ fn reject(
     }
 }
 
-/// Evaluate a staged P/S/T/K/A source-promotion packet for the required-result
-/// consumer. Every failure mode fails closed with an explicit phase and reason.
+fn reject(
+    packet: &StagedPromotionPacket,
+    phase: &str,
+    reason: impl Into<String>,
+) -> StagedPromotionConsumerVerdict {
+    reject_with_scope(packet, "packet_self_consistency_only", phase, reason)
+}
+
+/// Evaluate packet-level self-consistency (Phase 1). When external receipt
+/// custody and Git object-store verification are not supplied, this returns
+/// `packet_consistent` (never `admitted`).
 pub(crate) fn evaluate_staged_promotion_packet(
     packet: &StagedPromotionPacket,
 ) -> StagedPromotionConsumerVerdict {
@@ -300,7 +331,6 @@ pub(crate) fn evaluate_staged_promotion_packet(
         }
     }
 
-    // Explicit cross-repository qualification issuer/instrument admission.
     let qual = &packet.qualification;
     if qual.issuer_repository != EXPECTED_ISSUER_REPOSITORY {
         return reject(
@@ -369,7 +399,6 @@ pub(crate) fn evaluate_staged_promotion_packet(
         );
     }
 
-    // Public-survivor and nested-import inventory verification.
     let inv = &packet.inventory;
     if !is_hex(&inv.public_survivors_sha256, 64) || !is_hex(&inv.nested_import_sha256, 64) {
         return reject(
@@ -518,6 +547,7 @@ pub(crate) fn evaluate_staged_promotion_packet(
     StagedPromotionConsumerVerdict {
         schema: STAGED_VERDICT_SCHEMA.to_string(),
         status: "packet_consistent".to_string(),
+        verification_scope: "packet_self_consistency_only".to_string(),
         phase: "complete".to_string(),
         reason: "staged_packet_consistency_verified".to_string(),
         qualification_authority: qual.authority_kind.clone(),
@@ -534,6 +564,517 @@ pub(crate) fn evaluate_staged_promotion_packet(
         },
         claim: "Packet self-consistency verdict only; does not independently verify external qualification receipt bytes, Git-history survivor/nested-import completeness, repository settings, merge, tag, or release publication.".to_string(),
     }
+}
+
+/// Phase 2 independent verification: verifies packet self-consistency, hashes
+/// and parses the retained qualification receipt file on disk, and verifies
+/// P/S/K/T/A ancestry, trees, nested imports, and public survivors against
+/// the real Git object store.
+pub(crate) fn evaluate_staged_promotion_independently(
+    packet: &StagedPromotionPacket,
+    receipt_path: &Path,
+    repo: &Path,
+) -> StagedPromotionConsumerVerdict {
+    let scope = "independent_receipt_and_git_verified";
+    let base = evaluate_staged_promotion_packet(packet);
+    if base.status != "packet_consistent" {
+        return reject_with_scope(packet, scope, &base.phase, base.reason);
+    }
+    if let Err((phase, reason)) = verify_external_qualification_receipt(packet, receipt_path) {
+        return reject_with_scope(packet, scope, &phase, reason);
+    }
+    if let Err((phase, reason)) = verify_git_object_store(packet, repo) {
+        return reject_with_scope(packet, scope, &phase, reason);
+    }
+    StagedPromotionConsumerVerdict {
+        schema: STAGED_VERDICT_SCHEMA.to_string(),
+        status: "admitted".to_string(),
+        verification_scope: scope.to_string(),
+        phase: "complete".to_string(),
+        reason: "staged_packet_independently_verified".to_string(),
+        qualification_authority: packet.qualification.authority_kind.clone(),
+        analysis_disposition: packet.inventory.analysis_disposition.clone(),
+        identities: StagedPromotionIdentities {
+            public_base_p: packet.public_base_p.clone(),
+            swarm_return_s: packet.swarm_return_s.clone(),
+            qualified_tree_t: packet.qualified_tree_t.clone(),
+            github_preview_k: packet.github_preview_k.commit_sha.clone(),
+            observed_public_a: packet
+                .observed_public_a
+                .as_ref()
+                .map(|a| a.commit_sha.clone()),
+        },
+        claim: "Independently verified against retained qualification receipt bytes and Git object store (P/S/K/T/A ancestry, trees, nested imports, and public survivors); does not authorize repository settings, merge, tag, or release publication.".to_string(),
+    }
+}
+
+fn verify_external_qualification_receipt(
+    packet: &StagedPromotionPacket,
+    receipt_path: &Path,
+) -> Result<(), (String, String)> {
+    let phase = "qualification_receipt_custody".to_string();
+    let meta = fs::symlink_metadata(receipt_path).map_err(|err| {
+        (
+            phase.clone(),
+            format!(
+                "inspect qualification receipt {}: {err}",
+                receipt_path.display()
+            ),
+        )
+    })?;
+    if !meta.is_file() || meta.file_type().is_symlink() {
+        return Err((
+            phase,
+            "qualification receipt must be a regular non-symlink file".to_string(),
+        ));
+    }
+    let bytes = fs::read(receipt_path).map_err(|err| {
+        (
+            phase.clone(),
+            format!(
+                "read qualification receipt {}: {err}",
+                receipt_path.display()
+            ),
+        )
+    })?;
+    let actual_sha256 = sha256_hex(&bytes);
+    if actual_sha256 != packet.qualification.receipt_sha256 {
+        return Err((
+            phase,
+            format!(
+                "qualification receipt bytes SHA-256 mismatch: expected {}, got {actual_sha256}",
+                packet.qualification.receipt_sha256
+            ),
+        ));
+    }
+    let text = std::str::from_utf8(&bytes).map_err(|err| {
+        (
+            phase.clone(),
+            format!("qualification receipt is not UTF-8: {err}"),
+        )
+    })?;
+    let receipt: ExternalQualificationReceipt =
+        parse_unique_json(text).map_err(|err| (phase.clone(), format!("parse receipt: {err}")))?;
+    if receipt.schema != EXPECTED_QUALIFICATION_SCHEMA {
+        return Err((
+            phase,
+            format!("external receipt schema mismatch: {}", receipt.schema),
+        ));
+    }
+    if receipt.issuer_repository != EXPECTED_ISSUER_REPOSITORY {
+        return Err((
+            phase,
+            format!(
+                "external receipt foreign issuer rejected: {}",
+                receipt.issuer_repository
+            ),
+        ));
+    }
+    if receipt.authority_kind != EXPECTED_AUTHORITY_KIND {
+        return Err((
+            phase,
+            format!(
+                "external receipt authority kind rejected: {}",
+                receipt.authority_kind
+            ),
+        ));
+    }
+    if receipt.instrument != EXPECTED_QUALIFICATION_INSTRUMENT {
+        return Err((
+            phase,
+            format!(
+                "external receipt instrument rejected: {}",
+                receipt.instrument
+            ),
+        ));
+    }
+    if receipt.receipt_id != packet.qualification.receipt_id {
+        return Err((
+            phase,
+            "external receipt_id disagrees with staged packet".to_string(),
+        ));
+    }
+    if receipt.qualified_s != packet.swarm_return_s
+        || receipt.qualified_t != packet.qualified_tree_t
+    {
+        return Err((
+            phase,
+            "external receipt S/T disagrees with staged packet".to_string(),
+        ));
+    }
+    if receipt.outcome != "passed" {
+        return Err((
+            phase,
+            format!(
+                "external receipt outcome is not passed: {}",
+                receipt.outcome
+            ),
+        ));
+    }
+    if receipt.stale {
+        return Err((phase, "external receipt is marked stale".to_string()));
+    }
+    if receipt.mandatory_commands_executed == 0
+        || receipt.mandatory_commands_executed != packet.qualification.mandatory_commands_executed
+        || receipt.mandatory_commands_skipped != 0
+        || receipt.mandatory_commands_skipped != packet.qualification.mandatory_commands_skipped
+    {
+        return Err((
+            phase,
+            "external receipt mandatory execution counts disagree or indicate skipped/zero runs"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn run_git(repo: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo).arg("--no-replace-objects");
+    for arg in args {
+        cmd.arg(arg);
+    }
+    let output = cmd
+        .output()
+        .map_err(|err| format!("spawn git {}: {err}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {} failed: {}", args.join(" "), stderr.trim()));
+    }
+    Ok(output.stdout)
+}
+
+fn git_stdout_trimmed(repo: &Path, args: &[&str]) -> Result<String, String> {
+    let bytes = run_git(repo, args)?;
+    String::from_utf8(bytes)
+        .map(|s| s.trim().to_string())
+        .map_err(|err| format!("decode git {} stdout: {err}", args.join(" ")))
+}
+
+fn git_tree_entries(
+    repo: &Path,
+    tree_sha: &str,
+) -> Result<BTreeMap<String, (String, String)>, String> {
+    let raw = run_git(repo, &["ls-tree", "-r", "-z", tree_sha])?;
+    let mut entries = BTreeMap::new();
+    for record in raw.split(|b| *b == 0) {
+        if record.is_empty() {
+            continue;
+        }
+        let text = std::str::from_utf8(record)
+            .map_err(|err| format!("non-UTF-8 path in tree {tree_sha}: {err}"))?;
+        let (meta, path) = text
+            .split_once('\t')
+            .ok_or_else(|| format!("malformed ls-tree entry in {tree_sha}: {text}"))?;
+        let mut parts = meta.split_whitespace();
+        let mode = parts
+            .next()
+            .ok_or_else(|| format!("missing mode in ls-tree entry: {text}"))?;
+        let _kind = parts
+            .next()
+            .ok_or_else(|| format!("missing object kind in ls-tree entry: {text}"))?;
+        let sha = parts
+            .next()
+            .ok_or_else(|| format!("missing object sha in ls-tree entry: {text}"))?;
+        entries.insert(path.to_string(), (mode.to_string(), sha.to_string()));
+    }
+    Ok(entries)
+}
+
+fn verify_git_object_store(
+    packet: &StagedPromotionPacket,
+    repo: &Path,
+) -> Result<(), (String, String)> {
+    let geom = "git_geometry".to_string();
+    for (label, sha) in [
+        ("public_base_p", packet.public_base_p.as_str()),
+        ("swarm_return_s", packet.swarm_return_s.as_str()),
+        (
+            "github_preview_k",
+            packet.github_preview_k.commit_sha.as_str(),
+        ),
+    ] {
+        let rev = format!("{sha}^{{commit}}");
+        let resolved =
+            git_stdout_trimmed(repo, &["rev-parse", "--verify", &rev]).map_err(|err| {
+                (
+                    geom.clone(),
+                    format!("{label} commit missing in repo: {err}"),
+                )
+            })?;
+        if resolved != sha {
+            return Err((geom, format!("{label} rev-parse resolved to {resolved}")));
+        }
+    }
+    if run_git(
+        repo,
+        &[
+            "merge-base",
+            "--is-ancestor",
+            &packet.public_base_p,
+            &packet.swarm_return_s,
+        ],
+    )
+    .is_err()
+    {
+        return Err((
+            geom,
+            "Git object store: public base P is not an ancestor of swarm return head S".to_string(),
+        ));
+    }
+    let expected_k_parents = format!(
+        "{} {} {}",
+        packet.github_preview_k.commit_sha, packet.public_base_p, packet.swarm_return_s
+    );
+    let actual_k_parents = git_stdout_trimmed(
+        repo,
+        &[
+            "rev-list",
+            "--parents",
+            "-n",
+            "1",
+            &packet.github_preview_k.commit_sha,
+        ],
+    )
+    .map_err(|err| (geom.clone(), err))?;
+    if actual_k_parents != expected_k_parents {
+        return Err((
+            geom,
+            format!(
+                "Git object store: preview K parents mismatch (expected '{expected_k_parents}', got '{actual_k_parents}')"
+            ),
+        ));
+    }
+    let s_tree = git_stdout_trimmed(
+        repo,
+        &["rev-parse", &format!("{}^{{tree}}", packet.swarm_return_s)],
+    )
+    .map_err(|err| (geom.clone(), err))?;
+    if s_tree != packet.qualified_tree_t {
+        return Err((
+            geom,
+            format!(
+                "Git object store: S.tree ({s_tree}) differs from qualified tree T ({})",
+                packet.qualified_tree_t
+            ),
+        ));
+    }
+    let k_tree = git_stdout_trimmed(
+        repo,
+        &[
+            "rev-parse",
+            &format!("{}^{{tree}}", packet.github_preview_k.commit_sha),
+        ],
+    )
+    .map_err(|err| (geom.clone(), err))?;
+    if k_tree != packet.qualified_tree_t {
+        return Err((
+            geom,
+            format!(
+                "Git object store: K.tree ({k_tree}) differs from qualified tree T ({})",
+                packet.qualified_tree_t
+            ),
+        ));
+    }
+    if let Some(observed_a) = &packet.observed_public_a {
+        let a_phase = "git_post_merge_a".to_string();
+        let expected_a_parents = format!(
+            "{} {} {}",
+            observed_a.commit_sha, packet.public_base_p, packet.swarm_return_s
+        );
+        let actual_a_parents = git_stdout_trimmed(
+            repo,
+            &["rev-list", "--parents", "-n", "1", &observed_a.commit_sha],
+        )
+        .map_err(|err| (a_phase.clone(), err))?;
+        if actual_a_parents != expected_a_parents {
+            return Err((
+                a_phase,
+                format!(
+                    "Git object store: observed merge A parents mismatch (expected '{expected_a_parents}', got '{actual_a_parents}')"
+                ),
+            ));
+        }
+        let a_tree = git_stdout_trimmed(
+            repo,
+            &["rev-parse", &format!("{}^{{tree}}", observed_a.commit_sha)],
+        )
+        .map_err(|err| (a_phase.clone(), err))?;
+        if a_tree != packet.qualified_tree_t {
+            return Err((
+                a_phase,
+                format!(
+                    "Git object store: A.tree ({a_tree}) differs from T ({})",
+                    packet.qualified_tree_t
+                ),
+            ));
+        }
+    }
+
+    // Verify nested-import entries exist in S's real Git ancestry.
+    let inv_phase = "git_inventory".to_string();
+    for entry in &packet.inventory.nested_imports {
+        let import_tree = git_stdout_trimmed(
+            repo,
+            &["rev-parse", &format!("{}^{{tree}}", entry.import_commit)],
+        )
+        .map_err(|err| {
+            (
+                inv_phase.clone(),
+                format!(
+                    "nested import commit {} missing: {err}",
+                    entry.import_commit
+                ),
+            )
+        })?;
+        if import_tree != entry.tree_sha {
+            return Err((
+                inv_phase,
+                format!(
+                    "nested import {} tree mismatch (expected {}, got {import_tree})",
+                    entry.import_commit, entry.tree_sha
+                ),
+            ));
+        }
+        if run_git(
+            repo,
+            &[
+                "merge-base",
+                "--is-ancestor",
+                &entry.source_public_base,
+                &entry.import_commit,
+            ],
+        )
+        .is_err()
+        {
+            return Err((
+                inv_phase,
+                format!(
+                    "nested import {} does not descend from declared source_public_base {}",
+                    entry.import_commit, entry.source_public_base
+                ),
+            ));
+        }
+        if run_git(
+            repo,
+            &[
+                "merge-base",
+                "--is-ancestor",
+                &entry.import_commit,
+                &packet.swarm_return_s,
+            ],
+        )
+        .is_err()
+        {
+            return Err((
+                inv_phase,
+                format!(
+                    "nested import {} is not an ancestor of swarm return head S",
+                    entry.import_commit
+                ),
+            ));
+        }
+    }
+
+    // Verify public survivors against actual trees P^{tree} and T.
+    let p_tree_sha = git_stdout_trimmed(
+        repo,
+        &["rev-parse", &format!("{}^{{tree}}", packet.public_base_p)],
+    )
+    .map_err(|err| (inv_phase.clone(), err))?;
+    let p_entries = git_tree_entries(repo, &p_tree_sha).map_err(|err| (inv_phase.clone(), err))?;
+    let t_entries =
+        git_tree_entries(repo, &packet.qualified_tree_t).map_err(|err| (inv_phase.clone(), err))?;
+
+    let mut accounted_deleted_or_moved = BTreeSet::new();
+    for survivor in &packet.inventory.survivors {
+        match survivor.change_kind {
+            SurvivorChangeKind::Retained => {
+                let Some((actual_mode, actual_sha)) = t_entries.get(&survivor.path) else {
+                    return Err((
+                        inv_phase,
+                        format!("retained survivor {} is missing from tree T", survivor.path),
+                    ));
+                };
+                if actual_mode != &survivor.mode
+                    || survivor.object_sha.as_deref() != Some(actual_sha.as_str())
+                {
+                    return Err((
+                        inv_phase,
+                        format!(
+                            "retained survivor {} disagrees with tree T (expected {} {:?}, got {} {})",
+                            survivor.path,
+                            survivor.mode,
+                            survivor.object_sha,
+                            actual_mode,
+                            actual_sha
+                        ),
+                    ));
+                }
+            }
+            SurvivorChangeKind::Renamed => {
+                let Some((actual_mode, actual_sha)) = t_entries.get(&survivor.path) else {
+                    return Err((
+                        inv_phase,
+                        format!("renamed survivor {} is missing from tree T", survivor.path),
+                    ));
+                };
+                if actual_mode != &survivor.mode
+                    || survivor.object_sha.as_deref() != Some(actual_sha.as_str())
+                {
+                    return Err((
+                        inv_phase,
+                        format!("renamed survivor {} disagrees with tree T", survivor.path),
+                    ));
+                }
+                if let Some(prev) = &survivor.previous_path {
+                    if !p_entries.contains_key(prev) {
+                        return Err((
+                            inv_phase,
+                            format!(
+                                "renamed survivor previous_path {prev} is absent from base tree P"
+                            ),
+                        ));
+                    }
+                    accounted_deleted_or_moved.insert(prev.as_str());
+                }
+            }
+            SurvivorChangeKind::Deleted => {
+                if !p_entries.contains_key(&survivor.path) {
+                    return Err((
+                        inv_phase,
+                        format!(
+                            "deleted survivor {} was not present in base tree P",
+                            survivor.path
+                        ),
+                    ));
+                }
+                if t_entries.contains_key(&survivor.path) {
+                    return Err((
+                        inv_phase,
+                        format!("deleted survivor {} still exists in tree T", survivor.path),
+                    ));
+                }
+                accounted_deleted_or_moved.insert(survivor.path.as_str());
+            }
+        }
+    }
+
+    // Completeness check: every path present in P^{tree} that disappeared in T
+    // must be explicitly accounted for as Deleted or Renamed in the inventory.
+    for base_path in p_entries.keys() {
+        if !t_entries.contains_key(base_path)
+            && !accounted_deleted_or_moved.contains(base_path.as_str())
+        {
+            return Err((
+                inv_phase,
+                format!(
+                    "public base path {base_path} disappeared in tree T without a survivor inventory disposition"
+                ),
+            ));
+        }
+    }
+    Ok(())
 }
 
 struct UniqueKeysOnly;
@@ -600,13 +1141,17 @@ impl<'de> serde::de::Visitor<'de> for UniqueKeysVisitor {
     }
 }
 
-pub(crate) fn parse_staged_promotion_packet(raw: &str) -> Result<StagedPromotionPacket, String> {
+fn parse_unique_json<T: for<'de> Deserialize<'de>>(raw: &str) -> Result<T, String> {
     let mut de = serde_json::Deserializer::from_str(raw);
     serde::de::DeserializeSeed::deserialize(UniqueKeysOnly, &mut de)
-        .map_err(|err| format!("staged packet JSON rejected: {err}"))?;
+        .map_err(|err| format!("JSON rejected: {err}"))?;
     de.end()
-        .map_err(|err| format!("staged packet JSON has trailing data: {err}"))?;
-    serde_json::from_str(raw).map_err(|err| format!("parse staged packet: {err}"))
+        .map_err(|err| format!("JSON has trailing data: {err}"))?;
+    serde_json::from_str(raw).map_err(|err| format!("decode JSON: {err}"))
+}
+
+pub(crate) fn parse_staged_promotion_packet(raw: &str) -> Result<StagedPromotionPacket, String> {
+    parse_unique_json(raw)
 }
 
 pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(), String> {
@@ -616,6 +1161,8 @@ pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(
         ));
     }
     let mut packet_path: Option<PathBuf> = None;
+    let mut receipt_path: Option<PathBuf> = None;
+    let mut repo_path: Option<PathBuf> = None;
     let mut out_dir: Option<PathBuf> = None;
     let mut idx = 1;
     while idx < args.len() {
@@ -626,6 +1173,20 @@ pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(
                     .get(idx)
                     .ok_or_else(|| "missing value for --packet".to_string())?;
                 packet_path = Some(PathBuf::from(value));
+            }
+            "--qualification-receipt" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --qualification-receipt".to_string())?;
+                receipt_path = Some(PathBuf::from(value));
+            }
+            "--repo" => {
+                idx += 1;
+                let value = args
+                    .get(idx)
+                    .ok_or_else(|| "missing value for --repo".to_string())?;
+                repo_path = Some(PathBuf::from(value));
             }
             "--out" => {
                 idx += 1;
@@ -643,18 +1204,33 @@ pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(
         idx += 1;
     }
     let packet_path = packet_path.ok_or_else(|| {
-        "usage: cargo xtask source-promotion verify-staged-packet --packet <packet.json> [--out <dir>]"
+        "usage: cargo xtask source-promotion verify-staged-packet --packet <packet.json> [--qualification-receipt <receipt.json> --repo <path>] [--out <dir>]"
             .to_string()
     })?;
+    if receipt_path.is_some() != repo_path.is_some() {
+        return Err(
+            "independent verification requires both --qualification-receipt and --repo together"
+                .to_string(),
+        );
+    }
     let raw = fs::read_to_string(&packet_path)
         .map_err(|err| format!("read staged packet {}: {err}", packet_path.display()))?;
     let packet = parse_staged_promotion_packet(&raw)
         .map_err(|err| format!("{}: {err}", packet_path.display()))?;
-    let verdict = evaluate_staged_promotion_packet(&packet);
+    let (verdict, expected_ok_status) = match (receipt_path.as_deref(), repo_path.as_deref()) {
+        (Some(receipt), Some(repo)) => (
+            evaluate_staged_promotion_independently(&packet, receipt, repo),
+            "admitted",
+        ),
+        _ => (
+            evaluate_staged_promotion_packet(&packet),
+            "packet_consistent",
+        ),
+    };
     if let Some(dir) = out_dir {
         write_verdict(&dir, &verdict)?;
     }
-    if verdict.status != "packet_consistent" {
+    if verdict.status != expected_ok_status {
         return Err(format!(
             "staged source-promotion packet rejected [{}]: {}",
             verdict.phase, verdict.reason
@@ -675,6 +1251,7 @@ fn write_verdict(dir: &Path, verdict: &StagedPromotionConsumerVerdict) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     const P: &str = "1111111111111111111111111111111111111111";
     const S: &str = "2222222222222222222222222222222222222222";
@@ -757,6 +1334,202 @@ mod tests {
         })
     }
 
+    struct TempFixture {
+        root: PathBuf,
+    }
+
+    impl TempFixture {
+        fn new(label: &str) -> Result<Self, String> {
+            let nanos = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|err| err.to_string())?
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "ripr-staged-promo-{label}-{}-{nanos}",
+                std::process::id()
+            ));
+            fs::create_dir_all(&root).map_err(|err| err.to_string())?;
+            Ok(Self { root })
+        }
+    }
+
+    impl Drop for TempFixture {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn git_fixture_cmd(repo: &Path, args: &[&str]) -> Result<String, String> {
+        let mut cmd = Command::new("git");
+        cmd.arg("-C")
+            .arg(repo)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .env("GIT_AUTHOR_DATE", "2026-11-21T00:00:00Z")
+            .env("GIT_COMMITTER_DATE", "2026-11-21T00:00:00Z");
+        for arg in args {
+            cmd.arg(arg);
+        }
+        let out = cmd.output().map_err(|err| err.to_string())?;
+        if !out.status.success() {
+            return Err(format!(
+                "git {} failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        String::from_utf8(out.stdout)
+            .map(|s| s.trim().to_string())
+            .map_err(|err| err.to_string())
+    }
+
+    fn build_real_git_fixture(
+        label: &str,
+    ) -> Result<(TempFixture, StagedPromotionPacket, PathBuf), String> {
+        let fixture = TempFixture::new(label)?;
+        let repo = fixture.root.join("repo");
+        fs::create_dir_all(&repo).map_err(|err| err.to_string())?;
+        git_fixture_cmd(&repo, &["init", "-q"])?;
+
+        // Base commit P with 3 public files: PUBLIC_NOTICE.md (retained), OLD.md (renamed), OBSOLETE.md (deleted).
+        fs::create_dir_all(repo.join("docs")).map_err(|err| err.to_string())?;
+        fs::write(repo.join("docs/PUBLIC_NOTICE.md"), "public notice\n")
+            .map_err(|err| err.to_string())?;
+        fs::write(repo.join("docs/OLD.md"), "renamed content\n").map_err(|err| err.to_string())?;
+        fs::write(repo.join("docs/OBSOLETE.md"), "obsolete\n").map_err(|err| err.to_string())?;
+        git_fixture_cmd(&repo, &["add", "."])?;
+        git_fixture_cmd(&repo, &["commit", "-q", "-m", "public base P"])?;
+        let p = git_fixture_cmd(&repo, &["rev-parse", "HEAD"])?;
+
+        // Nested import commit descending from P.
+        fs::write(repo.join("docs/RENAMED.md"), "renamed content\n")
+            .map_err(|err| err.to_string())?;
+        fs::remove_file(repo.join("docs/OLD.md")).map_err(|err| err.to_string())?;
+        fs::remove_file(repo.join("docs/OBSOLETE.md")).map_err(|err| err.to_string())?;
+        git_fixture_cmd(&repo, &["add", "-A"])?;
+        git_fixture_cmd(&repo, &["commit", "-q", "-m", "nested public import"])?;
+        let import_commit = git_fixture_cmd(&repo, &["rev-parse", "HEAD"])?;
+        let import_tree = git_fixture_cmd(&repo, &["rev-parse", "HEAD^{tree}"])?;
+
+        // Swarm return head S descending from import_commit (and thus P).
+        fs::write(repo.join("docs/SWARM_WORK.md"), "swarm feature\n")
+            .map_err(|err| err.to_string())?;
+        git_fixture_cmd(&repo, &["add", "."])?;
+        git_fixture_cmd(&repo, &["commit", "-q", "-m", "swarm return S"])?;
+        let s = git_fixture_cmd(&repo, &["rev-parse", "HEAD"])?;
+        let t = git_fixture_cmd(&repo, &["rev-parse", "HEAD^{tree}"])?;
+
+        // GitHub merge preview K with exact parents [P, S] and tree T.
+        let k = git_fixture_cmd(
+            &repo,
+            &["commit-tree", &t, "-p", &p, "-p", &s, "-m", "preview K"],
+        )?;
+        // Observed public merge A with exact parents [P, S] and tree T.
+        let a = git_fixture_cmd(
+            &repo,
+            &["commit-tree", &t, "-p", &p, "-p", &s, "-m", "merge A"],
+        )?;
+
+        let notice_sha =
+            git_fixture_cmd(&repo, &["rev-parse", &format!("{t}:docs/PUBLIC_NOTICE.md")])?;
+        let renamed_sha = git_fixture_cmd(&repo, &["rev-parse", &format!("{t}:docs/RENAMED.md")])?;
+
+        let receipt = ExternalQualificationReceipt {
+            schema: EXPECTED_QUALIFICATION_SCHEMA.to_string(),
+            issuer_repository: EXPECTED_ISSUER_REPOSITORY.to_string(),
+            authority_kind: EXPECTED_AUTHORITY_KIND.to_string(),
+            instrument: EXPECTED_QUALIFICATION_INSTRUMENT.to_string(),
+            receipt_id: "swarm-2769-0.11.0".to_string(),
+            qualified_s: s.clone(),
+            qualified_t: t.clone(),
+            outcome: "passed".to_string(),
+            mandatory_commands_executed: 12,
+            mandatory_commands_skipped: 0,
+            stale: false,
+        };
+        let receipt_bytes = serde_json::to_vec_pretty(&receipt).map_err(|err| err.to_string())?;
+        let receipt_sha256 = sha256_hex(&receipt_bytes);
+        let receipt_path = fixture.root.join("qualification-receipt.json");
+        fs::write(&receipt_path, &receipt_bytes).map_err(|err| err.to_string())?;
+
+        let survivors = vec![
+            PublicSurvivorEntry {
+                path: "docs/PUBLIC_NOTICE.md".to_string(),
+                mode: "100644".to_string(),
+                object_sha: Some(notice_sha),
+                change_kind: SurvivorChangeKind::Retained,
+                previous_path: None,
+                nested_import_commit: import_commit.clone(),
+            },
+            PublicSurvivorEntry {
+                path: "docs/RENAMED.md".to_string(),
+                mode: "100644".to_string(),
+                object_sha: Some(renamed_sha),
+                change_kind: SurvivorChangeKind::Renamed,
+                previous_path: Some("docs/OLD.md".to_string()),
+                nested_import_commit: import_commit.clone(),
+            },
+            PublicSurvivorEntry {
+                path: "docs/OBSOLETE.md".to_string(),
+                mode: "100644".to_string(),
+                object_sha: None,
+                change_kind: SurvivorChangeKind::Deleted,
+                previous_path: None,
+                nested_import_commit: import_commit.clone(),
+            },
+        ];
+        let nested_imports = vec![NestedImportEntry {
+            import_commit,
+            source_public_base: p.clone(),
+            tree_sha: import_tree,
+        }];
+        let packet = StagedPromotionPacket {
+            schema: STAGED_PACKET_SCHEMA.to_string(),
+            public_base_p: p.clone(),
+            swarm_return_s: s.clone(),
+            swarm_tree_s: t.clone(),
+            qualified_tree_t: t.clone(),
+            p_is_ancestor_of_s: true,
+            github_preview_k: PreviewMergeK {
+                commit_sha: k,
+                parents: vec![p.clone(), s.clone()],
+                tree: t.clone(),
+            },
+            observed_public_a: Some(ObservedPublicMergeA {
+                commit_sha: a.clone(),
+                parents: vec![p, s.clone()],
+                tree: t.clone(),
+                current_main_sha: a,
+            }),
+            qualification: CrossRepoQualification {
+                issuer_repository: EXPECTED_ISSUER_REPOSITORY.to_string(),
+                authority_kind: EXPECTED_AUTHORITY_KIND.to_string(),
+                instrument: EXPECTED_QUALIFICATION_INSTRUMENT.to_string(),
+                schema: EXPECTED_QUALIFICATION_SCHEMA.to_string(),
+                receipt_id: "swarm-2769-0.11.0".to_string(),
+                receipt_sha256,
+                qualified_s: s,
+                qualified_t: t,
+                mandatory_commands_executed: 12,
+                mandatory_commands_skipped: 0,
+                stale: false,
+            },
+            inventory: SurvivorAndImportInventory {
+                public_survivors_sha256: compute_survivors_digest(&survivors)?,
+                nested_import_sha256: compute_nested_imports_digest(&nested_imports)?,
+                survivors,
+                nested_imports,
+                analysis_disposition: WholeDiffAnalysisDisposition::LimitedUnavailable {
+                    reason: "whole-diff analysis bounded; independent Git inventory verified"
+                        .to_string(),
+                },
+            },
+        };
+        Ok((fixture, packet, receipt_path))
+    }
+
     #[test]
     fn valid_preview_and_post_merge_packets_are_admitted_preserving_limited_disposition()
     -> Result<(), String> {
@@ -792,35 +1565,30 @@ mod tests {
 
     #[test]
     fn geometry_negatives_fail_closed() -> Result<(), String> {
-        // Stale P (not ancestor of S)
         let mut stale_p = valid_packet()?;
         stale_p.p_is_ancestor_of_s = false;
         let v = evaluate_staged_promotion_packet(&stale_p);
         assert_eq!(v.status, "rejected");
         assert_eq!(v.phase, "geometry");
 
-        // Swapped K parents [S, P]
         let mut swapped = valid_packet()?;
         swapped.github_preview_k.parents = vec![S.to_string(), P.to_string()];
         let v = evaluate_staged_promotion_packet(&swapped);
         assert_eq!(v.status, "rejected");
         assert_eq!(v.phase, "geometry");
 
-        // Extra K parent
         let mut extra = valid_packet()?;
         extra.github_preview_k.parents.push(A.to_string());
         let v = evaluate_staged_promotion_packet(&extra);
         assert_eq!(v.status, "rejected");
         assert_eq!(v.phase, "geometry");
 
-        // Wrapper/copy-tree substitution (K.tree != T)
         let mut wrapper = valid_packet()?;
         wrapper.github_preview_k.tree = A.to_string();
         let v = evaluate_staged_promotion_packet(&wrapper);
         assert_eq!(v.status, "rejected");
         assert!(v.reason.contains("wrapper/copy-tree"), "{v:?}");
 
-        // Post-merge A with moved main
         let mut moved_main = valid_packet()?;
         moved_main.observed_public_a = Some(ObservedPublicMergeA {
             commit_sha: A.to_string(),
@@ -889,7 +1657,6 @@ mod tests {
 
     #[test]
     fn inventory_survivor_mode_and_nested_import_negatives_fail_closed() -> Result<(), String> {
-        // Tampered survivor digest
         let mut tampered = valid_packet()?;
         tampered.inventory.public_survivors_sha256 =
             "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".to_string();
@@ -897,7 +1664,6 @@ mod tests {
         assert_eq!(v.status, "rejected");
         assert_eq!(v.phase, "inventory");
 
-        // Invalid Git file mode
         let mut bad_mode = valid_packet()?;
         bad_mode.inventory.survivors[0].mode = "100600".to_string();
         bad_mode.inventory.public_survivors_sha256 =
@@ -906,7 +1672,6 @@ mod tests {
         assert_eq!(v.status, "rejected");
         assert!(v.reason.contains("invalid Git file mode"), "{v:?}");
 
-        // Missing nested import provenance
         let mut no_import = valid_packet()?;
         no_import.inventory.nested_imports.clear();
         no_import.inventory.nested_import_sha256 =
@@ -915,7 +1680,6 @@ mod tests {
         assert_eq!(v.status, "rejected");
         assert!(v.reason.contains("nested public-import"), "{v:?}");
 
-        // Rename missing previous_path
         let mut bad_rename = valid_packet()?;
         bad_rename.inventory.survivors[1].previous_path = None;
         bad_rename.inventory.public_survivors_sha256 =
@@ -925,7 +1689,6 @@ mod tests {
             "rejected"
         );
 
-        // Deletion with non-null object_sha
         let mut bad_delete = valid_packet()?;
         bad_delete.inventory.survivors[2].object_sha = Some(BLOB.to_string());
         bad_delete.inventory.public_survivors_sha256 =
@@ -935,7 +1698,6 @@ mod tests {
             "rejected"
         );
 
-        // Empty limited_unavailable reason rejected
         let mut empty_reason = valid_packet()?;
         empty_reason.inventory.analysis_disposition =
             WholeDiffAnalysisDisposition::LimitedUnavailable {
@@ -968,6 +1730,102 @@ mod tests {
             return Err("nested duplicate key must be rejected".to_string());
         };
         assert!(err.contains("duplicate JSON object key: stale"), "{err}");
+        Ok(())
+    }
+
+    #[test]
+    fn independent_receipt_and_real_git_verification_admits_and_rejects_adversaries()
+    -> Result<(), String> {
+        let (fixture, packet, receipt_path) = build_real_git_fixture("phase2-admit")?;
+        let repo = fixture.root.join("repo");
+
+        // Positive control: valid real Git objects + valid receipt bytes -> admitted.
+        let verdict = evaluate_staged_promotion_independently(&packet, &receipt_path, &repo);
+        assert_eq!(verdict.status, "admitted", "{verdict:?}");
+        assert_eq!(
+            verdict.verification_scope,
+            "independent_receipt_and_git_verified"
+        );
+
+        // Negative 1: tampered receipt bytes on disk -> rejected.
+        let tampered_receipt = fixture.root.join("tampered-receipt.json");
+        let mut bytes = fs::read(&receipt_path).map_err(|err| err.to_string())?;
+        bytes.push(b' ');
+        fs::write(&tampered_receipt, &bytes).map_err(|err| err.to_string())?;
+        let v = evaluate_staged_promotion_independently(&packet, &tampered_receipt, &repo);
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "qualification_receipt_custody");
+        assert!(v.reason.contains("SHA-256 mismatch"), "{v:?}");
+
+        // Negative 2: external receipt with failed outcome (even with matching digest!) -> rejected.
+        let mut failed_receipt_val: ExternalQualificationReceipt =
+            serde_json::from_slice(&fs::read(&receipt_path).map_err(|err| err.to_string())?)
+                .map_err(|err| err.to_string())?;
+        failed_receipt_val.outcome = "failed".to_string();
+        let failed_bytes =
+            serde_json::to_vec_pretty(&failed_receipt_val).map_err(|err| err.to_string())?;
+        let failed_path = fixture.root.join("failed-receipt.json");
+        fs::write(&failed_path, &failed_bytes).map_err(|err| err.to_string())?;
+        let mut packet_failed_receipt = packet.clone();
+        packet_failed_receipt.qualification.receipt_sha256 = sha256_hex(&failed_bytes);
+        let v =
+            evaluate_staged_promotion_independently(&packet_failed_receipt, &failed_path, &repo);
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "qualification_receipt_custody");
+        assert!(v.reason.contains("outcome is not passed"), "{v:?}");
+
+        // Negative 3: spoofed survivor inventory omitting deleted docs/OBSOLETE.md (even with recomputed digest!) -> rejected by real Git completeness check.
+        let mut spoofed = packet.clone();
+        spoofed.inventory.survivors.pop();
+        spoofed.inventory.public_survivors_sha256 =
+            compute_survivors_digest(&spoofed.inventory.survivors)?;
+        let v = evaluate_staged_promotion_independently(&spoofed, &receipt_path, &repo);
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "git_inventory");
+        assert!(v.reason.contains("docs/OBSOLETE.md"), "{v:?}");
+
+        // Negative 4: swapped K parents [S, P] in real Git object store -> rejected.
+        let swapped_k = git_fixture_cmd(
+            &repo,
+            &[
+                "commit-tree",
+                &packet.qualified_tree_t,
+                "-p",
+                &packet.swarm_return_s,
+                "-p",
+                &packet.public_base_p,
+                "-m",
+                "swapped K",
+            ],
+        )?;
+        let mut packet_swapped = packet.clone();
+        packet_swapped.github_preview_k.commit_sha = swapped_k;
+        let v = evaluate_staged_promotion_independently(&packet_swapped, &receipt_path, &repo);
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "git_geometry");
+        assert!(v.reason.contains("parents mismatch"), "{v:?}");
+
+        // Negative 5: real Git moved base P (orphan commit not ancestor of S) -> rejected.
+        let moved_p = git_fixture_cmd(
+            &repo,
+            &[
+                "commit-tree",
+                &packet.qualified_tree_t,
+                "-m",
+                "moved base P",
+            ],
+        )?;
+        let mut packet_moved_p = packet.clone();
+        packet_moved_p.public_base_p = moved_p.clone();
+        packet_moved_p.github_preview_k.parents[0] = moved_p.clone();
+        if let Some(a) = &mut packet_moved_p.observed_public_a {
+            a.parents[0] = moved_p;
+        }
+        let v = evaluate_staged_promotion_independently(&packet_moved_p, &receipt_path, &repo);
+        assert_eq!(v.status, "rejected");
+        assert_eq!(v.phase, "git_geometry");
+        assert!(v.reason.contains("not an ancestor"), "{v:?}");
+
         Ok(())
     }
 }

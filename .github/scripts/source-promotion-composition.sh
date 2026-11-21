@@ -120,6 +120,30 @@ esac
 [[ $(git --no-replace-objects rev-list --parents -n 1 "$MERGE_SHA") == "$MERGE_SHA $BASE_SHA $HEAD_SHA" ]] || fail 'test merge parents differ from [P,head]'
 [[ $(git --no-replace-objects rev-parse "$MERGE_SHA^{tree}") == "$tree" ]] || fail 'test merge tree differs from T'
 [[ $(git --no-replace-objects rev-parse "$HEAD_SHA^{tree}") == "$tree" ]] || fail 'head tree differs from T'
+staged_packet_verdict='not_configured'
+if [[ "${REQUIRE_STAGED_PACKET:-0}" == "1" ]] || [[ -n "${STAGED_VERIFIER_BIN:-}" ]]; then
+  [[ -n "${STAGED_VERIFIER_BIN:-}" && -x "${STAGED_VERIFIER_BIN:-}" ]] || fail 'staged packet verifier binary missing or not executable'
+  staged_packet_path=docs/release/source-promotion/staged-packet.json
+  qual_receipt_path=docs/release/source-promotion/qualification-receipt.json
+  for spath in "$staged_packet_path" "$qual_receipt_path"; do
+    sentry=$(git ls-tree "$control" -- "$spath")
+    [[ "$sentry" == $'100644 blob '*$'\t'"$spath" ]] || fail 'staged admission sidecar is not a regular tracked file'
+  done
+  staged_packet_file=$(mktemp)
+  qual_receipt_file=$(mktemp)
+  trap 'rm -f "$control_file" "$preflight_file" "$staged_packet_file" "$qual_receipt_file"' EXIT
+  git show "$control:$staged_packet_path" > "$staged_packet_file"
+  git show "$control:$qual_receipt_path" > "$qual_receipt_file"
+  expected_packet_sha=$(jq -er '.staged_packet_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' <<< "$inputs") || fail 'invalid staged_packet_sha256 in control inputs'
+  expected_receipt_sha=$(jq -er '.qualification_receipt_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' <<< "$inputs") || fail 'invalid qualification_receipt_sha256 in control inputs'
+  [[ $(sha256sum "$staged_packet_file" | cut -d ' ' -f 1) == "$expected_packet_sha" ]] || fail 'staged packet digest mismatch'
+  [[ $(sha256sum "$qual_receipt_file" | cut -d ' ' -f 1) == "$expected_receipt_sha" ]] || fail 'qualification receipt digest mismatch'
+  "$STAGED_VERIFIER_BIN" source-promotion verify-staged-packet \
+    --packet "$staged_packet_file" \
+    --qualification-receipt "$qual_receipt_file" \
+    --repo . >/dev/null || fail 'staged packet independent verification rejected'
+  staged_packet_verdict='admitted'
+fi
 if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
   inputs_sha256=$(sha256sum "$control_file" | cut -d ' ' -f 1)
   swarm_s="$HEAD_SHA"
@@ -130,6 +154,7 @@ if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
     --arg schema 'ripr.source_promotion_composition_gate.v1' \
     --arg status 'verified' \
     --arg mode "$mode" \
+    --arg staged_packet_verdict "$staged_packet_verdict" \
     --arg event_name "${EVENT_NAME:-unknown}" \
     --arg workflow_source_sha "${WORKFLOW_SOURCE_SHA:-unknown}" \
     --arg workflow_run_id "${WORKFLOW_RUN_ID:-unknown}" \
@@ -148,6 +173,7 @@ if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
       schema: $schema,
       status: $status,
       mode: $mode,
+      staged_packet_verdict: $staged_packet_verdict,
       event_name: $event_name,
       workflow_source_sha: $workflow_source_sha,
       workflow_run_id: $workflow_run_id,

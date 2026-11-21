@@ -366,6 +366,48 @@ class CompositionTests(unittest.TestCase):
         )
         self.check('promotion marker removed by body edit')
 
+    def test_staged_packet_consumer_verifies_digests_and_invokes_verifier(self) -> None:
+        stub = self.root / 'stub-verifier.sh'
+        stub.write_text('#!/usr/bin/env bash\nexit 0\n', encoding='utf-8')
+        stub.chmod(0o755)
+        pkt_bytes = b'{"schema":"ripr.staged_source_promotion_packet.v1"}\n'
+        rec_bytes = b'{"schema":"ripr.swarm_qualification_receipt.v1"}\n'
+        base = self.root / 'docs/release/source-promotion'
+        base.mkdir(parents=True, exist_ok=True)
+        (base / 'staged-packet.json').write_bytes(pkt_bytes)
+        (base / 'qualification-receipt.json').write_bytes(rec_bytes)
+        self.inputs['staged_packet_sha256'] = hashlib.sha256(pkt_bytes).hexdigest()
+        self.inputs['qualification_receipt_sha256'] = hashlib.sha256(rec_bytes).hexdigest()
+        self.control()
+        receipt_path = self.root / 'staged-consumer-receipt.json'
+        self.env.update(
+            REQUIRE_STAGED_PACKET='1',
+            STAGED_VERIFIER_BIN=str(stub),
+            COMPOSITION_RECEIPT_OUT=str(receipt_path),
+        )
+        self.check()
+        receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+        self.assertEqual(receipt['staged_packet_verdict'], 'admitted')
+
+    def test_staged_packet_consumer_fails_closed_when_verifier_rejects(self) -> None:
+        stub = self.root / 'reject-verifier.sh'
+        stub.write_text('#!/usr/bin/env bash\nexit 1\n', encoding='utf-8')
+        stub.chmod(0o755)
+        pkt_bytes = b'{"schema":"ripr.staged_source_promotion_packet.v1"}\n'
+        rec_bytes = b'{"schema":"ripr.swarm_qualification_receipt.v1"}\n'
+        base = self.root / 'docs/release/source-promotion'
+        base.mkdir(parents=True, exist_ok=True)
+        (base / 'staged-packet.json').write_bytes(pkt_bytes)
+        (base / 'qualification-receipt.json').write_bytes(rec_bytes)
+        self.inputs['staged_packet_sha256'] = hashlib.sha256(pkt_bytes).hexdigest()
+        self.inputs['qualification_receipt_sha256'] = hashlib.sha256(rec_bytes).hexdigest()
+        self.control()
+        self.env.update(
+            REQUIRE_STAGED_PACKET='1',
+            STAGED_VERIFIER_BIN=str(stub),
+        )
+        self.check('staged packet independent verification rejected')
+
 
 if __name__ == '__main__':
     unittest.main()

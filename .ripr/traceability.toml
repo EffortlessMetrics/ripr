@@ -6724,6 +6724,7 @@ tests = [
   "xtask/src/reports/staged_source_promotion.rs::tests::issuer_instrument_and_execution_negatives_fail_closed",
   "xtask/src/reports/staged_source_promotion.rs::tests::inventory_survivor_mode_and_nested_import_negatives_fail_closed",
   "xtask/src/reports/staged_source_promotion.rs::tests::duplicate_json_keys_outer_and_nested_are_rejected",
+  "xtask/src/reports/staged_source_promotion.rs::tests::independent_receipt_and_real_git_verification_admits_and_rejects_adversaries",
   "xtask/tests/staged_promotion_workflow.rs::composition_gate_is_base_owned_read_only_pull_request_target_without_skip_trap",
 ]
 fixtures = [
