@@ -467,6 +467,7 @@ pub(crate) fn known_commands() -> Vec<&'static str> {
         "source-promotion verify-admission-workflow --packet <dir> --requested-identity <file> --requested-identity-sha256 <digest>",
         "source-promotion enforce-admission-workflow --packet <dir> --workspace-root <dir> --expected-status admitted",
         "source-promotion finalize-admission-workflow --admission-packet <dir> --workspace-root <dir> --out <dir>",
+        "source-promotion verify-staged-packet --packet <packet.json> [--out <dir>]",
         "targeted-test-outcome --before <path> --after <path>",
         "mutation-calibration [root] --mutants-json <path>",
         "bun-ub-calibration [--corpus <path>] [--out <path>] [--out-md <path>]",
@@ -1388,6 +1389,14 @@ pub(crate) fn command_catalog() -> Vec<CommandCatalogEntry> {
             false,
             false,
             "After uploaded admission evidence is independently verified and enforced, optionally constructs exactly one unreferenced dry-run object; it never mutates refs or publishes.",
+        ),
+        command_entry(
+            "source-promotion verify-staged-packet --packet <packet.json> [--out <dir>]",
+            "report_only",
+            "optional <out>/staged-source-promotion-verdict.json",
+            false,
+            false,
+            "Validates a versioned staged P/S/T/K/A source-promotion packet, cross-repo qualification issuer/instrument admission, and public-survivor/nested-import inventory digests.",
         ),
         command_entry(
             "targeted-test-outcome --before <path> --after <path>",

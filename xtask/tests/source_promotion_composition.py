@@ -316,6 +316,44 @@ class CompositionTests(unittest.TestCase):
         self.legacy(reverse=True)
         self.check('join parents differ from [P,S]')
 
+    def test_trusted_event_guard_rejects_pull_request_event(self) -> None:
+        self.env.update(
+            REQUIRE_TRUSTED_EVENT='1',
+            EVENT_NAME='pull_request',
+            WORKFLOW_SOURCE_SHA=self.p,
+        )
+        self.check('trusted pull_request_target event required')
+
+    def test_trusted_event_guard_rejects_missing_workflow_source_sha(self) -> None:
+        self.env.update(
+            REQUIRE_TRUSTED_EVENT='1',
+            EVENT_NAME='pull_request_target',
+            WORKFLOW_SOURCE_SHA='not-a-sha',
+        )
+        self.check('trusted workflow source SHA missing or invalid')
+
+    def test_trusted_event_emits_bound_composition_receipt(self) -> None:
+        receipt_path = self.root / 'composition-receipt.json'
+        self.env.update(
+            REQUIRE_TRUSTED_EVENT='1',
+            EVENT_NAME='pull_request_target',
+            WORKFLOW_SOURCE_SHA=self.p,
+            TOKEN_PERMISSIONS='contents:read,pull-requests:read',
+            COMPOSITION_RECEIPT_OUT=str(receipt_path),
+        )
+        self.check()
+        receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+        self.assertEqual(receipt['schema'], 'ripr.source_promotion_composition_gate.v1')
+        self.assertEqual(receipt['status'], 'verified')
+        self.assertEqual(receipt['event_name'], 'pull_request_target')
+        self.assertEqual(receipt['workflow_source_sha'], self.p)
+        self.assertFalse(receipt['secrets_used'])
+        self.assertEqual(receipt['identities']['P'], self.p)
+        self.assertEqual(receipt['identities']['S'], self.s)
+        self.assertEqual(receipt['identities']['K'], self.k)
+        self.assertEqual(receipt['identities']['T'], self.t)
+        self.assertEqual(receipt['ruleset_readback'], 'external_owner_gated_unknown')
+
 
 if __name__ == '__main__':
     unittest.main()

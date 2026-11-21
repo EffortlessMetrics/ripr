@@ -46,6 +46,50 @@ fn composition_check_revalidates_body_edits() -> Result<(), String> {
 }
 
 #[test]
+fn composition_gate_is_base_owned_read_only_pull_request_target_without_skip_trap()
+-> Result<(), String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or("missing root")?;
+    let path = root.join(".github/workflows/source-promotion-composition.yml");
+    let workflow = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    for required in [
+        "pull_request_target:",
+        "branches: [main]",
+        "permissions: {}",
+        "contents: read",
+        "pull-requests: read",
+        "allow-unsafe-pr-checkout: false",
+        "ref: ${{ github.event.pull_request.base.sha }}",
+        "REQUIRE_TRUSTED_EVENT: \"1\"",
+        "WORKFLOW_SOURCE_SHA: ${{ github.sha }}",
+        "COMPOSITION_RECEIPT_OUT:",
+        "live PR base moved past event base",
+        "live PR head moved past event head",
+    ] {
+        if !workflow.contains(required) {
+            return Err(format!(
+                "source-promotion-composition.yml is missing required #1893 guard: {required}"
+            ));
+        }
+    }
+    for forbidden in [
+        "\n  pull_request:",
+        "secrets.",
+        "contents: write",
+        "pull-requests: write",
+        "if: github.event_name ==",
+    ] {
+        if workflow.contains(forbidden) {
+            return Err(format!(
+                "source-promotion-composition.yml contains forbidden #1893 pattern: {forbidden}"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn workflow_exposes_a_staged_preview_identity_gate() -> Result<(), String> {
     let gate = identity_gate()?;
     if !gate.contains("refs/pull/") {
@@ -58,6 +102,7 @@ fn staged_post_gate() -> Result<String, String> {
     workflow_section("staged-post-begin", "staged-post-end")
 }
 
+#[cfg(unix)]
 fn staged_receipt_gate() -> Result<String, String> {
     workflow_section("staged-receipt-begin", "staged-receipt-end")
 }

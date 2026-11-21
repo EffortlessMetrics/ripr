@@ -6,10 +6,38 @@ marker='<!-- source-promotion: true -->'
 control_prefix='<!-- source-promotion-control:'
 # Routing identity is mandatory, even for an ordinary non-promotion PR.
 [[ ${PR_BODY+x} && ${HEAD_REF+x} ]] || fail 'event routing inputs missing'
+if [[ "${REQUIRE_TRUSTED_EVENT:-0}" == "1" ]]; then
+  [[ "${EVENT_NAME:-}" == "pull_request_target" ]] || fail 'trusted pull_request_target event required'
+  [[ "${WORKFLOW_SOURCE_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || fail 'trusted workflow source SHA missing or invalid'
+fi
 [[ -n "$HEAD_REF" && "$HEAD_REF" != -* ]] && git check-ref-format "refs/heads/$HEAD_REF" || fail 'invalid head ref'
 # GitHub web-edited bodies may use CRLF; marker cardinality stays exact.
 PR_BODY=${PR_BODY//$'\r'/}
 if [[ "$HEAD_REF" != promote/0.11.0-* ]] && [[ "$PR_BODY" != *"$marker"* ]] && [[ "$PR_BODY" != *"$control_prefix"* ]]; then
+  if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
+    jq -n \
+      --arg schema 'ripr.source_promotion_composition_gate.v1' \
+      --arg status 'ordinary_pr_not_promotion' \
+      --arg event_name "${EVENT_NAME:-unknown}" \
+      --arg workflow_source_sha "${WORKFLOW_SOURCE_SHA:-unknown}" \
+      --arg token_permissions "${TOKEN_PERMISSIONS:-contents:read}" \
+      --arg head_ref "$HEAD_REF" \
+      --arg protected_head_sha "${HEAD_SHA:-}" \
+      --arg protected_preview_sha "${MERGE_SHA:-}" \
+      '{
+        schema: $schema,
+        status: $status,
+        event_name: $event_name,
+        workflow_source_sha: $workflow_source_sha,
+        token_permissions: $token_permissions,
+        secrets_used: false,
+        head_ref: $head_ref,
+        protected_head_sha: $protected_head_sha,
+        protected_preview_sha: $protected_preview_sha,
+        check_run_source_identity: "github-actions-default-branch-workflow",
+        ruleset_readback: "external_owner_gated_unknown"
+      }' > "$COMPOSITION_RECEIPT_OUT"
+  fi
   echo 'Ordinary pull request: no source-promotion composition requested.'
   exit 0
 fi
@@ -83,4 +111,49 @@ esac
 [[ $(git --no-replace-objects rev-list --parents -n 1 "$MERGE_SHA") == "$MERGE_SHA $BASE_SHA $HEAD_SHA" ]] || fail 'test merge parents differ from [P,head]'
 [[ $(git --no-replace-objects rev-parse "$MERGE_SHA^{tree}") == "$tree" ]] || fail 'test merge tree differs from T'
 [[ $(git --no-replace-objects rev-parse "$HEAD_SHA^{tree}") == "$tree" ]] || fail 'head tree differs from T'
+if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
+  inputs_sha256=$(sha256sum "$control_file" | cut -d ' ' -f 1)
+  swarm_s="$HEAD_SHA"
+  if [[ "$mode" == "two_parent_join" ]]; then
+    swarm_s="$swarm"
+  fi
+  jq -n \
+    --arg schema 'ripr.source_promotion_composition_gate.v1' \
+    --arg status 'verified' \
+    --arg mode "$mode" \
+    --arg event_name "${EVENT_NAME:-unknown}" \
+    --arg workflow_source_sha "${WORKFLOW_SOURCE_SHA:-unknown}" \
+    --arg token_permissions "${TOKEN_PERMISSIONS:-contents:read}" \
+    --arg p "$BASE_SHA" \
+    --arg s "$swarm_s" \
+    --arg k "$MERGE_SHA" \
+    --arg t "$tree" \
+    --arg protected_head_sha "$HEAD_SHA" \
+    --arg protected_preview_sha "$MERGE_SHA" \
+    --arg control_commit "$control" \
+    --arg contract_inputs_sha256 "$inputs_sha256" \
+    --arg preflight_sha256 "$expected" \
+    '{
+      schema: $schema,
+      status: $status,
+      mode: $mode,
+      event_name: $event_name,
+      workflow_source_sha: $workflow_source_sha,
+      token_permissions: $token_permissions,
+      secrets_used: false,
+      protected_head_sha: $protected_head_sha,
+      protected_preview_sha: $protected_preview_sha,
+      identities: {
+        P: $p,
+        S: $s,
+        K: $k,
+        T: $t,
+        control_commit: $control_commit,
+        contract_inputs_sha256: $contract_inputs_sha256,
+        preflight_sha256: $preflight_sha256
+      },
+      check_run_source_identity: "github-actions-default-branch-workflow",
+      ruleset_readback: "external_owner_gated_unknown"
+    }' > "$COMPOSITION_RECEIPT_OUT"
+fi
 echo 'Source-promotion composition matches the control packet.'

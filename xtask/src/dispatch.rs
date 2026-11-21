@@ -126,6 +126,12 @@ pub(crate) fn execute(command: XtaskCommand) -> Result<(), String> {
         {
             super::reports::source_promotion(&args)
         }
+        XtaskCommand::SourcePromotion(args)
+            if args.first().map(String::as_str)
+                == Some(super::reports::SOURCE_PROMOTION_VERIFY_STAGED_PACKET_SUBCOMMAND) =>
+        {
+            super::reports::source_promotion_verify_staged_packet(&args)
+        }
         XtaskCommand::SourcePromotion(args) => super::reports::source_promotion_verify(&args),
         XtaskCommand::BackSync(args) => super::reports::back_sync(&args),
         XtaskCommand::ReleaseScope(args) => super::reports::release_scope(&args),
