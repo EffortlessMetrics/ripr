@@ -6719,6 +6719,12 @@ tests = [
   "xtask/src/reports/source_promotion_admission_fixture.rs::tests::profile_names_are_closed_and_stable",
   "xtask/src/reports/source_promotion_admission_fixture.rs::tests::qualification_denominator_is_exact_and_ordered",
   "xtask/src/reports/source_promotion_admission_fixture.rs::tests::retained_j5_literals_have_exact_requested_cardinality",
+  "xtask/src/reports/staged_source_promotion.rs::tests::valid_preview_and_post_merge_packets_are_admitted_preserving_limited_disposition",
+  "xtask/src/reports/staged_source_promotion.rs::tests::geometry_negatives_fail_closed",
+  "xtask/src/reports/staged_source_promotion.rs::tests::issuer_instrument_and_execution_negatives_fail_closed",
+  "xtask/src/reports/staged_source_promotion.rs::tests::inventory_survivor_mode_and_nested_import_negatives_fail_closed",
+  "xtask/src/reports/staged_source_promotion.rs::tests::duplicate_json_keys_outer_and_nested_are_rejected",
+  "xtask/tests/staged_promotion_workflow.rs::composition_gate_is_base_owned_read_only_pull_request_target_without_skip_trap",
 ]
 fixtures = [
   "fixtures/source_promotion_verification",

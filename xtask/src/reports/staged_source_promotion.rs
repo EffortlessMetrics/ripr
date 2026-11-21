@@ -517,9 +517,9 @@ pub(crate) fn evaluate_staged_promotion_packet(
 
     StagedPromotionConsumerVerdict {
         schema: STAGED_VERDICT_SCHEMA.to_string(),
-        status: "admitted".to_string(),
+        status: "packet_consistent".to_string(),
         phase: "complete".to_string(),
-        reason: "staged_packet_admitted".to_string(),
+        reason: "staged_packet_consistency_verified".to_string(),
         qualification_authority: qual.authority_kind.clone(),
         analysis_disposition: inv.analysis_disposition.clone(),
         identities: StagedPromotionIdentities {
@@ -532,7 +532,7 @@ pub(crate) fn evaluate_staged_promotion_packet(
                 .as_ref()
                 .map(|a| a.commit_sha.clone()),
         },
-        claim: "Staged admission verdict only; retains cross-repo qualification authority and bounded analysis disposition without authorizing merge, tag, or release publication.".to_string(),
+        claim: "Packet self-consistency verdict only; does not independently verify external qualification receipt bytes, Git-history survivor/nested-import completeness, repository settings, merge, tag, or release publication.".to_string(),
     }
 }
 
@@ -654,7 +654,7 @@ pub(crate) fn source_promotion_verify_staged_packet(args: &[String]) -> Result<(
     if let Some(dir) = out_dir {
         write_verdict(&dir, &verdict)?;
     }
-    if verdict.status != "admitted" {
+    if verdict.status != "packet_consistent" {
         return Err(format!(
             "staged source-promotion packet rejected [{}]: {}",
             verdict.phase, verdict.reason
@@ -762,7 +762,10 @@ mod tests {
     -> Result<(), String> {
         let mut packet = valid_packet()?;
         let preview_verdict = evaluate_staged_promotion_packet(&packet);
-        assert_eq!(preview_verdict.status, "admitted", "{preview_verdict:?}");
+        assert_eq!(
+            preview_verdict.status, "packet_consistent",
+            "{preview_verdict:?}"
+        );
         assert_eq!(
             preview_verdict.qualification_authority,
             EXPECTED_AUTHORITY_KIND
@@ -779,7 +782,7 @@ mod tests {
             current_main_sha: A.to_string(),
         });
         let post_verdict = evaluate_staged_promotion_packet(&packet);
-        assert_eq!(post_verdict.status, "admitted", "{post_verdict:?}");
+        assert_eq!(post_verdict.status, "packet_consistent", "{post_verdict:?}");
         assert_eq!(
             post_verdict.identities.observed_public_a.as_deref(),
             Some(A)

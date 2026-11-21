@@ -13,13 +13,20 @@ fi
 [[ -n "$HEAD_REF" && "$HEAD_REF" != -* ]] && git check-ref-format "refs/heads/$HEAD_REF" || fail 'invalid head ref'
 # GitHub web-edited bodies may use CRLF; marker cardinality stays exact.
 PR_BODY=${PR_BODY//$'\r'/}
+PREV_PR_BODY=${PREV_PR_BODY:-}
+PREV_PR_BODY=${PREV_PR_BODY//$'\r'/}
 if [[ "$HEAD_REF" != promote/0.11.0-* ]] && [[ "$PR_BODY" != *"$marker"* ]] && [[ "$PR_BODY" != *"$control_prefix"* ]]; then
+  if [[ "$PREV_PR_BODY" == *"$marker"* ]] || [[ "$PREV_PR_BODY" == *"$control_prefix"* ]]; then
+    fail 'promotion marker removed by body edit'
+  fi
   if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
     jq -n \
       --arg schema 'ripr.source_promotion_composition_gate.v1' \
       --arg status 'ordinary_pr_not_promotion' \
       --arg event_name "${EVENT_NAME:-unknown}" \
       --arg workflow_source_sha "${WORKFLOW_SOURCE_SHA:-unknown}" \
+      --arg workflow_run_id "${WORKFLOW_RUN_ID:-unknown}" \
+      --arg workflow_ref "${WORKFLOW_REF:-unknown}" \
       --arg token_permissions "${TOKEN_PERMISSIONS:-contents:read}" \
       --arg head_ref "$HEAD_REF" \
       --arg protected_head_sha "${HEAD_SHA:-}" \
@@ -29,12 +36,14 @@ if [[ "$HEAD_REF" != promote/0.11.0-* ]] && [[ "$PR_BODY" != *"$marker"* ]] && [
         status: $status,
         event_name: $event_name,
         workflow_source_sha: $workflow_source_sha,
+        workflow_run_id: $workflow_run_id,
+        workflow_ref: $workflow_ref,
         token_permissions: $token_permissions,
         secrets_used: false,
         head_ref: $head_ref,
         protected_head_sha: $protected_head_sha,
         protected_preview_sha: $protected_preview_sha,
-        check_run_source_identity: "github-actions-default-branch-workflow",
+        check_run_source_identity: "declared_default_branch_workflow_check_run_unobserved",
         ruleset_readback: "external_owner_gated_unknown"
       }' > "$COMPOSITION_RECEIPT_OUT"
   fi
@@ -123,6 +132,8 @@ if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
     --arg mode "$mode" \
     --arg event_name "${EVENT_NAME:-unknown}" \
     --arg workflow_source_sha "${WORKFLOW_SOURCE_SHA:-unknown}" \
+    --arg workflow_run_id "${WORKFLOW_RUN_ID:-unknown}" \
+    --arg workflow_ref "${WORKFLOW_REF:-unknown}" \
     --arg token_permissions "${TOKEN_PERMISSIONS:-contents:read}" \
     --arg p "$BASE_SHA" \
     --arg s "$swarm_s" \
@@ -139,6 +150,8 @@ if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
       mode: $mode,
       event_name: $event_name,
       workflow_source_sha: $workflow_source_sha,
+      workflow_run_id: $workflow_run_id,
+      workflow_ref: $workflow_ref,
       token_permissions: $token_permissions,
       secrets_used: false,
       protected_head_sha: $protected_head_sha,
@@ -152,7 +165,7 @@ if [[ -n "${COMPOSITION_RECEIPT_OUT:-}" ]]; then
         contract_inputs_sha256: $contract_inputs_sha256,
         preflight_sha256: $preflight_sha256
       },
-      check_run_source_identity: "github-actions-default-branch-workflow",
+      check_run_source_identity: "declared_default_branch_workflow_check_run_unobserved",
       ruleset_readback: "external_owner_gated_unknown"
     }' > "$COMPOSITION_RECEIPT_OUT"
 fi

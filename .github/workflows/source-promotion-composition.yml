@@ -68,12 +68,15 @@ jobs:
         id: verify
         env:
           PR_BODY_FILE: ${{ steps.live.outputs.body_file }}
+          PREV_PR_BODY: ${{ github.event.changes.body.from }}
           HEAD_REF: ${{ steps.live.outputs.head_ref }}
           BASE_SHA: ${{ steps.live.outputs.base_sha }}
           HEAD_SHA: ${{ steps.live.outputs.head_sha }}
           MERGE_SHA: ${{ steps.live.outputs.merge_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
           EVENT_NAME: ${{ github.event_name }}
           REQUIRE_TRUSTED_EVENT: "1"
           TOKEN_PERMISSIONS: "contents:read,pull-requests:read"

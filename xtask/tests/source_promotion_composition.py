@@ -352,7 +352,19 @@ class CompositionTests(unittest.TestCase):
         self.assertEqual(receipt['identities']['S'], self.s)
         self.assertEqual(receipt['identities']['K'], self.k)
         self.assertEqual(receipt['identities']['T'], self.t)
+        self.assertEqual(
+            receipt['check_run_source_identity'],
+            'declared_default_branch_workflow_check_run_unobserved',
+        )
         self.assertEqual(receipt['ruleset_readback'], 'external_owner_gated_unknown')
+
+    def test_body_edit_removing_promotion_markers_is_rejected(self) -> None:
+        self.env.update(
+            HEAD_REF='feature/disguised-promotion',
+            PREV_PR_BODY=self.env['PR_BODY'],
+            PR_BODY='ordinary PR body after marker deletion',
+        )
+        self.check('promotion marker removed by body edit')
 
 
 if __name__ == '__main__':
