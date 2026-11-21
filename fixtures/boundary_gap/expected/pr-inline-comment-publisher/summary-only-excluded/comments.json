@@ -1,0 +1,34 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "root": ".",
+  "base": "main",
+  "head": "HEAD",
+  "mode": "draft",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "summary": {
+    "comments": 0,
+    "summary_only": 1,
+    "suppressed": 0,
+    "unchanged_tests": true
+  },
+  "comments": [],
+  "summary_only": [
+    {
+      "id": "ripr-review-summary-8f7fa8644fd12280",
+      "seam_id": "8f7fa8644fd12280",
+      "dedupe_key": "ripr:8f7fa8644fd12280:src/pricing.rs:88",
+      "placement": null,
+      "summary_reason": "no changed line could safely receive an annotation",
+      "grip_class": "weakly_gripped",
+      "reason": "Useful guidance exists, but no changed line is safe for inline placement."
+    }
+  ],
+  "suppressed": [],
+  "warnings": [],
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking."
+}

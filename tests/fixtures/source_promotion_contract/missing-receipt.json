@@ -1,0 +1,7 @@
+{
+  "case": "missing-receipt",
+  "validation_phase": "verifier_receipt",
+  "validation_reason": "trusted verifier receipt missing",
+  "receipt_status": "missing",
+  "status": "rejected"
+}

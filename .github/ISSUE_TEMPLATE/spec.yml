@@ -1,0 +1,74 @@
+name: Source-of-truth spec
+description: Define the behavior contract and evidence for accepted work.
+title: "spec: "
+labels: ["source-of-truth", "spec"]
+body:
+  - type: input
+    id: spec_id
+    attributes:
+      label: Spec ID
+      placeholder: "RIPR-SPEC-00NN"
+    validations:
+      required: false
+  - type: input
+    id: linked_proposal
+    attributes:
+      label: Linked proposal
+      description: Proposal ID or standalone reason if this spec has no proposal.
+      placeholder: "RIPR-PROP-00NN"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Required behavior
+      description: What exact behavior must be true when the spec is satisfied?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_examples
+    attributes:
+      label: Acceptance examples
+      description: Concrete examples, commands, inputs, outputs, and failure cases.
+    validations:
+      required: true
+  - type: textarea
+    id: required_evidence
+    attributes:
+      label: Required evidence
+      value: |
+        - Unit tests:
+        - Fixtures:
+        - Golden outputs:
+        - Xtask command:
+        - CI signal:
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+      description: What behavior does this spec explicitly not require?
+    validations:
+      required: true
+  - type: textarea
+    id: support_tier_impact
+    attributes:
+      label: Support-tier impact
+      description: Name `docs/status/SUPPORT_TIERS.md` if claims change, or say none.
+    validations:
+      required: true
+  - type: textarea
+    id: policy_impact
+    attributes:
+      label: Policy impact
+      description: Name any policy ledger that must change, or say none.
+    validations:
+      required: true
+  - type: textarea
+    id: claim_boundary
+    attributes:
+      label: Claim boundary
+      description: What may be claimed after this spec lands, and what must not be claimed?
+    validations:
+      required: true

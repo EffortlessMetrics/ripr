@@ -1,0 +1,8 @@
+[package]
+name = "propagate_stdout_macro_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "propagate_stdout_macro_fixture"
+path = "src/lib.rs"

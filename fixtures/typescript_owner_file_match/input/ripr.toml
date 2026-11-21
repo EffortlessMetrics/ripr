@@ -1,0 +1,4 @@
+[languages]
+# Enable the TypeScript preview adapter for this fixture. The default
+# repo posture stays Rust-only; this fixture opts in explicitly.
+enabled = ["rust", "typescript"]

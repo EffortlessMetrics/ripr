@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,7 +8,7 @@ pub struct Catalog {
+ }
+
+ pub fn default_check_description() -> String {
+-    "checks catalog consistency".to_string()
++    "verifies catalog consistency".to_string()
+ }
+
+ pub fn build_catalog() -> Catalog {

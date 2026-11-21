@@ -1,0 +1,423 @@
+"""Execute the staged-promotion script against isolated, real Git objects.
+
+These are script/graph controls, not native GitHub admission or release proof.
+Run with: python3 xtask/tests/source_promotion_composition.py
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+import unittest
+
+SCRIPT = Path(__file__).resolve().parents[2] / '.github/scripts/source-promotion-composition.sh'
+MARKER = '<!-- source-promotion: true -->'
+CONTROL = 'docs/release/source-promotion/contract-inputs.json'
+PREFLIGHT = 'docs/release/source-promotion/preflight.json'
+
+
+class CompositionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        for tool in ('git', 'bash', 'jq', 'sha256sum'):
+            if shutil.which(tool) is None:
+                self.fail(f'required test tool is unavailable: {tool}')
+        self.temp = tempfile.TemporaryDirectory(prefix='ripr-promotion-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        # Do not import caller Git aliases, signing, templates, hooks or a
+        # selected index/worktree. Both setup and the production script use it.
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith('GIT_')}
+        self.env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM='1',
+                        GIT_TERMINAL_PROMPT='0', GIT_AUTHOR_NAME='Fixture',
+                        GIT_AUTHOR_EMAIL='fixture@example.invalid',
+                        GIT_COMMITTER_NAME='Fixture',
+                        GIT_COMMITTER_EMAIL='fixture@example.invalid')
+        self.git('-c', 'init.templateDir=', 'init', '-q')
+        self.git('config', 'core.hooksPath', str(self.root / 'no-hooks'))
+        (self.root / 'a').write_text('public\n', encoding='utf-8')
+        self.git('add', 'a')
+        self.git('commit', '-qm', 'P')
+        self.p = self.git('rev-parse', 'HEAD')
+        self.p_tree = self.git('rev-parse', 'HEAD^{tree}')
+        (self.root / 'a').write_text('swarm\n', encoding='utf-8')
+        self.git('commit', '-qam', 'S')
+        self.s = self.git('rev-parse', 'HEAD')
+        self.t = self.git('rev-parse', 'HEAD^{tree}')
+        self.k = self.commit(self.t, self.p, self.s)
+        self.git('update-ref', 'refs/pull/42/merge', self.k)
+        self.git('remote', 'add', 'origin', str(self.root))
+        self.pf = {'mode': 'fast_forward', 'source_parent': self.p,
+                   'swarm_parent': self.s, 'dry_merge': {'preview_tree': self.t}}
+        self.inputs = {'schema': 'ripr.source_promotion_ci_inputs.v2',
+                       'source_main': self.p, 'join_head': self.k,
+                       'preflight': PREFLIGHT}
+        self.env.update(HEAD_REF='promote/0.11.0-test', BASE_SHA=self.p,
+                        HEAD_SHA=self.s, MERGE_SHA=self.k, PR_NUMBER='42')
+        self.control()
+
+    def command(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(args, cwd=self.root, env=self.env, text=True,
+                              capture_output=True, timeout=15, check=False)
+
+    def git(self, *args: str) -> str:
+        result = self.command('git', *args)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return result.stdout.strip()
+
+    def commit(self, tree: str, *parents: str) -> str:
+        args = ['commit-tree', tree, '-m', 'fixture commit']
+        for parent in parents:
+            args.extend(('-p', parent))
+        return self.git(*args)
+
+    def control(self, *, digest: str | None = None, executable: bool = False,
+                raw_preflight: bytes | None = None,
+                duplicate_inputs: bool = False,
+                raw_inputs: str | None = None) -> None:
+        path = self.root / PREFLIGHT
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = (raw_preflight if raw_preflight is not None
+                else json.dumps(self.pf, sort_keys=True).encode())
+        path.write_bytes(data)
+        self.inputs['preflight_sha256'] = digest or hashlib.sha256(data).hexdigest()
+        inputs_text = json.dumps(self.inputs)
+        if raw_inputs is not None:
+            inputs_text = raw_inputs.replace('__DIGEST__', self.inputs['preflight_sha256'])
+        if duplicate_inputs:
+            second = {key: self.inputs[key] for key in (
+                'schema', 'source_main', 'join_head', 'preflight')}
+            inputs_text += '\n' + json.dumps(second)
+        (self.root / CONTROL).write_text(inputs_text, encoding='utf-8')
+        self.git('add', 'docs')
+        self.git('update-index', '--chmod=+x' if executable else '--chmod=-x', CONTROL)
+        self.git('commit', '--allow-empty', '-qm', 'control')
+        self.c = self.git('rev-parse', 'HEAD')
+        self.env['PR_BODY'] = f'{MARKER}\n<!-- source-promotion-control: {self.c} -->'
+
+    def check(self, reason: str | None = None) -> None:
+        result = self.command('bash', str(SCRIPT))
+        if reason is None:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('matches the control packet', result.stdout)
+        else:
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn(f'source-promotion composition rejected: {reason}', result.stderr)
+
+    def test_staged(self) -> None:
+        self.check()
+
+    def test_crlf_body(self) -> None:
+        self.env['PR_BODY'] = self.env['PR_BODY'].replace('\n', '\r\n') + '\r\n'
+        self.check()
+
+    def test_ordinary_is_explicitly_not_a_promotion(self) -> None:
+        self.env.update(PR_BODY='ordinary', HEAD_REF='feature/valid-name')
+        result = self.command('bash', str(SCRIPT))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('no source-promotion composition requested', result.stdout)
+        self.assertNotIn('matches the control packet', result.stdout)
+
+    def test_missing_python_rejects_promotion_but_not_ordinary(self) -> None:
+        path = self.root / 'without-python'
+        path.mkdir()
+        for tool in ('bash', 'git'):
+            executable = shutil.which(tool)
+            self.assertIsNotNone(executable)
+            (path / tool).symlink_to(executable)
+        self.env['PATH'] = str(path)
+        self.check('python3 is required for promotion sidecar validation')
+        self.env.update(PR_BODY='ordinary', HEAD_REF='feature/valid')
+        result = self.command('bash', str(SCRIPT))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('no source-promotion composition requested', result.stdout)
+        self.assertNotIn('matches the control packet', result.stdout)
+
+    def test_missing_pr_body_refuses_without_reclassifying_as_ordinary(self) -> None:
+        self.env.pop('PR_BODY')
+        self.check('event routing inputs missing')
+
+    def test_missing_head_ref_refuses_without_reclassifying_as_ordinary(self) -> None:
+        self.env.update(PR_BODY='ordinary')
+        self.env.pop('HEAD_REF')
+        self.check('event routing inputs missing')
+
+    def test_empty_or_malformed_head_ref_is_rejected(self) -> None:
+        self.env['PR_BODY'] = 'ordinary'
+        for ref in ('', 'bad ref', 'bad..ref', 'bad\nref'):
+            with self.subTest(ref=ref):
+                self.env['HEAD_REF'] = ref
+                self.check('invalid head ref')
+
+    def test_duplicate_control_key_is_rejected(self) -> None:
+        inputs = json.dumps({**self.inputs, 'preflight_sha256': '__DIGEST__'})
+        inputs = inputs.replace('"schema":', '"schema": "invalid", "schema":', 1)
+        self.control(raw_inputs=inputs)
+        self.check('control must contain exactly one JSON object without duplicate keys')
+
+    def test_duplicate_preflight_key_is_rejected(self) -> None:
+        data = json.dumps(self.pf).replace('"mode":', '"mode": "two_parent_join", "mode":', 1)
+        self.control(raw_preflight=data.encode())
+        self.check('preflight must contain exactly one JSON object without duplicate keys')
+
+    def test_duplicate_nested_preflight_key_is_rejected(self) -> None:
+        data = json.dumps(self.pf).replace('"preview_tree":', '"preview_tree": "wrong", "preview_tree":', 1)
+        self.control(raw_preflight=data.encode())
+        self.check('preflight must contain exactly one JSON object without duplicate keys')
+
+    def test_escaped_duplicate_control_key_is_rejected(self) -> None:
+        inputs = json.dumps({**self.inputs, 'preflight_sha256': '__DIGEST__'})
+        inputs = inputs.replace('"schema":', '"\\u0073chema": "invalid", "schema":', 1)
+        self.control(raw_inputs=inputs)
+        self.check('control must contain exactly one JSON object without duplicate keys')
+
+    def test_duplicate_nested_control_key_is_rejected(self) -> None:
+        inputs = json.dumps({**self.inputs, 'preflight_sha256': '__DIGEST__'})
+        inputs = inputs[:-1] + ', "extra": {"x": 1, "x": 2}}'
+        self.control(raw_inputs=inputs)
+        self.check('control must contain exactly one JSON object without duplicate keys')
+
+    def test_same_key_in_distinct_objects_is_allowed(self) -> None:
+        self.pf['extra'] = {'first': {'x': 1}, 'second': {'x': 2}}
+        self.control()
+        self.check()
+
+    def test_missing_marker(self) -> None:
+        self.env['PR_BODY'] = 'broken'
+        self.check('promotion marker missing')
+
+    def test_duplicate_control_marker(self) -> None:
+        self.env['PR_BODY'] += f'\r\n<!-- source-promotion-control: {self.c} -->\r\n'
+        self.check('exactly one control marker required')
+
+    def test_wrong_base(self) -> None:
+        self.env['BASE_SHA'] = self.s
+        self.check('control identities do not bind event base and merge')
+
+    def test_wrong_head(self) -> None:
+        self.env['HEAD_SHA'] = self.p
+        self.check('staged preflight does not bind event parents')
+
+    def test_stale_merge_event(self) -> None:
+        self.env['MERGE_SHA'] = self.p
+        self.check('event is not the live test merge commit')
+
+    def test_invalid_event_sha(self) -> None:
+        self.env['HEAD_SHA'] = 'not-a-commit'
+        self.check('invalid event SHA')
+
+    def test_wrong_preflight_digest(self) -> None:
+        self.control(digest='0' * 64)
+        self.check('preflight digest mismatch')
+
+    def test_nonregular_control(self) -> None:
+        self.control(executable=True)
+        self.check('control sidecar is not a regular tracked file')
+
+    def test_missing_preflight_mode(self) -> None:
+        del self.pf['mode']
+        self.control()
+        self.check('invalid or missing preflight mode')
+
+    def test_null_preflight_mode(self) -> None:
+        self.pf['mode'] = None
+        self.control()
+        self.check('invalid or missing preflight mode')
+
+    def test_nonstring_preflight_mode(self) -> None:
+        self.pf['mode'] = 1
+        self.control()
+        self.check('invalid or missing preflight mode')
+
+    def test_multiple_preflight_objects_are_rejected(self) -> None:
+        valid = json.dumps(self.pf, sort_keys=True).encode()
+        second = {
+            'mode': None,
+            'source_parent': self.p,
+            'swarm_parent': self.s,
+            'dry_merge': {},
+        }
+        stream = valid + b'\n' + json.dumps(second).encode()
+        self.control(raw_preflight=stream)
+        self.check('preflight must contain exactly one JSON object')
+
+    def test_multiple_control_objects_are_rejected(self) -> None:
+        self.control(duplicate_inputs=True)
+        self.check('control must contain exactly one JSON object')
+
+    def test_nonobject_preflight_is_rejected(self) -> None:
+        self.control(raw_preflight=b'[]')
+        self.check('preflight must contain exactly one JSON object')
+
+    def test_unknown_mode(self) -> None:
+        self.pf['mode'] = 'unrecognized'
+        self.control()
+        self.check('unsupported promotion mode')
+
+    def test_wrong_ordered_preview_parents(self) -> None:
+        wrong = self.commit(self.t, self.s, self.p)
+        self.git('update-ref', 'refs/pull/42/merge', wrong)
+        self.inputs['join_head'] = wrong
+        self.env['MERGE_SHA'] = wrong
+        self.control()
+        self.check('test merge parents differ from [P,head]')
+
+    def test_wrong_preview_tree(self) -> None:
+        wrong = self.commit(self.p_tree, self.p, self.s)
+        self.git('update-ref', 'refs/pull/42/merge', wrong)
+        self.inputs['join_head'] = wrong
+        self.env['MERGE_SHA'] = wrong
+        self.control()
+        self.check('test merge tree differs from T')
+
+    def test_forged_preview_tree_cannot_replace_head_tree(self) -> None:
+        wrong = self.commit(self.p_tree, self.p, self.s)
+        self.git('update-ref', 'refs/pull/42/merge', wrong)
+        self.inputs['join_head'] = wrong
+        self.env['MERGE_SHA'] = wrong
+        self.pf['dry_merge']['preview_tree'] = self.p_tree
+        self.control()
+        self.check('head tree differs from T')
+
+    def test_staged_requires_public_ancestry(self) -> None:
+        orphan = self.commit(self.t)
+        preview = self.commit(self.t, self.p, orphan)
+        self.git('update-ref', 'refs/pull/42/merge', preview)
+        self.pf['swarm_parent'] = orphan
+        self.inputs['join_head'] = preview
+        self.env.update(HEAD_SHA=orphan, MERGE_SHA=preview)
+        self.control()
+        self.check('P is not an ancestor of S')
+
+    def test_fast_forward_join_head_must_be_live_preview(self) -> None:
+        self.inputs['join_head'] = self.s
+        self.control()
+        self.check('control preview mismatch')
+
+    def legacy(self, *, reverse: bool = False) -> None:
+        parents = (self.s, self.p) if reverse else (self.p, self.s)
+        join = self.commit(self.t, *parents)
+        preview = self.commit(self.t, self.p, join)
+        self.git('update-ref', 'refs/pull/42/merge', preview)
+        self.pf = {'mode': 'two_parent_join', 'source_parent': self.p,
+                   'swarm_parent': self.s, 'dry_merge': {'reviewed_resolved_tree': self.t}}
+        self.inputs['join_head'] = join
+        self.env.update(HEAD_SHA=join, MERGE_SHA=preview)
+        self.control()
+
+    def test_legacy_join(self) -> None:
+        self.legacy()
+        self.check()
+
+    def test_legacy_join_parent_order(self) -> None:
+        self.legacy(reverse=True)
+        self.check('join parents differ from [P,S]')
+
+    def test_trusted_event_guard_rejects_pull_request_event(self) -> None:
+        self.env.update(
+            REQUIRE_TRUSTED_EVENT='1',
+            EVENT_NAME='pull_request',
+            WORKFLOW_SOURCE_SHA=self.p,
+        )
+        self.check('trusted pull_request_target event required')
+
+    def test_trusted_event_guard_rejects_missing_workflow_source_sha(self) -> None:
+        self.env.update(
+            REQUIRE_TRUSTED_EVENT='1',
+            EVENT_NAME='pull_request_target',
+            WORKFLOW_SOURCE_SHA='not-a-sha',
+        )
+        self.check('trusted workflow source SHA missing or invalid')
+
+    def test_trusted_event_emits_bound_composition_receipt(self) -> None:
+        receipt_path = self.root / 'composition-receipt.json'
+        self.env.update(
+            REQUIRE_TRUSTED_EVENT='1',
+            EVENT_NAME='pull_request_target',
+            WORKFLOW_SOURCE_SHA=self.p,
+            TOKEN_PERMISSIONS='contents:read,pull-requests:read',
+            COMPOSITION_RECEIPT_OUT=str(receipt_path),
+        )
+        self.check()
+        receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+        self.assertEqual(receipt['schema'], 'ripr.source_promotion_composition_gate.v1')
+        self.assertEqual(receipt['status'], 'verified')
+        self.assertEqual(receipt['event_name'], 'pull_request_target')
+        self.assertEqual(receipt['workflow_source_sha'], self.p)
+        self.assertFalse(receipt['secrets_used'])
+        self.assertEqual(receipt['identities']['P'], self.p)
+        self.assertEqual(receipt['identities']['S'], self.s)
+        self.assertEqual(receipt['identities']['K'], self.k)
+        self.assertEqual(receipt['identities']['T'], self.t)
+        self.assertEqual(
+            receipt['check_run_source_identity'],
+            'declared_default_branch_workflow_check_run_unobserved',
+        )
+        self.assertEqual(receipt['ruleset_readback'], 'external_owner_gated_unknown')
+
+    def test_body_edit_removing_promotion_markers_is_rejected(self) -> None:
+        self.env.update(
+            HEAD_REF='feature/disguised-promotion',
+            PREV_PR_BODY=self.env['PR_BODY'],
+            PR_BODY='ordinary PR body after marker deletion',
+        )
+        self.check('promotion marker removed by body edit')
+
+    def test_staged_packet_consumer_verifies_digests_and_invokes_verifier(self) -> None:
+        args_log = self.root / 'verifier-args.txt'
+        stub = self.root / 'stub-verifier.sh'
+        stub.write_text(
+            f'#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "{args_log}"\nexit 0\n',
+            encoding='utf-8',
+        )
+        stub.chmod(0o755)
+        pkt_bytes = b'{"schema":"ripr.staged_source_promotion_packet.v1"}\n'
+        rec_bytes = b'{"schema":"ripr.swarm_qualification_receipt.v1"}\n'
+        base = self.root / 'docs/release/source-promotion'
+        base.mkdir(parents=True, exist_ok=True)
+        (base / 'staged-packet.json').write_bytes(pkt_bytes)
+        (base / 'qualification-receipt.json').write_bytes(rec_bytes)
+        self.inputs['staged_packet_sha256'] = hashlib.sha256(pkt_bytes).hexdigest()
+        self.inputs['qualification_receipt_sha256'] = hashlib.sha256(rec_bytes).hexdigest()
+        self.control()
+        receipt_path = self.root / 'staged-consumer-receipt.json'
+        self.env.update(
+            REQUIRE_STAGED_PACKET='1',
+            STAGED_VERIFIER_BIN=str(stub),
+            COMPOSITION_RECEIPT_OUT=str(receipt_path),
+        )
+        self.check()
+        receipt = json.loads(receipt_path.read_text(encoding='utf-8'))
+        self.assertEqual(receipt['staged_packet_verdict'], 'admitted')
+        recorded = args_log.read_text(encoding='utf-8').splitlines()
+        flag_pairs = list(zip(recorded, recorded[1:]))
+        self.assertIn(('--expected-p', self.p), flag_pairs)
+        self.assertIn(('--expected-s', self.s), flag_pairs)
+        self.assertIn(('--expected-k', self.k), flag_pairs)
+        self.assertIn(('--expected-t', self.t), flag_pairs)
+
+    def test_staged_packet_consumer_fails_closed_when_verifier_rejects(self) -> None:
+        stub = self.root / 'reject-verifier.sh'
+        stub.write_text('#!/usr/bin/env bash\nexit 1\n', encoding='utf-8')
+        stub.chmod(0o755)
+        pkt_bytes = b'{"schema":"ripr.staged_source_promotion_packet.v1"}\n'
+        rec_bytes = b'{"schema":"ripr.swarm_qualification_receipt.v1"}\n'
+        base = self.root / 'docs/release/source-promotion'
+        base.mkdir(parents=True, exist_ok=True)
+        (base / 'staged-packet.json').write_bytes(pkt_bytes)
+        (base / 'qualification-receipt.json').write_bytes(rec_bytes)
+        self.inputs['staged_packet_sha256'] = hashlib.sha256(pkt_bytes).hexdigest()
+        self.inputs['qualification_receipt_sha256'] = hashlib.sha256(rec_bytes).hexdigest()
+        self.control()
+        self.env.update(
+            REQUIRE_STAGED_PACKET='1',
+            STAGED_VERIFIER_BIN=str(stub),
+        )
+        self.check('staged packet independent verification rejected')
+
+
+if __name__ == '__main__':
+    unittest.main()

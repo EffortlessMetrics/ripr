@@ -1,0 +1,235 @@
+# Lane 1: Evidence Accuracy Evaluation
+
+Lane 1's Evidence Spine Stabilization work is complete within the documented
+v0.1 scope. The shared `evidence_record` is now stable enough for repo
+exposure, agent seam packets, RIPR Zero repair routes, evidence movement,
+assistant proof, baseline and PR ledger identity, canonical gap identity,
+related-test ranking, oracle semantics, local delta flow, imported
+static/runtime confidence labels, and gate baseline comparison.
+
+PR #697, `gate: prefer canonical evidence identity`, is the final consumer
+closeout for that stabilization pass. The next Lane 1 objective is no longer
+more consumer wiring. It is evidence accuracy evaluation.
+
+Status: closed in documented scope on 2026-05-12. See
+[`docs/handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md`](../handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md).
+
+The Lane 1 source-of-truth stack is defined in
+[docs/lanes/README.md](README.md). This tracker records the closed Evidence
+Accuracy Evaluation campaign; it does not make `.ripr/goals/active.toml` the
+whole product board.
+
+## Goal
+
+Use the stable `evidence_record` to measure and improve evidence quality under
+dogfood pressure. Lane 1 should answer:
+
+```text
+Where is RIPR's evidence still wrong, shallow, duplicated,
+overconfident, underconfident, or uncalibrated?
+```
+
+The expected end state is:
+
+- a dogfood evidence-quality report over current repo evidence;
+- categorized top evidence-quality gaps;
+- fixture-pinned high-impact duplicate groups, shallow related-test choices,
+  static limitations, and calibration gaps;
+- evidence-health consuming `evidence_record` consistently;
+- calibration labels expanded only for checked fixture classes;
+- capability promotions kept scoped to fixture-backed or calibrated evidence.
+
+## Boundary
+
+This campaign is measured expansion, not a new product surface.
+
+Non-goals:
+
+- no PR or CI front panel work;
+- no PR review docs;
+- no LSP or editor polish;
+- no platform, MSRV, or dependency cleanup;
+- no new gate policy;
+- no default blocking;
+- no provider integration;
+- no generated tests;
+- no mutation execution;
+- no score redefinition.
+
+Do not change `.ripr/goals/active.toml` for this lane unless the shared
+tracker explicitly makes Lane 1 active. The repo-wide active manifest may point
+at another lane without changing this Lane 1 plan.
+
+For follow-on Lane 1 work, keep document responsibilities separate:
+
+- proposal: why evidence quality leadership matters;
+- spec: scorecard, benchmark, calibration, or report behavior;
+- ADR: durable evidence-model decisions only;
+- lane tracker: PR-sized sequence and current lane state;
+- capability matrix: class-scoped maturity and proof;
+- traceability: spec, fixture, test, code, and metric linkage;
+- closeout: landed work, proof, and remaining unknowns.
+
+## Planned Slices
+
+| Slice | Intent | Gate |
+| --- | --- | --- |
+| `docs: open Lane 1 evidence accuracy evaluation` | Record evidence-spine completion and open this tracker. | No code behavior changes. |
+| `report: add Lane 1 evidence quality audit` | Generate `target/ripr/reports/lane1-evidence-audit.{json,md}` from existing repo exposure and `evidence_record` data. | Implemented by `cargo xtask lane1-evidence-audit`; repo-local report only. |
+| `fixtures: pin top evidence-quality failures` | Fixture the top 3-5 audit findings before changing analyzer behavior. | `fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json` pins positive and negative cases. |
+| `analysis: reduce duplicate canonical gap overcount` | Refine grouping only if audit and fixtures show duplicate groups are a top issue. | Implemented for parser-backed match-arm discriminators: same owner, seam kind, flow sink, and missing discriminator group together; different discriminators and owners stay separate. |
+| `analysis: improve related-test ranking from audit cases` | Adjust ranking only for fixture-pinned misses from the audit. | Direct owner calls and stronger oracles remain primary; recency stays a tie-breaker. |
+| `analysis: improve oracle semantics from audit cases` | Add supported oracle shapes only when the audit identifies misclassified cases. | Observed and missed behavior are explicit; unsupported helpers stay static limitations. |
+| `calibration: expand runtime fixture classes` | Add checked runtime fixture classes for side effects, mock expectations, snapshots, and dynamic or opaque dispatch. | Implemented by `runtime-fixtures-v2`: runtime-only signal does not create a static gap; no CI mutation execution. |
+| `report: evidence health consumes audit findings` | Fold durable audit fields into evidence-health. | Implemented as additive evidence-health fields; no policy decisions or blocking. |
+| `campaign: close Lane 1 evidence accuracy evaluation` | Close after at least one audit-driven improvement lands. | Closed by `docs/handoffs/2026-05-12-lane-1-evidence-accuracy-closeout.md`; future work is listed by evidence class, not surface. |
+
+## Evidence Quality Audit
+
+The repo-local audit command is:
+
+```bash
+cargo xtask lane1-evidence-audit
+```
+
+The compatibility alias is:
+
+```bash
+cargo xtask evidence-quality-audit
+```
+
+It should write:
+
+```text
+target/ripr/reports/lane1-evidence-audit.json
+target/ripr/reports/lane1-evidence-audit.md
+```
+
+The audit should summarize:
+
+- raw headline gaps;
+- canonical gap groups;
+- largest canonical groups;
+- duplicate-looking groups;
+- missing discriminator classes;
+- static limitations by reason;
+- oracle semantics distribution;
+- related-test ranking confidence;
+- movement availability;
+- calibration availability;
+- calibrated versus uncalibrated classes;
+- `evidence_record` missing or nullable fields;
+- top files by unresolved evidence debt.
+
+The audit should identify whether RIPR is overcounting equivalent gaps,
+ranking weak related tests too highly, overstating broad oracles, missing
+candidate values, or leaving calibration labels sparse. It should not change
+gate behavior, PR or CI projection, LSP UX, analyzer claims, mutation execution,
+or score definitions.
+
+## Fixture-First Rule
+
+After the audit lands, pick the highest-value real evidence-quality failure
+modes and fixture them before analyzer changes. Candidate fixture classes:
+
+- duplicate canonical gap overcount;
+- wrong related-test top choice;
+- missing equality boundary with nearby exact-value test;
+- broad error oracle treated as stronger than it is;
+- opaque helper that should remain a static limitation;
+- cross-file constant that should remain unresolved;
+- side-effect observer that should be recognized;
+- runtime signal with ambiguous join.
+
+Each fixture should state what RIPR should claim, what it should leave
+unknown, and what must not be inferred.
+
+The first fixture corpus is:
+
+```text
+fixtures/boundary_gap/expected/evidence-quality-failures/corpus.json
+```
+
+It pins audit-derived cases for duplicate canonical groups, missing
+equality-boundary discriminators, activation static limitations,
+mock-expectation observer semantics, and no-runtime-data calibration gaps.
+`cargo xtask check-fixture-contracts` validates that each case includes the
+audit signal, expected `repo-exposure-json` `evidence_record` subset, positive
+claims, and `must_not_claim` guards.
+
+## Audit-Driven Analyzer Improvement
+
+The first analyzer improvement targets the audit-pinned suppressions match-arm
+overgrouping case. Parser-backed match expressions now carry normalized match
+heads such as `match key`, and match arms carry concrete arm patterns such as
+`"kind" =>` instead of generic `match` or `=>` text. Canonical gap identity can
+therefore split different match arms while still grouping the same arm across
+line movement.
+
+The local audit delta after the change was:
+
+- duplicate-looking groups dropped from `1287` to `926`;
+- the generic `match_arm` duplicate-looking group disappeared from the top
+  audit rows;
+- generic static limitation reasons for `=>` and `match` disappeared;
+- the suppressions fixture seam `205829e99ffbd3ca` now records `"kind" =>` with
+  canonical group size `1`.
+
+## Calibration Rule
+
+The existing checked `runtime-fixtures-v1` classes define the calibrated
+boundary for imported static/runtime confidence labels over the main agreement
+buckets. The checked `runtime-fixtures-v2` sample expands that boundary to
+side-effect observer, mock expectation, snapshot oracle, and dynamic or opaque
+dispatch classes.
+
+When expanding calibration:
+
+- map imported runtime outcomes to existing static seams where possible;
+- keep ambiguous joins ambiguous;
+- do not create a static gap from runtime-only signal;
+- keep static vocabulary within RIPR's conservative terms;
+- do not run mutation execution in CI.
+
+The v2 fixture keeps those rules explicit: imported runtime outcomes map to
+existing side-effect, mock, snapshot, and opaque-dispatch seams where possible;
+an opaque dispatch file/line signal with two candidates remains ambiguous; and
+a runtime-only signal stays in the calibration report without creating a
+static gap.
+
+## Evidence Health Audit Fields
+
+Evidence health now carries the durable audit fields that should remain visible
+between full Lane 1 audit runs:
+
+- canonical gap group totals and the largest canonical groups;
+- duplicate-looking group count;
+- actionability class distribution from `evidence_record.actionability`;
+- static limitation stage and reason distributions from
+  `evidence_record.static_limitations`;
+- evidence-record calibration availability counts;
+- movement availability for seam ID, canonical gap ID, complete evidence path,
+  recommendation, and verify-command fields;
+- top evidence-quality risks.
+
+These fields are advisory dashboard data. They do not change analyzer
+classification, gate policy, CI behavior, LSP output, mutation execution, or
+score definitions.
+
+## Closeout Conditions
+
+This campaign is closed in documented scope. Closeout evidence:
+
+- #761 added the repo-local evidence-quality audit, and #822 folded durable
+  audit fields into evidence-health.
+- #808 fixture-pinned the first audit-derived evidence-quality failure modes.
+- #813 landed the first audit-driven analyzer improvement for match-arm
+  canonical overcount.
+- #827 expanded checked runtime calibration classes without mutation execution,
+  gate behavior, or static gap creation from runtime-only signals.
+- Capability and traceability metadata name the checked scope and avoid broader
+  claims.
+- Future work is by evidence class:
+  related-test ranking misses, oracle-shape misclassifications, static
+  limitation reason buckets, canonical grouping refinements, and new runtime
+  calibration fixture classes.

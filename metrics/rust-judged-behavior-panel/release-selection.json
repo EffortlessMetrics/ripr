@@ -1,0 +1,1071 @@
+{
+  "schema_version": "0.1",
+  "kind": "rust_judged_behavior_panel_manifest",
+  "authority": "EffortlessMetrics/ripr#1675",
+  "tier": "release-challenge",
+  "description": "Frozen 0.11 release-challenge selection: 10 real-repo behavior cases (8 EffortlessMetrics/ripr, 2 EffortlessMetrics/ripr-swarm) with first-pass independent structural judgments from #1675 rounds 3-8, superseded labels replaced by the driver-verified restatement. This manifest freezes SELECTION and expected directions; it is not a replay result. Swarm-repo cases are scope-proposed, not authorized. The should_limit floor is unmet (0 limit rows identified); recorded honestly in limits, never lowered.",
+  "selection_status": "frozen",
+  "limits": [
+    "selection and expected directions only; no replay result and no verdict",
+    "first-pass single-reviewer judgments; independent review still pending before final replay",
+    "swarm-repo cases are scope-proposed, not authorized; replay must not touch ripr-swarm until authorized",
+    "should_limit floor unmet (0 limit rows in the frozen selection); floor gap reported, never lowered",
+    "mixed cases split into row-slice items; tentative slices carry their verification debt in disposition",
+    "baseline counts are the round-2 capture vintage (binary @89ac42442) unless a restated count is noted",
+    "no analyzer, harness, or actionability change in this artifact"
+  ],
+  "required_directions": [
+    "should_gap",
+    "should_stay_quiet",
+    "should_limit"
+  ],
+  "items": [
+    {
+      "id": "p1744-quiet-test-only",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "16e09900",
+      "head": "e4a2072b",
+      "tree_identity": "6a9b21ca",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1744.diff",
+      "diff_sha256": "0321cac2",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "test_only_quiet_control",
+      "anchor": {
+        "file": "crates/ripr/src/output/doctor.rs",
+        "line": 1018,
+        "owner": "mod tests const extraction",
+        "changed_behavior": "#[cfg(unix)]",
+        "required_discriminator": "none: empty finding set is the correct ceiling"
+      },
+      "test_evidence": {
+        "relation_basis": "none",
+        "oracle_kind": "none",
+        "oracle_strength": "none",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "no production sink exists"
+      },
+      "expected_classification": "no_findings",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "none",
+        "oracle_family": "none",
+        "propagation_witness": "none",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 3 (2026-09-20T12:52:59Z)",
+      "judged_at": "2026-09-20T12:52:59Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Do not assign a repair for a test-only diff; any repair assignment here is false-actionable.",
+        "Do not replace this control after seeing replay output."
+      ],
+      "reason": "Baseline 0 probes / 0 findings. The diff touches only mod-tests const extraction in doctor.rs, so an empty set is the ceiling. Any finding here would be false-exposed; any repair false-actionable."
+    },
+    {
+      "id": "p1731-quiet-test-only",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "731ef1b5",
+      "head": "2ad07c0b",
+      "tree_identity": "58756ee2",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1731.diff",
+      "diff_sha256": "74a0b856",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "test_only_quiet_control",
+      "anchor": {
+        "file": "crates/ripr/src/cli/commands/gate.rs",
+        "line": 229,
+        "owner": "mod tests (TempRootGuard hermetic isolation)",
+        "changed_behavior": "struct TempRootGuard",
+        "required_discriminator": "none: empty finding set is the correct ceiling"
+      },
+      "test_evidence": {
+        "relation_basis": "none",
+        "oracle_kind": "none",
+        "oracle_strength": "none",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "no production sink exists"
+      },
+      "expected_classification": "no_findings",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "none",
+        "oracle_family": "none",
+        "propagation_witness": "none",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 3 (2026-09-20T12:52:59Z)",
+      "judged_at": "2026-09-20T12:52:59Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Do not assign a repair for a test-only diff; any repair assignment here is false-actionable.",
+        "Recorded adjudication note: hermetic-vs-residue is CI-behavioral, so quiet here is correct-territory-or-under-credit, not established-correct; do not upgrade this item beyond quiet without that adjudication."
+      ],
+      "reason": "Baseline 0 probes, outcome no_behavioral_candidates. Test-only diff; empty set is the ceiling. Open note (not a gap claim): whether quiet is correct territory or under-credit needs the hermetic-vs-residue adjudication."
+    },
+    {
+      "id": "p1732-quiet-test-only",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "58756ee2",
+      "head": "d89980a5",
+      "tree_identity": "60024a86",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1732.diff",
+      "diff_sha256": "86c2809b",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "test_only_quiet_control",
+      "anchor": {
+        "file": "xtask/src/reports/eval_sweep_refresh.rs",
+        "line": 3897,
+        "owner": "mod python_eval_sweep_refresh (owned analyzer copy)",
+        "changed_behavior": "std::fs::copy(&binary_path, &owned_binary)",
+        "required_discriminator": "none: empty finding set is the correct ceiling"
+      },
+      "test_evidence": {
+        "relation_basis": "none",
+        "oracle_kind": "none",
+        "oracle_strength": "none",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "no production sink exists"
+      },
+      "expected_classification": "no_findings",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "none",
+        "oracle_family": "none",
+        "propagation_witness": "none",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 3 (2026-09-20T12:52:59Z)",
+      "judged_at": "2026-09-20T12:52:59Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Do not assign a repair for a test-only diff; any repair assignment here is false-actionable.",
+        "Recorded adjudication note: verdict-naming change in xtask with lane tests; quiet may be correct territory or under-credit."
+      ],
+      "reason": "Baseline 0 probes, outcome no_behavioral_candidates. Test-only diff; empty set is the ceiling, with the same correct-territory-or-under-credit note as p1731."
+    },
+    {
+      "id": "p1741-helper-rows-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "84f72e08",
+      "head": "3b5b74fe",
+      "tree_identity": "16e09900",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1741.diff",
+      "diff_sha256": "f38bfdc1",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_helper_construction",
+      "anchor": {
+        "file": "crates/ripr/src/edit_cage.rs",
+        "line": 506,
+        "owner": "agent_attributable_delta",
+        "changed_behavior": "pub(crate) fn agent_attributable_delta",
+        "required_discriminator": "same-diff unit test agent_delta_ignores_operational_churn_but_binds_agent_surface with exact assert on filtered changes"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "agent_delta_ignores_operational_churn_but_binds_agent_surface",
+        "missing": null
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "constructed_sink",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": false,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 3 (2026-09-20T12:52:59Z); driver-verified restatement (2026-09-20T15:10:48Z): 3 helper rows intact via DirectOwnerCall drivers",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Do not extend this quiet judgment to the binding-comparison rows (separate item p1741-pair-rows-gap).",
+        "Do not treat retained exposure here as evidence the pair rows are correct."
+      ],
+      "reason": "Probe rows c4a0b369/6b633342/038f300c (edit_cage field_construction) are credited to the same-diff unit test via direct_owner_call with an exact-value oracle on the constructed sink. Driver-verified intact post-#1747 (case 5->3). Retain exposed, no repair."
+    },
+    {
+      "id": "p1741-pair-rows-gap",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "84f72e08",
+      "head": "3b5b74fe",
+      "tree_identity": "16e09900",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1741.diff",
+      "diff_sha256": "f38bfdc1",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_gap",
+      "behavior_family": "wrong_owner_structural_credit",
+      "anchor": {
+        "file": "crates/ripr/src/app/repair_attempt.rs",
+        "line": 225,
+        "owner": "receipt_binding",
+        "changed_behavior": "let agent_matches = sha256_bytes(&agent_delta_bytes) == after.delta_sha256;",
+        "required_discriminator": "an observer of the binding decision itself; the credited observers do not discriminate it"
+      },
+      "test_evidence": {
+        "relation_basis": "weak_token_substring",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "no observer reaches receipt_binding or agent_attributable_delta"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "repair_candidate",
+      "selection_dimensions": {
+        "relation_basis": "weak_token_substring",
+        "oracle_family": "relational_check",
+        "propagation_witness": "unreached_sink",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": null,
+        "false_exposed": true,
+        "static_under_credit": false,
+        "wrong_target": true,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 3 (2026-09-20T12:52:59Z) with runtime mutation control; driver-verified restatement (2026-09-20T15:10:48Z): pair demoted post-#1747",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Do not credit gap-artifact or run-state observers as binding-decision discrimination.",
+        "Graduation-bound for the evidence-promotion-honesty corpus (RIPR-SPEC-0108); the corpus entry is repair work, not done here."
+      ],
+      "reason": "Rows predicate:053cdfc9 (credited to lsp gap-rejection test) and call_deletion:65a9e200 (credited to python_repair_verification write-failed test) carry weak_token_substring/low relations; observer files have zero references to the sink and observe unrelated decisions. Runtime control: sink reverted to pre-#1738 semantics, all 3 tests pass unchanged — credited observers cannot discriminate the sink. Confirmed false-exposed; missing aligned discrimination must remain gap/weak."
+    },
+    {
+      "id": "p1745-wedge-rows-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "6a9b21ca",
+      "head": "5d8c9253",
+      "tree_identity": "89ac4244",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1745.diff",
+      "diff_sha256": "4e7c99a7",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_wedge_naming",
+      "anchor": {
+        "file": "xtask/src/windows_advisory.rs",
+        "line": 431,
+        "owner": "parse_log",
+        "changed_behavior": "outcome.stuck.remove(&name);",
+        "required_discriminator": "same-file windows_advisory tests observing the stuck set (e.g. completed_test_clears_earlier_stuck_notice, stuck_notice_parses_as_stuck_never_failed)"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": "completed_test_clears_earlier_stuck_notice",
+        "missing": "per-row sink match still to verify at freeze"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "membership_assertion",
+        "propagation_witness": "state_write",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 4 (2026-09-20T12:54:20Z); driver-verified restatement (2026-09-20T15:10:48Z): survivors carry entity-level drivers (catalog tests, same-file wedge tests)",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "tentative_pending_freeze",
+      "must_not_claim": [
+        "Tentative: per-row sink match still to verify at freeze; do not treat as firm.",
+        "Do not extend this quiet hypothesis to the triple-gap or catalog slices."
+      ],
+      "reason": "21 of 46 first-observers are same-file windows_advisory tests including the two same-diff tests. Tentative should_stay_quiet; freeze must verify per-row sink match. Known pressure: the same wedge assertions rate weak under the oracle-strength taxonomy (see #1751 blast-radius note), so a strict single-oracle binding view withholds these rows — recorded here as the hypothesis under test, not as fact."
+    },
+    {
+      "id": "p1745-triple-rows-gap",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "6a9b21ca",
+      "head": "5d8c9253",
+      "tree_identity": "89ac4244",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1745.diff",
+      "diff_sha256": "4e7c99a7",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_gap",
+      "behavior_family": "wrong_owner_structural_credit",
+      "anchor": {
+        "file": "xtask/src/windows_advisory.rs",
+        "line": 431,
+        "owner": "parse_log",
+        "changed_behavior": "outcome.stuck.remove(&name);",
+        "required_discriminator": "a wedge-verdict observer; the credited oracles observe release-scope/authorization decisions"
+      },
+      "test_evidence": {
+        "relation_basis": "weak_token_substring",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "no import path, vocabulary, or call edge from observer to sink"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "repair_candidate",
+      "selection_dimensions": {
+        "relation_basis": "weak_token_substring",
+        "oracle_family": "relational_check",
+        "propagation_witness": "unreached_sink",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": null,
+        "false_exposed": true,
+        "static_under_credit": false,
+        "wrong_target": true,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 4 (2026-09-20T12:54:20Z), retracted-as-suspect by method correction (2026-09-20T14:18:04Z), re-confirmed by driver-verified restatement (2026-09-20T15:10:48Z): 2 of 3 demoted post-#1747 on weak-token-only drivers",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "tentative_pending_freeze",
+      "must_not_claim": [
+        "The round-4 structural proof stands only for the demoted rows; the third row's driver was under adjudication at freeze time.",
+        "grep-count reachability (0 references) distinguishes these rows; do not generalize the technique beyond zero-vocabulary cases.",
+        "Slice-level should_gap is a leaning until the third row's driver adjudication completes at freeze; only the two demoted rows are confirmed false-exposed."
+      ],
+      "reason": "Rows return_value:02424e3e (none-strength oracle) and call_deletion:07e82ab8/9778b858 (weak_token_substring/low observer a_conditional_issue_may_not_name_two_destinations): zero references to windows_advisory/wedge/nofeatures in all observer files. Driver restatement demoted 2 of 3 post-#1747. Confirmed false-exposed on the demoted rows; graduation-bound for the honesty corpus. Leaning should_gap for the slice; tentative pending the third row's driver adjudication at freeze."
+    },
+    {
+      "id": "p1745-catalog-row-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "6a9b21ca",
+      "head": "5d8c9253",
+      "tree_identity": "89ac4244",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1745.diff",
+      "diff_sha256": "4e7c99a7",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "structural_oracle_specificity_residual",
+      "anchor": {
+        "file": "xtask/src/command.rs",
+        "line": 684,
+        "owner": "command catalog entry",
+        "changed_behavior": "\"windows-advisory-summary --run1 <path> --run1-status <path> --run2 <path> --run2-status <path> [--nofeatures-log <path> --nofeatures-status <path>]\",",
+        "anchor_kind": "string_literal",
+        "required_discriminator": "an oracle quoting the changed wording; the structural emptiness check cannot discriminate text"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "command_catalog_check_accepts_current_catalog",
+        "missing": "change-reference: oracle asserts structural consistency, not the changed text"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "description_text",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 driver-verified restatement (2026-09-20T15:10:48Z): catalog-description row survives via catalog-acceptance DirectOwnerCall driver, recorded as the known specificity residual; confirmed by EffortlessMetrics/ripr#1751 which demotes the replica to weakly_exposed",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Entity binding is not specificity: the same-entity driver does not discriminate the wording.",
+        "Retain weak; no repair. The residual class is tracked in EffortlessMetrics/ripr#1752 item 3."
+      ],
+      "reason": "Same entity (catalog), structural-consistency oracle: a wording change preserving consistency passes. Post-#1751 the replica withholds at weakly_exposed via delta-token confirmation. Expected: stay quiet (weak), no repair."
+    },
+    {
+      "id": "p1706-helper-rows-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "64605f5a",
+      "head": "174ad2e0",
+      "tree_identity": "a56d95e6",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1706.diff",
+      "diff_sha256": "b0ee1508",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_helper_dedup",
+      "anchor": {
+        "file": "crates/ripr/src/analysis/probes/ids.rs",
+        "line": 116,
+        "owner": "dedup_finding_probe_ids",
+        "changed_behavior": "pub(crate) fn dedup_finding_probe_ids(findings: &mut [crate::domain::Finding]) {",
+        "required_discriminator": "same-diff unit test dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence (mutation B fails it exactly)"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "dedup_finding_probe_ids_suffixes_repeats_and_rebinds_evidence",
+        "missing": "row-to-observer join at freeze: the aligned test must be linked per row, not assumed"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "constructed_sink",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 5 (2026-09-20T13:00:01Z) mutation B; method correction (2026-09-20T14:18:04Z) downgraded the display-read recall claim; driver restatement (2026-09-20T15:10:48Z): survivors carry entity-level drivers including the aligned dedup test via DirectOwnerCall where it matches",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "tentative_pending_freeze",
+      "must_not_claim": [
+        "The aligned test discriminates the helper, not the adapter wiring (separate item).",
+        "Freeze must join each helper row to its real observer; unlinked rows stay gap hypotheses, not quiet facts."
+      ],
+      "reason": "Mutation B (helper suffix {count} -> .x): aligned test FAILS exactly while all 5 run credited observers PASS — the aligned test genuinely discriminates the helper. Post-#1747 the case is 10->9 with entity-level drivers. Expected should_stay_quiet once rows are joined to the real observer; tentative pending that join."
+    },
+    {
+      "id": "p1706-wiring-rows-gap",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "64605f5a",
+      "head": "174ad2e0",
+      "tree_identity": "a56d95e6",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1706.diff",
+      "diff_sha256": "b0ee1508",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_gap",
+      "behavior_family": "unobserved_adapter_wiring",
+      "anchor": {
+        "file": "crates/ripr/src/analysis/language/python.rs",
+        "line": 465,
+        "owner": "adapter call site",
+        "changed_behavior": "crate::analysis::probes::dedup_finding_probe_ids(&mut unique_findings);",
+        "required_discriminator": "an observer of the call sites; none exists in the suite slice"
+      },
+      "test_evidence": {
+        "relation_basis": "weak_token_substring",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "no observer of any kind reaches the call sites"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "undetermined",
+      "selection_dimensions": {
+        "relation_basis": "weak_token_substring",
+        "oracle_family": "relational_check",
+        "propagation_witness": "unreached_sink",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": null,
+        "false_exposed": true,
+        "static_under_credit": false,
+        "wrong_target": true,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 5 (2026-09-20T13:00:01Z) mutation A",
+      "judged_at": "2026-09-20T13:00:01Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "The aligned helper test does not cover the wiring (mutation A passes it).",
+        "No focused owner assigned yet; actionability undetermined, not no_action."
+      ],
+      "reason": "Mutation A (bypass both adapter call sites): all 6 run tests pass INCLUDING the aligned helper test. The wiring sink has no observer at all. Expected gap; focused owner still to assign."
+    },
+    {
+      "id": "p1705-passthrough-rows-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "b04fbf4b",
+      "head": "1617690d",
+      "tree_identity": "64605f5a",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1705.diff",
+      "diff_sha256": "76810bc1",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_passthrough_arms",
+      "anchor": {
+        "file": "crates/ripr/src/output/markdown.rs",
+        "line": 244,
+        "owner": "markdown_text",
+        "changed_behavior": "|| matches!(ch, '.' | '/' | '_' | '-' | ':') => {}",
+        "required_discriminator": "pre-existing markdown_text_escapes_backslashes (strong, same file): no-backslash input exercises passthrough exactly"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "markdown_text_escapes_backslashes",
+        "missing": "freeze verification that no-backslash exercises the changed arms exactly"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "direct_return",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 6 (2026-09-20T13:05:24Z)",
+      "judged_at": "2026-09-20T13:05:24Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "needs_freeze_verification",
+      "must_not_claim": [
+        "Plausibly aligned is not established as aligned: freeze must confirm the arms.",
+        "Do not extend to the headline-sink rows (separate gap item)."
+      ],
+      "reason": "2 rows on the changed passthrough arms credit pre-existing escapes_backslashes (strong, same file). Plausibly aligned since no-backslash input exercises alphanumeric/whitespace passthrough exactly — pending freeze verification."
+    },
+    {
+      "id": "p1705-headline-rows-gap",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "b04fbf4b",
+      "head": "1617690d",
+      "tree_identity": "64605f5a",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1705.diff",
+      "diff_sha256": "76810bc1",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_gap",
+      "behavior_family": "unlinked_aligned_guard",
+      "anchor": {
+        "file": "crates/ripr/src/output/markdown.rs",
+        "line": 190,
+        "owner": "shell-expansion guard",
+        "changed_behavior": "'$' => return true,",
+        "required_discriminator": "same-diff test powershell_command_withholds_shell_expansion_forms (17 withhold cases); the credited observers discriminate neither the headline sink nor (for 3 of 4) anything in markdown.rs"
+      },
+      "test_evidence": {
+        "relation_basis": "weak_token_substring",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": "powershell_command_withholds_shell_expansion_forms",
+        "missing": "aligned observer exists but is unlinked (relation-recall gap)"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "undetermined",
+      "selection_dimensions": {
+        "relation_basis": "weak_token_substring",
+        "oracle_family": "relational_check",
+        "propagation_witness": "withheld_sink",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": null,
+        "false_exposed": true,
+        "static_under_credit": false,
+        "wrong_target": true,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 6 (2026-09-20T13:05:24Z) with fail-open control; driver-verified restatement (2026-09-20T15:10:48Z): case 16->1 post-#1747, headline row survives via the aligned same-diff test",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "As RECORDED (unlinked aligned observer, wrong credited observers) these scattered-observer rows read gap; the surviving post-#1747 headline row with the aligned driver is split out as the quiet counterpart (separate item p1705-headline-survivor-quiet).",
+        "Fourth instance of the exposed-credits-flow-to-token-tests family; do not treat as an isolated oracle gap."
+      ],
+      "reason": "16 exposed rows, zero crediting the aligned same-diff test; 14 credit scattered weak_token_substring/low observers. Fail-open control (double-quoted arm to {}): aligned test FAILS exactly while all 4 run credited observers PASS. As recorded, the scattered-observer rows read should_gap. The post-#1747 headline survivor via the aligned driver is split out on the quiet side with per-row identity (item p1705-headline-survivor-quiet)."
+    },
+    {
+      "id": "p1705-headline-survivor-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "b04fbf4b",
+      "head": "1617690d",
+      "tree_identity": "64605f5a",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1705.diff",
+      "diff_sha256": "76810bc1",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "unlinked_aligned_guard",
+      "anchor": {
+        "file": "crates/ripr/src/output/markdown.rs",
+        "line": 190,
+        "owner": "shell-expansion guard",
+        "changed_behavior": "'$' => return true,",
+        "required_discriminator": "same-diff test powershell_command_withholds_shell_expansion_forms (17 withhold cases over powershell_command, exact withhold/translate asserts); fail-open control (double-quoted arm to {}): aligned test FAILS exactly while all 4 run credited observers PASS"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "powershell_command_withholds_shell_expansion_forms",
+        "missing": "row-to-observer join at freeze: the survivor row must be linked per row to the aligned test, not assumed from the case-level control"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "withheld_sink",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": false,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 6 (2026-09-20T13:05:24Z) with fail-open control; driver-verified restatement (2026-09-20T15:10:48Z): case 16->1 post-#1747, headline row survives via the aligned same-diff test. Split out from p1705-headline-rows-gap on CodeRabbit review of PR #1754: the survivor row carries the aligned driver, so the frozen prediction is should_stay_quiet.",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "tentative_pending_freeze",
+      "must_not_claim": [
+        "The aligned test discriminates the headline sink for the survivor row only; the scattered-observer rows stay in the gap item (p1705-headline-rows-gap).",
+        "Freeze must join the survivor row to the aligned observer per row; an unlinked survivor row stays a gap hypothesis, not a quiet fact."
+      ],
+      "reason": "Post-#1747 headline survivor via the aligned same-diff test powershell_command_withholds_shell_expansion_forms (17 withhold cases calling powershell_command directly with exact withhold/translate asserts, verified at crates/ripr/src/output/markdown.rs:439). Fail-open control: aligned test FAILS exactly while all 4 run credited observers PASS — the aligned test genuinely discriminates the sink. Expected should_stay_quiet once the survivor row is joined to the real observer; tentative pending that join."
+    },
+    {
+      "id": "p1617-command-rows-quiet",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "643108bb",
+      "head": "8d3ee48f",
+      "tree_identity": "b04fbf4b",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1617.diff",
+      "diff_sha256": "8411bf69",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_catalog_wiring",
+      "anchor": {
+        "file": "xtask/src/command.rs",
+        "line": 1260,
+        "owner": "command catalog entry",
+        "changed_behavior": "\"source-promotion resolve-network-policy --preflight <receipt.json> --decisions <decisions.json> --preflight-sha256 <digest> --p0-artifact-sha256 <digest> --source <sha> --swarm <sha> --merge-base <sha> --preview-tree <tree> --rejected-j5 <sha> --rejected-j5-tree <tree> --output-dir <dir>\",",
+        "anchor_kind": "string_literal",
+        "required_discriminator": "command_catalog_check_accepts_current_catalog (direct_owner_call, strong): catalog acceptance fails on a missing or wrong entry"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "command_catalog_check_accepts_current_catalog",
+        "missing": null
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "catalog_entry",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 7 (2026-09-20T13:06:02Z); driver-verified restatement (2026-09-20T15:10:48Z): 10->10, drivers entity-bound",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Same owner plus exact oracle discriminates THIS wiring change; do not extend to the dispatch-arm rows.",
+        "Catalog-alignment is structural here; no runtime control was run for these rows."
+      ],
+      "reason": "2 command.rs return_value rows credited to the catalog-acceptance test (direct_owner_call/high, strong): same owner, exact oracle that fails on a missing/wrong entry. Correct exposure; retain, no repair."
+    },
+    {
+      "id": "p1617-dispatch-rows-gap",
+      "repository": "EffortlessMetrics/ripr",
+      "base": "643108bb",
+      "head": "8d3ee48f",
+      "tree_identity": "b04fbf4b",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_p1617.diff",
+      "diff_sha256": "8411bf69",
+      "scope_authorization": "not_applicable",
+      "expected_direction": "should_gap",
+      "behavior_family": "unexercised_arm_wiring",
+      "anchor": {
+        "file": "xtask/src/dispatch.rs",
+        "line": 106,
+        "owner": "dispatcher arm",
+        "changed_behavior": "XtaskCommand::SourcePromotion(args)",
+        "required_discriminator": "an observer exercising the new arm; the credited observers execute the dispatcher but never take the arm"
+      },
+      "test_evidence": {
+        "relation_basis": "weak_token_substring",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": null,
+        "missing": "the 1935-line same-diff end-to-end module is credited on 0 of 34 findings (real recall gap)"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "undetermined",
+      "selection_dimensions": {
+        "relation_basis": "weak_token_substring",
+        "oracle_family": "relational_check",
+        "propagation_witness": "unexercised_arm",
+        "target_kind": "existing_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": null,
+        "false_exposed": true,
+        "static_under_credit": false,
+        "wrong_target": true,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 7 (2026-09-20T13:06:02Z); driver-verified restatement (2026-09-20T15:10:48Z): MIXED leaning should_gap for the arm rows; recall gap real",
+      "judged_at": "2026-09-20T15:10:48Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "tentative_pending_freeze",
+      "must_not_claim": [
+        "Dispatcher-exercising is not arm-exercising: executing the dispatcher never takes the new arm.",
+        "Flagged for freeze-pass: run one dispatch-arm removal control for uniform control coverage."
+      ],
+      "reason": "Remaining 8 exposed rows carry only weak_token_substring/low observers (xtask tests.rs generically, verification_contracts, release files). None reaches the dispatch arm or module wiring, and the discriminating same-diff module tests do not match at all. Leaning should_gap; tentative pending the removal control."
+    },
+    {
+      "id": "s3759-match-arm-quiet",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "base": "8a67d68b",
+      "head": "289158f1",
+      "tree_identity": "6edc2782",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_s3759.diff",
+      "diff_sha256": "195da32a",
+      "scope_authorization": "proposed_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_match_arm_observation",
+      "anchor": {
+        "file": "crates/ripr/src/analysis/classify/reveal.rs",
+        "line": 220,
+        "owner": "match-arm literal observation",
+        "changed_behavior": "let match_arm_literals = if matches!(probe.family, ProbeFamily::MatchArm) {",
+        "required_discriminator": "same-file unit tests and the same-diff integration file (linked on 17 rows)"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "same-diff integration file",
+        "missing": "62 weak-only rows need freeze-pass sampling (helper-interior thin observation vs over-credit undecided)"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "selected_input",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 8 (2026-09-20T13:07:16Z)",
+      "judged_at": "2026-09-20T13:07:16Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "needs_freeze_sampling",
+      "must_not_claim": [
+        "Second-repo scope is PROPOSED, not authorized: replay must not touch ripr-swarm until authorized.",
+        "The 62 weak-only rows are unsampled; this quiet hypothesis covers the aligned majority slice only."
+      ],
+      "reason": "144 exposed rows all on reveal.rs; 82 carry an aligned strong observer (same-file unit + same-diff integration, linked on 17). MIXED leaning should_stay_quiet — the first panel case with substantially linked same-diff observers. The 62 weak-only rows need freeze-pass sampling before any firm direction."
+    },
+    {
+      "id": "s3755-aligned-rows-quiet",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "base": "bb879c6c",
+      "head": "745402ab",
+      "tree_identity": "58cfeed0",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_s3755.diff",
+      "diff_sha256": "73f39cff",
+      "scope_authorization": "proposed_unauthorized",
+      "expected_direction": "should_stay_quiet",
+      "behavior_family": "aligned_parameter_identity",
+      "anchor": {
+        "file": "crates/ripr/src/analysis/probes/classify/parameters.rs",
+        "line": 14,
+        "owner": "parameter_declaration_shape",
+        "changed_behavior": "pub(super) fn parameter_declaration_shape<'a>(",
+        "required_discriminator": "same-diff parameter_boundary_tests module asserting declaration shapes"
+      },
+      "test_evidence": {
+        "relation_basis": "direct_owner_call",
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "observed_inputs": [],
+        "aligned_observer": "parameter_boundary_tests",
+        "missing": null
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "no_action",
+      "selection_dimensions": {
+        "relation_basis": "direct_owner_call",
+        "oracle_family": "exact_value",
+        "propagation_witness": "parser_shape",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": false,
+        "false_exposed": false,
+        "static_under_credit": null,
+        "wrong_target": false,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 8 (2026-09-20T13:07:16Z)",
+      "judged_at": "2026-09-20T13:07:16Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Second-repo scope is PROPOSED, not authorized: replay must not touch ripr-swarm until authorized.",
+        "Quiet covers the 8 aligned rows only, not the weak-only slice."
+      ],
+      "reason": "8 of 17 exposed rows aligned-strong (13 parameters.rs, 4 classify.rs per the record). Retain, no repair — on the aligned slice only."
+    },
+    {
+      "id": "s3755-weak-rows-gap",
+      "repository": "EffortlessMetrics/ripr-swarm",
+      "base": "bb879c6c",
+      "head": "745402ab",
+      "tree_identity": "58cfeed0",
+      "diff_path": "metrics/rust-judged-behavior-panel/diffs/release_s3755.diff",
+      "diff_sha256": "73f39cff",
+      "scope_authorization": "proposed_unauthorized",
+      "expected_direction": "should_gap",
+      "behavior_family": "unlinked_boundary_tests",
+      "anchor": {
+        "file": "crates/ripr/src/analysis/probes/classify/parameters.rs",
+        "line": 14,
+        "owner": "parameter_declaration_shape",
+        "changed_behavior": "pub(super) fn parameter_declaration_shape<'a>(",
+        "required_discriminator": "the 202-line same-diff boundary-test module, credited on 0 rows (unlinked-aligned-observer recall gap, sixth panel instance)"
+      },
+      "test_evidence": {
+        "relation_basis": "weak_token_substring",
+        "oracle_kind": "relational_check",
+        "oracle_strength": "weak",
+        "observed_inputs": [],
+        "aligned_observer": "parameter_boundary_tests",
+        "missing": "aligned module exists but matches 0 rows"
+      },
+      "expected_classification": "weakly_exposed",
+      "expected_static_limit_kind": null,
+      "expected_actionability": "undetermined",
+      "selection_dimensions": {
+        "relation_basis": "weak_token_substring",
+        "oracle_family": "relational_check",
+        "propagation_witness": "parser_shape",
+        "target_kind": "same_diff_test"
+      },
+      "labels": {
+        "structural_judgment": true,
+        "false_actionable": null,
+        "false_exposed": true,
+        "static_under_credit": false,
+        "wrong_target": true,
+        "limitation_correct": null
+      },
+      "runtime_calibration": {
+        "status": "not_run",
+        "outcome": null,
+        "evidence_ref": null
+      },
+      "judgment_source": "EffortlessMetrics/ripr#1675 round 8 (2026-09-20T13:07:16Z)",
+      "judged_at": "2026-09-20T13:07:16Z",
+      "judged_by": ["EffortlessSteven"],
+      "disposition": "judged_first_pass",
+      "must_not_claim": [
+        "Second-repo scope is PROPOSED, not authorized: replay must not touch ripr-swarm until authorized.",
+        "As recorded these rows read gap; the join fix (diff-aware relations) belongs to the recall work, not this manifest."
+      ],
+      "reason": "9 weak-only rows as recorded. The discriminating boundary-test module matches nothing — the unlinked-aligned-observer recall gap again. Expected gap on the weak-only slice."
+    }
+  ]
+}

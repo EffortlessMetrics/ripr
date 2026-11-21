@@ -1,0 +1,9 @@
+diff --git a/src/rounding.ts b/src/rounding.ts
+index 0000000..1111111 100644
+--- a/src/rounding.ts
++++ b/src/rounding.ts
+@@ -1,3 +1,3 @@
+ export function roundCents(amount: number): number {
+-    return Math.floor(amount * 100) / 100;
++    return Math.round(amount * 100) / 100;
+ }

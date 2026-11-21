@@ -1,0 +1,11 @@
+diff --git a/src/discount.js b/src/discount.js
+index 0000000..1111111 100644
+--- a/src/discount.js
++++ b/src/discount.js
+@@ -1,5 +1,5 @@
+ export function applyDiscount(amount, threshold) {
+-  if (amount > threshold) {
++  if (amount >= threshold) {
+     return amount - 10;
+   }
+   return amount;

@@ -1,0 +1,9 @@
+--- a/src/formatter.ts
++++ b/src/formatter.ts
+@@ -1,6 +1,6 @@
+ export function formatCurrency(amount: number, currency: string): string {
+-    if (amount < 0) {
++    if (amount <= 0) {
+         return `-${currency}${Math.abs(amount).toFixed(2)}`;
+     }
+     return `${currency}${amount.toFixed(2)}`;

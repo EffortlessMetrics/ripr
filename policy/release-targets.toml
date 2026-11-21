@@ -1,0 +1,262 @@
+# Release target manifest (#3013 Slice B; live-head 0.11.0 reset).
+#
+# This file is the checked-in membership authority for release-candidate
+# scope. `cargo xtask check-release-targets` validates it offline and
+# network-free.
+#
+# Why a manifest and not a parser over release-goal prose:
+#
+# The release-goal bodies (#3004, #3005, #3006) express some membership as
+# en-dash ranges such as `#2665 / #2968-#2970`. A checker that extracted issue
+# references from that prose would either invent numbering semantics GitHub
+# does not guarantee, or silently miss every member written inside a range.
+# In the manual audit recorded on #3013, #2966 and #2969 -- real conditional
+# issues -- never appeared in the extracted reference set at all for exactly
+# that reason. A gate reporting a clean graph over members it never saw is a
+# false-confidence surface. The goal bodies are human-validated documentation;
+# this file is the parsed input.
+#
+# For 0.11.0, this manifest records the issue graph and membership anchors;
+# the publication candidate itself is the exact transaction-boundary
+# `ripr-swarm/main` SHA recorded by
+# `docs/release-candidates/0.11.0-live-head-selection.json`. It must not be
+# interpreted as a C-to-T projection or a floating-main candidate.
+#
+# Scope limit, stated so it is not mistaken for completeness:
+#
+# - Committed, conditional, and release-referenced rolling issues are
+#   enumerated here. The 271 open `target/rolling` issues are deliberately not
+#   mirrored: enumerating them would restate GitHub rather than record policy.
+#   Live rolling exclusion is Slice C's network-owned check.
+# - `[[parent]].leaves` may name issues outside every release target. That is a
+#   real fact about the parent, not a gap, so leaves are exempt from the
+#   referential-closure rule (rule 8). Every other cross-reference must resolve
+#   inside this file.
+#
+# Known divergence from live milestone membership, observed 2026-08-08:
+#
+#   `0.12.0 candidate` also contains #1146, #2615, #2628
+#   `0.13.0 candidate` also contains #1573, #1574, #1583
+#
+# All six are umbrella parents that #3005 and #3006 place outside milestone
+# progress ("Parent reconciliation outside milestone progress"; "should not
+# double-count milestone progress unless #3013 records a distinct
+# final-acceptance role"). This manifest records the membership law, so they
+# appear here as `[[parent]]` records with `counted_in = "none"` and are absent
+# from every committed set. Resolving the divergence -- removing them from the
+# milestones, or recording a distinct final-acceptance role through an
+# admission comment -- is an owner ruling, not a mechanical repair, and is left
+# open deliberately. Slice C's live parity check is the surface that will keep
+# reporting it until it is resolved.
+
+schema_version = "0.1"
+non_claim = "Milestone membership is the committed candidate denominator for qualification in ripr-swarm. It does not authorize or establish version publication, tagging, signing, marketplace mutation, or post-publication verification."
+control_issue = 3013
+
+# --------------------------------------------------------------------------
+# Releases. Declared in ascending version order; that order is the prerequisite
+# ordering used by rule 6.
+#
+# Committed membership is `goal_issue` + `claim_blockers` + `proof_blockers` +
+# `companions`. `conditional_issues` are NOT committed: they carry an intended
+# destination but stay outside the milestone until an admission comment cites
+# the evidence that made them blocking.
+# --------------------------------------------------------------------------
+
+[[release]]
+version = "0.11.0"
+milestone = "0.11.0 candidate"
+goal_issue = 2379
+claim_blockers = [2923, 2963]
+proof_blockers = []
+companions = []
+conditional_issues = []
+
+[[release]]
+version = "0.11.1"
+milestone = "0.11.1 candidate"
+goal_issue = 3004
+claim_blockers = []
+proof_blockers = []
+companions = []
+conditional_issues = [2977, 2978]
+
+[[release]]
+version = "0.12.0"
+milestone = "0.12.0 candidate"
+goal_issue = 3005
+claim_blockers = [1601, 1617, 1981, 2927, 2928]
+proof_blockers = [1702, 1703, 2929]
+companions = [1613, 1614, 2955, 2956, 2957, 2958, 2959, 2960, 2961, 2962]
+conditional_issues = [2964]
+
+[[release]]
+version = "0.13.0"
+milestone = "0.13.0 candidate"
+goal_issue = 3006
+claim_blockers = [1582, 1599, 1602, 1603, 1605, 1627, 1932, 2048, 3007, 3008, 3009]
+proof_blockers = [1560, 1579, 1630, 1995]
+companions = []
+conditional_issues = [1578, 1619, 1937, 2664, 2665, 2671, 2965, 2966, 2967, 2968, 2969, 2970, 2972, 3025, 3037, 3039]
+
+# --------------------------------------------------------------------------
+# Umbrella parents. `counted_in = "none"` means the parent is outside every
+# committed denominator so it cannot double-count its own leaves. A parent may
+# be counted in one release only with a justification naming the distinct final
+# acceptance it owns beyond its leaves, and then it may not also have a leaf
+# committed to that same release.
+# --------------------------------------------------------------------------
+
+[[parent]]
+issue = 2628
+leaves = [2963, 2964]
+counted_in = "none"
+justification = "Bash-only generated-command symptom. #3004 records it as a target/program authority that must not double-count #2963, and #3005 records that the durable repair lands through #1617. Its leaves own the concrete work."
+
+[[parent]]
+issue = 1146
+leaves = [2955, 2956, 2957, 2958]
+counted_in = "none"
+justification = "Evidence-state vocabulary programme parent. #3005: remains the programme/reconciliation parent unless it retains distinct final acceptance; the A-D slices own the committed work."
+
+[[parent]]
+issue = 2615
+leaves = [2959, 2960, 2961, 2962]
+counted_in = "none"
+justification = "Language-availability programme parent. #3005: remains the programme parent unless it owns separate integration acceptance; the A-D slices own the committed work."
+
+[[parent]]
+issue = 1583
+leaves = [1579, 1582]
+counted_in = "none"
+justification = "Headless-agent protocol umbrella. #3006: carries programme context and should not double-count milestone progress unless a distinct final-acceptance role not owned by its leaves is recorded."
+
+[[parent]]
+issue = 1573
+leaves = [1565, 1566, 1567, 1568, 1569, 1570, 1571, 1572]
+counted_in = "none"
+justification = "Agent-loop dogfood field-report epic. #3006: carries programme context only. Its workstream leaves sit outside every release target, so counting the epic would add denominator weight no committed leaf supports."
+
+[[parent]]
+issue = 1574
+leaves = [1560, 1579, 1630, 1995]
+counted_in = "none"
+justification = "Editor/LSP usable-alpha epic. #3006 admits it only where it owns distinct acceptance beyond the leaf corpora; no such distinct acceptance is recorded yet, so it stays outside milestone progress."
+
+[[parent]]
+issue = 2664
+leaves = [2972]
+counted_in = "none"
+justification = "Cross-crate test discovery. target/conditional under #3006 and therefore outside every committed denominator; #2971 closed, so #2972 is the remaining leaf."
+
+[[parent]]
+issue = 2665
+leaves = [2968, 2969, 2970]
+counted_in = "none"
+justification = "Path-dependency graph. target/conditional under #3006 and therefore outside every committed denominator."
+
+[[parent]]
+issue = 2671
+leaves = [2965, 2966, 2967]
+counted_in = "none"
+justification = "Per-crate configuration. target/conditional under #3006 and therefore outside every committed denominator."
+
+# --------------------------------------------------------------------------
+# Prerequisite edges. Rule 6: a prerequisite may not sit in a later release
+# than the issue that consumes it.
+# --------------------------------------------------------------------------
+
+[[prerequisite]]
+issue = 3007
+requires = 1617
+justification = "#3006: #3007 projects the core #1617 CommandSpec through riprAgent responses rather than reconstructing argv."
+
+[[prerequisite]]
+issue = 3008
+requires = 1614
+justification = "#3005: ordinary CLI/editor/CI preflight is #1614; the agent-protocol handshake #3008 layers on it."
+
+[[prerequisite]]
+issue = 3009
+requires = 2923
+justification = "#3004: #2923 validates schemas with reachable non-riprAgent producers; protocol-producer validation is deferred to #3009."
+
+[[prerequisite]]
+issue = 1601
+requires = 1981
+justification = "#3005: #1601 is the final governed producer-eligibility acceptance after the #1981 implementation leaf lands."
+
+[[prerequisite]]
+issue = 2928
+requires = 2927
+justification = "#3005: #2928 is a VS Code shell over the shared #2927 RepairAttempt, not a parallel lifecycle."
+
+[[prerequisite]]
+issue = 2955
+requires = 2958
+justification = "#3005 companion sequence: #2958 -> #2955 -> #2956 -> #2957."
+
+[[prerequisite]]
+issue = 2956
+requires = 2955
+justification = "#3005 companion sequence: #2958 -> #2955 -> #2956 -> #2957."
+
+[[prerequisite]]
+issue = 2957
+requires = 2956
+justification = "#3005 companion sequence: #2958 -> #2955 -> #2956 -> #2957."
+
+[[prerequisite]]
+issue = 2960
+requires = 2959
+justification = "#3005 companion sequence: #2959 -> #2960 / #2961 / #2962."
+
+[[prerequisite]]
+issue = 2961
+requires = 2959
+justification = "#3005 companion sequence: #2959 -> #2960 / #2961 / #2962."
+
+[[prerequisite]]
+issue = 2962
+requires = 2959
+justification = "#3005 companion sequence: #2959 -> #2960 / #2961 / #2962."
+
+[[prerequisite]]
+issue = 2964
+requires = 1617
+justification = "#3005: a human PowerShell display variant is admissible only if the typed #1617 CommandSpec leaves a demonstrated human-copy gap."
+
+[[prerequisite]]
+issue = 2966
+requires = 2965
+justification = "Slice order for #2671: A decides the per-crate config model before B implements overlay merge."
+
+[[prerequisite]]
+issue = 2967
+requires = 2966
+justification = "Slice order for #2671: C attaches effective config produced by the B overlay merge."
+
+[[prerequisite]]
+issue = 2969
+requires = 2968
+justification = "Slice order for #2665: the adjacency graph consumes the path-dep values preserved by A."
+
+[[prerequisite]]
+issue = 2970
+requires = 2969
+justification = "Slice order for #2665: diff-scope expansion consumes the reverse graph built by B."
+
+[[prerequisite]]
+issue = 2972
+requires = 2665
+justification = "#2972 states it is gated on #2665; cross-crate matching via dependency edge needs the path-dependency graph."
+
+# --------------------------------------------------------------------------
+# Rolling work referenced by the release graph. Rule 5 keeps it outside every
+# committed set. This is not the full rolling backlog; see the scope limit at
+# the top of this file.
+# --------------------------------------------------------------------------
+
+[[rolling]]
+issue = 3013
+justification = "Release-control issue that establishes this manifest and the milestone denominator. It is target/rolling and belongs to no release candidate."

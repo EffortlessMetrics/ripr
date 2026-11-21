@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "ops",
+  "sequence": 4,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2353",
+  "review_status": "provisional",
+  "record_count": 6,
+  "disposition_counts": {
+    "release_infrastructure_only": 1,
+    "structural_no_semantic_delta": 5
+  },
+  "records": [
+    {
+      "commit_sha": "56529b7883c013ec708a3431c71eae2b01da8f1a",
+      "pr": "EffortlessMetrics/ripr-swarm#2202",
+      "title": "perf(xtask): use built binary instead of cargo run for dogfood gate evaluation",
+      "primary_category": "ops",
+      "change_class": "release_test_infrastructure",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "gate-adoption dogfood runs the exact refreshed candidate binary without per-scenario Cargo invocation",
+      "reason": "This completes the proof-performance group started by #2176 and avoids stale or repeatedly relinked binaries in release qualification.",
+      "non_claim": "Faster dogfood execution does not change gate decisions.",
+      "secondary_impacts": ["dogfood", "gate", "CI_duration"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "e99b0918bb1df7e7600effda752caabf7d171842",
+      "pr": "EffortlessMetrics/ripr-swarm#2209",
+      "title": "refactor(xtask): extract file-policy check implementation",
+      "primary_category": "ops",
+      "change_class": "structural",
+      "candidate_disposition": "structural_no_semantic_delta",
+      "review_status": "provisional_category_review",
+      "release_claim": "none; behavior-preserving policy-module extraction",
+      "reason": "Parser, path predicates, decisions, diagnostics, and report output are stated unchanged; focused and hosted proof passed.",
+      "non_claim": "Does not change file policy or resolve inherited unrelated test debt.",
+      "secondary_impacts": ["xtask_modules", "file_policy"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "e54af11203e945c662f08979f35cec0103591fbc",
+      "pr": "EffortlessMetrics/ripr-swarm#2210",
+      "title": "refactor(xtask): extract the dogfood cluster from main.rs",
+      "primary_category": "ops",
+      "change_class": "structural",
+      "candidate_disposition": "structural_no_semantic_delta",
+      "review_status": "provisional_category_review",
+      "release_claim": "none; behavior-preserving dogfood ownership move",
+      "reason": "The large responsibility cluster moved with independent xtask, Clippy, goldens, and dogfood parity; the wildcard bridge remains an explicit future cleanup seam.",
+      "non_claim": "Does not strengthen dogfood evidence or close the real-repository corpus.",
+      "secondary_impacts": ["xtask_modules", "dogfood"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "71e0ca81948af617b6dc8cc6465ff3d48aa6254a",
+      "pr": "EffortlessMetrics/ripr-swarm#2216",
+      "title": "refactor(xtask): extract the ripr_swarm cluster from main.rs",
+      "primary_category": "ops",
+      "change_class": "structural",
+      "candidate_disposition": "structural_no_semantic_delta",
+      "review_status": "provisional_category_review",
+      "release_claim": "none; behavior-preserving repository-operations extraction",
+      "reason": "The cluster moved verbatim behind root re-exports with test, Clippy, format, and precommit parity.",
+      "non_claim": "Does not alter source/swarm authority or close all repository-operations decomposition.",
+      "secondary_impacts": ["xtask_modules", "repo_ops"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "2bec28e891a43b409c813ca4c6b67865dbb8d346",
+      "pr": "EffortlessMetrics/ripr-swarm#2220",
+      "title": "refactor(xtask): extract the evidence-audit region from main.rs",
+      "primary_category": "ops",
+      "change_class": "structural",
+      "candidate_disposition": "structural_no_semantic_delta",
+      "review_status": "provisional_category_review",
+      "release_claim": "none; behavior-preserving evidence-audit extraction",
+      "reason": "The moved region retained order and output; the static-language allowances surfaced by the move remain explicit instead of silently changing user-visible strings.",
+      "non_claim": "Does not improve evidence quality or authorize new claims.",
+      "secondary_impacts": ["xtask_modules", "evidence_audit", "allowlists"],
+      "source_conflict_risk": "high"
+    },
+    {
+      "commit_sha": "9e9efd713a751d9a87406f6d2dbbf7ed31bb7149",
+      "pr": "EffortlessMetrics/ripr-swarm#2221",
+      "title": "refactor(xtask): extract the evidence-quality scorecard cluster from main.rs",
+      "primary_category": "ops",
+      "change_class": "structural",
+      "candidate_disposition": "structural_no_semantic_delta",
+      "review_status": "provisional_category_review",
+      "release_claim": "none; behavior-preserving scorecard ownership move",
+      "reason": "The scorecard/trend cluster moved as the next #2119 slice with its ownership documentation corrected.",
+      "non_claim": "Does not promote support or improve measured evidence by itself.",
+      "secondary_impacts": ["xtask_modules", "evidence_quality"],
+      "source_conflict_risk": "high"
+    }
+  ]
+}

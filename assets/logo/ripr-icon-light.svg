@@ -1,0 +1,11 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">ripr icon</title>
+  <desc id="desc">Four connected nodes representing Reach, Infect, Propagate, and Reveal; the final reveal node is a ring with an amber center.</desc>
+  <rect x="48" y="48" width="416" height="416" rx="92" fill="#F5F1E8"/>
+  <path d="M132 256H380" stroke="#156B76" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="132" cy="256" r="30" fill="#156B76"/>
+  <circle cx="214" cy="256" r="30" fill="#156B76"/>
+  <circle cx="296" cy="256" r="30" fill="#156B76"/>
+  <circle cx="380" cy="256" r="39" fill="#F5F1E8" stroke="#156B76" stroke-width="20"/>
+  <circle cx="380" cy="256" r="13" fill="#E1A82C"/>
+</svg>

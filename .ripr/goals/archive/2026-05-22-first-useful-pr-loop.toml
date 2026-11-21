@@ -1,0 +1,199 @@
+id = "first-useful-pr-loop"
+title = "First Useful PR Loop"
+status = "closed"
+no_current_goal = true
+
+# This is Campaign 28 in `docs/IMPLEMENTATION_CAMPAIGNS.md`.
+# Campaign 27 closed Language Adapter Preview and remains archived under
+# `.ripr/goals/archive/2026-05-13-language-adapter-preview.toml`.
+# This campaign makes the front-door RIPR product loop boringly useful:
+# one changed Rust behavior, one clear weak-oracle gap, one focused repair
+# intent, one verification command, and one receipt that users, reviewers, CI,
+# and agents can all understand.
+
+objective = """
+Make a new user, reviewer, or coding agent get from one changed Rust behavior
+to one trustworthy repair receipt with almost no interpretation burden. The
+front door is `ripr first-pr --root . --base origin/main --head HEAD`; it must
+name the top repairable gap or a clear no-action state, explain the missing
+discriminator in reviewer-readable language, give one focused test or output
+proof intent, provide exact verify and receipt commands, and preserve the
+static-advisory boundary. RIPR still does not edit source, generate tests, call
+providers, run mutation, prove runtime or coverage adequacy, or enable default
+blocking gates.
+"""
+
+end_state = [
+  "`ripr first-pr --root . --base origin/main --head HEAD` is the obvious front door for one changed Rust PR",
+  "the first screen names one top repairable gap or a clear no-action state without making users open secondary reports",
+  "the recommendation explains changed behavior, current proof weakness, missing discriminator, repair intent, verify command, receipt command, and static-evidence boundary",
+  "`ripr outcome` receipts are reviewer-native and explain before/after movement without claiming mutation, runtime, or coverage proof",
+  "a tiny fixture or demo story proves the before -> recommendation -> focused repair -> outcome -> receipt loop",
+  "generated CI, editor, and agent packet surfaces mirror the same one-screen repair story instead of inventing parallel wording",
+  "support/status claims remain mapped to proof and preserve advisory/static boundaries",
+]
+
+[[work_item]]
+id = "context/proof-stack-reconciliation"
+status = "done"
+branch = "context-proof-stack-reconciliation"
+stackable = false
+proposal = "RIPR-PROP-0015"
+spec = "RIPR-SPEC-0060"
+plan = "RIPR-PLAN-0028"
+acceptance = "Reconcile proof-stack language into RIPR's existing context system and accepted source-of-truth stack without adding a runner-local goals namespace or another operating namespace. `docs/source-of-truth/README.md` and `docs/agent-context/CONTEXT_SYSTEM.md` map proposal, spec, ADR, implementation plan, active manifest, support tiers, policy ledgers, and closeouts to the repo-native files users and agents already consume, and `docs/ROADMAP.md` states the product/control-plane end goal."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "goals/active-freshness-validation"
+status = "done"
+branch = "goals-active-freshness-validation"
+stackable = false
+proposal = "RIPR-PROP-0015"
+spec = "RIPR-SPEC-0060"
+plan = "RIPR-PLAN-0028"
+blocked_by = [
+  "context/proof-stack-reconciliation",
+]
+acceptance = "Add or extend the goal validation path so a closed active campaign without a successor or explicit no-current-goal marker is reported as stale execution state. The check also catches missing work-item commands, missing paths, done items without proof commands, blocked items without blocked_by or blocked_reason, invented policy fields, and stale branch references where those signals are available."
+commands = [
+  "cargo test -p xtask goals",
+  "cargo xtask goals next",
+  "cargo xtask check-campaign",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "first-pr/front-door-polish"
+status = "done"
+branch = "first-pr-front-door-polish"
+stackable = false
+proposal = "RIPR-PROP-0009"
+spec = "RIPR-SPEC-0051"
+plan = "RIPR-PLAN-0028"
+blocked_by = [
+  "goals/active-freshness-validation",
+]
+acceptance = "Make `ripr first-pr --root . --base origin/main --head HEAD` the product front door: preflight git, diff, base/head, Cargo workspace, config/defaults, writable artifacts, mode, and next command; expected missing inputs return clear recovery packets instead of raw internal errors."
+commands = [
+  "cargo test -p ripr --lib first_pr",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "first-pr/one-screen-recommendation"
+status = "done"
+branch = "first-pr-one-screen-recommendation"
+stackable = false
+proposal = "RIPR-PROP-0009"
+specs = [
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+  "docs/specs/RIPR-SPEC-0020-first-useful-action-report.md",
+]
+plan = "RIPR-PLAN-0028"
+blocked_by = [
+  "first-pr/front-door-polish",
+]
+acceptance = "Stabilize a golden-backed first screen that always includes top actionable gap or no-action state, changed behavior, current evidence strength, missing discriminator, focused test or output-proof intent, exact verify command, receipt command, and the static-advisory boundary without banned mutation-proof vocabulary."
+commands = [
+  "cargo test -p ripr --lib first_pr",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "outcome/reviewer-native-receipts"
+status = "done"
+branch = "outcome-reviewer-native-receipts"
+stackable = false
+proposal = "RIPR-PROP-0009"
+specs = [
+  "docs/specs/RIPR-SPEC-0009-defaults-first-adoption.md",
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+]
+plan = "RIPR-PLAN-0028"
+blocked_by = [
+  "first-pr/one-screen-recommendation",
+]
+acceptance = "`ripr outcome` receipts answer what changed, what RIPR flagged before, what focused proof was added outside RIPR, what moved after verification, what remains weak or unknown, and what reviewers should and should not believe. Receipts stay usable from CLI, PR summary, editor handoff, and agent packet surfaces."
+commands = [
+  "cargo test -p ripr --lib outcome",
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "fixtures/first-pr-boundary-gap-demo"
+status = "done"
+branch = "fixtures-first-pr-boundary-gap-demo"
+stackable = false
+proposal = "RIPR-PROP-0009"
+spec = "RIPR-SPEC-0051"
+plan = "RIPR-PLAN-0028"
+acceptance = "Add a tiny canonical ten-minute demo or fixture story that proves before -> `ripr first-pr` -> top gap -> focused external test/output proof -> `ripr outcome` -> receipt. The story doubles as documentation, smoke coverage, release demo, and agent training path."
+commands = [
+  "cargo xtask fixtures",
+  "cargo xtask goldens check",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "surfaces/one-screen-loop-convergence"
+status = "done"
+branch = "surfaces-one-screen-loop-convergence"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0011-start-here-surface-convergence.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md",
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+]
+plan = "RIPR-PLAN-0028"
+acceptance = "Make generated CI, VS Code/editor handoff, and agent packet surfaces mirror the same first-useful-pr wording and repair unit: changed behavior, missing discriminator, focused proof intent, verify command, receipt command, artifacts, and static-advisory boundary. Do not add default blocking, source edits, generated tests, providers, mutation execution, or a second mental model."
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "cargo xtask lsp-cockpit-report",
+  "npm --prefix editors/vscode run compile",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/first-useful-pr-loop-closeout"
+status = "done"
+branch = "campaign-first-useful-pr-loop-closeout"
+stackable = false
+proposal = "RIPR-PROP-0009"
+specs = [
+  "docs/specs/RIPR-SPEC-0051-first-successful-pr-ux.md",
+  "docs/specs/RIPR-SPEC-0053-start-here-surface-convergence.md",
+]
+plan = "RIPR-PLAN-0028"
+acceptance = "Close Campaign 28 only after one command, one top gap or no-action state, one focused repair intent, one verification command, one receipt, one demo, one generated-CI summary, one editor handoff, and one agent packet tell the same static-advisory repair story with proof and remaining limits recorded."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-traceability",
+  "cargo xtask check-campaign",
+  "cargo xtask goals next",
+  "cargo xtask check-pr",
+]

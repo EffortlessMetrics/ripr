@@ -1,0 +1,185 @@
+# ripr: Static Mutation Exposure
+
+[![VS Marketplace Installs (manual)](https://img.shields.io/badge/VS%20Marketplace-11%20installs-0078D4)](https://marketplace.visualstudio.com/items?itemName=EffortlessMetrics.ripr)
+[![Open VSX Downloads](https://img.shields.io/open-vsx/dt/EffortlessMetrics/ripr?label=Open%20VSX%20downloads)](https://open-vsx.org/extension/EffortlessMetrics/ripr)
+
+<!-- VS Marketplace install count is manually maintained. Last checked: 2026-08-24; publisher metrics report 11 installs. Refresh the count and date from publisher metrics whenever you check; do not use live VS Marketplace Shields routes. -->
+
+Preview VS Code/Open VSX extension for `ripr`, a static Rust analysis tool that
+finds changed code where the nearby tests may run but not actually check the
+changed behavior.
+
+It is a fast static companion to mutation testing: it does not run mutants,
+but it points reviewers and coding agents at the focused test most likely to
+matter. The extension starts `ripr lsp --stdio`, surfaces saved-workspace
+diagnostics, and helps a human or coding agent move from a flagged change to
+one focused test.
+
+## Requirements
+
+The extension can download and cache the matching `ripr` server binary from
+GitHub Releases on first activation. Manual installation is still supported for
+offline, pinned, or enterprise-controlled environments.
+
+## Install and First Run
+
+Install `EffortlessMetrics.ripr` from VS Code Marketplace or Open VSX. The
+extension should resolve its server automatically, so `cargo install ripr` is a
+fallback rather than a required first step.
+
+After opening a Rust/Cargo workspace:
+
+1. Check the `ripr` status bar item for the current state: server status,
+   workspace, analysis progress, the recommended next action, "no focused
+   test gap found," or "analysis stale / failed." The status bar projects an
+   existing workspace-matched
+   `target/ripr/reports/first-useful-action.json` report when one is present,
+   without rerunning analysis. (Internal status IDs such as
+   `no-actionable-seam` and `first-useful-action` remain stable in JSON.)
+   Run `ripr: Show Status` when no diagnostics appear; it prints the workspace
+   root, server source and command, editor selectors, enabled languages from
+   the last refresh, and the next safe action.
+2. Use the Problems panel to find changed code that ripr flagged as
+   mutation-exposed in the saved workspace.
+3. Hover a flagged location to see why ripr thinks the current tests are
+   weak: the assertion or check that appears to be missing, the related test
+   to imitate, a suggested test shape, and verify and receipt commands.
+4. Use the intent-titled code actions to copy the targeted test brief, the
+   suggested assertion, or the agent handoff command chain.
+5. Open the best related test when ripr finds an imitation target.
+6. Add one focused test outside the editor.
+7. Verify with the copied command chain or the CI artifact packet.
+8. Emit the receipt, refresh saved-workspace analysis, then inspect the
+   first-pr `start-here` packet when the status reports that one is safe.
+
+Unsaved-buffer overlays are not enabled by default.
+
+For the full editor loop from diagnostic to receipt, see
+[`docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md`](../../docs/EDITOR_FIRST_RUN_TO_FIRST_RECEIPT.md).
+For the local handoff from receipt to first-pr packet, see
+[`docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md`](../../docs/EDITOR_FIRST_PR_BRIDGE_WORKFLOW.md).
+
+## What ripr Does
+
+`ripr` scans Rust code for mutation-exposed locations — places where the
+changed behavior could plausibly differ — and reports whether nearby tests
+appear to contain an assertion or check that would catch the change. It uses
+conservative static language and is meant to guide the next useful test, not
+to prove test adequacy.
+
+Under the hood, ripr uses the RIPR model: reachability, infection,
+propagation, and revealability. Reports, JSON, and specs use the precise
+internal vocabulary (seams, discriminators, oracle strength); the editor
+surface keeps that vocabulary out of the first-hour path. See the
+[Terminology bridge](https://github.com/EffortlessMetrics/ripr/blob/main/docs/TERMINOLOGY.md)
+to map between the two.
+
+The 0.8.x extension surfaces saved-workspace diagnostics, evidence-aware
+hovers, intent-titled code actions for inspecting the flagged change /
+writing the targeted test / copying the agent handoff / verifying after the
+test / reviewing the receipt / refreshing analysis, an LSP
+`collectEvidenceContext` seam handoff packet, and a first-useful-action
+projection in the status bar and hover when a workspace-matched report
+already exists. It also projects existing first-pr `start-here` packet state
+in Diagnose Setup and Show Status, and can open or copy bounded first-pr packet
+content only after the packet validates against the current workspace and
+diagnostic identity.
+
+It does not run mutation testing, report killed/survived, or prove test
+adequacy. Use real mutation testing, such as `cargo-mutants`, for ready-mode
+confirmation.
+
+## Settings
+
+- `ripr.server.path`: explicit path to the `ripr` executable. Empty by default.
+- `ripr.enabled`: enables saved-workspace diagnostics, hovers, status, and code
+  actions. Defaults to `true`.
+- `ripr.server.args`: arguments used to start the language server. Defaults to
+  `["lsp", "--stdio"]`.
+- `ripr.server.autoDownload`: download a matching server when needed. Defaults
+  to `true`.
+- `ripr.server.version`: pinned server version. Empty means match the extension
+  version.
+- `ripr.server.downloadBaseUrl`: override the manifest location for internal
+  mirrors.
+- `ripr.check.mode`: preferred editor check mode. Defaults to `draft`.
+- `ripr.baseRef`: Git base ref used by context commands. Defaults to
+  `origin/main`.
+- `ripr.trace.server`: language-server trace setting.
+
+## Commands
+
+- `ripr: Restart Server`
+- `ripr: Select Workspace Root`
+- `ripr: Diagnose Setup`
+- `ripr: Show Status`
+- `ripr: Show Output`
+- `ripr: Start Current Repair`
+- `ripr: First PR - Open Packet`
+- `ripr: First PR - Copy Summary`
+- `ripr: First PR - Copy Repair Packet`
+- `ripr: First PR - Copy Verify Command`
+- `ripr: First PR - Copy Receipt Command`
+- `ripr: First PR - Copy Regeneration Guidance`
+- `ripr: Inspect Test Gap - Copy Context`
+- `ripr: Write Targeted Test - Copy Suggested Assertion`
+- `ripr: Write Targeted Test - Copy Brief`
+- `ripr: Agent Handoff - Copy Packet Command`
+- `ripr: Agent Handoff - Copy Brief Command`
+- `ripr: Verify After Test - Copy After Snapshot Command`
+- `ripr: Verify After Test - Copy Verify Command`
+- `ripr: Review Result - Copy Receipt Command`
+- `ripr: Write Targeted Test - Open Best Related Test`
+- `ripr: Open Settings`
+
+The repair-loop commands also appear in the editor context menu for Rust
+and preview-language files (ripr groups, right-click in the editor). The
+targeted-test and agent-loop commands stay code-action-only because their
+handlers need the diagnostic payload a code action carries, which a
+context-menu click cannot supply. `ripr: Show Status` (`Ctrl+Alt+R`,
+`Cmd+Alt+R` on macOS) and `ripr: Copy Top Repair Packet` (`Ctrl+Alt+P`,
+`Cmd+Alt+P` on macOS) ship default keybindings; both are user-overridable.
+VS Code when-clauses have no diagnostic-source context key, so the context
+menu is gated on the document language rather than on the `ripr` diagnostic
+source.
+
+## Preview Limitations
+
+The `0.8.x` extension uses a universal VSIX and downloads native server
+binaries from matching GitHub Releases when available. It does not auto-install
+Rust tooling, run mutation tests, make automatic edits, or analyze unsaved
+buffer overlays by default. Bundled platform-specific VSIXs are planned after
+the downloader path is proven.
+
+## Remote / Web support
+
+- **Remote-SSH / Containers / WSL**: the extension is workspace-kind, so it
+  must be installed **on the remote host** (VS Code prompts "Install in
+  Remote" for workspace extensions). Installing it only locally does nothing
+  for a remote workspace — the ripr server runs where the workspace lives.
+- **VS Code for the Web** (vscode.dev, github.dev): not supported. The ripr
+  server is a native binary spawned as a process by the extension host —
+  for Remote-SSH that means on the remote host — and the downloader uses
+  Node APIs, none of which exist in a browser host; the extension
+  declares `virtualWorkspaces: false`, so it simply does not activate there.
+
+## Coexisting with rust-analyzer
+
+ripr and rust-analyzer both publish diagnostics for Rust files, and both are
+expected to appear in the Problems panel at the same time. They answer
+different questions and are not duplicates:
+
+- **rust-analyzer** reports compiler, type, and lint diagnostics for the code
+  as written.
+- **ripr** reports static mutation-exposure evidence for the behavior changed
+  in your diff: whether the current tests appear to contain a discriminator
+  that would notice if the changed behavior were wrong.
+
+Every ripr diagnostic carries the source label `ripr`, so you can tell the two
+apart in the Problems panel and use the panel's source filter to show only one
+tool. ripr diagnostics never suppress, rewrite, or merge rust-analyzer
+diagnostics, and disabling one tool does not affect the other.
+
+There is no client-side de-duplication setting today. If the volume bothers
+you, prefer the Problems panel source filter over disabling either tool, and
+file an issue describing the collision you are seeing.

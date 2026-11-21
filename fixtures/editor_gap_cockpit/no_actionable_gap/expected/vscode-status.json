@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_gap_cockpit/no_actionable_gap",
+  "states": [
+    {
+      "name": "no_actionable_gap",
+      "status_bar": "ripr: no actionable gap",
+      "show_status_contains": [
+        "State: no actionable gap",
+        "Diagnostics: 0",
+        "Next safe action: refresh after changing tests or code"
+      ],
+      "must_not": [
+        "diagnostic",
+        "repair packet",
+        "suggested test"
+      ]
+    }
+  ]
+}

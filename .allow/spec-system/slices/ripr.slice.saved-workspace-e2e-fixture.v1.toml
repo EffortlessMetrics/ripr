@@ -1,0 +1,68 @@
+schema_version = "2.0"
+id = "ripr.slice.saved-workspace-e2e-fixture.v1"
+generation = 1
+
+source_issue = "issue:1622"
+design_reference = "RIPR-SPEC-0129"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Adds the saved-workspace end-to-end LSP fixture for issue #1622 criterion 6
+under the editor integration contract (RIPR-SPEC-0129): one framed,
+session-level test in crates/ripr/src/lsp/tests.rs that drives the real
+tower-lsp-server wire framing through initialize, didOpen, didChange
+(dirty), didSave, textDocument/diagnostic pulls, hover, an explicit refresh,
+and shutdown/exit against a writable temp copy of the boundary_gap fixture
+workspace with its own git HEAD. The test only asserts already-shipped
+saved-workspace authority semantics — a dirty buffer's line-local
+diagnostics are withdrawn under a distinct quarantined result id (never
+presented as current), an analyzed save lifts the withdrawal and re-serves
+the saved state, the interactive path discloses run_status seams_deferred
+rather than presenting a partial run as complete, and the explicit refresh
+delivers a current diagnostic for the saved content. No production code,
+wire contract, fixture golden, or spec text changes. change_class is
+"spec_or_contract_change" because the slice vocabulary has no test-only
+class: the delta rides on the RIPR-SPEC-0129 contract's evidence surface
+(the spec Test Mapping entry rides with the separate ratification PR), and
+"behavior_change" would wrongly imply a production behavior delta.
+"""
+
+non_goals = [
+  "production code changes of any kind (lsp backend, state, capabilities)",
+  "amending docs/specs/RIPR-SPEC-0129-editor-integration-contract.md (the spec Test Mapping entry rides with the ratification PR)",
+  "fixture or golden directory changes (the session copies boundary_gap/input into a temp root)",
+  "new dependencies or new framing transports",
+]
+
+return_conditions = [
+  "Return to root if the session cannot deliver a current diagnostic or disclosed seams_deferred limitation without a production change.",
+  "Return to root if the framed session proves flaky across repeated runs (timing races in the notification-driven refresh waits).",
+  "Return to root if the traceability append collides with the concurrent PR appending to the RIPR-SPEC-0129 tests array.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:saved-workspace-e2e-fixture",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:dirty-buffer-quarantine",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:spec:editor-integration-contract-text",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,11 @@
+diff --git a/src/pricing.ts b/src/pricing.ts
+index 0000000..1111111 100644
+--- a/src/pricing.ts
++++ b/src/pricing.ts
+@@ -1,5 +1,5 @@
+ export function computePrice(base: number, multiplier: number): number {
+-    if (base > 0) {
++    if (base >= 0) {
+         return base * multiplier;
+     }
+     return 0;

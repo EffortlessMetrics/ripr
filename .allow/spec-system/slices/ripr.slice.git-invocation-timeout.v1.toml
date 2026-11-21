@@ -1,0 +1,69 @@
+schema_version = "2.0"
+id = "ripr.slice.git-invocation-timeout.v1"
+generation = 1
+
+source_issue = "issue:2303"
+design_reference = "RIPR-SPEC-0136"
+change_class = "behavior_change"
+
+claim_boundary = """
+Amends RIPR-SPEC-0136 to add a sixth governed LSP session key,
+`gitTimeoutMs` (default 30000ms): a cooperative per-invocation deadline for
+every git spawn in the LSP refresh path. All git invocations delegate to the
+shared `crates/ripr/src/git.rs` authority, which polls the child, drains
+piped output, checks cooperative cancellation each tick, and kills + reaps
+on deadline expiry with the named, matchable `git_invocation_timeout`
+error. A diff load that fails with that named error commits a limited
+snapshot (zero findings plus one failed `diff` component outcome,
+`findings_trustworthy: false`, recovery `retry ripr.refreshDiagnostics`)
+instead of dropping the refresh with no snapshot; a scheduler Git-input
+probe that times out fails closed as unresolved. The CLI passes no deadline
+and stays unbounded, byte-identical to the pre-#2303 behavior. This slice
+does not change classification, finding sets, output contracts, goldens,
+`repair_packet_ready` authority, or pass/fail behavior, and it introduces
+no new production process-spawn site, no global git cache, and no network
+access.
+"""
+
+non_goals = [
+  "CLI git deadline configuration (CLI stays unbounded)",
+  "a ripr.toml slot for gitTimeoutMs",
+  "editor extension logic changes (one additive contributed setting declaration only)",
+  "mutation-engine, coverage, or test-generation behavior",
+  "changes to classification, output schemas, or golden fixtures",
+]
+
+return_conditions = [
+  "Return to root if goldens drift or any CLI-visible output text changes.",
+  "Return to root if the named git_invocation_timeout error reaches any surface other than the LSP limited-snapshot conversion.",
+  "Return to root if a timed-out probe or diff load is ever presented as a resolved input or a complete run.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:git-input-authority",
+  "seam:ripr:lsp:input-identity",
+  "seam:ripr:lsp:refresh-scheduler",
+]
+
+shared_seams = [
+  "seam:ripr:analysis:diff-load",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:cli:commands",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0136"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,71 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_category_fragment",
+  "category": "ops",
+  "sequence": 9,
+  "parent_ledger": "post-freeze-delta-ledger.json",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2353",
+  "review_status": "provisional",
+  "record_count": 4,
+  "disposition_counts": {"must_include_0_11": 3, "release_infrastructure_only": 1},
+  "records": [
+    {
+      "commit_sha": "c48a2157e208556dcfc24b010da57a3f3d8f2fa9",
+      "pr": "EffortlessMetrics/ripr-swarm#2159",
+      "title": "feat(xtask): mark CI-enforced commands in the command catalog",
+      "primary_category": "ops",
+      "change_class": "release_and_contributor_infrastructure",
+      "candidate_disposition": "release_infrastructure_only",
+      "review_status": "provisional_category_review",
+      "release_claim": "the command catalog identifies which xtask checks are load-bearing CI gates and mechanically detects workflow drift",
+      "reason": "Exact-candidate qualification and contributor readiness depend on distinguishing enforced checks from advisory commands, but the field is not shipped RIPR runtime semantics.",
+      "non_claim": "A catalog marker does not make an advisory command blocking or prove a check passed on a candidate.",
+      "secondary_impacts": ["command_catalog", "workflows", "generated_docs", "precommit"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "80c37c2a9fc637497a6f322555e3c5c9450f2ca6",
+      "pr": "EffortlessMetrics/ripr-swarm#2150",
+      "title": "docs(agents): name implementation slices as PR scope authority and remove a phantom CI skill",
+      "primary_category": "ops",
+      "change_class": "required_authority_docs",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "fresh and resumed agents recover PR-local scope from retained ImplementationSliceV1 records and use the actual CI polling discipline",
+      "reason": "The selected tree deleted the goal scheduler and names slices as the durable PR scope authority; omitting this correction leaves the operating documentation on a nonexistent skill and incomplete resume chain.",
+      "non_claim": "Implementation slices do not own live assignment, check state, or repository-wide scheduling.",
+      "secondary_impacts": ["AGENTS", "ImplementationSliceV1", "CI_operations"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "a123e606147b8180786a2d806cfa3623e927a4f8",
+      "pr": "EffortlessMetrics/ripr-swarm#2151",
+      "title": "docs(xtask): synchronize PR automation with the real command catalog",
+      "primary_category": "ops",
+      "change_class": "required_current_state_and_report_docs",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "PR automation and the generated precommit report name the commands the selected tree actually implements and executes",
+      "reason": "The prior document omitted roughly half the catalog, named deleted commands, and listed nonexistent future write modes; review also found the generated report itself omitted two executed checks.",
+      "non_claim": "The long command inventory does not select work or imply every command is CI-enforced.",
+      "secondary_impacts": ["PR_AUTOMATION", "precommit_report", "command_catalog"],
+      "source_conflict_risk": "medium"
+    },
+    {
+      "commit_sha": "cea420cd5f6e26c206e73189d433f8336968c949",
+      "pr": "EffortlessMetrics/ripr-swarm#2160",
+      "title": "docs(agents): downgrade the handoff protocol from contract to guidance until validation exists",
+      "primary_category": "ops",
+      "change_class": "required_claim_honesty_docs",
+      "candidate_disposition": "must_include_0_11",
+      "review_status": "provisional_category_review",
+      "release_claim": "the repository does not present an unvalidated handoff format and nonexistent context commands as enforced product behavior",
+      "reason": "The old prose claimed a machine-checked operating contract that the code and command catalog did not implement. The selected source-of-truth posture requires an explicit guidance-only boundary.",
+      "non_claim": "This does not implement the future typed handoff protocol or its validator.",
+      "secondary_impacts": ["agent_handoff", "context_system", "claim_boundary"],
+      "source_conflict_risk": "low"
+    }
+  ]
+}

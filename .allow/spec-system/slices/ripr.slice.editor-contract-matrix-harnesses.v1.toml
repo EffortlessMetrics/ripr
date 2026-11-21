@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.editor-contract-matrix-harnesses.v1"
+generation = 1
+
+source_issue = "issue:1622"
+design_reference = "RIPR-SPEC-0129"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Amends RIPR-SPEC-0129 (still Status: proposed) so the support matrix
+distinguishes client classes from the exact clients and harnesses the
+repository actually exercises: the in-process LspService harness, the
+framed JSON-RPC harness over tower-lsp-server 0.23.0, and the VS Code
+extension 0.10.0 (advertisement-parsed, not run end-to-end). Off-the-shelf
+standard clients stay unclaimed (#1630), the headless-agent profile stays
+reserved (#1602/#1603), and real install-to-repair proof stays pending
+(#1579) — no tier change, no support promotion from synthetic fixtures.
+Adds the missing Test/Implementation Mapping coverage for the advertised
+codeLens, hover, text-sync, position-encoding, and workspace-folder
+capabilities (naming existing tests or deferring to the owning child
+specs), adds a Relationships section linking the child implementation
+issues, and registers the named pre-existing tests in traceability.
+Changes no production code, no wire output, and no golden.
+"""
+
+non_goals = [
+  "Status flip to accepted (ratification is the final slice, after the end-to-end fixture lands)",
+  "new tests or fixtures (this slice names existing ones)",
+  "production code changes",
+  "support-tier changes",
+]
+
+return_conditions = [
+  "Return to root if a named test does not exist or the traceability gate rejects a row.",
+  "Return to root if naming a harness implies a support claim beyond protocol-fixture level.",
+]
+
+owned_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+]
+
+shared_seams = []
+
+forbidden_seams = [
+  "seam:ripr:crates:production-code",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

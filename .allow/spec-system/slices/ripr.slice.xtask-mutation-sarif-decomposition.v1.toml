@@ -1,0 +1,74 @@
+schema_version = "2.0"
+id = "ripr.slice.xtask-mutation-sarif-decomposition.v1"
+generation = 1
+
+source_issue = "issue:2119"
+design_reference = "RIPR-SPEC-0066"
+change_class = "refactor"
+
+claim_boundary = """
+Moves the xtask mutation and SARIF command family verbatim out of
+`xtask/src/main.rs` into `xtask/src/reports/mutation.rs` and
+`xtask/src/reports/sarif.rs`, which become the real module homes in place of
+the existing re-export shims: the mutation calibration command
+(`mutation-calibration`), the SARIF policy command (`sarif-policy`), and
+their exclusive argument parsing, cargo-mutants runtime JSON import, seam
+join, SARIF result extraction/fingerprinting, and JSON/markdown rendering
+helpers (including the `MutationOutcomeRecord`, `StaticSeamRecord`-adjacent
+calibration report types, and the `SarifPolicyArgs`/`SarifPolicyResult`/
+`SarifPolicyReport` types). Moved bodies are byte-identical except
+`pub(crate)` visibility widening (items and struct fields referenced by
+`tests.rs`) and four rustfmt-forced, token-identical signature wraps caused
+by the widened prefix. Helpers shared with non-mutation/sarif commands
+(`StaticSeamRecord`, `parse_repo_exposure_static_seams` and its JSON field
+readers, `oracle_strength_rank`, `json_scalar_as_string`,
+`json_scalar_as_usize`, `json_string_field`, `json_usize_field`,
+`json_bool_field`, `json_bool_summary_field`, `md_escape`, `read_json_value`,
+`normalize_report_path`) stay in `main.rs`; wiring is limited to curated
+re-exports in `reports/mod.rs` and `main.rs` so `dispatch.rs` and `tests.rs`
+compile unchanged. No command behavior, output contract, golden, fixture,
+or test-list change is claimed.
+"""
+
+non_goals = [
+  "moving helpers shared with non-mutation/sarif commands (targeted-test-outcome, fixture contracts, dogfood)",
+  "dispatch.rs or tests.rs edits (re-exports keep both unchanged)",
+  "output schema, golden, fixture, or traceability changes (pure structure)",
+  "renames or signature changes beyond pub(crate) visibility widening",
+  "further main.rs decomposition slices (separate slices own those)",
+]
+
+return_conditions = [
+  "Return to root if any golden or test-list drift appears (stop, do not re-bless).",
+  "Return to root if a moved helper turns out to be shared with a non-mutation/sarif command.",
+  "Return to root if the move appears to need an observable behavior change.",
+]
+
+owned_seams = [
+  "seam:ripr:xtask:mutation-sarif-command-family",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:main-rs-decomposition",
+  "seam:ripr:output:sarif-policy-contract",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:xtask:tests-rs",
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0066"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

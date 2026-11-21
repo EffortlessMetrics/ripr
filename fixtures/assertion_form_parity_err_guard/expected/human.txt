@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/assertion_form_parity_err_guard/input
+
+Summary: 7 probe(s), 0 exposed, 1 weak, 0 unrevealed, 0 no path, 6 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 2 changed file(s), 18 changed line(s), 7 candidate line(s), 7 probe(s), 7 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/assertion_form_parity_err_guard/input/src/lib.rs:2
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: amount >= discount_threshold
+  Missing discriminator: No strong discriminator was detected
+  Related test: tests/pricing.rs:4 boundary_matches_expected
+  Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+  Evidence:
+    - reach yes: Related tests appear to reach discounted_total: boundary_matches_expected
+    - infection yes: Detected related test input at the changed boundary
+    - 9 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/assertion_form_parity_err_guard/input --diff fixtures/assertion_form_parity_err_guard/diff.patch --mode fast probe:src_lib.rs:predicate:c80557eb
+  ripr context --root fixtures/assertion_form_parity_err_guard/input --diff fixtures/assertion_form_parity_err_guard/diff.patch --mode fast --at probe:src_lib.rs:predicate:c80557eb
+
+Hidden:
+  6 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

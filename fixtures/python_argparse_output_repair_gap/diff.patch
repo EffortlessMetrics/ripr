@@ -1,0 +1,10 @@
+diff --git a/src/commands.py b/src/commands.py
+index 0000000..1111111 100644
+--- a/src/commands.py
++++ b/src/commands.py
+@@ -5,4 +5,4 @@
+     parser = argparse.ArgumentParser(prog="ship")
+     parser.add_argument("--dry-run", action="store_true")
+     parser.parse_args(argv)
+-    print("shipment ready")
++    print("shipment queued")

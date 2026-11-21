@@ -1,0 +1,10 @@
+diff --git a/example_module.py b/example_module.py
+index 1111111..2222222 100644
+--- a/example_module.py
++++ b/example_module.py
+@@ -1,4 +1,4 @@
+ def apply_discount(amount, threshold):
+-    if amount > threshold:
++    if amount >= threshold:
+         return amount - 10
+     return amount

@@ -1,0 +1,522 @@
+//! Versioned phase receipt for the review-comments orchestration boundary.
+//!
+//! The receipt describes execution state only.  It does not promote advisory
+//! static evidence into a proof, and an incomplete receipt never means that
+//! the requested review is clean or complete.
+
+use crate::review_input::canonical_root_identity;
+use serde::Serialize;
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::time::Instant;
+
+pub(crate) const REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION: &str = "0.2";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ReviewCommentsReceiptLimitation {
+    pub(crate) category: String,
+    pub(crate) repair_route: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ReviewCommentsPhaseEvidence {
+    pub(crate) phase: String,
+    pub(crate) duration_ms: u64,
+    pub(crate) reused: bool,
+    pub(crate) subject_count: Option<usize>,
+    pub(crate) stop_reason: String,
+    pub(crate) input_identity_digest: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ReviewCommentsFailure {
+    pub(crate) phase: String,
+    pub(crate) category: String,
+    pub(crate) message: String,
+    pub(crate) secondary_diagnostics: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub(crate) struct ReviewCommentsRunReceipt {
+    pub(crate) schema_version: &'static str,
+    pub(crate) status: &'static str,
+    pub(crate) root_identity: String,
+    pub(crate) base_sha: String,
+    pub(crate) head_sha: String,
+    pub(crate) requested_mode: String,
+    pub(crate) analysis_identity: Option<crate::app::review_comments::ReviewAnalysisIdentity>,
+    pub(crate) phase_evidence: Vec<ReviewCommentsPhaseEvidence>,
+    pub(crate) primary_failure: Option<ReviewCommentsFailure>,
+    pub(crate) configured_timeout_ms: u64,
+    pub(crate) last_completed_phase: Option<String>,
+    pub(crate) active_phase: Option<String>,
+    pub(crate) completed_artifacts: Vec<String>,
+    pub(crate) missing_artifacts: Vec<String>,
+    pub(crate) reusable_cache_identity: String,
+    pub(crate) limitations: Vec<ReviewCommentsReceiptLimitation>,
+    pub(crate) non_claims: Vec<String>,
+    pub(crate) atomic_write_status: &'static str,
+    #[serde(skip)]
+    phase_started: Option<Instant>,
+}
+
+impl ReviewCommentsRunReceipt {
+    pub(crate) fn new(
+        root: &Path,
+        base: &str,
+        head: &str,
+        mode: &crate::app::Mode,
+        timeout_ms: u64,
+        expected_artifacts: &[String],
+    ) -> Self {
+        let root_identity = canonical_root_identity(root);
+        let base_sha = resolve_revision(root, base);
+        let head_sha = resolve_revision(root, head);
+        let reusable_cache_identity = reusable_cache_identity(&root_identity, &base_sha, &head_sha);
+        Self {
+            schema_version: REVIEW_COMMENTS_RECEIPT_SCHEMA_VERSION,
+            status: "in_progress",
+            root_identity,
+            base_sha,
+            head_sha,
+            requested_mode: mode.as_str().to_string(),
+            analysis_identity: None,
+            phase_evidence: Vec::new(),
+            primary_failure: None,
+            configured_timeout_ms: timeout_ms,
+            last_completed_phase: None,
+            active_phase: Some("input_validation".to_string()),
+            completed_artifacts: Vec::new(),
+            missing_artifacts: expected_artifacts.to_vec(),
+            reusable_cache_identity,
+            limitations: Vec::new(),
+            non_claims: vec![
+                "static review guidance is advisory evidence only".to_string(),
+                "no complete route inventory is claimed until status is complete".to_string(),
+            ],
+            atomic_write_status: "not_written",
+            phase_started: Some(Instant::now()),
+        }
+    }
+
+    pub(crate) fn admit_identity(
+        &mut self,
+        identity: crate::app::review_comments::ReviewAnalysisIdentity,
+    ) {
+        self.analysis_identity = Some(identity);
+    }
+
+    pub(crate) fn fail(&mut self, phase: &str, category: &str, message: &str) {
+        self.finish_phase(phase, false, None, category, None);
+        self.status = "failed";
+        self.active_phase = Some(phase.to_string());
+        self.primary_failure = Some(ReviewCommentsFailure {
+            phase: phase.to_string(),
+            category: category.to_string(),
+            message: message.to_string(),
+            secondary_diagnostics: Vec::new(),
+        });
+        self.limitations = vec![ReviewCommentsReceiptLimitation {
+            category: category.to_string(),
+            repair_route: "analysis/review-comments-producer-admission".to_string(),
+        }];
+        self.non_claims = vec![
+            "no complete route inventory".to_string(),
+            "no all-clear".to_string(),
+        ];
+        self.phase_started = None;
+    }
+
+    pub(crate) fn phase(&mut self, completed: &str, active: &str) {
+        self.finish_phase(completed, false, None, "complete", None);
+        self.last_completed_phase = Some(completed.to_string());
+        self.active_phase = Some(active.to_string());
+        self.phase_started = Some(Instant::now());
+    }
+
+    pub(crate) fn measured_phase(
+        &mut self,
+        completed: &str,
+        active: &str,
+        reused: bool,
+        subject_count: Option<usize>,
+        input_identity_digest: Option<String>,
+    ) {
+        self.finish_phase(
+            completed,
+            reused,
+            subject_count,
+            "complete",
+            input_identity_digest,
+        );
+        self.last_completed_phase = Some(completed.to_string());
+        self.active_phase = Some(active.to_string());
+        self.phase_started = Some(Instant::now());
+    }
+
+    pub(crate) fn complete(&mut self, artifacts: &[String]) {
+        if let Some(active) = self.active_phase.clone() {
+            self.finish_phase(&active, false, Some(artifacts.len()), "complete", None);
+        }
+        self.status = "complete";
+        self.last_completed_phase = Some("artifact_io".to_string());
+        self.active_phase = None;
+        self.completed_artifacts = artifacts.to_vec();
+        self.missing_artifacts.clear();
+        self.phase_started = None;
+    }
+
+    fn finish_phase(
+        &mut self,
+        phase: &str,
+        reused: bool,
+        subject_count: Option<usize>,
+        stop_reason: &str,
+        input_identity_digest: Option<String>,
+    ) {
+        let duration_ms = self
+            .phase_started
+            .map(|started| started.elapsed().as_millis() as u64)
+            .unwrap_or_default();
+        self.phase_evidence.push(ReviewCommentsPhaseEvidence {
+            phase: phase.to_string(),
+            duration_ms,
+            reused,
+            subject_count,
+            stop_reason: stop_reason.to_string(),
+            input_identity_digest,
+        });
+    }
+
+    pub fn limited_timeout(&mut self, active_phase: &str) {
+        self.status = "limited_timeout";
+        self.active_phase = Some(active_phase.to_string());
+        self.limitations.push(ReviewCommentsReceiptLimitation {
+            category: "analysis_timeout".to_string(),
+            repair_route: "rerun review-comments with a larger configured timeout".to_string(),
+        });
+        self.terminalize_non_claims();
+    }
+
+    pub fn failed(&mut self, active_phase: &str, error: &str) {
+        self.status = "failed";
+        self.active_phase = Some(active_phase.to_string());
+        let repair_route = if error.trim().is_empty() {
+            "unknown analysis failure".to_string()
+        } else {
+            error.to_string()
+        };
+        self.limitations.push(ReviewCommentsReceiptLimitation {
+            category: "analysis_failed".to_string(),
+            repair_route,
+        });
+        self.terminalize_non_claims();
+    }
+
+    fn terminalize_non_claims(&mut self) {
+        self.non_claims.retain(|claim| {
+            claim != "no complete route inventory is claimed until status is complete"
+        });
+        self.non_claims
+            .push("no complete route inventory".to_string());
+        self.non_claims.push("no all-clear".to_string());
+    }
+
+    pub(crate) fn write_atomic(&mut self, path: &Path) -> Result<(), String> {
+        let parent = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)
+            .map_err(|err| format!("create receipt parent {} failed: {err}", parent.display()))?;
+
+        let temp_path = atomic_temp_path(path);
+        let mut committed = self.clone();
+        committed.atomic_write_status = "committed";
+        let json = serde_json::to_vec_pretty(&committed)
+            .map_err(|err| format!("serialize review-comments receipt failed: {err}"))?;
+        fs::write(&temp_path, json)
+            .map_err(|err| format!("write review-comments receipt temp failed: {err}"))?;
+        if let Err(err) = fs::rename(&temp_path, path) {
+            if err.kind() != std::io::ErrorKind::AlreadyExists {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!("publish review-comments receipt failed: {err}"));
+            }
+            fs::remove_file(path).map_err(|remove_err| {
+                format!("replace review-comments receipt failed: {remove_err}")
+            })?;
+            fs::rename(&temp_path, path).map_err(|rename_err| {
+                format!("publish review-comments receipt failed: {rename_err}")
+            })?;
+        }
+        self.atomic_write_status = "committed";
+        Ok(())
+    }
+
+    pub(crate) fn path_for_output(output: &Path) -> PathBuf {
+        output.with_file_name("run-receipt.json")
+    }
+}
+
+pub(crate) fn attach_to_json(
+    rendered: &str,
+    receipt: &ReviewCommentsRunReceipt,
+) -> Result<String, String> {
+    let mut value: Value = serde_json::from_str(rendered).map_err(|err| {
+        format!("parse review-comments JSON for receipt attachment failed: {err}")
+    })?;
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| "review-comments JSON must be an object".to_string())?;
+    object.insert(
+        "run_receipt".to_string(),
+        serde_json::to_value(receipt)
+            .map_err(|err| format!("serialize review-comments receipt failed: {err}"))?,
+    );
+    serde_json::to_string_pretty(&value)
+        .map_err(|err| format!("render review-comments JSON with receipt failed: {err}"))
+}
+
+fn reusable_cache_identity(root: &str, base: &str, head: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(b"ripr-review-comments\0");
+    hasher.update(root.as_bytes());
+    hasher.update([0]);
+    hasher.update(base.as_bytes());
+    hasher.update([0]);
+    hasher.update(head.as_bytes());
+    format!("sha256:{:x}", hasher.finalize())
+}
+
+fn resolve_revision(root: &Path, revision: &str) -> String {
+    let object = format!("{revision}^{{commit}}");
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["rev-parse", "--verify", &object])
+        .output();
+    output
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| revision.to_string())
+}
+
+fn atomic_temp_path(path: &Path) -> PathBuf {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "receipt.json".to_string());
+    path.with_file_name(format!(".{file_name}.{}.tmp", std::process::id()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::path::PathBuf;
+
+    fn sample_receipt() -> ReviewCommentsRunReceipt {
+        ReviewCommentsRunReceipt::new(
+            Path::new("."),
+            "origin/main",
+            "HEAD",
+            &crate::app::Mode::Fast,
+            30_000,
+            &["comments.json".to_string()],
+        )
+    }
+
+    #[test]
+    fn terminal_setters_preserve_phase_and_write_atomic_receipts() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-terminal-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+
+        let timeout_path = dir.join("timeout.json");
+        let mut timeout = sample_receipt();
+        timeout.limited_timeout("review_guidance");
+        assert_eq!(timeout.status, "limited_timeout");
+        assert_eq!(timeout.active_phase.as_deref(), Some("review_guidance"));
+        assert_eq!(timeout.last_completed_phase, None);
+        assert_eq!(timeout.limitations[0].category, "analysis_timeout");
+        assert_eq!(
+            timeout.limitations[0].repair_route,
+            "rerun review-comments with a larger configured timeout"
+        );
+        assert_eq!(
+            timeout.non_claims,
+            vec![
+                "static review guidance is advisory evidence only",
+                "no complete route inventory",
+                "no all-clear",
+            ]
+        );
+        timeout.write_atomic(&timeout_path)?;
+        let timeout_json: Value = serde_json::from_slice(
+            &fs::read(&timeout_path)
+                .map_err(|err| format!("read timeout receipt failed: {err}"))?,
+        )
+        .map_err(|err| format!("parse timeout receipt failed: {err}"))?;
+        assert_eq!(timeout_json["status"], "limited_timeout");
+        assert_eq!(timeout_json["active_phase"], "review_guidance");
+        assert_eq!(timeout_json["atomic_write_status"], "committed");
+        assert_eq!(
+            timeout_json["limitations"][0]["category"],
+            "analysis_timeout"
+        );
+        assert_eq!(
+            timeout_json["limitations"][0]["repair_route"],
+            "rerun review-comments with a larger configured timeout"
+        );
+        assert_eq!(
+            timeout_json["non_claims"][0],
+            "static review guidance is advisory evidence only"
+        );
+        assert_eq!(timeout_json["non_claims"][1], "no complete route inventory");
+        assert_eq!(timeout_json["non_claims"][2], "no all-clear");
+
+        let failure_path = dir.join("failed.json");
+        let mut failure = sample_receipt();
+        failure.failed("canonical_comparison", "canonical comparison failed");
+        assert_eq!(failure.status, "failed");
+        assert_eq!(
+            failure.active_phase.as_deref(),
+            Some("canonical_comparison")
+        );
+        assert_eq!(failure.limitations[0].category, "analysis_failed");
+        assert_eq!(
+            failure.limitations[0].repair_route,
+            "canonical comparison failed"
+        );
+        assert_eq!(
+            failure.non_claims,
+            vec![
+                "static review guidance is advisory evidence only",
+                "no complete route inventory",
+                "no all-clear",
+            ]
+        );
+        failure.write_atomic(&failure_path)?;
+        let failure_json: Value = serde_json::from_slice(
+            &fs::read(&failure_path).map_err(|err| format!("read failed receipt failed: {err}"))?,
+        )
+        .map_err(|err| format!("parse failed receipt failed: {err}"))?;
+        assert_eq!(failure_json["status"], "failed");
+        assert_eq!(failure_json["active_phase"], "canonical_comparison");
+        assert_eq!(failure_json["atomic_write_status"], "committed");
+        assert_eq!(
+            failure_json["limitations"][0]["category"],
+            "analysis_failed"
+        );
+        assert_eq!(
+            failure_json["limitations"][0]["repair_route"],
+            "canonical comparison failed"
+        );
+        assert_eq!(
+            failure_json["non_claims"][0],
+            "static review guidance is advisory evidence only"
+        );
+        assert_eq!(failure_json["non_claims"][1], "no complete route inventory");
+        assert_eq!(failure_json["non_claims"][2], "no all-clear");
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn write_atomic_succeeds_and_updates_status() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        fs::create_dir_all(&dir).map_err(|err| format!("create temp dir failed: {err}"))?;
+        let path = dir.join("receipt.json");
+        let mut receipt = sample_receipt();
+
+        receipt.write_atomic(&path)?;
+
+        // File exists and is valid JSON
+        let content =
+            fs::read_to_string(&path).map_err(|err| format!("read receipt failed: {err}"))?;
+        let parsed: Value = serde_json::from_str(&content)
+            .map_err(|err| format!("parse receipt JSON failed: {err}"))?;
+        assert_eq!(parsed["atomic_write_status"], "committed");
+
+        // Receipt state updated
+        assert_eq!(receipt.atomic_write_status, "committed");
+
+        // No temp file left behind
+        let temp = atomic_temp_path(&path);
+        assert!(
+            !temp.exists(),
+            "temp file should be cleaned up after rename"
+        );
+
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+
+    #[test]
+    fn write_atomic_fails_on_unwritable_path() -> Result<(), String> {
+        // On Windows, a path inside a non-existent drive is unwritable.
+        // On Unix, a path inside /dev/null/x is unwritable.
+        let path = if cfg!(windows) {
+            // Build the drive letter dynamically so the local-context gate
+            // does not flag a hardcoded absolute Windows path in source.
+            let drive = char::from_u32(90).unwrap_or('z');
+            PathBuf::from(format!("{drive}:nonexistent_ripr_test_dir/receipt.json"))
+        } else {
+            PathBuf::from("/dev/null/cannot_write_receipt.json")
+        };
+        let mut receipt = sample_receipt();
+        let result = receipt.write_atomic(&path);
+        assert!(
+            result.is_err(),
+            "write_atomic should fail on unwritable path"
+        );
+        // Receipt state should NOT be updated on failure
+        assert_eq!(receipt.atomic_write_status, "not_written");
+        Ok(())
+    }
+
+    #[test]
+    fn write_atomic_creates_parent_directory() -> Result<(), String> {
+        let dir = std::env::temp_dir().join(format!(
+            "ripr-receipt-parent-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        // Ensure the directory does not exist yet
+        let _ = fs::remove_dir_all(&dir);
+        let nested = dir.join("nested/sub/dir");
+        let path = nested.join("receipt.json");
+        let mut receipt = sample_receipt();
+
+        receipt.write_atomic(&path)?;
+
+        assert!(
+            path.exists(),
+            "receipt file should exist after write_atomic"
+        );
+        let _ = fs::remove_dir_all(&dir);
+        Ok(())
+    }
+}

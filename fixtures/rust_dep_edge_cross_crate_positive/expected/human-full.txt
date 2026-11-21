@@ -1,0 +1,33 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/rust_dep_edge_cross_crate_positive/input
+
+Summary: 1 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+WARNING fixtures/rust_dep_edge_cross_crate_positive/input/crates/a/src/lib.rs:4
+
+Changed
+  before: points * points
+  after:  points + SCORE_BONUS
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  crates/a/src/lib.rs::score
+
+Static exposure
+  exposed (warning, confidence 1.00)
+
+Evidence
+  - reach yes: Related tests appear to reach score: dependent_test_asserts_owner_score_value
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches returned value: points + SCORE_BONUS
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator yes: Strong oracle found: exact value or pattern assertion
+  - local flow reaches returned value: points + SCORE_BONUS (line 4)
+  - related test crates/c/tests/it.rs:5 dependent_test_asserts_owner_score_value uses strong exact value oracle: assert_eq!(score(7), 7 + SCORE_BONUS);
+  - observed assertion argument value 7 at line 6
+  - observed function argument value points = 7 at line 6

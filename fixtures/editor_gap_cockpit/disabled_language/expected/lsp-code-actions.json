@@ -1,0 +1,10 @@
+{
+  "fixture": "editor_gap_cockpit/disabled_language",
+  "actions": [
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

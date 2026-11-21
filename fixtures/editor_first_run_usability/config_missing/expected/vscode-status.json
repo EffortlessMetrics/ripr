@@ -1,0 +1,23 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/config_missing",
+  "status": "config_missing",
+  "projection": "active",
+  "workspace_root": "fixtures/editor_first_run_usability/config_missing/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "artifacts": {
+    "config": "missing",
+    "first_useful_action": "missing",
+    "gap_decision_ledger": "missing",
+    "agent_receipt": "missing"
+  },
+  "next_safe_action": "Run saved-workspace analysis or add ripr.toml only if default Rust behavior is not intended."
+}

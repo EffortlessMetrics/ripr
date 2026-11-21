@@ -1,0 +1,9 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -5,4 +5,4 @@
+ fn retired_helper(flag: bool) -> bool {
+     let margin = 1;
+-    if margin > 0 { flag } else { !flag }
++    if margin > 0 { !flag } else { flag }
+ }

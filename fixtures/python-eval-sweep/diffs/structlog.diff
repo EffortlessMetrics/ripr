@@ -1,0 +1,12 @@
+diff --git a/src/structlog/processors.py b/src/structlog/processors.py
+--- a/src/structlog/processors.py
++++ b/src/structlog/processors.py
+@@ -162,7 +162,7 @@
+     ) -> str:
+         elements: list[str] = []
+         for key, value in self._ordered_items(event_dict):
+-            if any(c <= " " for c in key):
++            if any(c < " " for c in key):
+                 msg = f'Invalid key: "{key}"'
+                 raise ValueError(msg)
+ 

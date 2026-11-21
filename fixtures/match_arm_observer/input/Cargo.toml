@@ -1,0 +1,8 @@
+[package]
+name = "match_arm_observer_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "match_arm_observer_fixture"
+path = "src/lib.rs"

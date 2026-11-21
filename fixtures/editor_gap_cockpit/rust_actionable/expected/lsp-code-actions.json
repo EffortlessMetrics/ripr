@@ -1,0 +1,73 @@
+{
+  "fixture": "editor_gap_cockpit/rust_actionable",
+  "actions": [
+    {
+      "title": "Inspect gap: copy repair packet",
+      "command": "ripr.copyContext",
+      "arguments": [
+        {
+          "label": "gap_repair_packet",
+          "uri": "src/pricing.rs",
+          "line": 42,
+          "gap_id": "gap:rust:pricing:threshold-boundary",
+          "canonical_gap_id": "gap:rust:pricing:threshold-boundary",
+          "gap_kind": "MissingBoundaryAssertion",
+          "language": "rust",
+          "language_status": "stable",
+          "gap_state": "actionable",
+          "repairability": "repairable",
+          "repair_route": {
+            "route_kind": "AddBoundaryAssertion",
+            "target_file": "tests/pricing.rs",
+            "related_test": "tests/pricing.rs::discount_threshold_boundary"
+          },
+          "verification_commands": [
+            "ripr agent verify --root . --json"
+          ],
+          "receipt_command": "ripr agent receipt --root . --json",
+          "limits_note": "Static evidence only; no source edits, generated tests, provider calls, or runtime mutation execution."
+        }
+      ]
+    },
+    {
+      "title": "Write targeted test: open best related test",
+      "command": "ripr.openRelatedTest",
+      "arguments": [
+        {
+          "uri": "tests/pricing.rs",
+          "line": 33,
+          "test_name": "discount_threshold_boundary"
+        }
+      ]
+    },
+    {
+      "title": "Verify after test: copy verify command",
+      "command": "ripr.copyAgentVerifyCommand",
+      "arguments": [
+        {
+          "label": "gap_verify",
+          "command": "ripr agent verify --root . --json",
+          "root": ".",
+          "canonical_gap_id": "gap:rust:pricing:threshold-boundary"
+        }
+      ]
+    },
+    {
+      "title": "Review result: copy receipt command",
+      "command": "ripr.copyAgentReceiptCommand",
+      "arguments": [
+        {
+          "label": "gap_receipt",
+          "command": "ripr agent receipt --root . --json",
+          "root": ".",
+          "canonical_gap_id": "gap:rust:pricing:threshold-boundary"
+        }
+      ]
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

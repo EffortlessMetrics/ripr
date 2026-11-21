@@ -1,0 +1,85 @@
+schema_version = "2.0"
+id = "ripr.slice.verification-command-execution.v1"
+generation = 1
+
+source_issue = "issue:2332"
+design_reference = "RIPR-SPEC-0135#verification-command-execution"
+change_class = "security_contract_change"
+
+claim_boundary = """
+Executes exactly one direct ripr agent verify route declared by a
+producer-shaped packet, after explicit authorization. The runner bounds process
+lifetime and output, reduces the child environment to a disclosed platform floor,
+forbids network and shell execution, rechecks repository currentness, and emits
+VerificationExecutionResultV1 process evidence. It does not issue receipts,
+decide gates, or prove mutation adequacy.
+
+Route authority is layered. Consistency: the typed verify spec must be
+reproducible from the packet's own verification_commands, which establishes only
+that the command a reviewer reads is the command that runs. Provenance: both
+--before and --after must pass the repo-exposure provenance contract (canonical
+shape, ripr producer identity, exact producer command, repository root equal to
+the selected root, full-SHA HEAD, recomputed content commitment, agreeing base
+revisions), and the canonical verify route is then RECOMPUTED over those
+validated artifacts and must equal the packet's route. The packet selects which
+validated producer artifacts to compare; it never authors the command.
+
+Declared limitations:
+- only the owned child is terminated; no process-group or job-object substrate is
+  available under the workspace unsafe_code and dependency policy, so descendant
+  containment rests on admitting only one leaf verify route;
+- HOME is passed through, so host global Git configuration can influence child
+  Git behavior;
+- verification_executed_fail, verification_timed_out, and
+  verification_command_not_found are mapped and unit-tested but not reachable
+  end-to-end, because the only executable route is ripr agent verify over
+  provenance-valid artifacts and that command always exits 0 within its timeout;
+  reaching them needs a fallible typed route in the command catalog.
+"""
+
+non_goals = [
+  "arbitrary user commands",
+  "shell execution",
+  "receipt issuance",
+  "gate authority",
+  "runtime mutation confirmation",
+  "production edits or test generation",
+]
+
+return_conditions = [
+  "Return to root if caller-controlled command fields can replace the producer-owned route.",
+  "Return to root if process output, timeouts, or repository movement are not disclosed in the result.",
+  "Return to root if execution can occur without explicit authorization or can issue a receipt.",
+  "Return to root if the executable route set widens beyond one leaf verify route before a process-group or job-object containment substrate exists.",
+  "Return to root if the child environment admits any variable outside the disclosed platform floor, or if a floor value is emitted in output.",
+]
+
+owned_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:contract:verification-execution",
+]
+
+shared_seams = [
+  "seam:ripr:domain:command-spec",
+  "seam:ripr:domain:verification-execution-result",
+  "seam:ripr:agent:artifact-provenance",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:output:gate-authority",
+  "seam:ripr:analysis:runtime-mutation",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0135#verification-command-execution"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

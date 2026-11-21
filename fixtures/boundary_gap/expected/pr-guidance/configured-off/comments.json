@@ -1,0 +1,58 @@
+{
+  "analysis_scope": {
+    "basis": "base",
+    "changed_files": [
+      "src/pricing.rs"
+    ],
+    "changed_lines": 1,
+    "changed_owner_functions": 0,
+    "changed_production_files": [],
+    "classified_seams_considered": 0,
+    "downstream_consumable": true,
+    "immediate_caller_files": [],
+    "limitation": "review_comments_working_set_scope_only",
+    "production_files_considered": 1,
+    "repair_route": "analysis/review-comments-working-set",
+    "run_status": "scoped",
+    "scope": "working_set",
+    "scoped_production_files": [
+      "src/pricing.rs"
+    ],
+    "total_production_files": null,
+    "total_rust_files": null
+  },
+  "base": "main",
+  "comments": [],
+  "head": "HEAD",
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "rendering_limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "review_input": {
+    "findings": [],
+    "projection_sha256": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+    "reviewed_count": 0,
+    "root": ".",
+    "schema_version": "ripr.review_input.v1"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 0,
+    "summary_only": 0,
+    "suppressed": 0,
+    "unchanged_tests": true
+  },
+  "summary_only": [],
+  "suppressed": [],
+  "tool": "ripr",
+  "warnings": [
+    {
+      "kind": "other",
+      "message": "seam 8f7fa8644fd12280 at src/pricing.rs:88 is configured off for weakly_gripped seams and is not included in agent brief results"
+    }
+  ]
+}

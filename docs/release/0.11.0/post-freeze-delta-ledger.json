@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_delta_ledger",
+  "status": "category_reviews_accepted_refreeze_selected",
+  "as_of_date": "2026-07-23",
+  "base": {"repository":"EffortlessMetrics/ripr-swarm","sha":"3a80c634f2157dee0e7f74fc72b7975f07699143","ref":"freeze/source-sync-2026-07-21"},
+  "audit_head": {"repository":"EffortlessMetrics/ripr-swarm","sha":"c86807ecdbf359594ef88c0ff38b10b446139dca","ahead_by":142,"behind_by":0},
+  "source_parent": {"repository":"EffortlessMetrics/ripr","sha":"ec7dc6beaec8ad2efca4abd502f9253cdb4f939c","role":"source_release_authority_parent"},
+  "candidate_recommendation": "refreeze",
+  "candidate_decision": "refreeze",
+  "replacement_candidate": {
+    "sha": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+    "supplemental_range": null,
+    "main_comparison_at_decision": "identical",
+    "freeze_operation": "pending_ripr_swarm_2354"
+  },
+  "coverage": {
+    "expected_commits": 142,
+    "recorded_commits": 142,
+    "remaining_commits": 0,
+    "complete": true,
+    "status": "exact_sha_denominator_validated",
+    "enumeration_basis": "GitHub compare count plus exact post-freeze commit-date windows",
+    "automated_uniqueness_validation": "passed",
+    "validation_receipt": "post-freeze-delta-validation.json",
+    "canonical_sha_list": "post-freeze-delta-shas.txt",
+    "record_set_commitment": "sha256:ea7373162affc0ddb6e7e54cf5f3d8ab56c4f4f82d833b67e93b29565845c1e4"
+  },
+  "review_summary": {
+    "review_status": "accepted",
+    "by_category": {"analyzer":31,"editor":36,"ops":56,"trust":19},
+    "accepted_dispositions": {
+      "must_include_0_11": 94,
+      "release_infrastructure_only": 13,
+      "safe_defer_post_0_11": 15,
+      "source_only_followup": 1,
+      "structural_no_semantic_delta": 19,
+      "needs_operator_decision": 0
+    },
+    "category_reviews": [
+      {"category":"trust","path":"post-freeze-trust-review.json","issue":"EffortlessMetrics/ripr-swarm#2350","status":"accepted","record_count":19},
+      {"category":"editor","path":"post-freeze-editor-review.json","issue":"EffortlessMetrics/ripr-swarm#2351","status":"accepted","record_count":36},
+      {"category":"analyzer","path":"post-freeze-analyzer-review.json","issue":"EffortlessMetrics/ripr-swarm#2352","status":"accepted","record_count":31},
+      {"category":"ops","path":"post-freeze-ops-review.json","issue":"EffortlessMetrics/ripr-swarm#2353","status":"accepted","record_count":56}
+    ]
+  },
+  "operator_decisions": [
+    {
+      "id": "verification_execution_train",
+      "decision": "include_landed_result_contract_defer_execution_and_receipt_v2",
+      "included_commit": "868a49d0fde2566fbf8cfef3d6651b7a6f454cbd",
+      "deferred_issues": ["EffortlessMetrics/ripr-swarm#2332","EffortlessMetrics/ripr-swarm#2333","EffortlessMetrics/ripr-swarm#2334"],
+      "release_nonclaim": "RIPR 0.11.0 does not execute verification commands and does not issue RepairReceiptV2."
+    },
+    {
+      "id": "check_artifact_reuse",
+      "decision": "include_complete_group",
+      "commits": ["00fe93a45050780181013321ca3a623788d08f9e","57a93d691c88238db103b433974fcf54c0dc24e5","6114b1b8eb9f8525664a218ae59d4408020d0943","1f2269aef3f154c13702f6e3e4392b7612dda299"]
+    },
+    {
+      "id": "rayon_parallel_parse",
+      "decision": "include_with_dependency_and_no_semantic_promotion",
+      "commit": "3685f49601325bac9451268aacea6d89de06a66b"
+    },
+    {
+      "id": "audit_head_mixed_cleanup",
+      "decision": "include_complete_commit_receipt_help_is_claimed_literal_cleanup_is_maintenance_only",
+      "commit": "c86807ecdbf359594ef88c0ff38b10b446139dca"
+    }
+  ],
+  "source_survivor_contract": "post-freeze-source-survivors.json",
+  "fragments": [
+    {"category":"trust","sequence":1,"path":"post-freeze-trust-fragment.json","record_count":12},{"category":"trust","sequence":2,"path":"post-freeze-trust-fragment-2.json","record_count":2},{"category":"trust","sequence":3,"path":"post-freeze-trust-fragment-3.json","record_count":1},{"category":"trust","sequence":4,"path":"post-freeze-trust-fragment-4.json","record_count":1},{"category":"trust","sequence":5,"path":"post-freeze-trust-fragment-5.json","record_count":1},{"category":"trust","sequence":6,"path":"post-freeze-trust-fragment-6.json","record_count":1},{"category":"trust","sequence":7,"path":"post-freeze-trust-fragment-7.json","record_count":1},
+    {"category":"editor","sequence":1,"path":"post-freeze-editor-fragment.json","record_count":16},{"category":"editor","sequence":2,"path":"post-freeze-editor-fragment-2.json","record_count":3},{"category":"editor","sequence":3,"path":"post-freeze-editor-fragment-3.json","record_count":1},{"category":"editor","sequence":4,"path":"post-freeze-editor-fragment-4.json","record_count":3},{"category":"editor","sequence":5,"path":"post-freeze-editor-fragment-5.json","record_count":5},{"category":"editor","sequence":6,"path":"post-freeze-editor-fragment-6.json","record_count":1},{"category":"editor","sequence":7,"path":"post-freeze-editor-fragment-7.json","record_count":1},{"category":"editor","sequence":8,"path":"post-freeze-editor-fragment-8.json","record_count":1},{"category":"editor","sequence":9,"path":"post-freeze-editor-fragment-9.json","record_count":5},
+    {"category":"analyzer","sequence":1,"path":"post-freeze-analyzer-fragment.json","record_count":5},{"category":"analyzer","sequence":2,"path":"post-freeze-analyzer-fragment-2.json","record_count":6},{"category":"analyzer","sequence":3,"path":"post-freeze-analyzer-fragment-3.json","record_count":1},{"category":"analyzer","sequence":4,"path":"post-freeze-analyzer-fragment-4.json","record_count":1},{"category":"analyzer","sequence":5,"path":"post-freeze-analyzer-fragment-5.json","record_count":2},{"category":"analyzer","sequence":6,"path":"post-freeze-analyzer-fragment-6.json","record_count":5},{"category":"analyzer","sequence":7,"path":"post-freeze-analyzer-fragment-7.json","record_count":7},{"category":"analyzer","sequence":8,"path":"post-freeze-analyzer-fragment-8.json","record_count":4},
+    {"category":"ops","sequence":1,"path":"post-freeze-ops-fragment.json","record_count":8},{"category":"ops","sequence":2,"path":"post-freeze-ops-fragment-2.json","record_count":8},{"category":"ops","sequence":3,"path":"post-freeze-ops-fragment-3.json","record_count":2},{"category":"ops","sequence":4,"path":"post-freeze-ops-fragment-4.json","record_count":6},{"category":"ops","sequence":5,"path":"post-freeze-ops-fragment-5.json","record_count":1},{"category":"ops","sequence":6,"path":"post-freeze-ops-fragment-6.json","record_count":7},{"category":"ops","sequence":7,"path":"post-freeze-ops-fragment-7.json","record_count":6},{"category":"ops","sequence":8,"path":"post-freeze-ops-fragment-8.json","record_count":9},{"category":"ops","sequence":9,"path":"post-freeze-ops-fragment-9.json","record_count":4},{"category":"ops","sequence":10,"path":"post-freeze-ops-fragment-10.json","record_count":5}
+  ],
+  "completion_requirements": [
+    "PR #1511 required checks and review are complete",
+    "the audit package merges into source main",
+    "ripr-swarm#2354 creates and validates the immutable replacement freeze ref",
+    "ripr#1478 refreshes source merge preflight from the exact selected parents",
+    "ripr#1507 and ripr#1508 prove source integration and direct two-parent topology"
+  ],
+  "constraints": [
+    "this decision does not itself create a candidate ref",
+    "this decision does not authorize source promotion",
+    "this decision does not authorize a version bump, tag, publication, signing, marketplace mutation, or release-secret use"
+  ]
+}

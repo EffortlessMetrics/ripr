@@ -1,0 +1,8 @@
+[package]
+name = "boundary_gap_nested_tests_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "boundary_gap_nested_tests_fixture"
+path = "src/lib.rs"

@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_category_review",
+  "category": "trust",
+  "status": "accepted",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2350",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "input_fragments": [
+    "post-freeze-trust-fragment.json",
+    "post-freeze-trust-fragment-2.json",
+    "post-freeze-trust-fragment-3.json",
+    "post-freeze-trust-fragment-4.json",
+    "post-freeze-trust-fragment-5.json",
+    "post-freeze-trust-fragment-6.json",
+    "post-freeze-trust-fragment-7.json"
+  ],
+  "record_count": 19,
+  "accepted_dispositions": {"must_include_0_11": 19},
+  "amendments": [
+    {
+      "commit_sha": "868a49d0fde2566fbf8cfef3d6651b7a6f454cbd",
+      "from": "needs_operator_decision",
+      "to": "must_include_0_11",
+      "decision": "Include the landed VerificationExecutionResultV1 schema and validator as the honest boundary for future execution evidence. Defer ripr-swarm#2332-#2334 beyond 0.11.0.",
+      "required_release_nonclaim": "RIPR 0.11.0 does not execute verification commands, does not issue RepairReceiptV2, and does not turn a displayed or externally run command into producer-executed assurance."
+    }
+  ],
+  "accepted_claims": [
+    "configured blocking uses complete producer-owned gap, seam, route, and command identity",
+    "analysis and movement artifacts are repository/revision/input/content bound",
+    "static movement and executed-verification assurance remain separate",
+    "canonical receipt writing binds actual repository HEAD and revalidates canonical movement input",
+    "legacy, partial, stale, unavailable, preview, or incomparable evidence remains fail-closed and visible"
+  ],
+  "nonclaims": [
+    "no runtime mutation confirmation",
+    "no correctness or coverage proof",
+    "no default blocking promotion",
+    "no remote signature or transparency service",
+    "no RIPR-owned verification execution in 0.11.0"
+  ],
+  "decision": "accept_for_replacement_candidate"
+}

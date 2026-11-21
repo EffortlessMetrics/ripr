@@ -1,0 +1,8 @@
+[package]
+name = "unrelated_test_mentions_token_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "unrelated_test_mentions_token_fixture"
+path = "src/lib.rs"

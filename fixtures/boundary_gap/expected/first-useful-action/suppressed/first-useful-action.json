@@ -1,0 +1,60 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "suppressed",
+  "audience": "developer",
+  "action_kind": "no_action",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+    "assistant_proof": null,
+    "ledger": null,
+    "baseline_delta": null,
+    "receipt": null,
+    "gate_decision": null,
+    "coverage_frontier": null,
+    "editor_context": null
+  },
+  "selected": {
+    "source": "pr_guidance",
+    "source_artifact": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary",
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "missing_discriminator": null
+  },
+  "title": "No first action for suppressed seam",
+  "why": "The seam is suppressed or configured off.",
+  "why_first": [
+    "The seam is suppressed or configured off.",
+    "Suppression state must not be treated as improvement."
+  ],
+  "target": null,
+  "commands": {
+    "context_packet": null,
+    "after_snapshot": null,
+    "verify": null,
+    "receipt": null
+  },
+  "evidence": {
+    "pr_guidance": "fixtures/boundary_gap/expected/pr-guidance/configured-off/comments.json",
+    "assistant_proof": null,
+    "receipt": null,
+    "ledger": null,
+    "static_movement": "unknown"
+  },
+  "fallback": {
+    "kind": "suppressed",
+    "summary": "Suppressed evidence remains visible for audit, but no focused-test action is emitted."
+  },
+  "warnings": [],
+  "limits": [
+    "Static evidence only.",
+    "Does not edit source or generate tests.",
+    "Does not change policy."
+  ]
+}

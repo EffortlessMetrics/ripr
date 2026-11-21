@@ -1,0 +1,117 @@
+{
+  "kind": "first_successful_pr_corpus",
+  "schema_version": "0.1",
+  "spec": "RIPR-SPEC-0051",
+  "proposal": "RIPR-PROP-0009",
+  "status": "fixture_backed",
+  "cases": [
+    {
+      "id": "boundary-gap",
+      "description": "A repairable Rust boundary gap becomes the top first-run repair.",
+      "input": "boundary-gap/inputs/reports/gap-decision-ledger.json",
+      "expected": "boundary-gap/expected/start-here.json",
+      "demo_story": "boundary-gap/README.md",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "actionable_gap"
+    },
+    {
+      "id": "output-contract-gap",
+      "description": "A presentation/output text gap routes to output golden repair.",
+      "input": "output-contract-gap/inputs/reports/gap-decision-ledger.json",
+      "expected": "output-contract-gap/expected/start-here.json",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "actionable_gap"
+    },
+    {
+      "id": "python-preview-gap",
+      "description": "A repairable Python preview gap becomes a preview-limited first-run repair.",
+      "input": "python-preview-gap/inputs/reports/gap-decision-ledger.json",
+      "outcome_before": "python-preview-gap/inputs/reports/before-check.json",
+      "outcome_after": "python-preview-gap/inputs/reports/after-check.json",
+      "expected": "python-preview-gap/expected/start-here.json",
+      "expected_outcome": "python-preview-gap/expected/outcome/closed.json",
+      "expected_outcome_markdown": "python-preview-gap/expected/outcome/closed.md",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "preview_limited",
+      "expected_gap_movement": "closed",
+      "outcome_receipts": [
+        {
+          "id": "closed",
+          "before": "python-preview-gap/inputs/reports/before-check.json",
+          "after": "python-preview-gap/inputs/reports/after-check.json",
+          "expected": "python-preview-gap/expected/outcome/closed.json",
+          "expected_markdown": "python-preview-gap/expected/outcome/closed.md",
+          "expected_gap_movement": "closed"
+        },
+        {
+          "id": "unchanged",
+          "before": "python-preview-gap/inputs/reports/before-check.json",
+          "after": "python-preview-gap/inputs/reports/before-check.json",
+          "expected": "python-preview-gap/expected/outcome/unchanged.json",
+          "expected_markdown": "python-preview-gap/expected/outcome/unchanged.md",
+          "expected_gap_movement": "unchanged"
+        },
+        {
+          "id": "opened",
+          "before": "python-preview-gap/inputs/reports/after-check.json",
+          "after": "python-preview-gap/inputs/reports/before-check.json",
+          "expected": "python-preview-gap/expected/outcome/opened.json",
+          "expected_markdown": "python-preview-gap/expected/outcome/opened.md",
+          "expected_gap_movement": "opened"
+        }
+      ]
+    },
+    {
+      "id": "typescript-preview-gap",
+      "description": "A repairable TypeScript preview gap becomes a preview-limited first-run repair.",
+      "input": "typescript-preview-gap/inputs/reports/gap-decision-ledger.json",
+      "outcome_before": "typescript-preview-gap/inputs/reports/before-check.json",
+      "outcome_after": "typescript-preview-gap/inputs/reports/after-check.json",
+      "expected": "typescript-preview-gap/expected/start-here.json",
+      "expected_outcome": "typescript-preview-gap/expected/outcome/closed.json",
+      "expected_outcome_markdown": "typescript-preview-gap/expected/outcome/closed.md",
+      "expected_status": "actionable",
+      "expected_state": "top_gap",
+      "expected_output_state": "preview_limited",
+      "expected_gap_movement": "closed",
+      "outcome_receipts": [
+        {
+          "id": "closed",
+          "before": "typescript-preview-gap/inputs/reports/before-check.json",
+          "after": "typescript-preview-gap/inputs/reports/after-check.json",
+          "expected": "typescript-preview-gap/expected/outcome/closed.json",
+          "expected_markdown": "typescript-preview-gap/expected/outcome/closed.md",
+          "expected_gap_movement": "closed"
+        }
+      ]
+    },
+    {
+      "id": "empty-diff",
+      "description": "An empty diff emits schema-valid no-action output.",
+      "input": "empty-diff/inputs/reports/gap-decision-ledger.json",
+      "expected": "empty-diff/expected/start-here.json",
+      "expected_status": "no_action",
+      "expected_state": "empty_diff",
+      "expected_output_state": "clean"
+    },
+    {
+      "id": "blocked-ledger",
+      "description": "A blocked ledger stays blocked and points to regeneration.",
+      "input": "blocked-ledger/inputs/reports/gap-decision-ledger.json",
+      "expected": "blocked-ledger/expected/start-here.json",
+      "expected_status": "blocked",
+      "expected_state": "blocked_artifact",
+      "expected_output_state": "missing_artifacts"
+    }
+  ],
+  "must_not_claim": [
+    "runtime mutation proof",
+    "coverage adequacy",
+    "gate authority",
+    "source edits",
+    "generated tests"
+  ]
+}

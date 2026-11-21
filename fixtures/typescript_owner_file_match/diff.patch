@@ -1,0 +1,11 @@
+diff --git a/src/b.ts b/src/b.ts
+index 0000000..1111111 100644
+--- a/src/b.ts
++++ b/src/b.ts
+@@ -1,5 +1,5 @@
+ export function betaScore(value: number): number {
+-    if (value > 10) {
++    if (value >= 10) {
+         return value + 1;
+     }
+     return value;

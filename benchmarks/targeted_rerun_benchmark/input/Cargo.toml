@@ -1,0 +1,8 @@
+[package]
+name = "targeted-rerun-benchmark"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "targeted_rerun_benchmark"
+path = "src/lib.rs"

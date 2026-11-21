@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/adapter_unavailable",
+  "receipt_state": "receipt_unavailable_adapter",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Use a binary that can project this language before trusting receipts."
+}

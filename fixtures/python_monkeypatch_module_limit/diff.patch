@@ -1,0 +1,10 @@
+diff --git a/src/service.py b/src/service.py
+index 0000000..1111111 100644
+--- a/src/service.py
++++ b/src/service.py
+@@ -7,4 +7,4 @@ def remote_total_with_tax():
+ 
+ 
+ def fetch_total():
+-    return remote_total()
++    return remote_total_with_tax()

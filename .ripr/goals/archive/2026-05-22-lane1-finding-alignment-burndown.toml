@@ -1,0 +1,289 @@
+# Archived by `cargo xtask closeout --goal lane1-finding-alignment-burndown` on 2026-05-22.
+id = "lane1-finding-alignment-burndown"
+title = "Lane 1 Finding Alignment Burn-Down"
+status = "closed"
+no_current_goal = true
+lane = "1"
+issue = "228"
+
+# This closed manifest records the Lane 1 finding-alignment burn-down rail
+# after the closeout selected by swarm #280. The durable sources of truth remain:
+#
+# - docs/lanes/LANE_1_FINDING_ALIGNMENT_BURNDOWN.md
+# - plans/lane1-finding-alignment-burndown/implementation-plan.md
+#
+# This closed copy is historical state. Select a successor campaign before
+# starting behavior-bearing work.
+
+objective = """
+Keep RIPR operating on canonical evidence items instead of raw findings as new
+alignment gaps are measured, without reopening completed presentation-text,
+config/policy base scope, editor adoption, release control, or gate authority.
+"""
+
+end_state = [
+  "alignment coverage by evidence class is auditable",
+  "raw findings stay diagnostic and canonical items remain the countable unit",
+  "actionable canonical gaps preserve repair-route and verify-command coverage",
+  "named static limitation buckets become audit-driven, fixture-backed repair queues",
+  "runtime confidence coverage is visible by canonical evidence class without adding mutation execution",
+]
+
+hard_rules = [
+  "fixture first",
+  "audit-driven repairs before heuristics",
+  "raw findings remain supporting evidence",
+  "canonical items are the countable evidence unit",
+  "actionable canonical gaps require repair routes",
+  "named limitations are analyzer work, not user test debt",
+  "runtime-only signal does not create static gaps",
+  "policy/adoption overlays stay separate from Lane 1 evidence state",
+]
+
+non_goals = [
+  "no PR or CI rendering changes",
+  "no inline PR comment publishing",
+  "no LSP or editor polish",
+  "no gate-policy changes or default blocking",
+  "no public badge or score redefinition",
+  "no generated tests",
+  "no automatic source edits",
+  "no provider/model calls",
+  "no mutation execution",
+]
+
+[[work_item]]
+id = "report/finding-alignment-coverage-audit"
+status = "done"
+branch = "report-finding-alignment-coverage-audit"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Add the class-by-class audit map that reports alignment coverage, unaligned raw findings, top unaligned examples, same-line duplicate groups, unnamed static unknowns, missing repair routes, missing verify commands, and raw-to-canonical ratio while preserving advisory/static claim boundaries."
+commands = [
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/named-static-unknown-invariant"
+status = "done"
+branch = "analysis-named-static-unknown-invariant"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Preserve the invariant that user-facing static_unknown canonical items have a named static limitation and repair route: static_unknown_without_named_limitation remains zero, unknowns stay visible, unknowns do not become actionable without fixture-backed evidence, and limitation categories point to repair routes."
+commands = [
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/top-static-limitation-bucket-burndown"
+status = "done"
+branch = "analysis-top-static-limitation-bucket-burndown"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0043-presentation-text-evidence.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Identify the top named static limitation bucket from audit data, add fixture-backed positive and must-not-claim coverage for the selected supported sub-shape, move only supported cases out of limitation, keep unsupported cases named, and report the before/after audit or scorecard delta."
+commands = [
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/spec-config-policy-unsupported-flow-expansion"
+status = "done"
+branch = "docs-spec-config-policy-unsupported-flow-expansion"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Update the existing spec or add a focused note that defines the next fixture-backed unsupported-flow expansion criteria for config_or_policy_constant evidence; cover opaque lookup, generated config/schema output, macro output, dynamic dispatch, and unsupported cross-file flows; preserve that internal policy/config metadata alone is not user test debt; identify required benchmark and audit deltas before analyzer changes."
+commands = [
+  "cargo xtask check-spec-format",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "fixtures/config-policy-unsupported-flow-burndown"
+status = "done"
+branch = "fixtures-config-policy-unsupported-flow-burndown"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Add benchmark cases for at least two selected config/policy unsupported-flow categories; each case records raw findings, expected canonical item, gap_state, actionability, static limitation category, and must-not-claim guards; internal metadata remains no-action; unsupported flow remains limitation until the matching analyzer slice lands."
+commands = [
+  "cargo test -p xtask evidence_quality_benchmark",
+  "cargo xtask check-fixture-contracts",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/config-policy-unsupported-flow-support"
+status = "done"
+branch = "analysis-config-policy-unsupported-flow-support"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0048-config-policy-constant-evidence.md",
+]
+acceptance = "Move one selected config/policy unsupported-flow category from named limitation to observed, actionable, or no-action only when fixture-backed; keep other unsupported flows named; preserve raw findings as supporting evidence; report before/after scorecard or audit delta; do not create user test debt from policy/config metadata alone."
+commands = [
+  "cargo test -p ripr config_policy --lib",
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/actionable-repair-route-completeness"
+status = "done"
+branch = "analysis-actionable-repair-route-completeness"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Preserve the invariant that actionable canonical items include recommended_repair, repair_kind, and target test type, assertion shape, or output observer shape when applicable; non-action states must not fake repair routes; advisory/static boundaries remain explicit."
+commands = [
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "analysis/actionable-verify-command-coverage"
+status = "done"
+branch = "analysis-actionable-verify-command-coverage"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Preserve and expand verification command coverage for actionable canonical items where feasible; missing commands remain explicit and counted; commands preserve advisory/static boundaries and do not imply mutation execution."
+commands = [
+  "cargo xtask lane1-evidence-audit",
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "report/actionable-canonical-gaps-scorecard-lead"
+status = "done"
+branch = "report-actionable-canonical-gaps-scorecard-lead"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Preserve scorecard-leading actionable canonical gaps as new evidence classes land; already-observed, internal/no-action, static limitation, raw-finding, canonical-item, raw-to-canonical, repair-route, and verify-command coverage remain visible; public badge semantics do not change."
+commands = [
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask evidence-quality-trend",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "calibration/runtime-confidence-coverage-audit"
+status = "done"
+branch = "calibration-runtime-confidence-coverage-audit"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+  "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md",
+  "docs/specs/RIPR-SPEC-0034-evidence-quality-scorecard.md",
+]
+acceptance = "Report calibrated-supported versus static-only canonical items by evidence class; keep top static-only classes visible; runtime-only signal does not create static gaps; cargo-mutants import planning stays linked to #323 and does not become live mutation execution."
+commands = [
+  "cargo xtask evidence-quality-scorecard",
+  "cargo xtask evidence-quality-trend",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "dogfood/finding-alignment-examples-refresh"
+status = "done"
+branch = "dogfood-finding-alignment-examples-refresh"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Refresh finding-alignment dogfood examples only for material burn-down deltas; examples include canonical_gap_id, evidence_class, gap_state, actionability, raw finding summary, repair route or no-action reason, verify route where applicable, and before/after audit or scorecard context; existing presentation-text and config/policy examples are not duplicated without a new delta."
+commands = [
+  "cargo xtask dogfood",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "docs/canonical-alignment-contract-refresh"
+status = "done"
+branch = "docs-canonical-alignment-contract-refresh"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Refresh the existing v2 downstream handoff after material burn-down deltas; reflect the refreshed dogfood receipt fields and config/policy opaque report lookup delta; preserve raw findings as supporting evidence and canonical items as the countable unit; do not change analyzer, PR/CI, editor, gate, generated-test, provider, source-edit, or mutation behavior."
+commands = [
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/finding-alignment-burndown-closeout"
+status = "done"
+branch = "campaign-finding-alignment-burndown-closeout"
+stackable = false
+plan = "plans/lane1-finding-alignment-burndown/implementation-plan.md"
+specs = [
+  "docs/specs/RIPR-SPEC-0045-finding-to-gap-alignment.md",
+]
+acceptance = "Close the Lane 1 finding-alignment burn-down after the downstream handoff refresh; record improved evidence classes, remaining unknowns, moved counts, open follow-up issues, downstream consumers, and the next evidence class to repair; do not change analyzer, PR/CI, editor, gate, generated-test, provider, source-edit, or mutation behavior."
+commands = [
+  "cargo xtask goals status",
+  "cargo xtask goals next",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]

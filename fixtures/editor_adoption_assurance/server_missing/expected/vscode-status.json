@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/server_missing",
+  "status": "server_missing",
+  "projection": "fail_closed",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_adoption_assurance/server_missing/workspace"
+  },
+  "server": {
+    "state": "missing",
+    "path": null,
+    "version": null,
+    "expected_version": "compatible",
+    "protocol_features": [],
+    "supported_artifact_schemas": []
+  },
+  "languages": {
+    "enabled": [],
+    "available": []
+  },
+  "first_pr_packet": {
+    "state": "not_projected"
+  },
+  "receipt": {
+    "state": "not_projected"
+  },
+  "next_safe_action": "Set ripr.server.path or install the ripr binary, then run Diagnose Setup again."
+}

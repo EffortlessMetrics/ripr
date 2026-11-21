@@ -1,0 +1,27 @@
+{
+  "schema_version": "0.1",
+  "kind": "ripr_zero_status",
+  "ripr_zero": {
+    "state": "not_yet",
+    "visible_unresolved": 4,
+    "new_policy_eligible": 1,
+    "blocking_candidates": 0
+  },
+  "baseline": {
+    "still_present": 2,
+    "resolved": 3
+  },
+  "repair_routes": [
+    {
+      "source": "baseline_debt_delta",
+      "seam_id": "new",
+      "path": "src/new.rs",
+      "line": 4,
+      "missing_discriminator": "new == 4",
+      "suggested_test": "assert_eq!(new(), 4)",
+      "related_test": "tests/new.rs::boundary",
+      "verify_command": "ripr agent verify --json",
+      "agent_command": "ripr agent start --root . --seam-id new --out target/ripr/workflow"
+    }
+  ]
+}

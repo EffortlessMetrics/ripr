@@ -1,0 +1,9 @@
+# Workflow action runtime exceptions.
+#
+# Format:
+# path|pattern|max_count|reason
+#
+# GitHub-hosted actions should use Node-24-backed action majors where official
+# releases exist. This allowlist is only for temporary official-action gaps.
+
+.github/workflows/security.yml|actions/dependency-review-action@v4|1|Official Dependency Review action has no Node-24-backed major yet; keep the hard security gate.

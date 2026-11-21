@@ -1,0 +1,88 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/guarded_result_match_fail_closed/input
+
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+WARNING fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62
+
+Changed
+  before: Ok(build_response(id, method)?)
+  after:  Ok(build_response(id.trim(), method)?)
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::expect_response
+
+Static exposure
+  weakly_exposed (warning, confidence 0.92)
+
+Evidence
+  - reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation yes: Complete propagation witness reaches error variant: Ok(build_response(id.trim(), method)?)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: Ok(build_response(id.trim(), method)?) (line 62)
+  - related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, "42")
+  - related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, "42")
+  - related test tests/protocol.rs:55 swallowed_error_arm_never_credits uses strong exact value oracle: assert_eq!(response.id, "42")
+  - observed function argument value "42" at line 5
+  - observed function argument value "42|workspace/refresh" at line 5
+  - observed assertion argument value "42" at line 6
+  - observed function argument value "42" at line 26
+  - observed function argument value "42|workspace/refresh" at line 26
+  - observed assertion argument value "42" at line 28
+  - observed function argument value "42" at line 36
+  - observed assertion argument value "42" at line 37
+
+Weakness
+  - No exact error variant discriminator was detected
+
+Next step
+  Assert the exact error variant or payload instead of only is_err().
+
+WARNING fixtures/guarded_result_match_fail_closed/input/src/lib.rs:62
+
+Changed
+  before: Ok(build_response(id, method)?)
+  after:  Ok(build_response(id.trim(), method)?)
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::expect_response
+
+Static exposure
+  weakly_exposed (warning, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests appear to reach expect_response: direct_owner_call_keeps_the_file_related, message_only_error_predicate_never_pins, shadowed_callee_never_credits_the_seam
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation weak: No complete owner-bound propagation witness found for returned value: Ok(build_response(id, method)?)
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: Ok(build_response(id, method)?) (line 62)
+  - related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: expect_response("42|workspace/refresh", "42").unwrap()
+  - related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses smoke smoke only oracle: let response = expect_response("42|workspace/refresh", "42").unwrap();
+  - related test tests/protocol.rs:4 direct_owner_call_keeps_the_file_related uses strong exact value oracle: assert_eq!(response.id, "42");
+  - related test tests/protocol.rs:43 message_only_error_predicate_never_pins uses strong exact value oracle: assert_eq!(response.id, "42")
+  - related test tests/protocol.rs:34 shadowed_callee_never_credits_the_seam uses strong exact value oracle: assert_eq!(response.id, "42")
+  - observed function argument value "42" at line 5
+  - observed function argument value "42|workspace/refresh" at line 5
+  - observed assertion argument value "42" at line 6
+  - observed function argument value "42" at line 26
+  - observed function argument value "42|workspace/refresh" at line 26
+  - observed assertion argument value "42" at line 28
+  - observed function argument value "42" at line 36
+  - observed assertion argument value "42" at line 37
+
+Weakness
+  - No strong discriminator was detected
+
+Next step
+  Replace broad assertions with exact equality or a property that constrains the changed returned value.

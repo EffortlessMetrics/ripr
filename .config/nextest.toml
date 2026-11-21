@@ -1,0 +1,21 @@
+[profile.ci]
+retries = 0
+failure-output = "immediate-final"
+
+[profile.ci.junit]
+path = "junit.xml"
+
+# This production-path control compiles/enumerates reviewed trees through
+# nested Cargo under the unchanged 180-second command bounds. Reserve the
+# runner while it executes; all tests and all diagnostic commands still run.
+[[profile.default.overrides]]
+filter = 'binary(=source_promotion_workflow_contract) & test(=green_historical_diagnostics_are_rejected_by_the_real_final_gate)'
+threads-required = "num-test-threads"
+
+# #2695: Fast iteration path for local development.
+# Skip slow server-spawning tests with:
+#   cargo nextest run --skip framed_lsp_ --skip editor_agent_loop_
+# Or run only the fast lib tests:
+#   cargo nextest run -p ripr --lib --skip framed_lsp_
+# The slow tests (framed_lsp_*, editor_agent_loop_*) spawn real ripr lsp --stdio
+# servers and take ~30s each. There are ~38 of them across the lib + integration tests.

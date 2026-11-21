@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_inline_comment_publish_plan",
+  "status": "advisory",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "mode": "plan",
+  "inputs": {
+    "pr_guidance": null,
+    "existing_comments": null
+  },
+  "limits": {"max_inline_comments": 3, "advisory": true, "comments_default": "off"},
+  "summary": {"guidance_comments": 0, "summary_only": 0, "suppressed": 0, "publishable": 0, "planned_create": 0, "planned_update": 0, "planned_keep": 0, "planned_delete": 0, "skipped": 0, "blocked": 1, "safe_to_publish": false},
+  "operations": [],
+  "skipped": [],
+  "blocked": [
+    {"source_collection": "pr_guidance", "source_id": null, "dedupe_key": null, "blocked_reason": "missing_pr_guidance", "message": "No review-comments JSON was supplied."}
+  ],
+  "warnings": [],
+  "limits_note": "Advisory inline-comment publish plan only; default workflows do not post comments, summary-only guidance is never published inline, and gate decisions remain separate."
+}

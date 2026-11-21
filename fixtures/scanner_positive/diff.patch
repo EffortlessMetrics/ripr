@@ -1,0 +1,6 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -16,1 +16,1 @@
+-    if final_state == "word" {
++    if final_state == "text" {

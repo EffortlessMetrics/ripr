@@ -1,0 +1,10 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -25,5 +25,5 @@ impl ParserA {
+ impl ParserA {
+     pub fn parse_summary(&self, raw: &str) -> Result<ParseSummary, Box<dyn Error>> {
+-        try_parse_summary(raw).map_err(|error| error.to_string().into())
++        try_parse_summary(raw).map_err(Into::into)
+     }
+ }

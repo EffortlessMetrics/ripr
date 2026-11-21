@@ -1,0 +1,204 @@
+{
+  "schema_version": "0.1",
+  "kind": "python_judged_pr_panel_manifest",
+  "spec": "RIPR-SPEC-0092",
+  "tier": "B",
+  "description": "Second POPULATED Tier B judged-diff panel: the four scaled Tier A sweep diffs that produced findings (jinja/anyio/flask/structlog), judged by manual review against ground truth (ran the real `ripr check --root <checkout> --diff <diff> --mode fast --json` against the pinned checkout, then read each repo's own tests at the pinned SHA). sqlalchemy is recorded as a no-finding timeout (Tier A robustness carryover, not a usefulness judgment). Companion to starter-judged.json (click/six/tenacity). Combined judged n=7; still manual review, directional not a statistically robust rate.",
+  "measurement_summary": {
+    "items_judged": 4,
+    "false_exposed_count": 0,
+    "false_actionable_count": 2,
+    "note": "This pass: 0 false_exposed; originally 3 false_actionable (jinja, anyio, structlog) -- each a conservative over-suggestion where an existing test DOES discriminate the change but ripr could not trace the discriminating oracle to the owner through an indirect call. flask is a correct conservative gap (its only discriminating input, an empty-string env var, is unexercised). UPDATE 2026-06-14: structlog is RESOLVED -- PR #1228 added a cross-file inline construct-call relation, so ripr now links test_renderers.py::test_invalid_key and reads structlog as exposed/changed_sink_token (a correct exposed, no longer a false_actionable). Remaining false_actionables this pass: 2 (jinja framework filter-dispatch, anyio function-result binding + async oracle -- both documented as defensible limitations). COMBINED with starter-judged.json (n=3: tenacity false_actionable [smoke, contract-consistent per python_broad_boolean_assertion], click + six correct): full panel n=7 -> 0/7 false_exposed and 3/7 false_actionable after #1228 (was 4/7). ripr remains SAFE; precision improved.",
+    "judged_against": "ripr at main as of 2026-06-13 (post #1206 scale, #1212 learnings)",
+    "updated": "2026-06-14 (post #1224 false-exposed fix + #1228 cross-file precision)"
+  },
+  "limits": [
+    "manual judgment of a 4-item scaled set (7 combined with the starter); not a statistically robust rate",
+    "judged against the analyzer at main as of 2026-06-13",
+    "no automated judging engine; manual_review only, each verdict re-derived from the real ripr output + the repo's own tests at the pinned SHA",
+    "advisory only; never a default gate, badge, or RIPR Zero input",
+    "no support-tier claim"
+  ],
+  "items": [
+    {
+      "id": "jinja-do-round-method-validation-predicate",
+      "repo": "jinja",
+      "base": "5ef70112a1ff19c05324ff889dd30405b1002044",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/jinja.diff",
+      "shape": [
+        "pytest_library"
+      ],
+      "expected_direction": "should_stay_quiet",
+      "anchor": {
+        "file": "src/jinja2/filters.py",
+        "line": 1174,
+        "owner": "do_round",
+        "boundary": "method in {common, ceil, floor} validation guard"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "actual_classification": "weakly_exposed",
+      "actual_oracle_alignment": "unknown",
+      "labels": {
+        "top_card_useful": false,
+        "false_actionable": true,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": false,
+        "packet_boundaries_safe": true,
+        "limitation_quality": null
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "The diff inverts the guard `if method not in {common,ceil,floor}: raise` to `if method in {...}: raise`, so the VALID methods now raise FilterArgumentError. tests/test_filters.py:451 TestFilter.test_round_positive asserts `tmpl.render() == \"3.0|2.0|2.123|3.0\"` on a template using `round(3,'floor')` and `round(0,'ceil')` (and bare `round`, default method 'common'); under the mutation every one of those raises, so render() raises and the assertion fails. The change IS discriminated, so ripr should have read exposed and stayed quiet. Instead it read weakly_exposed/unknown/no_strong_oracle and linked only name-proximity tests (test_abs, test_batch, ...), routing a repair card: a FALSE_ACTIONABLE. Root cause: the oracle is a rendered template string `tmpl.render() == ...` and the owner do_round is reached through Jinja's filter registry by the literal name 'round' — pure framework dispatch that syntax-first relation + oracle extraction cannot trace. This is the genuinely-opaque end of the indirect-call family (a defensible limitation), but the direction is conservative: over-suggest, never over-credit."
+    },
+    {
+      "id": "anyio-repeat-times-boundary",
+      "repo": "anyio",
+      "base": "85f7e8eada1ed4f077e4760f0c3d20d67452dcb8",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/anyio.diff",
+      "shape": [
+        "pytest_library"
+      ],
+      "expected_direction": "should_stay_quiet",
+      "anchor": {
+        "file": "src/anyio/itertools.py",
+        "line": 526,
+        "owner": "repeat",
+        "boundary": "remaining <= 0 early-return guard"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "actual_classification": "weakly_exposed",
+      "actual_oracle_alignment": "orthogonal",
+      "labels": {
+        "top_card_useful": false,
+        "false_actionable": true,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": false,
+        "packet_boundaries_safe": true,
+        "limitation_quality": null
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "The diff flips `if remaining <= 0` to `if remaining < 0` in repeat(). The value-output is EQUIVALENT at the boundary (times=0: the old code returns early; the new code falls through to `while remaining > 0`, which immediately exits — both yield nothing), so test_finite_cases' `collect(iterator) == []` cannot tell them apart. But tests/test_itertools.py:843 TestRepeat.test_checkpoints_empty_results runs `assert_cancelled_on_first_next(repeat('x', 0))`, which enters a cancelled CancelScope and asserts `pytest.raises(get_cancelled_exc_class())` on `anext`: the old `<= 0` branch executes `await checkpoint()` (which observes the cancellation and raises), while the mutated `< 0` branch skips the checkpoint and the generator returns with StopAsyncIteration — no Cancelled raised, assertion fails. So the change IS discriminated, by the checkpoint/cancellation oracle, not the value oracle. ripr read weakly_exposed/orthogonal (it compared the changed sink `remaining` to test_infinite's value oracle `anext(iterator)=='x'`, the wrong test) and routed a card: FALSE_ACTIONABLE. Root cause: the discriminating test binds a local to a function RESULT (`repeat('x',0)`) and observes it through an async-cancellation helper, not a value assertion — function-result binding plus a non-value oracle, doubly beyond syntax-first tracing. Conservative direction."
+    },
+    {
+      "id": "flask-config-from-envvar-empty-string-boundary",
+      "repo": "flask",
+      "base": "36e4a824f340fdee7ed50937ba8e7f6bc7d17f81",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/flask.diff",
+      "shape": [
+        "pytest_library"
+      ],
+      "expected_direction": "should_gap",
+      "anchor": {
+        "file": "src/flask/config.py",
+        "line": 115,
+        "owner": "Config.from_envvar",
+        "boundary": "not rv vs rv is None (empty-string env var)"
+      },
+      "expected_classification": "reachable_unrevealed",
+      "expected_static_limit_kind": null,
+      "actual_classification": "static_unknown",
+      "actual_oracle_alignment": "unknown",
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": false,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": true,
+        "limitation_quality": "imprecise"
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "The diff changes `if not rv` to `if rv is None` where `rv = os.environ.get(variable_name)`. The two predicates differ on exactly one input: an env var set to the empty string ('' is falsy so `not rv` is True, but `'' is None` is False). tests/test_config.py:144 test_config_from_envvar exercises only the unset case (`os.environ = {}` -> rv is None, both predicates agree) and the valid-path case (a real .py path, both agree); test_config_from_envvar_missing uses a non-empty 'missing.cfg'. No test sets the variable to '', so NO existing test discriminates the change. ripr's failure-closed static_unknown is therefore honest: neither over-credited (false_exposed=false) nor over-suggested (false_actionable=false) — a genuine unexercised boundary, the correct conservative call. limitation_quality=imprecise: the owner IS reached (test_config_from_envvar reaches from_envvar with weak oracles), so reachable_unrevealed would describe the empty-string gap more precisely than static_unknown; failing closed is safe but coarse."
+    },
+    {
+      "id": "structlog-logfmt-invalid-key-boundary",
+      "repo": "structlog",
+      "base": "025edaf799c6d6d511ab672d14c2ba8e885c4c36",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/structlog.diff",
+      "shape": [
+        "pytest_library"
+      ],
+      "expected_direction": "should_stay_quiet",
+      "anchor": {
+        "file": "src/structlog/processors.py",
+        "line": 165,
+        "owner": "LogfmtRenderer.__call__",
+        "boundary": "any(c <= ' ' for c in key) invalid-key guard"
+      },
+      "expected_classification": "exposed",
+      "expected_static_limit_kind": null,
+      "actual_classification": "exposed",
+      "actual_oracle_alignment": "changed_sink_token",
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": false,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": true,
+        "limitation_quality": null
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "RESOLVED by PR #1228. The diff flips `if any(c <= ' ' for c in key)` to `< ' '` in LogfmtRenderer.__call__, so a space-containing key is no longer rejected. tests/processors/test_renderers.py::TestLogfmtRenderer.test_invalid_key asserts `pytest.raises(ValueError, match='Invalid key: \"invalid key\"')` on `LogfmtRenderer()(None, None, {'invalid key': ...})` -- a strong ExactErrorVariant oracle that genuinely discriminates the change. ORIGINALLY ripr read weakly_exposed/no_strong_oracle because its name-proximity relation linked the WRONG file (test_processors.py) via same_stem and never saw the strong oracle: a false_actionable. #1228 added the ConstructCall relation (inline `OwnerClass()(...)` on a __call__ owner, import-gated), which links test_invalid_key; the oracle aligns via the whole-word `key` token (#1224 word-boundary), so ripr now correctly reads exposed/changed_sink_token. Verified on main d8ccb9a2. This is a genuine, contract-honoring exposed flip (a missed STRONG oracle), unlike the tenacity smoke case which stays weakly_exposed by contract."
+    },
+    {
+      "id": "sqlalchemy-getitem-negative-index-boundary",
+      "repo": "sqlalchemy",
+      "base": "bfe559a7e4d69e5699c390ac9cafd2a5a2d38078",
+      "head": null,
+      "diff_path": "fixtures/python-eval-sweep/diffs/sqlalchemy.diff",
+      "shape": [
+        "pytest_library"
+      ],
+      "expected_direction": "should_limit",
+      "anchor": {
+        "file": null,
+        "line": null,
+        "owner": "_getitem",
+        "boundary": "== -1 vs != -1 negative-index guard"
+      },
+      "expected_classification": null,
+      "expected_static_limit_kind": "timeout",
+      "actual_classification": null,
+      "actual_oracle_alignment": null,
+      "labels": {
+        "top_card_useful": null,
+        "false_actionable": false,
+        "false_exposed": false,
+        "verify_command_valid": null,
+        "suggested_location_valid": null,
+        "packet_boundaries_safe": true,
+        "limitation_quality": null
+      },
+      "judgment_source": "manual_review",
+      "judged_at": "2026-06-13",
+      "judged_by": "campaign",
+      "authority_boundary": "review_advisory_only",
+      "repair_packet_ready": false,
+      "reason": "Not a usefulness judgment — a Tier A robustness carryover recorded here for corpus completeness. sqlalchemy is the deliberately-unsupported bucket (large dynamic/metaclass ORM); ripr check exceeds the 120s sweep timeout (~123s measured on #1206, reproduced >20s locally) and emits no finding. There is therefore nothing to over-credit (false_exposed=false) and no card (false_actionable=false). The honest signal is a performance/robustness limit on very large dynamic codebases, not a crash — tracked as a Tier A note, not a precision judgment. items_judged excludes this row."
+    }
+  ]
+}

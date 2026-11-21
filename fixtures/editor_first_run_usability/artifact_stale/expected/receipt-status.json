@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/artifact_stale",
+  "receipt_state": "receipt_stale",
+  "runtime_adequacy_claim": false,
+  "gate_eligibility_claim": false,
+  "next_safe_action": "Refresh saved-workspace evidence and rerun verify/receipt before trusting movement."
+}

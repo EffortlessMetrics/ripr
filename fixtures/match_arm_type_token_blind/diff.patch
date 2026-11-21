@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -6,6 +6,6 @@ pub fn classify(mode: Mode) -> i32 {
+     match mode {
+         Mode::Warm => 1,
+-        Mode::Frozen => 0,
++        Mode::Frozen => -1,
+     }
+ }

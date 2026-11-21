@@ -1,0 +1,23 @@
+schema_version = "1.0"
+profile = "spec-system"
+mode = "advisory"
+generation = "current-v2"
+
+[roots]
+proposals = "docs/proposals"
+specs = "docs/specs"
+adrs = "docs/adr"
+plans = "plans"
+support_tiers = "docs/status/SUPPORT_TIERS.md"
+artifact_ledger = ".allow/artifacts/doc-artifacts.toml"
+
+[requirements]
+ledger_required = true
+templates_required = false
+support_tiers_required = true
+# current-v2 has no global goal root and no active manifest. Live work comes
+# from the controlling GitHub issue and a PR-local implementation slice under
+# `.allow/spec-system/slices/`. The legacy `.ripr/goals/` scheduler was
+# deleted in #1701's PR 3; do not recreate `.ripr/goals/`,
+# `.allow/goals/active.toml`, or any successor repository-global goal pointer.
+closeout_required_for_done_items = false

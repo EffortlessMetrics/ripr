@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/language_disabled",
+  "actions": [
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}

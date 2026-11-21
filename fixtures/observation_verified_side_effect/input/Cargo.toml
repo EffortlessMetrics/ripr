@@ -1,0 +1,8 @@
+[package]
+name = "observation_verified_side_effect_fixture"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "observation_verified_side_effect_fixture"
+path = "src/lib.rs"

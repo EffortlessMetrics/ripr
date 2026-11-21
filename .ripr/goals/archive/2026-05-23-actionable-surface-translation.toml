@@ -1,0 +1,180 @@
+# Archived by `cargo xtask closeout --goal actionable-surface-translation` on 2026-05-23.
+id = "actionable-surface-translation"
+title = "Actionable Surface Translation"
+status = "closed"
+lane = "cross-surface"
+no_current_goal = true
+
+# This campaign is selected from repo-owned RIPR-SPEC-0059 after the
+# source-of-truth control-plane lane closed with `no_current_goal = true`.
+# The campaign translates existing actionable canonical gap evidence across
+# badge, PR, editor, swarm dry-run, and outcome surfaces without changing
+# analyzer truth or claim authority.
+
+objective = """
+Make covered user-facing surfaces lead with the same repair-first question:
+what actionable canonical gap remains, what repair route is safe, what verifies
+movement, what receipt records it, and what remains advisory or static-only?
+"""
+
+end_state = [
+  "badge-adjacent copy explains unresolved actionable static repair gaps at point of use",
+  "PR evidence leads with actionable delta and one top next repair packet before raw finding totals",
+  "editor Show Status leads with one safe repair action or one precise fail-closed reason",
+  "swarm dry-run output includes a compact copy-ready operator or external-agent packet",
+  "outcome and trend reports lead with receipt-linked movement since the previous refresh",
+  "all covered surfaces preserve advisory/static boundaries and avoid runtime, coverage, mutation, gate, policy, or merge-readiness claims",
+]
+
+hard_rules = [
+  "typed fields decide and prose explains",
+  "actionable canonical gaps are the primary public repair unit",
+  "raw findings and seam-native inventory remain supporting context",
+  "advisory and static boundaries remain visible",
+  "gate authority stays with explicit gate artifacts",
+  "receipts record static movement only",
+]
+
+non_goals = [
+  "no analyzer truth changes",
+  "no actionable-gap producer or schema changes",
+  "no support-tier promotion without a dedicated support-tier PR",
+  "no public badge endpoint semantic change in presentation-only slices",
+  "no default CI blocking or gate behavior changes",
+  "no PR comment publishing changes",
+  "no source edits or generated tests",
+  "no provider/model calls",
+  "no mutation execution",
+  "no release, publish, signing, or marketplace work",
+  "no runtime adequacy, coverage adequacy, proof-of-correctness, policy eligibility, gate pass/fail, or merge-readiness claim",
+]
+
+[[work_item]]
+id = "docs/actionable-surface-translation-stack"
+status = "done"
+branch = "docs-activate-actionable-surface-translation"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+acceptance = "Open the Actionable Surface Translation proposal, plan, active manifest, artifact ledger entries, indexes, campaign map, and traceability outputs without changing product behavior."
+commands = [
+  "cargo xtask check-doc-artifacts",
+  "cargo xtask check-goals",
+  "cargo xtask goals next",
+  "cargo xtask pr-body --work-item docs/actionable-surface-translation-stack",
+  "cargo xtask repo-contract-report",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-support-tiers",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "badge/actionable-basis-presentation"
+status = "done"
+branch = "badge-actionable-basis-presentation"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+blocked_by = [
+  "docs/actionable-surface-translation-stack",
+]
+acceptance = "Badge-adjacent public copy and badge-basis output define the headline count as unresolved actionable static repair gaps, name `canonical_actionable_gap` as the public basis, keep seam-native inventory supporting/internal, and preserve existing advisory badge semantics."
+commands = [
+  "cargo xtask badge-basis",
+  "cargo xtask check-badge-diff-policy",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-static-language",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "pr/actionable-delta-front-panel"
+status = "done"
+branch = "pr-actionable-delta-front-panel"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+acceptance = "PR evidence front panels lead with repo actionable count, PR-local actionable count, new/resolved gaps, receipt state, blocked/static-limited counts, and one top next repair packet before raw finding or seam inventory totals."
+commands = [
+  "cargo xtask pr-summary",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "editor/repair-first-status-hierarchy"
+status = "done"
+branch = "editor-repair-first-status-hierarchy"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+acceptance = "Editor Show Status leads with workspace/current-file actionable state, top repair item, related test or target, verify command, receipt state, and next safe command or precise fail-closed reason."
+commands = [
+  "cargo test -p ripr lsp --lib",
+  "npm --prefix editors/vscode run compile",
+  "npm --prefix editors/vscode run test:e2e",
+  "cargo xtask lsp-cockpit-report",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "swarm/dry-run-copy-ready-packet"
+status = "done"
+branch = "swarm-dry-run-copy-ready-packet"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+acceptance = "`ripr-swarm attempt --dry-run` emits a compact copy-ready operator or external-agent packet with task, allowed files, do-not-change boundaries, repair target, verify command, receipt command, stop conditions, and required return format."
+commands = [
+  "cargo test -p xtask ripr_swarm_attempt --bin xtask",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "outcome/movement-front-section"
+status = "done"
+branch = "outcome-movement-front-section"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+acceptance = "Outcome and trend front sections lead with receipt-linked movement since prior refresh: total actionable count, delta, resolved, improved, unchanged after attempt, orphaned/missing receipts, and top blocked reason."
+commands = [
+  "cargo xtask actionable-gap-outcomes",
+  "cargo xtask check-output-contracts",
+  "cargo xtask check-pr",
+]
+
+[[work_item]]
+id = "campaign/actionable-surface-translation-closeout"
+status = "done"
+branch = "campaign-actionable-surface-translation-closeout"
+stackable = false
+proposal = "docs/proposals/RIPR-PROP-0016-actionable-surface-translation.md"
+spec = "docs/specs/RIPR-SPEC-0059-actionable-surface-translation.md"
+plan = "plans/actionable-surface-translation/implementation-plan.md"
+acceptance = "Close the campaign only after badge, PR, editor, swarm, and outcome/trend surfaces prove the first-screen translation required by RIPR-SPEC-0059 and the closeout records proof, claim boundary, remaining limits, and next recommended work."
+commands = [
+  "cargo xtask check-doc-artifacts",
+  "cargo xtask check-goals",
+  "cargo xtask check-doc-index",
+  "cargo xtask markdown-links",
+  "cargo xtask check-static-language",
+  "cargo xtask check-doc-roles",
+  "cargo xtask check-traceability",
+  "cargo xtask check-capabilities",
+  "cargo xtask check-support-tiers",
+  "cargo xtask check-pr",
+]

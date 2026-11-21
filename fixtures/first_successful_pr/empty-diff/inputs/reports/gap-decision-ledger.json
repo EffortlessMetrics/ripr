@@ -1,0 +1,10 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "gap_decision_ledger",
+  "status": "empty_diff",
+  "summary": {
+    "records_total": 0
+  },
+  "records": []
+}

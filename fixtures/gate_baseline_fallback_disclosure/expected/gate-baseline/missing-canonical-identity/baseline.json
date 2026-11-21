@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "kind": "gate_baseline",
+  "entries": [
+    {
+      "identity": {
+        "fallback": "src/pricing.rs:88:weakly_gripped"
+      }
+    }
+  ]
+}

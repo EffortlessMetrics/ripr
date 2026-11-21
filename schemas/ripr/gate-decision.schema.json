@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/ripr/gate-decision.schema.json",
+  "title": "RIPR Gate Decision",
+  "description": "Configured gate authority over static RIPR evidence. Every decision carries a structured repair route or a named incomplete-route limitation.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "tool",
+    "status",
+    "mode",
+    "root",
+    "inputs",
+    "policy",
+    "summary",
+    "new_unsuppressed",
+    "decisions",
+    "warnings",
+    "config_errors",
+    "limits_note"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1" },
+    "tool": { "const": "ripr" },
+    "status": {
+      "enum": ["pass", "advisory", "acknowledged", "blocked", "config_error"]
+    },
+    "mode": {
+      "enum": ["visible-only", "acknowledgeable", "baseline-check", "calibrated-gate"]
+    },
+    "root": { "type": "string", "minLength": 1 },
+    "inputs": { "$ref": "#/$defs/inputs" },
+    "policy": { "$ref": "#/$defs/policy" },
+    "summary": { "$ref": "#/$defs/summary" },
+    "new_unsuppressed": { "$ref": "#/$defs/new_unsuppressed" },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision" }
+    },
+    "warnings": { "type": "array", "items": { "type": "string" } },
+    "config_errors": { "type": "array", "items": { "type": "string" } },
+    "limits_note": { "type": "string", "minLength": 1 },
+    "exception_policy": { "type": "object" }
+  },
+  "$defs": {
+    "nullable_string": { "type": ["string", "null"] },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo_exposure",
+        "pr_guidance",
+        "sarif_policy",
+        "labels_json",
+        "labels",
+        "agent_verify",
+        "agent_receipt",
+        "recommendation_calibration",
+        "mutation_calibration",
+        "baseline"
+      ],
+      "properties": {
+        "repo_exposure": { "$ref": "#/$defs/nullable_string" },
+        "pr_guidance": { "$ref": "#/$defs/nullable_string" },
+        "gap_ledger": { "type": "string", "minLength": 1 },
+        "sarif_policy": { "$ref": "#/$defs/nullable_string" },
+        "labels_json": { "$ref": "#/$defs/nullable_string" },
+        "labels": { "type": "array", "items": { "type": "string" } },
+        "agent_verify": { "$ref": "#/$defs/nullable_string" },
+        "agent_receipt": { "$ref": "#/$defs/nullable_string" },
+        "recommendation_calibration": { "$ref": "#/$defs/nullable_string" },
+        "mutation_calibration": { "$ref": "#/$defs/nullable_string" },
+        "baseline": { "$ref": "#/$defs/nullable_string" },
+        "exception_policy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "threshold", "acknowledgement_labels", "default_workflow_posture"],
+      "properties": {
+        "mode": {
+          "enum": ["visible-only", "acknowledgeable", "baseline-check", "calibrated-gate"]
+        },
+        "threshold": { "type": "string", "minLength": 1 },
+        "acknowledgement_labels": { "type": "array", "items": { "type": "string" } },
+        "default_workflow_posture": { "const": "advisory" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evaluated",
+        "blocking",
+        "acknowledged",
+        "advisory",
+        "suppressed",
+        "not_applicable",
+        "unknown_confidence"
+      ],
+      "properties": {
+        "evaluated": { "type": "integer", "minimum": 0 },
+        "blocking": { "type": "integer", "minimum": 0 },
+        "acknowledged": { "type": "integer", "minimum": 0 },
+        "advisory": { "type": "integer", "minimum": 0 },
+        "suppressed": { "type": "integer", "minimum": 0 },
+        "not_applicable": { "type": "integer", "minimum": 0 },
+        "unknown_confidence": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "new_unsuppressed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "count", "reason"],
+      "properties": {
+        "basis": { "enum": ["diff", "baseline", null] },
+        "count": { "type": "integer", "minimum": 0 },
+        "reason": { "$ref": "#/$defs/nullable_string" }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source",
+        "decision",
+        "gate_reason",
+        "seam_id",
+        "source_id",
+        "gap_state",
+        "static_class",
+        "severity",
+        "placement",
+        "policy",
+        "repair_route",
+        "evidence"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "source": { "type": "string", "minLength": 1 },
+        "decision": {
+          "enum": ["blocking", "acknowledged", "advisory", "suppressed", "not_applicable"]
+        },
+        "gate_reason": { "type": "string", "minLength": 1 },
+        "gap_id": { "type": "string", "minLength": 1 },
+        "gap_kind": { "type": "string", "minLength": 1 },
+        "canonical_gap_id": { "type": "string", "minLength": 1 },
+        "seam_id": { "$ref": "#/$defs/nullable_string" },
+        "source_id": { "type": "string" },
+        "gap_state": { "$ref": "#/$defs/nullable_string" },
+        "static_class": { "$ref": "#/$defs/nullable_string" },
+        "severity": { "$ref": "#/$defs/nullable_string" },
+        "placement": { "$ref": "#/$defs/placement" },
+        "policy": { "$ref": "#/$defs/decision_policy" },
+        "repair_route": { "$ref": "#/$defs/repair_route" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "line"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nullable_string" },
+        "line": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "decision_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "threshold", "acknowledgement_label", "baseline_identity"],
+      "properties": {
+        "mode": {
+          "enum": ["visible-only", "acknowledgeable", "baseline-check", "calibrated-gate"]
+        },
+        "threshold": { "type": "string", "minLength": 1 },
+        "acknowledgement_label": { "$ref": "#/$defs/nullable_string" },
+        "baseline_identity": { "$ref": "#/$defs/nullable_string" }
+      }
+    },
+    "repair_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_gap_id",
+        "seam_id",
+        "classification",
+        "changed_owner",
+        "changed_behavior",
+        "missing_discriminator",
+        "repair_target",
+        "test_intent",
+        "verify_command",
+        "receipt_command",
+        "inspection_command",
+        "authority_boundary",
+        "limitation"
+      ],
+      "properties": {
+        "canonical_gap_id": { "$ref": "#/$defs/nullable_string" },
+        "seam_id": { "$ref": "#/$defs/nullable_string" },
+        "classification": { "$ref": "#/$defs/nullable_string" },
+        "changed_owner": { "$ref": "#/$defs/nullable_string" },
+        "changed_behavior": { "$ref": "#/$defs/nullable_string" },
+        "missing_discriminator": { "$ref": "#/$defs/nullable_string" },
+        "repair_target": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/related_test_target" },
+            { "$ref": "#/$defs/production_caller_target" }
+          ]
+        },
+        "test_intent": { "$ref": "#/$defs/nullable_string" },
+        "verify_command": { "$ref": "#/$defs/nullable_string" },
+        "receipt_command": { "$ref": "#/$defs/nullable_string" },
+        "inspection_command": { "$ref": "#/$defs/nullable_string" },
+        "authority_boundary": { "const": "static_ripr_evidence_only" },
+        "limitation": {
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/repair_route_limitation" }
+          ]
+        }
+      }
+    },
+    "related_test_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "file", "line"],
+      "properties": {
+        "kind": { "const": "related_test" },
+        "name": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "production_caller_target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "owner", "file", "line"],
+      "properties": {
+        "kind": { "const": "production_caller" },
+        "owner": { "type": "string", "minLength": 1 },
+        "file": { "$ref": "#/$defs/nullable_string" },
+        "line": { "type": ["integer", "null"], "minimum": 1 }
+      }
+    },
+    "repair_route_limitation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "missing_fields", "detail"],
+      "properties": {
+        "kind": { "const": "incomplete_repair_route" },
+        "missing_fields": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "canonical_gap_id",
+              "seam_id",
+              "file",
+              "line",
+              "gap_state",
+              "changed_owner",
+              "changed_behavior",
+              "missing_discriminator",
+              "repair_target",
+              "test_intent",
+              "verify_command",
+              "receipt_command",
+              "inspection_command"
+            ]
+          }
+        },
+        "detail": {
+          "const": "The gate cannot provide a complete bounded repair route from current evidence."
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "missing_discriminator",
+        "assertion_shape",
+        "candidate_values",
+        "recommended_test",
+        "nearby_test_changed",
+        "suppressed",
+        "configured_off",
+        "recommendation_calibration",
+        "mutation_calibration"
+      ],
+      "properties": {
+        "missing_discriminator": { "$ref": "#/$defs/nullable_string" },
+        "assertion_shape": { "$ref": "#/$defs/nullable_string" },
+        "candidate_values": { "type": "array", "items": { "type": "string" } },
+        "recommended_test": { "$ref": "#/$defs/nullable_string" },
+        "repair_route": { "type": "object" },
+        "verification_commands": { "type": "array", "items": { "type": "string" } },
+        "nearby_test_changed": { "type": "boolean" },
+        "suppressed": { "type": "boolean" },
+        "configured_off": { "type": "boolean" },
+        "recommendation_calibration": { "$ref": "#/$defs/calibration" },
+        "mutation_calibration": { "$ref": "#/$defs/calibration" }
+      }
+    },
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["available", "outcome", "confidence_effect"],
+      "properties": {
+        "available": { "type": "boolean" },
+        "outcome": { "$ref": "#/$defs/nullable_string" },
+        "confidence_effect": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/receipt_improved",
+  "actions": [
+    {
+      "title": "Queue: copy current repair packet",
+      "command": "ripr.copyCurrentRepairPacket"
+    },
+    {
+      "title": "Queue: copy repo gap map",
+      "command": "ripr.copyRepoGapMap"
+    },
+    {
+      "title": "Open related test",
+      "command": "ripr.openRelatedTest"
+    },
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh"
+    }
+  ]
+}

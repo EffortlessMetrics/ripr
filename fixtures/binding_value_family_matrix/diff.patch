@@ -1,0 +1,21 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,1 +2,1 @@
+-    let body = label.strip_prefix("pre-").map_or("off", |s| s);
++    let body = label.strip_prefix("pre-").map_or("none", |s| s);
+@@ -11,1 +11,1 @@
+-    let open = label.starts_with("prefix-");
++    let open = label.starts_with("pre-");
+@@ -16,1 +16,1 @@
+-    let size = input.len();
++    let size = other.len();
+@@ -21,1 +21,1 @@
+-    let next = base.checked_add(1).map_or(0, |v| v);
++    let next = base.checked_add(1).map_or(4, |v| v);
+@@ -26,1 +26,1 @@
+-    let first = label.chars().next().map_or('?', |c| c);
++    let first = label.chars().next().map_or('x', |c| c);
+@@ -31,1 +31,1 @@
+-    let last = label.chars().next_back().map_or('?', |c| c);
++    let last = label.chars().next_back().map_or('x', |c| c);

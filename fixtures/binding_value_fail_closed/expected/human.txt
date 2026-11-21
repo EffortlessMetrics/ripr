@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/binding_value_fail_closed/input
+
+Summary: 3 probe(s), 0 exposed, 0 weak, 0 unrevealed, 0 no path, 3 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 6 changed line(s), 3 candidate line(s), 3 probe(s), 3 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/binding_value_fail_closed/input/src/lib.rs:2
+  Static exposure: infection_unknown (warning, confidence 0.66)
+  Why infection_unknown: the change reaches a sink but infection could not be determined statically
+  Changed behavior: let end = input.rfind(delim).map_or_else(|| 1, |idx| idx);
+  Missing discriminator: No detected boundary input for the changed predicate
+  Related test: tests/controls.rs:4 map_or_else_boundary_stays_unresolved
+  Next step: Add a targeted boundary or negative-path test, or teach ripr about the fixture/builder in ripr.toml.
+  Evidence:
+    - reach yes: Related tests appear to reach via_map_or_else: map_or_else_boundary_stays_unresolved
+    - infection unknown: Related tests use opaque fixtures; activation/infection is unknown
+    - 7 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/binding_value_fail_closed/input --diff fixtures/binding_value_fail_closed/diff.patch --mode fast probe:src_lib.rs:predicate:d9aa811b
+  ripr context --root fixtures/binding_value_fail_closed/input --diff fixtures/binding_value_fail_closed/diff.patch --mode fast --at probe:src_lib.rs:predicate:d9aa811b
+
+Hidden:
+  2 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

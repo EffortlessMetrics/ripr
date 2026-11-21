@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_gap_cockpit/disabled_language",
+  "states": [
+    {
+      "name": "language_disabled",
+      "status_bar": "ripr: language disabled by config",
+      "show_status_contains": [
+        "Language: python",
+        "State: disabled by config",
+        "Diagnostics: 0",
+        "Next safe action: enable python in [languages] or refresh after config changes"
+      ],
+      "must_not": [
+        "diagnostic",
+        "repair packet",
+        "source edit"
+      ]
+    }
+  ]
+}

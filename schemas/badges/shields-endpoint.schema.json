@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.effortlessmetrics.dev/badges/shields-endpoint.schema.json",
+  "title": "Shields Endpoint Badge",
+  "description": "Committed public badge endpoint JSON. Repo-scoped only; no PR or detailed evidence fields.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "label",
+    "message",
+    "color"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "label": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "color": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 40
+    }
+  }
+}

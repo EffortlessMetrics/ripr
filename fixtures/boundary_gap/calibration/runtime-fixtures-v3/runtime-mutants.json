@@ -1,0 +1,75 @@
+{
+  "schema_version": "0.1",
+  "source": "fixture-runtime-sample",
+  "description": "Controlled imported cargo-mutants sample covering custom helper, table boundary, builder override, cross-file constant, snapshot field, and mock expectation mismatch calibration classes. This file is supplied input for calibration commands; RIPR does not run mutation testing.",
+  "mutants": [
+    {
+      "id": "m-v3-custom-helper-outcome",
+      "seam_id": "cal-v3-custom-helper-outcome",
+      "file": "src/assertions.rs",
+      "line": 14,
+      "operator": "replace helper-covered threshold comparison",
+      "outcome": "missed",
+      "duration": "51ms",
+      "test_command": "cargo test discount_threshold_uses_helper"
+    },
+    {
+      "id": "m-v3-table-boundary-outcome",
+      "seam_id": "cal-v3-table-boundary-outcome",
+      "file": "src/table_discount.rs",
+      "line": 22,
+      "operator": "replace table threshold comparison",
+      "outcome": "caught",
+      "duration": "44ms",
+      "test_command": "cargo test table_cases_include_threshold_equality"
+    },
+    {
+      "id": "m-v3-builder-override-outcome",
+      "seam_id": "cal-v3-builder-override-outcome",
+      "file": "src/builder.rs",
+      "line": 33,
+      "operator": "replace builder override threshold",
+      "outcome": "caught",
+      "duration": "58ms",
+      "test_command": "cargo test builder_override_sets_discount_threshold"
+    },
+    {
+      "id": "m-v3-snapshot-field-discriminator",
+      "seam_id": "cal-v3-snapshot-field-discriminator",
+      "file": "src/snapshot.rs",
+      "line": 52,
+      "operator": "replace snapshot discount_code field",
+      "outcome": "missed",
+      "duration": "47ms",
+      "test_command": "cargo test snapshot_pins_discount_code_field"
+    },
+    {
+      "id": "m-v3-mock-expectation-mismatch",
+      "seam_id": "cal-v3-mock-expectation-mismatch",
+      "file": "src/mock_gateway.rs",
+      "line": 63,
+      "operator": "replace mock expectation amount argument",
+      "outcome": "missed",
+      "duration": "53ms",
+      "test_command": "cargo test expects_discount_event"
+    },
+    {
+      "id": "m-v3-ambiguous-builder",
+      "file": "src/ambiguous_builder.rs",
+      "line": 72,
+      "operator": "replace builder bound assignment",
+      "outcome": "missed",
+      "duration": "57ms",
+      "test_command": "cargo test builds_discount_rule"
+    },
+    {
+      "id": "m-v3-runtime-only-signal",
+      "file": "src/runtime_only_v3.rs",
+      "line": 99,
+      "operator": "replace runtime-only observed value",
+      "outcome": "missed",
+      "duration": "42ms",
+      "test_command": "cargo test runtime_only_v3_observer"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "inputs": {
+    "after": "target/ripr/test-agent-verify/after.repo-exposure.json",
+    "agent_verify_json": "target/ripr/test-agent-verify/agent-verify.json",
+    "before": "target/ripr/test-agent-verify/before.repo-exposure.json"
+  },
+  "provenance": {
+    "after_artifact": {
+      "path": "target/ripr/test-agent-verify/after.repo-exposure.json",
+      "sha256": "<sha256>"
+    },
+    "after_class": "reachable_unrevealed",
+    "before_artifact": {
+      "path": "target/ripr/test-agent-verify/before.repo-exposure.json",
+      "sha256": "<sha256>"
+    },
+    "before_class": "weakly_gripped",
+    "command_template_version": "0.1",
+    "config_fingerprint": null,
+    "generated_at": "<generated_at>",
+    "limits": {
+      "runtime_adequacy_claim": false,
+      "runtime_mutation_execution": false,
+      "static_artifact_relationship": true
+    },
+    "movement": "regressed",
+    "repo_root": ".",
+    "ripr_version": "<ripr_version>",
+    "seam_id": "67fc764ba37d77bd",
+    "verify_artifact": {
+      "path": "target/ripr/test-agent-verify/agent-verify.json",
+      "sha256": "<sha256>"
+    },
+    "workflow_artifact": null
+  },
+  "schema_version": "0.5",
+  "seam": {
+    "after": "reachable_unrevealed",
+    "before": "weakly_gripped",
+    "change": "regressed",
+    "evidence_delta": [
+      "direct-owner test evidence no longer reaches the seam"
+    ],
+    "file": "src/lib.rs",
+    "grip_class": null,
+    "line": 2,
+    "seam_id": "67fc764ba37d77bd",
+    "seam_kind": "predicate_boundary"
+  },
+  "status": "incomplete",
+  "analysis_outcome_status": "missing",
+  "analysis_outcome_error": "<analysis_outcome_error>",
+  "analysis_outcome": null,
+  "summary": {
+    "receipt_state": "receipt_movement_regressed",
+    "next_action": {
+      "kind": "regressed",
+      "recommended_action": "Inspect the focused change and restore the lost static evidence.",
+      "summary": "Static grip regressed."
+    },
+    "next_recommendation": "Inspect the focused change and restore the lost static evidence, then rerun agent verify.",
+    "remaining_gap": "Static grip class regressed."
+  },
+  "test_changed": null,
+  "tool": "ripr",
+  "verification": {
+    "commands_run": []
+  }
+}

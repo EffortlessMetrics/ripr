@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": ".",
+  "base": "HEAD",
+  "summary": {
+    "findings": 0
+  },
+  "findings": [],
+  "unanalyzed_working_tree": true
+}

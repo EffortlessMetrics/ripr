@@ -1,0 +1,70 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": ".",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":0,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":1,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"perl","files":1},{"language":"rust","files":0}]},
+  "findings": [
+    {
+      "id": "probe:lib/Pricing.pm:6:return_value:perl",
+      "classification": "reachable_unrevealed",
+      "severity": "warning",
+      "confidence": 0.50,
+      "probe": {
+        "id": "probe:lib/Pricing.pm:6:return_value:perl",
+        "family": "return_value",
+        "delta": "value",
+        "file": "lib/Pricing.pm",
+        "line": 6,
+        "expression": "return_value",
+        "owner": "perl:lib/Pricing.pm::discount"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Perl fact packet relation evidence"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Perl preview adapter does not model infection/propagation"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Perl preview adapter does not model infection/propagation"},
+        "observe": {"state":"yes","confidence":"medium","summary":"Perl fact packet relation evidence"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Missing discriminator from packet"}
+       },
+      "evidence_path": ["reach yes: Perl fact packet relation evidence", "infection unknown: Perl preview adapter does not model infection/propagation", "propagation unknown: Perl preview adapter does not model infection/propagation", "observation yes: Perl fact packet relation evidence", "discriminator weak: Missing discriminator from packet", "related test t/alias.t:6 test_aliased_discount uses strong exact value oracle: is(discount(100), 90, 'aliased import discount')"],
+      "flow_sinks": [
+      ],
+      "evidence": ["perl_repair_kind: add_exact_return_assertion", "perl_target_test_shape: exact_return_assertion", "perl_verify_command: prove t/alias.t"],
+      "missing": [],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "test_aliased_discount",
+          "file": "t/alias.t",
+          "line": 6,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "is(discount(100), 90, 'aliased import discount')",
+          "relation_reason": "import_path_affinity",
+          "relation_confidence": "medium"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Add a focused Perl assertion that pins the changed behavior.",
+      "suggested_next_action": "Add a focused Perl assertion that pins the changed behavior.",
+      "language": "perl",
+      "language_status": "preview",
+      "changed_sink": "return_value"
+    }
+  ]
+}

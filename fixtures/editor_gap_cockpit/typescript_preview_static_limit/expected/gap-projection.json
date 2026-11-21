@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "case": "typescript_preview_static_limit",
+  "state": "actionable",
+  "language": "typescript",
+  "language_status": "preview",
+  "diagnostics_projected": 1,
+  "static_limit_kind": "mocked_module",
+  "actions_projected": [
+    "copy_repair_packet",
+    "copy_static_limit_note",
+    "refresh"
+  ],
+  "fail_closed": false
+}

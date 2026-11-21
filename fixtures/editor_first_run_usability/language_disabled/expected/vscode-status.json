@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/language_disabled",
+  "status": "language_disabled",
+  "projection": "fail_closed",
+  "workspace_root": "fixtures/editor_first_run_usability/language_disabled/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": [],
+    "available": ["rust", "typescript", "javascript", "python"]
+  },
+  "artifacts": {
+    "first_useful_action": "ignored",
+    "gap_decision_ledger": "ignored",
+    "agent_receipt": "ignored"
+  },
+  "next_safe_action": "Edit ripr.toml [languages] enabled, then restart the server."
+}

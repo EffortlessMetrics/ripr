@@ -1,0 +1,134 @@
+name: Source Promotion Composition
+
+# #1893: default-branch-defined, read-only pull_request_target gate.
+# The workflow definition, composition script, and staged-packet verifier come
+# strictly from the trusted default-branch commit (`github.sha`); candidate PR
+# code is never checked out or executed and no secrets are exposed. Do not add
+# a job-level `if:` that can skip this job on subject refusals (GitHub treats a
+# skipped required job as Success).
+on:
+  pull_request_target:
+    # PR-body control markers and the base can change without a new commit.
+    types: [opened, synchronize, reopened, edited]
+    branches: [main]
+
+concurrency:
+  group: source-promotion-composition-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  composition-check:
+    name: Source Promotion Composition
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Check out trusted default-branch authority
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          allow-unsafe-pr-checkout: false
+
+      - name: Refetch live PR metadata and classify promotion candidate
+        id: live
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PREV_PR_BODY: ${{ github.event.changes.body.from }}
+        run: |
+          set -euo pipefail
+          pr_json=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")
+          live_base=$(jq -er '.base.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<< "$pr_json")
+          live_head=$(jq -er '.head.sha | select(type == "string" and test("^[0-9a-f]{40}$"))' <<< "$pr_json")
+          live_head_ref=$(jq -er '.head.ref | select(type == "string" and length > 0 and test("^[^\\r\\n]+$"))' <<< "$pr_json")
+          live_body_file="$RUNNER_TEMP/live-pr-body.txt"
+          jq -r '.body // ""' <<< "$pr_json" > "$live_body_file"
+          test "$live_base" = "$EVENT_BASE_SHA" || { echo "source-promotion composition rejected: live PR base moved past event base" >&2; exit 1; }
+          test "$live_head" = "$EVENT_HEAD_SHA" || { echo "source-promotion composition rejected: live PR head moved past event head" >&2; exit 1; }
+          live_preview=""
+          if git fetch --no-tags origin "refs/pull/${PR_NUMBER}/merge" >/dev/null 2>&1; then
+            live_preview=$(git --no-replace-objects rev-parse 'FETCH_HEAD^{commit}' 2>/dev/null || true)
+          fi
+          is_promotion=false
+          live_body=$(tr -d '\r' < "$live_body_file")
+          prev_body=${PREV_PR_BODY//$'\r'/}
+          if [[ "$live_head_ref" == promote/0.11.0-* ]] || [[ "$live_body" == *'<!-- source-promotion: true -->'* ]] || [[ "$live_body" == *'<!-- source-promotion-control:'* ]] || [[ "$prev_body" == *'<!-- source-promotion: true -->'* ]] || [[ "$prev_body" == *'<!-- source-promotion-control:'* ]]; then
+            is_promotion=true
+          fi
+          {
+            echo "base_sha=$live_base"
+            echo "head_sha=$live_head"
+            echo "head_ref=$live_head_ref"
+            echo "merge_sha=$live_preview"
+            echo "body_file=$live_body_file"
+            echo "is_promotion=$is_promotion"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Rust toolchain for promotion verification
+        if: steps.live.outputs.is_promotion == 'true'
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # stable (master)
+        with:
+          toolchain: 1.95.0
+
+      - name: Build trusted staged verifier from default-branch checkout
+        id: build-verifier
+        if: steps.live.outputs.is_promotion == 'true'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          target_dir="$RUNNER_TEMP/ripr-staged-verifier-target"
+          CARGO_TARGET_DIR="$target_dir" cargo build --locked -p xtask --bin xtask
+          verifier="$target_dir/debug/xtask"
+          test -x "$verifier"
+          echo "bin=$verifier" >> "$GITHUB_OUTPUT"
+
+      - name: Verify promotion merge composition from trusted base script
+        id: verify
+        env:
+          PR_BODY_FILE: ${{ steps.live.outputs.body_file }}
+          PREV_PR_BODY: ${{ github.event.changes.body.from }}
+          HEAD_REF: ${{ steps.live.outputs.head_ref }}
+          BASE_SHA: ${{ steps.live.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.live.outputs.head_sha }}
+          MERGE_SHA: ${{ steps.live.outputs.merge_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          WORKFLOW_SOURCE_SHA: ${{ github.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          REQUIRE_TRUSTED_EVENT: "1"
+          REQUIRE_STAGED_PACKET: ${{ steps.live.outputs.is_promotion == 'true' && '1' || '0' }}
+          STAGED_VERIFIER_BIN: ${{ steps.build-verifier.outputs.bin }}
+          TOKEN_PERMISSIONS: "contents:read,pull-requests:read"
+          COMPOSITION_RECEIPT_OUT: ${{ runner.temp }}/source-promotion-composition-receipt.json
+        run: |
+          set -euo pipefail
+          PR_BODY=$(cat "$PR_BODY_FILE")
+          export PR_BODY
+          bash .github/scripts/source-promotion-composition.sh
+          if test -f "$COMPOSITION_RECEIPT_OUT"; then
+            {
+              echo "## Source Promotion Composition Gate (#1893)"
+              echo ""
+              echo '```json'
+              cat "$COMPOSITION_RECEIPT_OUT"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload trusted composition receipt
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: source-promotion-composition-receipt-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/source-promotion-composition-receipt.json
+          if-no-files-found: ignore

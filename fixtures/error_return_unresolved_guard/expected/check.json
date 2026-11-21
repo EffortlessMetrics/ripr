@@ -1,0 +1,106 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/error_return_unresolved_guard/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":1,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:edc4a173bd7b3c791ef1b98645fdce553c5ad98f179f5db14910aaf5436fff8d","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:473ce871",
+      "classification": "infection_unknown",
+      "severity": "warning",
+      "confidence": 0.66,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:473ce871",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/error_return_unresolved_guard/input/src/lib.rs",
+        "line": 15,
+        "expression": "cancelled"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach run_slow: cancelled_return_is_exact"},
+        "infect": {"state":"unknown","confidence":"low","summary":"Predicate changed, but no literal boundary was visible in the changed expression"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence error variant: Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() })"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach run_slow: cancelled_return_is_exact", "infection unknown: Predicate changed, but no literal boundary was visible in the changed expression", "propagation yes: Changed behavior appears to influence error variant: Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() })", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches error variant: Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() }) (line 16)", "related test tests/q.rs:4 cancelled_return_is_exact uses strong exact value oracle: assert_eq!(err, cancelled_error());", "related test tests/q.rs:4 cancelled_return_is_exact uses strong exact value oracle: assert_eq!(err.message, \"operation cancelled\");", "observed function argument value cancelled = true at line 5", "observed assertion argument value \"operation cancelled\" at line 7"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() })","line":16}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence error variant: Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() })", "Predicate changed, but no literal boundary was visible in the changed expression", "Related tests appear to reach run_slow: cancelled_return_is_exact", "Strong oracle found: exact value or pattern assertion", "Typed static limitation (rust_value_propagation_unresolved): error return guard unresolved: `cancelled` guards the changed `Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() })` (earliest unsupported edge: expression `Result::Err(OpError { code: -32800, message: \"operation cancelled\".to_string() })` is not a supported operation chain), so the missing discriminator is unconfirmed and no boundary or error-assertion test is prescribed"],
+      "missing": ["No detected boundary input for the changed predicate", "Predicate changed, but no literal boundary was visible in the changed expression"],
+      "assertion_texts": {
+        "5": "let err = run_slow(true).expect_err(\"must cancel\");",
+        "7": "assert_eq!(err.message, \"operation cancelled\");"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "cancelled = true",
+            "context": "function_argument"
+          },
+          {
+            "line": 7,
+            "value": "\"operation cancelled\"",
+            "context": "assertion_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "cancelled = true",
+          "context": "function_argument"
+        },
+        {
+          "line": 7,
+          "value": "\"operation cancelled\"",
+          "context": "assertion_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 2,
+      "related_tests": [
+        {
+          "name": "cancelled_return_is_exact",
+          "file": "tests/q.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(err, cancelled_error());",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "cancelled_return_is_exact",
+          "file": "tests/q.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(err.message, \"operation cancelled\");",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": ["infection_evidence_unknown"],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the changed error return's producing expression through the boolean guard, so it does not prescribe a boundary or error-assertion test the suite may already contain. Verify via real mutation testing whether the exact observer discriminates the producing expression.",
+      "suggested_next_action": "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the changed error return's producing expression through the boolean guard, so it does not prescribe a boundary or error-assertion test the suite may already contain. Verify via real mutation testing whether the exact observer discriminates the producing expression.",
+      "language": "rust",
+      "static_limit_kind": "rust_value_propagation_unresolved",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

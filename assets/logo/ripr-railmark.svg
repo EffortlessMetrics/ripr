@@ -1,0 +1,10 @@
+<svg width="384" height="96" viewBox="0 0 384 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">ripr railmark</title>
+  <desc id="desc">Four connected nodes representing Reach, Infect, Propagate, and Reveal.</desc>
+  <path d="M46 48H338" stroke="currentColor" stroke-width="14" stroke-linecap="round"/>
+  <circle cx="46" cy="48" r="20" fill="currentColor"/>
+  <circle cx="143" cy="48" r="20" fill="currentColor"/>
+  <circle cx="240" cy="48" r="20" fill="currentColor"/>
+  <circle cx="338" cy="48" r="28" stroke="currentColor" stroke-width="12" fill="none"/>
+  <circle cx="338" cy="48" r="9" fill="#F59E0B"/>
+</svg>

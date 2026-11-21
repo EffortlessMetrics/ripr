@@ -1,0 +1,158 @@
+{
+  "after": {
+    "activation_unknown": 0,
+    "discrimination_unknown": 0,
+    "intentional": 0,
+    "observation_unknown": 0,
+    "opaque": 0,
+    "propagation_unknown": 0,
+    "reachable_unrevealed": 0,
+    "seams_total": 1,
+    "strongly_gripped": 0,
+    "suppressed": 0,
+    "ungripped": 1,
+    "weakly_gripped": 0
+  },
+  "before": {
+    "activation_unknown": 0,
+    "discrimination_unknown": 0,
+    "intentional": 0,
+    "observation_unknown": 0,
+    "opaque": 0,
+    "propagation_unknown": 0,
+    "reachable_unrevealed": 0,
+    "seams_total": 1,
+    "strongly_gripped": 0,
+    "suppressed": 0,
+    "ungripped": 0,
+    "weakly_gripped": 1
+  },
+  "inputs": {
+    "after": "fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json",
+    "before": "fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json"
+  },
+  "moved": [],
+  "new": [],
+  "regressed": [
+    {
+      "activate_delta": null,
+      "after": "ungripped",
+      "before": "weakly_gripped",
+      "direction": "regressed",
+      "discriminate_delta": {
+        "after_confidence": "low",
+        "after_state": "missing",
+        "after_summary": "No equality-boundary discriminator was found.",
+        "before_confidence": "low",
+        "before_state": "weak",
+        "before_summary": "No test observes the equality boundary."
+      },
+      "evidence_delta": [
+        "grip class moved from weakly_gripped to ungripped",
+        "reach evidence moved from yes to no",
+        "observe evidence moved from weak to missing",
+        "discriminate evidence moved from weak to missing",
+        "related test count decreased by 1"
+      ],
+      "evidence_source": "check_output_finding",
+      "file": "app/pricing.py",
+      "gap_movement": "regressed",
+      "line": 2,
+      "missing_discriminators_reopened": [],
+      "missing_discriminators_resolved": [],
+      "no_movement_reason": null,
+      "observe_delta": {
+        "after_confidence": "low",
+        "after_state": "missing",
+        "after_summary": "No related oracle observes the return value.",
+        "before_confidence": "low",
+        "before_state": "weak",
+        "before_summary": "Related test uses only a broad smoke assertion."
+      },
+      "observed_values_added": [],
+      "observed_values_removed": [],
+      "oracle_strength_delta": null,
+      "propagate_delta": null,
+      "reach_delta": {
+        "after_confidence": "low",
+        "after_state": "no",
+        "after_summary": "No related Python test route was found.",
+        "before_confidence": "low",
+        "before_state": "yes",
+        "before_summary": "Related Python test reaches calculate_discount."
+      },
+      "related_test_delta": -1,
+      "seam_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+      "seam_kind": "predicate_boundary"
+    }
+  ],
+  "removed": [],
+  "review_receipt": {
+    "focused_proof_added": [
+      "No focused proof signal from a test or output proof outside RIPR was visible in the rendered static snapshots."
+    ],
+    "gap_movement": {
+      "changed": 0,
+      "closed": 0,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 1
+    },
+    "movement_after_verification": [
+      "0 improved, 0 changed without ranking higher, 1 regressed, 0 unchanged.",
+      "Gap movement: 0 closed, 0 opened, 0 strengthened, 1 weakened, 0 unchanged, 0 new, 0 removed, 0 changed.",
+      "predicate_boundary at app/pricing.py:2 moved weakly_gripped -> ungripped (regressed)."
+    ],
+    "remaining_weak_or_unknown": [
+      "predicate_boundary remains ungripped at app/pricing.py:2."
+    ],
+    "reviewer_may_believe": [
+      "RIPR compared only the listed static snapshots: fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json and fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json.",
+      "No focused-proof signal was visible; this receipt only records before/after static movement.",
+      "The movement and remaining-weak sections define the static claim boundary for this receipt."
+    ],
+    "reviewer_should_inspect": [
+      "Open the compared artifacts: fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json and fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json.",
+      "Inspect the focused test or output proof corresponding to each listed evidence delta.",
+      "Review remaining weak, unknown, new, or regressed seams before treating the repair loop as complete."
+    ],
+    "reviewer_should_not_believe": [
+      "Runtime mutation result.",
+      "Coverage adequacy.",
+      "General correctness.",
+      "Merge approval.",
+      "That RIPR edited source or generated tests."
+    ],
+    "ripr_flagged_before": [
+      "weakly_gripped before predicate_boundary at app/pricing.py:2."
+    ],
+    "what_changed": [
+      "Compared before snapshot fixtures/first_successful_pr/python-preview-gap/inputs/reports/before-check.json with after snapshot fixtures/first_successful_pr/python-preview-gap/inputs/reports/no-path-check.json.",
+      "Static seam movement: 0 moved, 0 unchanged, 1 regressed, 0 new, 0 removed."
+    ]
+  },
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "gap_movement": {
+      "changed": 0,
+      "closed": 0,
+      "new": 0,
+      "opened": 0,
+      "removed": 0,
+      "strengthened": 0,
+      "unchanged": 0,
+      "weakened": 1
+    },
+    "moved": 0,
+    "new": 0,
+    "regressed": 1,
+    "removed": 0,
+    "unchanged": 0
+  },
+  "tool": "ripr",
+  "unchanged": []
+}

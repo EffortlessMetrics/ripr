@@ -1,0 +1,57 @@
+schema_version = "2.0"
+id = "ripr.slice.editor-command-filter.v1"
+generation = 1
+
+source_issue = "issue:1776"
+design_reference = "RIPR-SPEC-0129"
+change_class = "behavior_change"
+
+claim_boundary = """
+Filters LSP code actions so a client-executed ripr.* command is emitted only
+when the negotiated ClientFeatureProfile advertised it (the RIPR-SPEC-0129
+Layer 1 rule), and completes the VS Code extension's RIPR_CLIENT_COMMANDS
+advertisement so every command the extension registers survives the filter.
+It does not change server-executed commands, diagnostics, hover, codeLens, or
+the riprAgent protocol.
+"""
+
+non_goals = [
+  "server-executed executeCommandProvider changes",
+  "diagnostic, hover, or codeLens surface changes",
+  "riprAgent protocol handling",
+  "new client commands",
+]
+
+return_conditions = [
+  "Return to root if a server-executed command is filtered or the refresh action is dropped.",
+  "Return to root if the VS Code action set changes under the full advertised profile.",
+  "Return to root if the filter reads raw InitializeParams instead of the typed profile.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:code-action-client-command-filter",
+  "seam:ripr:vscode:client-command-advertisement",
+]
+
+shared_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+  "seam:ripr:lsp:client-feature-profile",
+]
+
+forbidden_seams = [
+  "seam:ripr:lsp:ripr-agent-protocol",
+  "seam:ripr:lsp:diagnostic-pipeline",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

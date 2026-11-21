@@ -1,0 +1,160 @@
+{
+  "base": "main",
+  "comments": [
+    {
+      "dedupe_key": "ripr:calibration-already-covered:tests/pricing.rs:44",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-already-covered",
+      "kind": "predicate_boundary",
+      "missing_discriminator": null,
+      "owner": "pricing::discounted_total",
+      "placement": {
+        "line": 44,
+        "mode": "exact_seam_line",
+        "path": "tests/pricing.rs",
+        "side": "RIGHT"
+      },
+      "reason": "A nearby focused test already changed for this seam.",
+      "seam": {
+        "expression": "amount >= discount_threshold",
+        "file": "src/pricing.rs",
+        "line": 88
+      },
+      "seam_id": "calibration-already-covered",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(discounted_total(100, 10), 90)",
+        "candidate_values": [],
+        "intent": "No extra recommendation expected when the focused test changed.",
+        "near_test": "discounted_total_boundary_discriminator",
+        "recommended_file": "tests/pricing.rs",
+        "recommended_name": "discounted_total_boundary_discriminator"
+      }
+    },
+    {
+      "dedupe_key": "ripr:calibration-trait-generic:src/generic.rs:31",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-trait-generic",
+      "kind": "predicate_boundary",
+      "missing_discriminator": "generic bound equality case",
+      "owner": "pricing::generic::DiscountRule::applies",
+      "placement": {
+        "line": 31,
+        "mode": "exact_seam_line",
+        "path": "src/generic.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names a missing discriminator for a trait/generic boundary.",
+      "seam": {
+        "expression": "value >= threshold",
+        "file": "src/generic.rs",
+        "line": 31
+      },
+      "seam_id": "calibration-trait-generic",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert!(rule.applies(boundary_value))",
+        "candidate_values": [
+          "generic bound equality case"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "generic_rule_applies_above_threshold",
+        "recommended_file": "tests/generic_rules.rs",
+        "recommended_name": "generic_rule_boundary_discriminator"
+      }
+    },
+    {
+      "dedupe_key": "ripr:calibration-async-error:src/auth.rs:64",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-async-error",
+      "kind": "error_variant",
+      "missing_discriminator": "exact async error variant",
+      "owner": "auth::refresh_session",
+      "placement": {
+        "line": 64,
+        "mode": "exact_seam_line",
+        "path": "src/auth.rs",
+        "side": "RIGHT"
+      },
+      "reason": "Static evidence names a missing exact async error variant.",
+      "seam": {
+        "expression": "AuthError::RevokedToken",
+        "file": "src/auth.rs",
+        "line": 64
+      },
+      "seam_id": "calibration-async-error",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_error_variant",
+        "assertion_shape": "assert!(matches!(err, AuthError::RevokedToken))",
+        "candidate_values": [
+          "exact async error variant"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "refresh_session_rejects_expired_token",
+        "recommended_file": "tests/async_errors.rs",
+        "recommended_name": "refresh_session_revoked_token_discriminator"
+      }
+    }
+  ],
+  "head": "HEAD",
+  "limits": {
+    "max_inline_comments": 3,
+    "max_summary_items": 10
+  },
+  "limits_note": "Advisory static evidence only; no automatic edits, generated tests, runtime mutation execution, or CI blocking.",
+  "mode": "draft",
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "comments": 3,
+    "summary_only": 1,
+    "suppressed": 1,
+    "unchanged_tests": false
+  },
+  "summary_only": [
+    {
+      "dedupe_key": "ripr:calibration-macro-heavy:src/macros.rs:18",
+      "grip_class": "weakly_gripped",
+      "id": "ripr-review-calibration-macro-heavy",
+      "kind": "predicate_boundary",
+      "missing_discriminator": "macro-expanded equality boundary",
+      "owner": "pricing::macro_total",
+      "placement": null,
+      "reason": "Macro-heavy code has no safe changed-line placement for inline guidance.",
+      "seam": {
+        "expression": "macro_boundary >= threshold",
+        "file": "src/macros.rs",
+        "line": 18
+      },
+      "seam_id": "calibration-macro-heavy",
+      "severity": "warning",
+      "suggested_test": {
+        "assertion_kind": "exact_return_value",
+        "assertion_shape": "assert_eq!(macro_total(boundary_input), expected_total)",
+        "candidate_values": [
+          "macro-expanded equality boundary"
+        ],
+        "intent": "Add one focused discriminator test.",
+        "near_test": "macro_total_above_threshold",
+        "recommended_file": "tests/macros.rs",
+        "recommended_name": "macro_total_boundary_discriminator"
+      },
+      "summary_reason": "no safe changed-line placement was available for this seam"
+    }
+  ],
+  "suppressed": [
+    {
+      "file": "migrations/20260508_discount.sql",
+      "line": 12,
+      "message": "Generated or migration-like paths are excluded from PR guidance.",
+      "reason": "generated_or_migration",
+      "seam_id": "calibration-generated-migration"
+    }
+  ],
+  "tool": "ripr",
+  "warnings": []
+}

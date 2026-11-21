@@ -1,0 +1,612 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/boundary_operand_unresolved/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":3,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:4fd76931031c418a9440455138a1df24bd922f9effaf4476ae4487e357cc13da","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":3,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:predicate:28000360",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:28000360",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/boundary_operand_unresolved/input/src/lib.rs",
+        "line": 4,
+        "expression": "end == start"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: Some(\"\")"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: Some(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Some(\"\") (line 5)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "observed assertion argument value \"\" at line 5", "observed function argument value close = ']' at line 5", "observed function argument value open = '[' at line 5", "observed function argument value rest = \"[]\" at line 5", "observed assertion argument value \"ab\" at line 10", "observed function argument value close = ']' at line 10", "observed function argument value open = '[' at line 10", "observed function argument value rest = \"[ab]\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Some(\"\")","line":5}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: Some(\"\")", "Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion", "Typed static limitation (rust_value_propagation_unresolved): boundary operand values are not statically resolvable, so the missing discriminator is unconfirmed and no specific boundary input is prescribed"],
+      "missing": ["Missing discriminator value: end == start"],
+      "assertion_texts": {
+        "5": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
+        "10": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
+        "15": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "rest = \"[]\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"ab\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "rest = \"[ab]\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "rest = \"[ab\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "end == start",
+            "reason": "No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)",
+            "flow_sink": {"kind":"return_value","text":"Some(\"\")","line":5}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "rest = \"[]\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"ab\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "rest = \"[ab]\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "rest = \"[ab\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "end == start",
+          "reason": "No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)",
+          "flow_sink": {"kind":"return_value","text":"Some(\"\")","line":5}
+        }
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "empty_body_equality_case",
+          "file": "tests/q.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "missing_close_returns_none",
+          "file": "tests/q.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "nonempty_body",
+          "file": "tests/q.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.",
+      "suggested_next_action": "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.",
+      "language": "rust",
+      "static_limit_kind": "rust_value_propagation_unresolved",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:return_value:941b437a",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:return_value:941b437a",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/boundary_operand_unresolved/input/src/lib.rs",
+        "line": 5,
+        "expression": "Some(\"\")"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: Some(\"\")"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: Some(\"\")", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches returned value: Some(\"\") (line 5)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "observed assertion argument value \"\" at line 5", "observed function argument value close = ']' at line 5", "observed function argument value open = '[' at line 5", "observed function argument value rest = \"[]\" at line 5", "observed assertion argument value \"ab\" at line 10", "observed function argument value close = ']' at line 10", "observed function argument value open = '[' at line 10", "observed function argument value rest = \"[ab]\" at line 10"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Some(\"\")","line":5}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: Some(\"\")", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body"],
+      "missing": ["No strong discriminator was detected"],
+      "assertion_texts": {
+        "5": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
+        "10": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
+        "15": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "rest = \"[]\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"ab\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "rest = \"[ab]\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "rest = \"[ab\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "rest = \"[]\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"ab\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "rest = \"[ab]\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "rest = \"[ab\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "empty_body_equality_case",
+          "file": "tests/q.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "missing_close_returns_none",
+          "file": "tests/q.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "nonempty_body",
+          "file": "tests/q.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "suggested_next_action": "Replace broad assertions with exact equality or a property that constrains the changed returned value.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:ce0beb60",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:ce0beb60",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/boundary_operand_unresolved/input/src/lib.rs",
+        "line": 6,
+        "expression": "end > start"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body"},
+        "infect": {"state":"weak","confidence":"medium","summary":"Related tests contain input values, but the equality-boundary discriminator is missing"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence returned value: Some(&rest[start..end])"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "infection weak: Related tests contain input values, but the equality-boundary discriminator is missing", "propagation yes: Changed behavior appears to influence returned value: Some(&rest[start..end])", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: Some(&rest[start..end]) (line 7)", "related test tests/q.rs:4 empty_body_equality_case uses strong exact value oracle: assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));", "related test tests/q.rs:14 missing_close_returns_none uses strong exact value oracle: assert_eq!(quote_body(\"[ab\", '[', ']'), None);", "related test tests/q.rs:9 nonempty_body uses strong exact value oracle: assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));", "observed assertion argument value \"\" at line 5", "observed function argument value close = ']' at line 5", "observed function argument value open = '[' at line 5", "observed function argument value rest = \"[]\" at line 5", "observed assertion argument value \"ab\" at line 10", "observed function argument value close = ']' at line 10", "observed function argument value open = '[' at line 10", "observed function argument value rest = \"[ab]\" at line 10", "missing discriminator end == start: No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"Some(&rest[start..end])","line":7}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Changed behavior appears to influence returned value: Some(&rest[start..end])", "Related tests appear to reach quote_body: empty_body_equality_case, missing_close_returns_none, nonempty_body", "Related tests contain input values, but the equality-boundary discriminator is missing", "Strong oracle found: exact value or pattern assertion", "Typed static limitation (rust_value_propagation_unresolved): boundary operand values are not statically resolvable, so the missing discriminator is unconfirmed and no specific boundary input is prescribed"],
+      "missing": ["Missing discriminator value: end == start"],
+      "assertion_texts": {
+        "5": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
+        "10": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
+        "15": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 5,
+            "value": "\"\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 5,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 5,
+            "value": "rest = \"[]\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "\"ab\"",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 10,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 10,
+            "value": "rest = \"[ab]\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "close = ']'",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "open = '['",
+            "context": "function_argument"
+          },
+          {
+            "line": 15,
+            "value": "rest = \"[ab\"",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+          {
+            "value": "end == start",
+            "reason": "No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)",
+            "flow_sink": {"kind":"return_value","text":"Some(&rest[start..end])","line":7}
+          }
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 5,
+          "value": "\"\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 5,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 5,
+          "value": "rest = \"[]\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "\"ab\"",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 10,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 10,
+          "value": "rest = \"[ab]\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "close = ']'",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "open = '['",
+          "context": "function_argument"
+        },
+        {
+          "line": 15,
+          "value": "rest = \"[ab\"",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+        {
+          "value": "end == start",
+          "reason": "No related test call uses end equal to start; observed end values: unknown; boundary operand value unresolved: `end` flows through `rest.rfind(close)?` (earliest unsupported edge: expression `rest.rfind(close)?` is not a supported operation chain)",
+          "flow_sink": {"kind":"return_value","text":"Some(&rest[start..end])","line":7}
+        }
+      ],
+      "related_tests_total": 3,
+      "related_tests": [
+        {
+          "name": "empty_body_equality_case",
+          "file": "tests/q.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[]\", '[', ']'), Some(\"\"));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "missing_close_returns_none",
+          "file": "tests/q.rs",
+          "line": 14,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[ab\", '[', ']'), None);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "nonempty_body",
+          "file": "tests/q.rs",
+          "line": 9,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(quote_body(\"[ab]\", '[', ']'), Some(\"ab\"));",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.",
+      "suggested_next_action": "Typed static limitation (rust_value_propagation_unresolved): ripr cannot statically resolve the boundary operand values through the producer operations, so it does not prescribe a specific boundary input the suite may already cover. Verify via real mutation testing whether the asserted sink observes the missing discriminator value.",
+      "language": "rust",
+      "static_limit_kind": "rust_value_propagation_unresolved",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

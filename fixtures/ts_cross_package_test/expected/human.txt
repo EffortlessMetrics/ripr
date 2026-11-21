@@ -1,0 +1,43 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/ts_cross_package_test/input
+
+Summary: 1 probe(s), 0 exposed, 0 weak, 0 unrevealed, 1 no path, 0 unknown
+
+Changed file(s) by language: rust: 0, typescript: 1.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 1 probe(s), 1 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/inventory.ts:2
+  Language: typescript
+  Language status: preview
+  Static exposure: no_static_path (warning, confidence 0.40)
+  Why no_static_path: the changed behavior could not be traced to an observable output
+  Changed behavior: if (quantity >= minimum) {
+  Missing discriminator: No test references `checkStock(` — add a test that calls the changed owner.
+  Next step: TypeScript preview advisory: no test references the changed owner; add a test that calls the owner and asserts the changed behavior with `toBe` / `toEqual` before any repair packet…
+  Evidence:
+    - reach no: 0 related test(s) found for owner `checkStock`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 7 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/ts_cross_package_test/input --diff fixtures/ts_cross_package_test/diff.patch --mode fast probe:src_inventory.ts:typescript_preview:72e603c8
+  ripr context --root fixtures/ts_cross_package_test/input --diff fixtures/ts_cross_package_test/diff.patch --mode fast --at probe:src_inventory.ts:typescript_preview:72e603c8
+
+More:
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: ripr found no static test path for any of the 1 changed expression(s) in this diff. Scope
+  analyzed: 1 changed expression(s) and 0 statically linked related test(s). This is not a coverage
+  assessment. A test may already exercise these changes through macros, helper-call chains, or
+  integration tests that ripr's static model does not yet trace; if none does, add co-located tests
+  that observe the changed behavior.
+
+Note: 1 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

@@ -1,0 +1,58 @@
+schema_version = "2.0"
+id = "ripr.slice.receipt-verify-input-validation.v1"
+generation = 1
+
+source_issue = "issue:1941"
+design_reference = "RIPR-SPEC-0134#receipt-issuance-validation"
+change_class = "security_contract_change"
+
+claim_boundary = """
+Makes `ripr agent receipt` accept only an exact canonical `ripr agent verify`
+JSON document recomputed from the referenced producer-bound before and after
+repo-exposure artifacts. Fabricated or altered movement fields are rejected
+before receipt rendering. This remains static comparison evidence and does not
+execute a verification command or claim runtime mutation adequacy.
+"""
+
+non_goals = [
+  "verification command execution",
+  "configuration binding",
+  "receipt signatures",
+  "replay protection",
+  "gate authority",
+  "runtime mutation results",
+]
+
+return_conditions = [
+  "Return to root if receipt issuance stops recomputing movement from bound artifacts.",
+  "Return to root if fabricated or altered verify JSON is accepted as current receipt input.",
+  "Return to root if static receipt output implies runtime execution or merge authority.",
+]
+
+owned_seams = [
+  "seam:ripr:cli:agent-receipt-validation",
+  "seam:ripr:contract:agent-verify-canonical-output",
+]
+
+shared_seams = [
+  "seam:ripr:security:repair-receipt-provenance",
+  "seam:ripr:agent:repo-exposure-artifact-validation",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0134#receipt-issuance-validation"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

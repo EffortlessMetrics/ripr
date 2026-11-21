@@ -1,0 +1,18 @@
+diff --git a/src/pricing.py b/src/pricing.py
+index 0000000..1111111 100644
+--- a/src/pricing.py
++++ b/src/pricing.py
+@@ -1,4 +1,4 @@
+ def calculate_discount(amount, threshold):
++    if amount >= threshold:
+         return amount - 10
+     return amount
+diff --git a/src/validation.py b/src/validation.py
+index 0000000..1111111 100644
+--- a/src/validation.py
++++ b/src/validation.py
+@@ -1,4 +1,4 @@
+ def require_positive(value):
+     if value <= 0:
++        raise ValueError("positive required")
+     return value

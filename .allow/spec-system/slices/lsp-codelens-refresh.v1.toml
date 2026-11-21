@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-codelens-refresh.v1"
+generation = 1
+
+source_issue = "issue:2032"
+design_reference = "RIPR-SPEC-0138"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds the standard LSP CodeLens refresh lifecycle to the server: negotiation
+of `workspace.codeLens.refreshSupport` from client capabilities at
+`initialize`, a deterministic `LensViewIdentity` over the structured fields
+that change the visible lens set (per-finding id, document URI, lens line,
+related-test count, classification class, preview marker, static limitation
+kind, plus the snapshot input identity; wall-clock age and rendered titles
+excluded), and one `workspace/codeLens/refresh` request per changed view
+after a snapshot commit, gated on the negotiated capability with log-only,
+no-retry failure handling. Does not claim lens emission changes, CodeLens
+resolve, a gated provider advertisement, a typed ClientFeatureProfile,
+editor extension changes, or any scheduling beyond identity comparison.
+"""
+
+non_goals = [
+  "gating the code_lens_provider advertisement on refresh support",
+  "CodeLens resolve or lens title/content changes (RIPR-SPEC-0100 owns emission)",
+  "typed ClientFeatureProfile (#1987, not landed)",
+  "refresh timers or debounce beyond identity comparison",
+  "editor extension changes",
+]
+
+return_conditions = [
+  "Return to root if #1987's typed ClientFeatureProfile lands and this boolean should migrate into it.",
+  "Return to root if any consumer needs per-document refresh scoping (the standard request is global).",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:codelens-refresh",
+  "seam:ripr:docs:lsp-codelens-refresh-spec",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:backend-handlers",
+  "seam:ripr:tests:lsp-stdio-harness",
+]
+
+forbidden_seams = [
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:editor:vscode-extension",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0138#lsp-codelens-refresh"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -4,6 +4,6 @@ pub enum AuthError {
+ }
+ pub fn authenticate(token: &str) -> Result<&'static str, AuthError> {
+     if token.is_empty() {
+-        return Err(AuthError::EmptyToken);
++        return Err(AuthError::RevokedToken);
+     }
+     Ok("accepted")

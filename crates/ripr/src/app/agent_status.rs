@@ -1,0 +1,917 @@
+use crate::agent::loop_commands::{
+    WORKFLOW_AFTER_SNAPSHOT_ARTIFACT, WORKFLOW_AGENT_BRIEF_ARTIFACT,
+    WORKFLOW_AGENT_PACKET_ARTIFACT, WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT, WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT,
+    WORKFLOW_AGENT_STATUS_ARTIFACT, WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT,
+    WORKFLOW_AGENT_VERIFY_ARTIFACT, WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT, agent_brief_command, agent_packet_command,
+    agent_receipt_command, agent_review_summary_command, agent_review_summary_markdown_command,
+    agent_status_command, agent_status_markdown_command, agent_verify_command,
+    check_analysis_outcome_command, check_repo_exposure_command, display_path,
+};
+use crate::output::markdown::{COMMAND_SHELL_DISCLOSURE, powershell_command};
+use serde_json::Value;
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+pub(crate) const AGENT_STATUS_SCHEMA_VERSION: &str = "0.1";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct AgentStatusArtifactDef {
+    name: &'static str,
+    label: &'static str,
+    path: &'static str,
+}
+
+const ARTIFACTS: &[AgentStatusArtifactDef] = &[
+    AgentStatusArtifactDef {
+        name: "before_snapshot",
+        label: "before snapshot",
+        path: WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "after_snapshot",
+        label: "after snapshot",
+        path: WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "analysis_outcome",
+        label: "analysis outcome",
+        path: WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "agent_brief",
+        label: "agent brief",
+        path: WORKFLOW_AGENT_BRIEF_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "agent_packet",
+        label: "agent packet",
+        path: WORKFLOW_AGENT_PACKET_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "agent_verify",
+        label: "agent verify",
+        path: WORKFLOW_AGENT_VERIFY_ARTIFACT,
+    },
+    AgentStatusArtifactDef {
+        name: "agent_receipt",
+        label: "agent receipt",
+        path: WORKFLOW_AGENT_RECEIPT_ARTIFACT,
+    },
+];
+
+const MISSING_COMMAND_ORDER: &[&str] = &[
+    "before_snapshot",
+    "agent_packet",
+    "agent_brief",
+    "after_snapshot",
+    "analysis_outcome",
+    "agent_verify",
+    "agent_receipt",
+];
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentStatusReport {
+    pub(crate) root: String,
+    pub(crate) seam: Option<AgentStatusSeam>,
+    pub(crate) artifacts: Vec<AgentStatusArtifact>,
+    pub(crate) missing_commands: Vec<AgentStatusCommand>,
+    pub(crate) warnings: Vec<AgentStatusWarning>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentStatusSeam {
+    pub(crate) seam_id: String,
+    pub(crate) source: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentStatusArtifact {
+    pub(crate) name: String,
+    pub(crate) label: String,
+    pub(crate) path: String,
+    pub(crate) present: bool,
+    pub(crate) bytes: Option<u64>,
+    pub(crate) modified: Option<SystemTime>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentStatusCommand {
+    pub(crate) step: String,
+    pub(crate) artifact: String,
+    pub(crate) reason: String,
+    pub(crate) command: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct AgentStatusWarning {
+    pub(crate) kind: String,
+    pub(crate) artifact: String,
+    pub(crate) message: String,
+}
+
+impl AgentStatusReport {
+    pub(crate) fn status(&self) -> &'static str {
+        if self.artifacts.iter().any(|artifact| !artifact.present) {
+            "incomplete"
+        } else if self.warnings.is_empty() {
+            "complete"
+        } else {
+            "warning"
+        }
+    }
+}
+
+pub(crate) fn build_agent_status_report(root: &Path, root_argument: &Path) -> AgentStatusReport {
+    let root_display = display_path(root_argument);
+    keep_follow_up_templates_reachable(&root_display);
+    let artifacts = ARTIFACTS
+        .iter()
+        .map(|artifact| inspect_artifact(root, artifact))
+        .collect::<Vec<_>>();
+    let mut warnings = Vec::new();
+    let seam = recover_seam_id(root, &artifacts, &mut warnings);
+    warnings.extend(stale_warnings(&artifacts));
+    let missing_commands = missing_commands(root_argument, seam.as_ref(), &artifacts);
+
+    AgentStatusReport {
+        root: root_display,
+        seam,
+        artifacts,
+        missing_commands,
+        warnings,
+    }
+}
+
+fn keep_follow_up_templates_reachable(root: &str) {
+    drop((
+        agent_status_command(root, Some(WORKFLOW_AGENT_STATUS_ARTIFACT)),
+        agent_status_markdown_command(root, Some(WORKFLOW_AGENT_STATUS_MARKDOWN_ARTIFACT)),
+        agent_review_summary_command(root, Some(WORKFLOW_AGENT_REVIEW_SUMMARY_ARTIFACT)),
+        agent_review_summary_markdown_command(
+            root,
+            Some(WORKFLOW_AGENT_REVIEW_SUMMARY_MARKDOWN_ARTIFACT),
+        ),
+    ));
+}
+
+pub(crate) fn render_agent_status_json(report: &AgentStatusReport) -> Result<String, String> {
+    let next_command = report
+        .missing_commands
+        .first()
+        .map(agent_status_command_json);
+    let value = serde_json::json!({
+        "schema_version": AGENT_STATUS_SCHEMA_VERSION,
+        "tool": "ripr",
+        "status": report.status(),
+        "root": report.root,
+        "seam": report.seam.as_ref().map(agent_status_seam_json),
+        "artifacts": report.artifacts.iter().map(agent_status_artifact_json).collect::<Vec<_>>(),
+        "missing_commands": report.missing_commands.iter().map(agent_status_command_json).collect::<Vec<_>>(),
+        "next_command": next_command,
+        "warnings": report.warnings.iter().map(agent_status_warning_json).collect::<Vec<_>>()
+    });
+    serde_json::to_string_pretty(&value)
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        })
+        .map_err(|err| format!("failed to render agent status JSON: {err}"))
+}
+
+pub(crate) fn render_agent_status_markdown(report: &AgentStatusReport) -> String {
+    let mut rendered = String::new();
+    rendered.push_str("# RIPR Agent Status\n\n");
+    rendered.push_str(&format!("Status: {}\n", report.status()));
+    rendered.push_str(&format!("Root: {}\n", report.root));
+    match &report.seam {
+        Some(seam) => rendered.push_str(&format!("Seam: {} ({})\n", seam.seam_id, seam.source)),
+        None => rendered.push_str("Seam: unknown\n"),
+    }
+
+    rendered.push_str("\n## Artifacts\n\n");
+    rendered.push_str("| Artifact | State | Path |\n");
+    rendered.push_str("| --- | --- | --- |\n");
+    for artifact in &report.artifacts {
+        let state = if artifact.present {
+            "present"
+        } else {
+            "missing"
+        };
+        rendered.push_str(&format!(
+            "| {} | {} | `{}` |\n",
+            artifact.label, state, artifact.path
+        ));
+    }
+
+    if let Some(next) = report.missing_commands.first() {
+        rendered.push_str("\n## Next Command\n\n");
+        rendered.push_str(&format!("{}\n\n", next.reason));
+        rendered.push_str(COMMAND_SHELL_DISCLOSURE);
+        rendered.push_str("```bash\n");
+        rendered.push_str(&next.command);
+        rendered.push_str("\n```\n");
+        match powershell_command(&next.command) {
+            Some(line) => {
+                rendered.push_str("\n```powershell\n");
+                rendered.push_str(&line);
+                rendered.push_str("\n```\n");
+            }
+            None => rendered.push_str(&format!(
+                "{}: `{}`\n",
+                crate::output::markdown::POWERSHELL_UNAVAILABLE_DISCLOSURE,
+                next.command
+            )),
+        }
+    } else {
+        rendered.push_str("\nNo missing agent-loop artifacts were detected.\n");
+    }
+
+    if !report.warnings.is_empty() {
+        rendered.push_str("\n## Warnings\n\n");
+        for warning in &report.warnings {
+            rendered.push_str(&format!(
+                "- {}: {} (`{}`)\n",
+                warning.kind, warning.message, warning.artifact
+            ));
+        }
+    }
+
+    rendered.push_str("\n## Limits\n\n");
+    rendered.push_str("- Reads existing artifacts only.\n");
+    rendered.push_str("- No repo analysis is run by this command.\n");
+    rendered.push_str("- No runtime mutation execution.\n");
+    rendered.push_str("- No automatic source edits.\n");
+    rendered.push_str("- No generated tests.\n");
+    rendered
+}
+
+fn agent_status_seam_json(seam: &AgentStatusSeam) -> Value {
+    serde_json::json!({
+        "seam_id": seam.seam_id,
+        "source": seam.source
+    })
+}
+
+fn agent_status_artifact_json(artifact: &AgentStatusArtifact) -> Value {
+    serde_json::json!({
+        "name": artifact.name,
+        "label": artifact.label,
+        "path": artifact.path,
+        "required": true,
+        "state": if artifact.present { "present" } else { "missing" },
+        "bytes": artifact.bytes,
+        "modified_unix_ms": modified_unix_ms(artifact.modified)
+    })
+}
+
+fn agent_status_command_json(command: &AgentStatusCommand) -> Value {
+    serde_json::json!({
+        "step": command.step,
+        "artifact": command.artifact,
+        "reason": command.reason,
+        "command": command.command
+    })
+}
+
+fn agent_status_warning_json(warning: &AgentStatusWarning) -> Value {
+    serde_json::json!({
+        "kind": warning.kind,
+        "artifact": warning.artifact,
+        "message": warning.message
+    })
+}
+
+fn inspect_artifact(root: &Path, artifact: &AgentStatusArtifactDef) -> AgentStatusArtifact {
+    let path = root.join(artifact.path);
+    match std::fs::metadata(&path) {
+        Ok(metadata) if metadata.is_file() => AgentStatusArtifact {
+            name: artifact.name.to_string(),
+            label: artifact.label.to_string(),
+            path: artifact.path.to_string(),
+            present: true,
+            bytes: Some(metadata.len()),
+            modified: metadata.modified().ok(),
+        },
+        _ => AgentStatusArtifact {
+            name: artifact.name.to_string(),
+            label: artifact.label.to_string(),
+            path: artifact.path.to_string(),
+            present: false,
+            bytes: None,
+            modified: None,
+        },
+    }
+}
+
+fn recover_seam_id(
+    root: &Path,
+    artifacts: &[AgentStatusArtifact],
+    warnings: &mut Vec<AgentStatusWarning>,
+) -> Option<AgentStatusSeam> {
+    for (artifact_name, source) in [
+        ("agent_receipt", "agent_receipt"),
+        ("agent_verify", "agent_verify"),
+        ("agent_packet", "agent_packet"),
+        ("agent_brief", "agent_brief"),
+    ] {
+        let Some(artifact) = artifact_by_name(artifacts, artifact_name).filter(|a| a.present)
+        else {
+            continue;
+        };
+        let path = root.join(&artifact.path);
+        let Some(value) = read_json_artifact(&path, artifact, warnings) else {
+            continue;
+        };
+        if let Some(seam_id) = seam_id_from_source(&value, source) {
+            return Some(AgentStatusSeam {
+                seam_id,
+                source: source.to_string(),
+            });
+        }
+    }
+    None
+}
+
+fn read_json_artifact(
+    path: &Path,
+    artifact: &AgentStatusArtifact,
+    warnings: &mut Vec<AgentStatusWarning>,
+) -> Option<Value> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(err) => {
+            warnings.push(AgentStatusWarning {
+                kind: "artifact_json_unreadable".to_string(),
+                artifact: artifact.name.clone(),
+                message: format!("could not read {}: {err}", artifact.path),
+            });
+            return None;
+        }
+    };
+    match serde_json::from_str::<Value>(&text) {
+        Ok(value) => Some(value),
+        Err(err) => {
+            warnings.push(AgentStatusWarning {
+                kind: "artifact_json_unreadable".to_string(),
+                artifact: artifact.name.clone(),
+                message: format!("could not parse {} as JSON: {err}", artifact.path),
+            });
+            None
+        }
+    }
+}
+
+fn seam_id_from_source(value: &Value, source: &str) -> Option<String> {
+    match source {
+        "agent_receipt" => value
+            .get("seam")
+            .and_then(|seam| string_field(seam, "seam_id")),
+        "agent_verify" => seam_id_from_verify(value),
+        "agent_packet" => value
+            .get("packets")
+            .and_then(Value::as_array)
+            .and_then(|packets| packets.first())
+            .and_then(|packet| string_field(packet, "seam_id")),
+        "agent_brief" => value
+            .get("working_set")
+            .and_then(|working_set| string_field(working_set, "seam_id"))
+            .or_else(|| {
+                value
+                    .get("top_seams")
+                    .and_then(Value::as_array)
+                    .and_then(|seams| seams.first())
+                    .and_then(|seam| string_field(seam, "seam_id"))
+            }),
+        _ => None,
+    }
+}
+
+fn seam_id_from_verify(value: &Value) -> Option<String> {
+    for bucket in [
+        "changed_seams",
+        "unchanged_seams",
+        "new_gaps",
+        "resolved_gaps",
+    ] {
+        let Some(seam_id) = value
+            .get(bucket)
+            .and_then(Value::as_array)
+            .and_then(|seams| seams.first())
+            .and_then(|seam| string_field(seam, "seam_id"))
+        else {
+            continue;
+        };
+        return Some(seam_id);
+    }
+    None
+}
+
+fn string_field(value: &Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
+}
+
+fn stale_warnings(artifacts: &[AgentStatusArtifact]) -> Vec<AgentStatusWarning> {
+    let mut warnings = Vec::new();
+    push_snapshot_order_warning(artifacts, &mut warnings);
+    push_stale_warning(
+        artifacts,
+        "agent_verify",
+        "before_snapshot",
+        "agent verify is older than the before snapshot; rerun verify after refreshing snapshots",
+        &mut warnings,
+    );
+    push_stale_warning(
+        artifacts,
+        "agent_verify",
+        "after_snapshot",
+        "agent verify is older than the after snapshot; rerun verify after refreshing snapshots",
+        &mut warnings,
+    );
+    push_stale_warning(
+        artifacts,
+        "agent_receipt",
+        "agent_verify",
+        "agent receipt is older than agent verify; rerun receipt after refreshing verify",
+        &mut warnings,
+    );
+    warnings
+}
+
+fn push_snapshot_order_warning(
+    artifacts: &[AgentStatusArtifact],
+    warnings: &mut Vec<AgentStatusWarning>,
+) {
+    let Some(before) = artifact_by_name(artifacts, "before_snapshot").filter(|a| a.present) else {
+        return;
+    };
+    let Some(after) = artifact_by_name(artifacts, "after_snapshot").filter(|a| a.present) else {
+        return;
+    };
+    let (Some(before_modified), Some(after_modified)) = (before.modified, after.modified) else {
+        return;
+    };
+    if before_modified > after_modified {
+        warnings.push(AgentStatusWarning {
+            kind: "stale_artifact".to_string(),
+            artifact: before.name.clone(),
+            message: "before snapshot is newer than after snapshot; the before artifact may have been overwritten after editing".to_string(),
+        });
+    }
+}
+
+fn push_stale_warning(
+    artifacts: &[AgentStatusArtifact],
+    stale_candidate: &str,
+    newer_input: &str,
+    message: &str,
+    warnings: &mut Vec<AgentStatusWarning>,
+) {
+    let Some(candidate) = artifact_by_name(artifacts, stale_candidate).filter(|a| a.present) else {
+        return;
+    };
+    let Some(input) = artifact_by_name(artifacts, newer_input).filter(|a| a.present) else {
+        return;
+    };
+    let (Some(candidate_modified), Some(input_modified)) = (candidate.modified, input.modified)
+    else {
+        return;
+    };
+    if candidate_modified.duration_since(input_modified).is_err() {
+        warnings.push(AgentStatusWarning {
+            kind: "stale_artifact".to_string(),
+            artifact: candidate.name.clone(),
+            message: message.to_string(),
+        });
+    }
+}
+
+fn missing_commands(
+    root_argument: &Path,
+    seam: Option<&AgentStatusSeam>,
+    artifacts: &[AgentStatusArtifact],
+) -> Vec<AgentStatusCommand> {
+    let mut commands = Vec::new();
+    for artifact_name in MISSING_COMMAND_ORDER {
+        let Some(artifact) = artifact_by_name(artifacts, artifact_name) else {
+            continue;
+        };
+        if artifact.present {
+            continue;
+        }
+        commands.push(AgentStatusCommand {
+            step: artifact.name.clone(),
+            artifact: artifact.path.clone(),
+            reason: format!("{} artifact is missing", artifact.label),
+            command: command_for_missing_artifact(root_argument, seam, artifact),
+        });
+    }
+    commands
+}
+
+fn command_for_missing_artifact(
+    root_argument: &Path,
+    seam: Option<&AgentStatusSeam>,
+    artifact: &AgentStatusArtifact,
+) -> String {
+    let root = display_path(root_argument);
+    let seam_id = seam
+        .map(|seam| seam.seam_id.as_str())
+        .unwrap_or("<seam-id>");
+    match artifact.name.as_str() {
+        "before_snapshot" => {
+            check_repo_exposure_command(&root, "draft", WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT)
+        }
+        "after_snapshot" => {
+            check_repo_exposure_command(&root, "draft", WORKFLOW_AFTER_SNAPSHOT_ARTIFACT)
+        }
+        "analysis_outcome" => {
+            check_analysis_outcome_command(&root, "draft", WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT)
+        }
+        "agent_packet" => agent_packet_command(&root, seam_id, WORKFLOW_AGENT_PACKET_ARTIFACT),
+        "agent_brief" => agent_brief_command(&root, seam_id, WORKFLOW_AGENT_BRIEF_ARTIFACT),
+        "agent_verify" => agent_verify_command(
+            &root,
+            WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT,
+            WORKFLOW_AFTER_SNAPSHOT_ARTIFACT,
+            Some(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+        ),
+        "agent_receipt" => agent_receipt_command(
+            &root,
+            WORKFLOW_AGENT_VERIFY_ARTIFACT,
+            seam_id,
+            Some(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+        ),
+        _ => String::new(),
+    }
+}
+
+fn artifact_by_name<'a>(
+    artifacts: &'a [AgentStatusArtifact],
+    name: &str,
+) -> Option<&'a AgentStatusArtifact> {
+    artifacts.iter().find(|artifact| artifact.name == name)
+}
+
+fn modified_unix_ms(time: Option<SystemTime>) -> Option<u64> {
+    let millis = time?.duration_since(UNIX_EPOCH).ok()?.as_millis();
+    u64::try_from(millis).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    fn unique_agent_status_test_dir(label: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        std::env::temp_dir().join(format!(
+            "ripr-agent-status-{label}-{}-{stamp}",
+            std::process::id()
+        ))
+    }
+
+    fn write_file(path: &Path, text: &str) -> Result<(), String> {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent).map_err(|err| format!("create parent: {err}"))?;
+        }
+        std::fs::write(path, text).map_err(|err| format!("write {}: {err}", path.display()))
+    }
+
+    fn artifact(name: &str, present: bool, modified: Option<SystemTime>) -> AgentStatusArtifact {
+        AgentStatusArtifact {
+            name: name.to_string(),
+            label: name.replace('_', " "),
+            path: format!("target/ripr/{name}.json"),
+            present,
+            bytes: Some(1),
+            modified,
+        }
+    }
+
+    #[test]
+    fn agent_status_reports_missing_artifacts_and_next_commands() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("missing");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_status_report(&root, Path::new("."));
+        let rendered = render_agent_status_json(&report)?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse status JSON: {err}"))?;
+
+        assert_eq!(value["schema_version"], AGENT_STATUS_SCHEMA_VERSION);
+        assert_eq!(value["status"], "incomplete");
+        assert_eq!(value["seam"], Value::Null);
+        assert_eq!(value["artifacts"].as_array().map(Vec::len), Some(7));
+        assert_eq!(value["missing_commands"].as_array().map(Vec::len), Some(7));
+        assert_eq!(value["next_command"]["step"], "before_snapshot");
+        assert_eq!(
+            value["next_command"]["command"],
+            "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_status_reports_complete_when_all_artifacts_are_present() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("complete");
+        write_file(&root.join(WORKFLOW_BEFORE_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AFTER_SNAPSHOT_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_ANALYSIS_OUTCOME_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_BRIEF_ARTIFACT), "{}")?;
+        write_file(&root.join(WORKFLOW_AGENT_PACKET_ARTIFACT), "{}")?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_VERIFY_ARTIFACT),
+            r#"{
+  "changed_seams": [],
+  "unchanged_seams": [{"seam_id": "from-verify"}],
+  "new_gaps": [],
+  "resolved_gaps": []
+}"#,
+        )?;
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{"seam":{"seam_id":"from-receipt"}}"#,
+        )?;
+
+        let report = build_agent_status_report(&root, Path::new("."));
+        let rendered = render_agent_status_json(&report)?;
+        let value: Value =
+            serde_json::from_str(&rendered).map_err(|err| format!("parse status JSON: {err}"))?;
+
+        assert_eq!(value["status"], "complete");
+        assert_eq!(value["seam"]["seam_id"], "from-receipt");
+        assert_eq!(value["seam"]["source"], "agent_receipt");
+        assert_eq!(value["missing_commands"].as_array().map(Vec::len), Some(0));
+        assert_eq!(value["next_command"], Value::Null);
+        assert_eq!(
+            value["artifacts"][0]["state"],
+            serde_json::Value::String("present".to_string())
+        );
+        assert!(value["artifacts"][0]["bytes"].as_u64().is_some());
+        assert!(value["artifacts"][0]["modified_unix_ms"].as_u64().is_some());
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_status_markdown_names_next_command_and_limits() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("markdown");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_status_report(&root, Path::new("."));
+        let rendered = render_agent_status_markdown(&report);
+
+        assert!(rendered.contains("# RIPR Agent Status"));
+        assert!(rendered.contains("Status: incomplete"));
+        assert!(rendered.contains("| before snapshot | missing |"));
+        assert!(rendered.contains("## Next Command"));
+        assert!(rendered.contains("ripr check --root . --mode draft"));
+        assert!(rendered.contains("No runtime mutation execution."));
+        assert!(rendered.contains("No generated tests."));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    /// The agent-status Next Command block must offer both shells (#2628): the
+    /// bash fence stays byte-identical, the PowerShell fence derives through
+    /// the shared `powershell_command` translation (redirect becomes a UTF-8
+    /// .NET write; the quoted root survives as a single-quoted literal), and
+    /// the cmd.exe boundary is stated.
+    #[test]
+    fn agent_status_markdown_next_command_offers_powershell_variant() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("markdown-powershell");
+        std::fs::create_dir_all(&root).map_err(|err| format!("create root: {err}"))?;
+
+        let report = build_agent_status_report(&root, Path::new("repo root"));
+        let rendered = render_agent_status_markdown(&report);
+
+        let bash_form = "```bash\nripr check --root 'repo root' --mode draft --format repo-exposure-json > target/ripr/workflow/before.repo-exposure.json\n```\n";
+        assert!(
+            rendered.contains(bash_form),
+            "bash next command drifted:\n{rendered}"
+        );
+        let powershell_form = "```powershell\n$ripr = ((ripr check --root 'repo root' --mode draft --format repo-exposure-json) | Out-String); if ($LASTEXITCODE -eq 0) { [System.IO.File]::WriteAllText('target/ripr/workflow/before.repo-exposure.json', $ripr, [System.Text.UTF8Encoding]::new($false)) } else { throw \"ripr exited with code $LASTEXITCODE\" }\n```\n";
+        assert!(
+            rendered.contains(powershell_form),
+            "powershell next command missing or drifted:\n{rendered}"
+        );
+        let bash_fence = rendered
+            .find(bash_form)
+            .ok_or_else(|| format!("bash fence must exist: {rendered}"))?;
+        let powershell_fence = rendered
+            .find(powershell_form)
+            .ok_or_else(|| format!("powershell fence must exist: {rendered}"))?;
+        assert!(
+            bash_fence < powershell_fence,
+            "bash form must be presented before the PowerShell variant"
+        );
+        assert!(
+            rendered.contains("cmd.exe is not supported."),
+            "next command presentation must state the cmd.exe boundary:\n{rendered}"
+        );
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_status_recovers_seam_id_from_receipt() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("receipt");
+        write_file(
+            &root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT),
+            r#"{"seam":{"seam_id":"67fc764ba37d77bd"}}"#,
+        )?;
+
+        let report = build_agent_status_report(&root, Path::new("repo root"));
+        let seam = report
+            .seam
+            .as_ref()
+            .ok_or_else(|| "expected recovered seam".to_string())?;
+
+        assert_eq!(seam.seam_id, "67fc764ba37d77bd");
+        assert_eq!(seam.source, "agent_receipt");
+        assert!(report.missing_commands.iter().any(|command| {
+            command.step == "agent_packet"
+                && command.command
+                    == "ripr agent packet --root 'repo root' --seam-id 67fc764ba37d77bd --json > target/ripr/workflow/agent-packet.json"
+        }));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_status_warns_for_malformed_present_json() -> Result<(), String> {
+        let root = unique_agent_status_test_dir("malformed");
+        write_file(&root.join(WORKFLOW_AGENT_RECEIPT_ARTIFACT), "{not json")?;
+
+        let report = build_agent_status_report(&root, Path::new("."));
+
+        assert!(report.seam.is_none());
+        assert!(report.warnings.iter().any(|warning| {
+            warning.kind == "artifact_json_unreadable" && warning.artifact == "agent_receipt"
+        }));
+
+        std::fs::remove_dir_all(&root).map_err(|err| format!("remove root: {err}"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn agent_status_recovers_seam_id_from_verify_packet_or_brief() {
+        let verify: Value = serde_json::json!({
+            "changed_seams": [],
+            "unchanged_seams": [{"seam_id": "from-verify"}],
+            "new_gaps": [],
+            "resolved_gaps": []
+        });
+        let packet: Value = serde_json::json!({
+            "packets": [{"seam_id": "from-packet"}]
+        });
+        let brief: Value = serde_json::json!({
+            "working_set": {"seam_id": "from-brief"},
+            "top_seams": [{"seam_id": "from-top-seam"}]
+        });
+
+        assert_eq!(
+            seam_id_from_source(&verify, "agent_verify"),
+            Some("from-verify".to_string())
+        );
+        assert_eq!(
+            seam_id_from_source(&packet, "agent_packet"),
+            Some("from-packet".to_string())
+        );
+        assert_eq!(
+            seam_id_from_source(&brief, "agent_brief"),
+            Some("from-brief".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_status_recovers_brief_top_seam_without_working_set_seam() {
+        let brief: Value = serde_json::json!({
+            "working_set": {"seam_id": null},
+            "top_seams": [{"seam_id": "from-top-seam"}]
+        });
+
+        assert_eq!(
+            seam_id_from_source(&brief, "agent_brief"),
+            Some("from-top-seam".to_string())
+        );
+    }
+
+    #[test]
+    fn agent_status_warns_when_verify_or_receipt_look_stale() {
+        let early = UNIX_EPOCH + Duration::from_secs(1);
+        let middle = UNIX_EPOCH + Duration::from_secs(2);
+        let late = UNIX_EPOCH + Duration::from_secs(3);
+        let warnings = stale_warnings(&[
+            artifact("before_snapshot", true, Some(late)),
+            artifact("after_snapshot", true, Some(late)),
+            artifact("agent_verify", true, Some(middle)),
+            artifact("agent_receipt", true, Some(early)),
+        ]);
+
+        assert_eq!(warnings.len(), 3);
+        assert!(warnings.iter().any(|warning| {
+            warning.artifact == "agent_verify"
+                && warning.message.contains("older than the before snapshot")
+        }));
+        assert!(warnings.iter().any(|warning| {
+            warning.artifact == "agent_receipt"
+                && warning.message.contains("older than agent verify")
+        }));
+    }
+
+    #[test]
+    fn agent_status_warns_when_before_snapshot_is_newer_than_after() {
+        let after = UNIX_EPOCH + Duration::from_secs(2);
+        let before = UNIX_EPOCH + Duration::from_secs(3);
+        let completed = UNIX_EPOCH + Duration::from_secs(4);
+        let warnings = stale_warnings(&[
+            artifact("before_snapshot", true, Some(before)),
+            artifact("after_snapshot", true, Some(after)),
+            artifact("agent_verify", true, Some(completed)),
+            artifact("agent_receipt", true, Some(completed)),
+        ]);
+
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].artifact, "before_snapshot");
+        assert!(
+            warnings[0]
+                .message
+                .contains("before snapshot is newer than after snapshot")
+        );
+    }
+
+    #[test]
+    fn agent_status_emits_all_missing_command_templates() {
+        let artifacts = ARTIFACTS
+            .iter()
+            .map(|def| AgentStatusArtifact {
+                name: def.name.to_string(),
+                label: def.label.to_string(),
+                path: def.path.to_string(),
+                present: false,
+                bytes: None,
+                modified: None,
+            })
+            .collect::<Vec<_>>();
+        let seam = AgentStatusSeam {
+            seam_id: "seam-a".to_string(),
+            source: "agent_verify".to_string(),
+        };
+        let commands = missing_commands(Path::new("."), Some(&seam), &artifacts);
+
+        assert_eq!(commands.len(), 7);
+        assert!(commands.iter().any(|command| {
+            command.step == "after_snapshot"
+                && command.command
+                    == "ripr check --root . --mode draft --format repo-exposure-json > target/ripr/workflow/after.repo-exposure.json"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.step == "analysis_outcome"
+                && command.command
+                    == "ripr check --root . --mode draft --format json > target/ripr/workflow/analysis-outcome.json"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.step == "agent_brief"
+                && command.command
+                    == "ripr agent brief --root . --seam-id seam-a --json > target/ripr/workflow/agent-brief.json"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.step == "agent_verify"
+                && command.command
+                    == "ripr agent verify --root . --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json > target/ripr/workflow/agent-verify.json"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.step == "agent_receipt"
+                && command.command
+                    == "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id seam-a --json --out target/ripr/reports/agent-receipt.json"
+        }));
+    }
+
+    #[test]
+    fn agent_status_quotes_paths_with_spaces() {
+        assert_eq!(
+            agent_packet_command("repo root", "seam-a", WORKFLOW_AGENT_PACKET_ARTIFACT),
+            "ripr agent packet --root 'repo root' --seam-id seam-a --json > target/ripr/workflow/agent-packet.json"
+        );
+    }
+}

@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/receipt_gap_mismatch",
+  "status": "receipt_gap_mismatch",
+  "projection": "fail_closed",
+  "workspace_root": "fixtures/editor_first_run_usability/receipt_gap_mismatch/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "artifacts": {
+    "first_useful_action": "found",
+    "gap_decision_ledger": "found",
+    "agent_receipt": "gap_mismatch"
+  },
+  "next_safe_action": "Rerun verify and receipt for the current gap before copying repair actions."
+}

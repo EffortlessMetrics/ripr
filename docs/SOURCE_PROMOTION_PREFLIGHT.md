@@ -1,0 +1,122 @@
+# Source-promotion preflight
+
+`cargo xtask source-promotion preflight` creates the repeatable, read-only
+receipt consumed by the source release preflight. It preserves the complete
+swarm history as the selected parent; it does not create the join.
+
+The disposable merge probe requires Git 2.38 or newer because it uses
+`git merge-tree --write-tree --name-only -z`. The command fails closed on an
+older or malformed Git version rather than falling back to localized prose.
+
+For current sync direction, use the [staged integration guide](SOURCE_PROMOTION.md#staged-integration).
+For an ancestor P, this preflight retains `fast_forward` when `--resolved-tree`
+is omitted or names the same object as the automatic preview tree. A separately
+supplied, object-verified reviewed tree that differs from that preview selects
+`two_parent_join`. The verifier checks that `fast_forward` result as the staged
+return preview K (ordered parents `[P, S]`, tree equal to S's tree). Selecting join mode does not satisfy
+the [current native acceptance](#current-native-acceptance) requirements below.
+The [contract reconciliation](SOURCE_PROMOTION.md#existing-contract-reconciliation)
+must be implemented and reviewed before claiming those commands admit the
+staged flow. This guide grants no receipt rewrite or gate bypass.
+
+## Current native acceptance
+
+Current source verification, resolved-tree validation, admission, construction,
+workflow enforcement and candidate-ref publication require
+`ripr.source_promotion_preflight.v2` with
+`ripr.source_handoff_acceptance.v2`. Historical v1 geometry remains readable;
+it grants no current selection or qualification authority.
+
+The handoff retains exact original manifest, qualification-bundle and evidence
+packet bytes as lowercase hex strings. Source validates their raw digests,
+candidate/ref/tree identities, applicable owner roster, exclusions and complete
+positive execution rows. The decoded limits are 16 MiB per input and 64 MiB
+aggregate; the serialized preflight limit is 320 MiB.
+
+Native #1609 selection, #2766 selected-claims and #2769 bundle decisions are
+independently reread through authenticated `gh api` GETs, bounded to 30 seconds,
+1 MiB stdout and 64 KiB stderr. Missing, changed, untrusted or mismatched
+decisions reject current authority. Parsing normalizes CRLF only in a copy;
+digests bind the original body bytes. These are observed trusted-operator
+snapshots, not signatures or atomic GitHub provenance. Construction retains the
+original UTF-8 preflight in its packet; publication rechecks its raw digest and
+native decisions before attempting a push. No command creates acceptance.
+
+## Command
+
+Run it from a clean operator checkout with both repositories available locally:
+
+```bash
+cargo xtask source-promotion preflight \
+  --source-parent "$SOURCE_PARENT" \
+  --swarm-parent "$SWARM_PARENT" \
+  --swarm-ref "$SWARM_REF" \
+  --source-repo ../ripr \
+  --swarm-repo ../ripr-swarm \
+  --source-main origin/main \
+  --swarm-main origin/main \
+  --version 0.11.0 \
+  --out target/ripr/source-promotion
+```
+
+The parent arguments must be complete 40-character commit IDs. The source
+parent must equal the declared current source main. The swarm parent must be
+reachable from the declared swarm main. Repository roots and Git common
+directories must be distinct, and their `origin` URLs must canonically identify
+`EffortlessMetrics/ripr` and `EffortlessMetrics/ripr-swarm`; suffix matches and
+URL query/path tricks are rejected. Use `--source-remote`/`--swarm-remote` only
+for an explicitly reviewed mirror.
+The receipt records only the stable verification result for the Git common
+directory comparison; it does not serialize an operator's local checkout path.
+`SWARM_REF` is required, must use the fully qualified protected candidate tag
+`refs/tags/ripr-release-<version>-<SWARM_PARENT>`, and must resolve in the
+supplied swarm repository to the exact `SWARM_PARENT`; a moved, missing,
+legacy-local-verifier, branch, short, wrongly named, or wrong ref fails closed.
+The local verifier ref (`refs/ripr/release-<version>-<SWARM_PARENT>`) is a
+separate release-transaction convenience and is not accepted as `SWARM_REF`.
+
+The command writes deterministic `source-promotion-preflight.json` and `.md`
+files. It records the merge base, separately named all-reachable and
+first-parent counts for each parent range, exact-parent version surfaces
+(workspace, crate, Cargo.lock ripr package, extension, npm lock root, and
+changelog, with missing changelog evidence represented as unknown), and
+SHA-256 digests. The
+all-reachable digest recipe is:
+
+```text
+git rev-list --topo-order --reverse MERGE_BASE..PARENT
+UTF-8 SHA lines joined with LF, then SHA-256
+```
+
+The ordered first-parent digest recipe is:
+
+```text
+git rev-list --first-parent --reverse MERGE_BASE..PARENT
+UTF-8 SHA lines joined with LF, then SHA-256
+```
+
+It also inventories changed paths, source-survivor candidates, a
+set-differenced list of paths changed only on the swarm side, non-dispositive
+swarm-authority resolution candidates, and a real
+`git merge-tree --write-tree --name-only -z` dry merge with machine-readable
+conflict paths. The automatic `preview_tree` is
+never a final join tree. An
+optional `--resolved-tree <full-tree-sha>` records a separately reviewed
+resolved tree after verifying that the object exists in one supplied
+repository's common object store; omission remains visibly not finalized. The
+dry merge runs in a disposable repository populated by fetching both exact
+commits. No branch, index, ref, working tree, version, tag, PR, or publication
+state in either authoritative checkout is changed.
+
+## Receipt boundary
+
+The receipt is invalid when either parent, declared main, repository identity,
+immutable swarm ref or its resolved SHA, merge base, ancestry count, digest,
+conflict list, or resolved tree changes.
+Regenerate it if `main` moves before the transaction boundary. A clean dry
+merge is not proof that semantic overlap is absent; every textual and semantic
+resolution still needs review.
+
+This command does not construct or prove the two-parent join, qualify the
+candidate, change versions, authorize publication, publish artifacts, or
+perform the source-to-swarm back-sync. Those are separate release boundaries.

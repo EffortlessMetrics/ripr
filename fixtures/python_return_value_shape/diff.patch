@@ -1,0 +1,8 @@
+diff --git a/src/price.py b/src/price.py
+index 0000000..1111111 100644
+--- a/src/price.py
++++ b/src/price.py
+@@ -1,2 +1,2 @@
+ def final_price(amount):
+-    return amount - 10
++    return amount - 12

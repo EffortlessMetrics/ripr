@@ -1,0 +1,20 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/packet_stale",
+  "packet_state": "stale",
+  "packet_path": "target/ripr/first-pr/start-here.json",
+  "safe_actions": [
+    "copy_regeneration_guidance"
+  ],
+  "suppressed_actions": [
+    "open_packet",
+    "copy_summary",
+    "copy_repair_packet",
+    "copy_verify_command",
+    "copy_receipt_command"
+  ],
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false
+}

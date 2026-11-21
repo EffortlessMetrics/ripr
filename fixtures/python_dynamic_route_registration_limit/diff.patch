@@ -1,0 +1,11 @@
+diff --git a/app/checkout.py b/app/checkout.py
+index 0000000..1111111 100644
+--- a/app/checkout.py
++++ b/app/checkout.py
+@@ -14,5 +14,5 @@ api = Api()
+ @api.post(route_path())
+ def checkout(payload):
+     if payload.get("expired"):
+-        return {"detail": "coupon invalid"}
++        return {"detail": "coupon expired"}
+     return {"detail": "ok"}

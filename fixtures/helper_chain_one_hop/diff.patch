@@ -1,0 +1,6 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -2,1 +2,1 @@
+-    let prev = input.chars().next().map_or(true, |c| c == ' ');
++    let prev = input.chars().next().map_or(false, |c| c == ' ');

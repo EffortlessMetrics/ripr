@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,7 +8,7 @@ pub enum ParseError {
+ pub fn validate_or_default(input: &str) -> Result<&'static str, ParseError> {
+     if input.is_empty() {
+-        return Err(ParseError::TooShort);
++        return Err(ParseError::TooLong);
+     }
+     Ok("valid")
+ }

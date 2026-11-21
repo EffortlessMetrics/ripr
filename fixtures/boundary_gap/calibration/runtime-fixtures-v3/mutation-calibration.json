@@ -1,0 +1,334 @@
+{
+  "agreement": {
+    "runtime_inconclusive": 1,
+    "runtime_signal_without_static_gap": 2,
+    "static_clean_and_runtime_clean": 1,
+    "static_gap_and_runtime_signal": 2,
+    "static_gap_without_runtime_signal": 2
+  },
+  "ambiguous_file_line_matches": [
+    {
+      "candidates": [
+        {
+          "file": "src/ambiguous_builder.rs",
+          "line": 72,
+          "missing_discriminators": [],
+          "observed_values": [
+            "min"
+          ],
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "seam_grip_class": "strongly_gripped",
+          "seam_id": "cal-v3-ambiguous-builder-a",
+          "seam_kind": "field_construction"
+        },
+        {
+          "file": "src/ambiguous_builder.rs",
+          "line": 72,
+          "missing_discriminators": [],
+          "observed_values": [
+            "max"
+          ],
+          "oracle_kind": "exact_value",
+          "oracle_strength": "strong",
+          "seam_grip_class": "strongly_gripped",
+          "seam_id": "cal-v3-ambiguous-builder-b",
+          "seam_kind": "field_construction"
+        }
+      ],
+      "confidence_label": "ambiguous_runtime_join",
+      "runtime": {
+        "duration": "57ms",
+        "file": "src/ambiguous_builder.rs",
+        "line": 72,
+        "mutant_id": "m-v3-ambiguous-builder",
+        "mutation_operator": "replace builder bound assignment",
+        "runtime_outcome": "missed",
+        "seam_id": null,
+        "test_command": "cargo test builds_discount_rule"
+      }
+    }
+  ],
+  "matches": [
+    {
+      "confidence_label": "contradicts_static_gap",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "58ms",
+        "file": "src/builder.rs",
+        "line": 33,
+        "mutant_id": "m-v3-builder-override-outcome",
+        "mutation_operator": "replace builder override threshold",
+        "runtime_outcome": "caught",
+        "seam_id": "cal-v3-builder-override-outcome",
+        "test_command": "cargo test builder_override_sets_discount_threshold"
+      },
+      "static": {
+        "file": "src/builder.rs",
+        "line": 33,
+        "missing_discriminators": [
+          "builder override output (builder setup value is visible but the returned field is not asserted exactly)"
+        ],
+        "observed_values": [
+          "threshold"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "weak",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v3-builder-override-outcome",
+        "seam_kind": "field_construction"
+      }
+    },
+    {
+      "confidence_label": "supports_static_gap",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "51ms",
+        "file": "src/assertions.rs",
+        "line": 14,
+        "mutant_id": "m-v3-custom-helper-outcome",
+        "mutation_operator": "replace helper-covered threshold comparison",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-v3-custom-helper-outcome",
+        "test_command": "cargo test discount_threshold_uses_helper"
+      },
+      "static": {
+        "file": "src/assertions.rs",
+        "line": 14,
+        "missing_discriminators": [
+          "threshold equality (custom helper outcome does not yet show the equality boundary)"
+        ],
+        "observed_values": [
+          "threshold - 1"
+        ],
+        "oracle_kind": "custom_assertion_helper",
+        "oracle_strength": "medium",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v3-custom-helper-outcome",
+        "seam_kind": "predicate_boundary"
+      }
+    },
+    {
+      "confidence_label": "supports_static_gap",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "53ms",
+        "file": "src/mock_gateway.rs",
+        "line": 63,
+        "mutant_id": "m-v3-mock-expectation-mismatch",
+        "mutation_operator": "replace mock expectation amount argument",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-v3-mock-expectation-mismatch",
+        "test_command": "cargo test expects_discount_event"
+      },
+      "static": {
+        "file": "src/mock_gateway.rs",
+        "line": 63,
+        "missing_discriminators": [
+          "amount argument (mock expectation observes the call but not the changed amount argument)"
+        ],
+        "observed_values": [
+          "order.id"
+        ],
+        "oracle_kind": "mock_expectation",
+        "oracle_strength": "medium",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v3-mock-expectation-mismatch",
+        "seam_kind": "call_presence"
+      }
+    },
+    {
+      "confidence_label": "contradicts_static_clean",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "47ms",
+        "file": "src/snapshot.rs",
+        "line": 52,
+        "mutant_id": "m-v3-snapshot-field-discriminator",
+        "mutation_operator": "replace snapshot discount_code field",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-v3-snapshot-field-discriminator",
+        "test_command": "cargo test snapshot_pins_discount_code_field"
+      },
+      "static": {
+        "file": "src/snapshot.rs",
+        "line": 52,
+        "missing_discriminators": [],
+        "observed_values": [
+          "discount_code"
+        ],
+        "oracle_kind": "snapshot_field",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-v3-snapshot-field-discriminator",
+        "seam_kind": "serialized_output"
+      }
+    },
+    {
+      "confidence_label": "supports_static_clean",
+      "join_method": "seam_id",
+      "runtime": {
+        "duration": "44ms",
+        "file": "src/table_discount.rs",
+        "line": 22,
+        "mutant_id": "m-v3-table-boundary-outcome",
+        "mutation_operator": "replace table threshold comparison",
+        "runtime_outcome": "caught",
+        "seam_id": "cal-v3-table-boundary-outcome",
+        "test_command": "cargo test table_cases_include_threshold_equality"
+      },
+      "static": {
+        "file": "src/table_discount.rs",
+        "line": 22,
+        "missing_discriminators": [],
+        "observed_values": [
+          "threshold - 1",
+          "threshold",
+          "threshold + 1"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-v3-table-boundary-outcome",
+        "seam_kind": "predicate_boundary"
+      }
+    }
+  ],
+  "metrics": {
+    "ambiguous_file_line_total": 1,
+    "join_method_counts": {
+      "seam_id": 5
+    },
+    "matched_total": 5,
+    "mutants_total": 7,
+    "runtime_outcome_counts": {
+      "caught": 2,
+      "missed": 5
+    },
+    "static_seams_total": 8,
+    "static_without_runtime_total": 1,
+    "unmatched_mutants_total": 1
+  },
+  "missed_runtime_signals": [
+    {
+      "confidence_label": "contradicts_static_clean",
+      "reason": "runtime gap signal joined to a static-clean seam",
+      "runtime": {
+        "duration": "47ms",
+        "file": "src/snapshot.rs",
+        "line": 52,
+        "mutant_id": "m-v3-snapshot-field-discriminator",
+        "mutation_operator": "replace snapshot discount_code field",
+        "runtime_outcome": "missed",
+        "seam_id": "cal-v3-snapshot-field-discriminator",
+        "test_command": "cargo test snapshot_pins_discount_code_field"
+      },
+      "static": {
+        "file": "src/snapshot.rs",
+        "line": 52,
+        "missing_discriminators": [],
+        "observed_values": [
+          "discount_code"
+        ],
+        "oracle_kind": "snapshot_field",
+        "oracle_strength": "strong",
+        "seam_grip_class": "strongly_gripped",
+        "seam_id": "cal-v3-snapshot-field-discriminator",
+        "seam_kind": "serialized_output"
+      }
+    },
+    {
+      "confidence_label": "runtime_only_signal",
+      "reason": "runtime gap signal did not join to a static seam",
+      "runtime": {
+        "duration": "42ms",
+        "file": "src/runtime_only_v3.rs",
+        "line": 99,
+        "mutant_id": "m-v3-runtime-only-signal",
+        "mutation_operator": "replace runtime-only observed value",
+        "runtime_outcome": "missed",
+        "seam_id": null,
+        "test_command": "cargo test runtime_only_v3_observer"
+      },
+      "static": null
+    }
+  ],
+  "precision_notes": [
+    "runtime gap signals are imported runtime labels such as missed, survived, not_caught, or uncaught",
+    "runtime clean signals are imported runtime labels such as caught or timeout",
+    "static_gap_without_runtime_signal includes static gap seams with no matched runtime gap signal in this import",
+    "ambiguous file/line runtime gap signals are counted as runtime_inconclusive until a seam_id or unambiguous location is available"
+  ],
+  "schema_version": "0.1",
+  "scope": "repo",
+  "static_only_findings": [
+    {
+      "confidence_label": "contradicts_static_gap",
+      "reason": "static gap seam matched runtime data without a runtime gap signal",
+      "static": {
+        "file": "src/builder.rs",
+        "line": 33,
+        "missing_discriminators": [
+          "builder override output (builder setup value is visible but the returned field is not asserted exactly)"
+        ],
+        "observed_values": [
+          "threshold"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "weak",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v3-builder-override-outcome",
+        "seam_kind": "field_construction"
+      }
+    },
+    {
+      "confidence_label": "no_runtime_data",
+      "reason": "static gap seam has no matched runtime record in this import",
+      "static": {
+        "file": "src/cross_file.rs",
+        "line": 41,
+        "missing_discriminators": [
+          "resolved constant equality (cross-file constant remains unresolved in this checked sample)"
+        ],
+        "observed_values": [
+          "DEFAULT_THRESHOLD"
+        ],
+        "oracle_kind": "exact_value",
+        "oracle_strength": "weak",
+        "seam_grip_class": "weakly_gripped",
+        "seam_id": "cal-v3-cross-file-constant-boundary",
+        "seam_kind": "predicate_boundary"
+      }
+    }
+  ],
+  "static_without_runtime_sample": [
+    {
+      "file": "src/cross_file.rs",
+      "line": 41,
+      "missing_discriminators": [
+        "resolved constant equality (cross-file constant remains unresolved in this checked sample)"
+      ],
+      "observed_values": [
+        "DEFAULT_THRESHOLD"
+      ],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "weak",
+      "seam_grip_class": "weakly_gripped",
+      "seam_id": "cal-v3-cross-file-constant-boundary",
+      "seam_kind": "predicate_boundary"
+    }
+  ],
+  "status": "advisory",
+  "unmatched_mutants": [
+    {
+      "duration": "42ms",
+      "file": "src/runtime_only_v3.rs",
+      "line": 99,
+      "mutant_id": "m-v3-runtime-only-signal",
+      "mutation_operator": "replace runtime-only observed value",
+      "runtime_outcome": "missed",
+      "seam_id": null,
+      "test_command": "cargo test runtime_only_v3_observer"
+    }
+  ]
+}

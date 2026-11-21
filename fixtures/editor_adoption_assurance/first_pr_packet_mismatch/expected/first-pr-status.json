@@ -1,0 +1,13 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/first_pr_packet_mismatch",
+  "packet_state": "gap_mismatch",
+  "packet_path": "target/ripr/first-pr/start-here.json",
+  "diagnostic_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+  "packet_gap_id": "gap:rust:shipping:tax-boundary",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false,
+  "next_safe_action": "Regenerate the first-pr packet for the current diagnostic gap."
+}

@@ -1,0 +1,182 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "assistant_loop_health_corpus",
+  "status": "advisory",
+  "spec": "RIPR-SPEC-0022",
+  "fixture": "boundary_gap",
+  "limits_note": "Advisory assistant-loop-health fixture expectations only; no hidden analysis reruns, source edits, generated tests, provider calls, mutation execution, ranking changes, gate changes, LSP/editor changes, or default CI blocking.",
+  "canonical_command": "ripr assistant-loop health --proof <proof.json> --out target/ripr/reports/assistant-loop-health.json --out-md target/ripr/reports/assistant-loop-health.md",
+  "cases": [
+    {
+      "id": "complete_improved",
+      "scenario": "complete proof with improved static movement",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/complete-improved/assistant-loop-health.md",
+      "expected": {
+        "status": "advisory",
+        "proofs": 1,
+        "complete": 1,
+        "partial": 0,
+        "missing_required_input": 0,
+        "missing_optional_input": 0,
+        "improved": 1,
+        "unchanged": 0,
+        "regressed": 0,
+        "unknown_movement": 0,
+        "warnings": 0,
+        "repair_queue": 0
+      },
+      "reason": "A complete proof packet with resolved or stronger static movement should count as improved and should not produce repair work."
+    },
+    {
+      "id": "partial_missing_optional",
+      "scenario": "parseable proof missing optional gate, ledger, coverage, and first-action context",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/partial-missing-optional-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/partial-missing-optional/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/partial-missing-optional/assistant-loop-health.md",
+      "expected": {
+        "status": "advisory",
+        "proofs": 1,
+        "complete": 0,
+        "partial": 1,
+        "missing_required_input": 0,
+        "missing_optional_input": 4,
+        "improved": 1,
+        "unchanged": 0,
+        "regressed": 0,
+        "unknown_movement": 0,
+        "warnings": 4,
+        "repair_queue": 0
+      },
+      "reason": "Missing optional context should stay visible without making the health report incomplete."
+    },
+    {
+      "id": "missing_required_input",
+      "scenario": "supplied proof file is incompatible with required proof fields",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/missing-required-input/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/missing-required-input/assistant-loop-health.md",
+      "expected": {
+        "status": "incomplete",
+        "proofs": 1,
+        "complete": 0,
+        "partial": 0,
+        "missing_required_input": 1,
+        "missing_optional_input": 0,
+        "improved": 0,
+        "unchanged": 0,
+        "regressed": 0,
+        "unknown_movement": 1,
+        "warnings": 1,
+        "repair_queue": 1
+      },
+      "reason": "A proof without required seam or movement context should route to regenerating the proof instead of inferring a seam."
+    },
+    {
+      "id": "unchanged_after_attempt",
+      "scenario": "complete proof with unchanged static movement",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/unchanged/assistant-loop-health.md",
+      "expected": {
+        "status": "advisory",
+        "proofs": 1,
+        "complete": 1,
+        "partial": 0,
+        "missing_required_input": 0,
+        "missing_optional_input": 0,
+        "improved": 0,
+        "unchanged": 1,
+        "regressed": 0,
+        "unknown_movement": 0,
+        "warnings": 1,
+        "repair_queue": 1
+      },
+      "reason": "Unchanged static movement should produce a bounded repair entry for inspecting the focused test."
+    },
+    {
+      "id": "regressed_after_attempt",
+      "scenario": "complete proof with regressed static movement",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/regressed-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/regressed/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/regressed/assistant-loop-health.md",
+      "expected": {
+        "status": "advisory",
+        "proofs": 1,
+        "complete": 1,
+        "partial": 0,
+        "missing_required_input": 0,
+        "missing_optional_input": 0,
+        "improved": 0,
+        "unchanged": 0,
+        "regressed": 1,
+        "unknown_movement": 0,
+        "warnings": 1,
+        "repair_queue": 1
+      },
+      "reason": "Regressed static movement should stay advisory but route to inspecting the regression."
+    },
+    {
+      "id": "warning_heavy",
+      "scenario": "parseable proof with summary-only guidance, stale input, missing receipt, and static limits",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/warning-heavy-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/warning-heavy/assistant-loop-health.md",
+      "expected": {
+        "status": "advisory",
+        "proofs": 1,
+        "complete": 0,
+        "partial": 1,
+        "missing_required_input": 0,
+        "missing_optional_input": 2,
+        "improved": 0,
+        "unchanged": 0,
+        "regressed": 0,
+        "unknown_movement": 1,
+        "warnings": 5,
+        "repair_queue": 3
+      },
+      "reason": "Recurring warnings should be grouped and routed without producing an opaque health score."
+    },
+    {
+      "id": "multi_proof",
+      "scenario": "multiple proof inputs summarized in deterministic order",
+      "proofs": [
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/complete-improved-proof.json",
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/unchanged-proof.json",
+        "fixtures/boundary_gap/expected/assistant-loop-health/proofs/missing-required-proof.json"
+      ],
+      "expected_report": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+      "expected_markdown": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.md",
+      "expected": {
+        "status": "advisory",
+        "proofs": 3,
+        "complete": 2,
+        "partial": 0,
+        "missing_required_input": 1,
+        "missing_optional_input": 0,
+        "improved": 1,
+        "unchanged": 1,
+        "regressed": 0,
+        "unknown_movement": 1,
+        "warnings": 2,
+        "repair_queue": 2
+      },
+      "reason": "Multiple proof paths should preserve input order while grouping counts, warnings, and repair entries."
+    }
+  ]
+}

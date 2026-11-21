@@ -1,0 +1,8 @@
+diff --git a/src/click/_compat.py b/src/click/_compat.py
+--- a/src/click/_compat.py
++++ b/src/click/_compat.py
+@@ -221,3 +221,3 @@ def _is_compat_stream_attr(stream, attr, value):
+     """
+     stream_value = getattr(stream, attr, None)
+-    return stream_value == value or (value is None and stream_value is not None)
++    return stream_value != value or (value is None and stream_value is not None)

@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/recursive_controls/input
+
+Summary: 4 probe(s), 0 exposed, 4 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 8 changed line(s), 4 candidate line(s), 4 probe(s), 4 finding(s).
+
+Start here:
+  State: top_gap
+  Safe next action: inspect or repair the selected non-exposed gap; this is static advisory evidence only.
+  File: fixtures/recursive_controls/input/src/lib.rs:12
+  Static exposure: weakly_exposed (warning, confidence 0.92)
+  Why weakly_exposed: the evidence path is partially complete — see full form for details
+  Changed behavior: if final_label == "other" {
+  Missing discriminator: final_label == "other"
+  Related test: tests/classify.rs:4 cycle_label_is_blank
+  Next step: Add boundary tests for below, equal, and above the changed threshold with exact assertions.
+  Evidence:
+    - reach yes: Related tests appear to reach classify_cycle: cycle_label_is_blank
+    - infection weak: Related tests contain input values, but the equality-boundary discriminator is missing
+    - 7 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/recursive_controls/input --diff fixtures/recursive_controls/diff.patch --mode fast probe:src_lib.rs:predicate:326a2e10
+  ripr context --root fixtures/recursive_controls/input --diff fixtures/recursive_controls/diff.patch --mode fast --at probe:src_lib.rs:predicate:326a2e10
+
+Hidden:
+  3 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

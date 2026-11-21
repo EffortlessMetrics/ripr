@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_pr_bridge/receipt_improved_packet_ready",
+  "status": "receipt_improved_packet_ready",
+  "projection": "active",
+  "first_pr_packet": {
+    "state": "top_repairable_gap",
+    "path": "target/ripr/first-pr/start-here.json",
+    "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary"
+  },
+  "receipt": {
+    "state": "found",
+    "movement": "improved"
+  },
+  "next_safe_action": "Inspect the first-pr packet and receipt before opening PR review."
+}

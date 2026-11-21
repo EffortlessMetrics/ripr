@@ -1,0 +1,121 @@
+{
+  "config_errors": [],
+  "decisions": [
+    {
+      "baseline_match_kind": "legacy_path_line_class",
+      "decision": "advisory",
+      "evidence": {
+        "assertion_shape": "assert_eq!(discounted_total(/* boundary input for amount == discount_threshold */), /* expected */)",
+        "candidate_values": [
+          "amount == discount_threshold"
+        ],
+        "configured_off": false,
+        "missing_discriminator": "amount == discount_threshold",
+        "mutation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "nearby_test_changed": false,
+        "recommendation_calibration": {
+          "available": false,
+          "confidence_effect": "not_used",
+          "outcome": null
+        },
+        "recommended_test": "tests/pricing.rs::above_threshold_gets_discount",
+        "suppressed": false
+      },
+      "gap_state": "actionable",
+      "gate_reason": "incomplete_repair_route: missing canonical_gap_id, seam_id, verify_command, receipt_command, inspection_command",
+      "id": "ripr-gate-ripr-review-legacy006",
+      "placement": {
+        "line": 88,
+        "path": "src/pricing.rs"
+      },
+      "policy": {
+        "acknowledgement_label": null,
+        "baseline_identity": "ripr-review-legacy006",
+        "mode": "baseline-check",
+        "threshold": "high_confidence_new_gap"
+      },
+      "repair_route": {
+        "authority_boundary": "static_ripr_evidence_only",
+        "canonical_gap_id": null,
+        "changed_behavior": "amount >= discount_threshold",
+        "changed_owner": "pricing::discounted_total",
+        "classification": "weakly_gripped",
+        "inspection_command": null,
+        "limitation": {
+          "detail": "The gate cannot provide a complete bounded repair route from current evidence.",
+          "kind": "incomplete_repair_route",
+          "missing_fields": [
+            "canonical_gap_id",
+            "seam_id",
+            "verify_command",
+            "receipt_command",
+            "inspection_command"
+          ]
+        },
+        "missing_discriminator": "amount == discount_threshold",
+        "receipt_command": null,
+        "repair_target": {
+          "file": "tests/pricing.rs",
+          "kind": "related_test",
+          "line": 12,
+          "name": "above_threshold_gets_discount"
+        },
+        "seam_id": null,
+        "test_intent": "Add one focused discriminator test.",
+        "verify_command": null
+      },
+      "seam_id": null,
+      "severity": "warning",
+      "source": "pr_guidance",
+      "source_id": "ripr-review-legacy006",
+      "static_class": "weakly_gripped"
+    }
+  ],
+  "inputs": {
+    "agent_receipt": null,
+    "agent_verify": null,
+    "baseline": "fixtures/gate_baseline_fallback_disclosure/expected/gate-baseline/missing-canonical-identity/baseline.json",
+    "labels": [],
+    "labels_json": null,
+    "mutation_calibration": null,
+    "pr_guidance": "fixtures/gate_baseline_fallback_disclosure/expected/gate-baseline/missing-canonical-identity/pr-guidance.json",
+    "recommendation_calibration": null,
+    "repo_exposure": null,
+    "sarif_policy": null
+  },
+  "limits_note": "Optional policy over static RIPR evidence; advisory by default; runtime mutation calibration is used only when supplied.",
+  "mode": "baseline-check",
+  "new_unsuppressed": {
+    "basis": "baseline",
+    "count": 0,
+    "reason": null
+  },
+  "policy": {
+    "acknowledgement_labels": [
+      "ripr-waive"
+    ],
+    "default_workflow_posture": "advisory",
+    "mode": "baseline-check",
+    "threshold": "high_confidence_new_gap"
+  },
+  "root": ".",
+  "schema_version": "0.1",
+  "status": "advisory",
+  "summary": {
+    "acknowledged": 0,
+    "advisory": 1,
+    "blocking": 0,
+    "evaluated": 1,
+    "not_applicable": 0,
+    "suppressed": 0,
+    "unknown_confidence": 1
+  },
+  "tool": "ripr",
+  "warnings": [
+    "gate candidate ripr-review-legacy006 matched baseline evidence by fallback path/line/static_class identity `src/pricing.rs:88:weakly_gripped`; disclosed as baseline_match_kind=legacy_path_line_class — a legacy compatibility match, not a canonical identity match"
+  ]
+}

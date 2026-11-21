@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_source_survivor_contract",
+  "status": "reviewed_for_replacement_candidate_preflight",
+  "source_parent": "ec7dc6beaec8ad2efca4abd502f9253cdb4f939c",
+  "swarm_candidate": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "old_swarm_candidate": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "source_authority": {
+    "repository": "EffortlessMetrics/ripr",
+    "owns": [
+      "release version and changelog staging",
+      "crates.io publication",
+      "Git tags and GitHub Releases",
+      "server-asset build, signing, checksums, and provenance",
+      "VS Code Marketplace and Open VSX publication",
+      "public badge and distribution authority",
+      "source repository settings and protected-check contract"
+    ]
+  },
+  "must_survive_from_source": [
+    {
+      "id": "bounded_subprocess_adapter",
+      "paths_or_seams": [
+        "crates/ripr/src/analysis/probes/subprocess.rs",
+        "analysis/probes/diff.rs bounded-adapter integration",
+        "analysis/probes/mod.rs registration",
+        "RIPR-SPEC-0133 plus traceability and process/network policy entries"
+      ],
+      "reason": "Source-only staged 0.10.1 analysis needed by the ub-review consumer must be ported into the current swarm analyzer structure without broadening the deny-by-default adapter boundary.",
+      "non_claim": "This does not make arbitrary subprocess or shell adapters statically exposed."
+    },
+    {
+      "id": "staged_source_metadata",
+      "paths_or_seams": [
+        "crates/ripr/Cargo.toml version authority",
+        "Cargo.lock package version authority",
+        "editors/vscode package and lockfile version authority",
+        "CHANGELOG staged 0.10.1 disposition"
+      ],
+      "reason": "The history-preserving promotion remains metadata-neutral; the later #1466 PR absorbs unpublished 0.10.1 into 0.11.0.",
+      "non_claim": "No public 0.10.1 release is fabricated."
+    },
+    {
+      "id": "source_release_and_repository_policy",
+      "paths_or_seams": [
+        ".github/settings.yml",
+        "source protected checks",
+        "release, publish, signing, asset, marketplace, and badge workflows",
+        "docs/SOURCE_PROMOTION.md and source release runbooks"
+      ],
+      "reason": "Swarm development policy must not overwrite the source release/distribution authority or make history-preserving joins impossible.",
+      "non_claim": "Retaining workflows and settings does not authorize running them or publishing."
+    }
+  ],
+  "semantic_conflict_resolution": [
+    {
+      "id": "review_warning_serialization",
+      "resolution": "Use the current swarm causal-aware structured warning/output implementation while preserving the source 0.10.1 behavioral intent and compatibility claim.",
+      "proof_required": [
+        "review-comment focused tests",
+        "output-contract checks",
+        "boundary-gap guidance fixture parity"
+      ]
+    },
+    {
+      "id": "dependency_graph",
+      "resolution": "Use the replacement swarm candidate dependency graph, including post-freeze security updates, while keeping source package and extension versions at the source parent until #1466.",
+      "proof_required": [
+        "cargo check/test/clippy with --locked",
+        "cargo-deny and dependency review",
+        "npm ci, compile, package, and audit",
+        "package and VSIX content receipts"
+      ]
+    },
+    {
+      "id": "spec_and_traceability_union",
+      "resolution": "Retain every accepted post-freeze swarm specification and slice plus source RIPR-SPEC-0133, resolving any numeric or semantic collision explicitly rather than dropping either history.",
+      "proof_required": [
+        "spec format and numbering",
+        "document artifact graph",
+        "traceability",
+        "support-tier and capability checks"
+      ]
+    }
+  ],
+  "must_not_cross_from_swarm": [
+    "swarm-only branch protection, repository settings, or runner topology as source authority",
+    "swarm freeze/rehearsal state as publication authorization",
+    "development-only secrets, credentials, or runner assumptions",
+    "deleted .ripr/goals scheduler or any replacement repository-local live scheduler",
+    "version or changelog mutation during the promotion join",
+    "support-tier promotion not separately reviewed in source"
+  ],
+  "replacement_preflight_requirements": [
+    "rerun dry-merge conflict inventory from the exact source parent and replacement swarm candidate",
+    "record one reviewed resolution for every textual and semantic conflict",
+    "prove the final resolved tree retains all source survivor IDs",
+    "prove both parent histories remain reachable from the direct two-parent join",
+    "run source rust, MSRV, VS Code, cargo-deny, dependency-review, package, and release-readiness checks on the exact final join",
+    "keep version and changelog changes out of the promotion PR"
+  ],
+  "authority_boundary": "This contract defines survivor and exclusion requirements for preflight. It does not create a merge commit, modify source main, change versions, publish artifacts, use release secrets, or authorize a release."
+}

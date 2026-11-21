@@ -1,0 +1,21 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/setup_ok",
+  "queue_status": "queue_available",
+  "projection": "active",
+  "workspace": {
+    "state": "single_root",
+    "root": "fixtures/editor_actionable_gap_queue/setup_ok/workspace"
+  },
+  "actionable_gaps": 0,
+  "report_only_gaps": 0,
+  "static_limit_only_gaps": 0,
+  "receipt": {
+    "state": "missing"
+  },
+  "next_safe_action": "Inspect the repo gap map or refresh saved-workspace evidence before choosing a repair.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

@@ -1,0 +1,10 @@
+{
+  "fixture": "editor_gap_cockpit/no_actionable_gap",
+  "actions": [
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "summary": {"comments": 1, "summary_only": 0, "suppressed": 0, "unchanged_tests": true},
+  "comments": [
+    {
+      "id": "ripr-review-repair-card",
+      "source": "gap_decision_ledger",
+      "gap_id": "gap:pr:pricing:threshold-boundary",
+      "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+      "gap_kind": "MissingBoundaryAssertion",
+      "language": "rust",
+      "language_status": "stable",
+      "seam_id": "gap:pr:pricing:threshold-boundary",
+      "dedupe_key": "gap:rust:pricing:discount:threshold-boundary",
+      "placement": {
+        "path": "src/pricing.rs",
+        "line": 88,
+        "side": "RIGHT",
+        "mode": "gap_record_anchor"
+      },
+      "kind": "MissingBoundaryAssertion",
+      "grip_class": "predicate_boundary",
+      "severity": "warning",
+      "reason": "A related test reaches this code, but no equality-boundary assertion was found.",
+      "missing_discriminator": "amount == discount_threshold",
+      "repair_card": {
+        "gap_kind": "MissingBoundaryAssertion",
+        "changed_behavior": "amount == discount_threshold",
+        "why_this_matters": "A related test reaches this code, but no equality-boundary assertion was found.",
+        "repair": "Add an exact assertion for `amount == discount_threshold`.",
+        "repair_route": {
+          "route_kind": "AddBoundaryAssertion",
+          "target_file": "tests/pricing.rs",
+          "related_test": "tests/pricing.rs::above_threshold_gets_discount",
+          "assertion_shape": "assert_eq!(discounted_total(/* boundary */), /* expected */)",
+          "changed_behavior": "amount == discount_threshold"
+        },
+        "evidence_ids": ["evidence:pricing-threshold-reached"],
+        "verification_commands": ["cargo xtask fixtures boundary_gap"],
+        "verify_command": "cargo xtask fixtures boundary_gap",
+        "source_artifact": "target/ripr/reports/gap-decision-ledger.json",
+        "authority_boundary": "gate_decision_artifact_only"
+      }
+    }
+  ],
+  "summary_only": [],
+  "suppressed": [],
+  "warnings": []
+}

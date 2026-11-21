@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -1,5 +1,5 @@
+ pub fn render_status(code: u16) -> String {
+-    if code == 200 {
++    if code <= 299 {
+         "ok".to_string()
+     } else {
+         format!("error:{code}")

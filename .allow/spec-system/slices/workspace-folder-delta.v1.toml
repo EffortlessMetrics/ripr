@@ -1,0 +1,63 @@
+schema_version = "2.0"
+id = "ripr.slice.workspace-folder-delta.v1"
+generation = 1
+
+source_issue = "issue:2036"
+design_reference = "RIPR-SPEC-0139"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Makes LSP workspace-folder transitions delta-driven and epoch-safe: one
+stored canonical folder set, validate-before-mutate delta application with
+typed bounded rejections, an epoch-bound reconciliation confirmation step,
+and no epoch bump for byte-identical transitions. It does not change root
+identity rules (no symlink canonicalization), the status payload shape, any
+output schema, extension-side restart behavior (#2015), the real-client
+transition matrix (#1873), or analyzer evidence.
+"""
+
+non_goals = [
+  "simultaneous per-root servers",
+  "multi-root analysis",
+  "extension restart or session-switch behavior",
+  "real-client transition fixture (#1873)",
+  "symlink canonicalization of root identity",
+  "status payload shape changes",
+  "output schema version changes",
+  "analyzer evidence changes",
+]
+
+return_conditions = [
+  "Return to root if existing framed workspace-folder tests cannot keep passing without semantic changes.",
+  "Return to root if epoch binding the reconciliation query deadlocks the transition guard.",
+  "Return to root if the byte-identical no-bump guard changes golden or status output contracts.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:workspace-folder-set",
+  "seam:ripr:lsp:workspace-folder-transition-handler",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:workspace-root-authority",
+  "seam:ripr:lsp:config-pull-epoch-guard",
+]
+
+forbidden_seams = [
+  "seam:ripr:editors:vscode-extension",
+  "seam:ripr:output:status-payload-shape",
+  "seam:ripr:analysis:evidence",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0139"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

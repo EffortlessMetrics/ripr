@@ -1,0 +1,8 @@
+diff --git a/src/handler.py b/src/handler.py
+index 0000000..1111111 100644
+--- a/src/handler.py
++++ b/src/handler.py
+@@ -1,2 +1,2 @@ def validate(payload):
+ def validate(payload):
+-    return payload == "ok"
++    return payload.strip() == "ok"

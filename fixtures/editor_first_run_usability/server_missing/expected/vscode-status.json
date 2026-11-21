@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/server_missing",
+  "status": "server_missing",
+  "projection": "fail_closed",
+  "workspace_root": "fixtures/editor_first_run_usability/server_missing/workspace",
+  "server": {
+    "state": "missing",
+    "path": null,
+    "version": null
+  },
+  "languages": {
+    "enabled": [],
+    "available": []
+  },
+  "artifacts": {
+    "first_useful_action": "unknown",
+    "gap_decision_ledger": "unknown",
+    "agent_receipt": "unknown"
+  },
+  "next_safe_action": "Set ripr.server.path or install the ripr binary, then restart the server."
+}

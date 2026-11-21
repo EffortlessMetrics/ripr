@@ -1,0 +1,94 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_dep_edge_cross_crate_positive/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":1,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:2908fbca21c46ef269c318d3b998f096f9e2154ef980a54bbe540f09a6edda3b","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:crates_a_src_lib.rs:return_value:94e6eef7",
+      "classification": "exposed",
+      "severity": "warning",
+      "confidence": 1.00,
+      "probe": {
+        "id": "probe:crates_a_src_lib.rs:return_value:94e6eef7",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/rust_dep_edge_cross_crate_positive/input/crates/a/src/lib.rs",
+        "line": 4,
+        "expression": "points + SCORE_BONUS"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach score: dependent_test_asserts_owner_score_value"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: points + SCORE_BONUS"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"yes","confidence":"medium","summary":"Strong oracle found: exact value or pattern assertion"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach score: dependent_test_asserts_owner_score_value", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches returned value: points + SCORE_BONUS", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator yes: Strong oracle found: exact value or pattern assertion", "local flow reaches returned value: points + SCORE_BONUS (line 4)", "related test crates/c/tests/it.rs:5 dependent_test_asserts_owner_score_value uses strong exact value oracle: assert_eq!(score(7), 7 + SCORE_BONUS);", "observed assertion argument value 7 at line 6", "observed function argument value points = 7 at line 6"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"points + SCORE_BONUS","line":4}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches returned value: points + SCORE_BONUS", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach score: dependent_test_asserts_owner_score_value", "Strong oracle found: exact value or pattern assertion"],
+      "missing": [],
+      "assertion_texts": {
+        "6": "assert_eq!(score(7), 7 + SCORE_BONUS);"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "7",
+            "context": "assertion_argument"
+          },
+          {
+            "line": 6,
+            "value": "points = 7",
+            "context": "function_argument"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "7",
+          "context": "assertion_argument"
+        },
+        {
+          "line": 6,
+          "value": "points = 7",
+          "context": "function_argument"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 1,
+      "related_tests": [
+        {
+          "name": "dependent_test_asserts_owner_score_value",
+          "file": "crates/c/tests/it.rs",
+          "line": 5,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert_eq!(score(7), 7 + SCORE_BONUS);",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_value",
+      "oracle_strength": "strong",
+      "recommended_next_step": "",
+      "suggested_next_action": "",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

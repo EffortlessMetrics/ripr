@@ -1,0 +1,39 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/limited-check/input",
+  "base": "origin/main",
+  "summary": {
+    "changed_rust_files": 0,
+    "probes": 0,
+    "findings": 0,
+    "exposed": 0,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0,
+    "changed_files_by_language": []
+  },
+  "findings": [],
+  "analysis_scope": {
+    "scope": "diff",
+    "run_status": "diff_scope_oversized",
+    "basis": "rust_diff_scope_budget",
+    "downstream_consumable": false,
+    "limitation": "diff_scope_oversized",
+    "repair_route": "analysis/diff-scope-budget"
+  },
+  "run_limitations": [
+    {
+      "category": "diff_scope_oversized",
+      "run_status": "diff_scope_oversized",
+      "basis": "rust_diff_scope_budget",
+      "downstream_consumable": false,
+      "message": "diff_scope_oversized: changed Rust lines exceed the configured limit",
+      "repair_route": "analysis/diff-scope-budget"
+    }
+  ]
+}

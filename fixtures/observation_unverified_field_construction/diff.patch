@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -6,6 +6,6 @@ pub fn default_config() -> Config {
+     let retries = 3;
+     Config {
+         timeout_secs: 30,
+-        retries: 1,
++        retries,
+     }
+ }

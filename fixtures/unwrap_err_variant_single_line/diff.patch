@@ -1,0 +1,13 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn validate(name: &str) -> Result<String, ParseError> {
+         return Err(ParseError::Empty);
+     }
+     if name.len() > 8 {
+-        return Err(ParseError::TooLong(name.len() + 1));
++        return Err(ParseError::TooLong(name.len()));
+     }
+     Ok(name.to_string())
+ }

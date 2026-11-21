@@ -1,0 +1,13 @@
+diff --git a/src/util.ts b/src/util.ts
+index 0000000..1111111 100644
+--- a/src/util.ts
++++ b/src/util.ts
+@@ -1,7 +1,7 @@
+ /** Returns true when the error is a raw network error (no response body). */
+ export function isRawNetworkError(error: unknown): boolean {
+     if (!(error instanceof Error)) {
+-        return true;
++        return false;
+     }
+     return error.message.includes('fetch') && !('response' in error);
+ }

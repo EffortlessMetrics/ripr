@@ -1,0 +1,92 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/wrapper_seam_callee_call_attribution/input
+
+Summary: 2 probe(s), 0 exposed, 2 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+WARNING fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs:14
+
+Changed
+  before: try_parse_summary(raw).map_err(Into::into)
+  after:  try_parse_summary(raw).map_err(|error| error.to_string().into())
+
+Probe
+  family: error_path
+  delta:  value
+  owner:  src/lib.rs::parse_summary
+
+Static exposure
+  weakly_exposed (warning, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation weak: No complete owner-bound propagation witness found for error variant: try_parse_summary(raw).map_err(|error| error.to_string().into())
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches error variant: try_parse_summary(raw).map_err(|error| error.to_string().into()) (line 14)
+  - related test tests/attribution.rs:4 observes_callee_outcome uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));
+  - observed assertion argument value 3 at line 6
+  - observed assertion argument value 3 at line 15
+  - observed assertion argument value 5 at line 18
+
+Weakness
+  - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+
+Static limitation
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+
+Limitation detail
+  last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
+  first unresolved edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers
+  analyzer route: analysis/wrapper-error-binding
+  non-claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test
+
+Next step
+  Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.
+
+WARNING fixtures/wrapper_seam_callee_call_attribution/input/src/lib.rs:14
+
+Changed
+  before: try_parse_summary(raw).map_err(Into::into)
+  after:  try_parse_summary(raw).map_err(|error| error.to_string().into())
+
+Probe
+  family: return_value
+  delta:  value
+  owner:  src/lib.rs::parse_summary
+
+Static exposure
+  weakly_exposed (warning, confidence 0.66)
+
+Evidence
+  - reach yes: Related tests exercise the wrapper seam's converted callee (the changed owner is not invoked by them): calls_callee_before_shadow_binding, observes_callee_outcome
+  - infection yes: Reachable tests can plausibly activate this changed behavior
+  - propagation weak: No complete owner-bound propagation witness found for returned value: try_parse_summary(raw).map_err(|error| error.to_string().into())
+  - observation yes: A related test observes a value or effect near the changed behavior
+  - discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)
+  - local flow reaches returned value: try_parse_summary(raw).map_err(|error| error.to_string().into()) (line 14)
+  - related test tests/attribution.rs:13 calls_callee_before_shadow_binding uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));
+  - related test tests/attribution.rs:13 calls_callee_before_shadow_binding uses strong exact value oracle: assert_eq!(ignored, Ok(5));
+  - related test tests/attribution.rs:4 observes_callee_outcome uses strong exact value oracle: assert_eq!(parsed.map(|n| n), Ok(3));
+  - observed assertion argument value 3 at line 6
+  - observed assertion argument value 3 at line 15
+  - observed assertion argument value 5 at line 18
+
+Weakness
+  - Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established
+
+Static limitation
+  wrapper_error_binding_unresolved — The changed line converts a callee's error through a boxed wrapper                  (`map_err(Into::into)`), so whether the wrapper faithfully carries the                  callee's error variant is not statically established; ripr cannot credit                  a downcast witness to this conversion.
+
+Limitation detail
+  last established edge: changed wrapper conversion maps the converted callee's error into the boxed error channel
+  first unresolved edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers
+  analyzer route: analysis/wrapper-error-binding
+  non-claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test
+
+Next step
+  Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.

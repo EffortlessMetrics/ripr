@@ -1,0 +1,6 @@
+[project]
+name = "ripr-python-no-config-repair-gap"
+version = "0.0.0"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

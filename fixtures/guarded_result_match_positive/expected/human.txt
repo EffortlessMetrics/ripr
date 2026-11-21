@@ -1,0 +1,30 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/guarded_result_match_positive/input
+
+Summary: 2 probe(s), 2 exposed, 0 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 2 changed line(s), 1 candidate line(s), 2 probe(s), 2 finding(s).
+
+Start here:
+  State: no_actionable_gap
+  Safe next action: no non-exposed diff finding was selected. This is not runtime proof, coverage adequacy, or mutation confirmation.
+  File: fixtures/guarded_result_match_positive/input/src/lib.rs:9
+  Static exposure: exposed (warning, confidence 1.00)
+  Changed behavior: return Err(ParseError::InvalidData)
+  Discriminator (observed, advisory): ParseError::InvalidData
+  Related test: tests/messages.rs:12 rejects_short_payload_with_variant_pattern
+  Evidence:
+    - reach yes: Related tests appear to reach expect_ready: rejects_short_payload_with_variant_pattern, rejects_unready_kind_with_exact_error_routing
+    - infection yes: Reachable tests can plausibly activate this changed behavior
+    - 13 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/guarded_result_match_positive/input --diff fixtures/guarded_result_match_positive/diff.patch --mode fast probe:src_lib.rs:error_path:94d13aee
+  ripr context --root fixtures/guarded_result_match_positive/input --diff fixtures/guarded_result_match_positive/diff.patch --mode fast --at probe:src_lib.rs:error_path:94d13aee
+
+Hidden:
+  1 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

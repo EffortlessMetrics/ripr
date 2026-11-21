@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,7 @@ pub fn compute(x: i32) -> Result<i32, CalcError> {
+     }
+     if x > 1000 {
+-        return Err(CalcError::Overflow);
++        return Err(CalcError::TooLarge);
+     }
+     Ok(x * 2)
+ }

@@ -1,0 +1,7 @@
+--- a/src/cache.ts
++++ b/src/cache.ts
+@@ -1,3 +1,3 @@
+ export function dispatchAction(handlers: Record<string, () => void>, key: string): void {
+-    handlers.default();
++    handlers[key]();
+ }

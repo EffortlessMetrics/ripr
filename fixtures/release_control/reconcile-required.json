@@ -1,0 +1,32 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_control_snapshot",
+  "captured_at": "2026-07-29T20:30:00Z",
+  "source": {
+    "mode": "captured",
+    "freshness": "stale",
+    "main_sha": "76193cf5da5a2ab7034a95752ff05bc3061a6228",
+    "authority_issue": 2379,
+    "authority_state": "open",
+    "authority_main_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "portfolio_state": "partial",
+    "open_prs_complete": false,
+    "active_claims_complete": false,
+    "worktree_inventory_complete": false,
+    "worktree_count": 0,
+    "graph_digest": "sha256:stale-release-graph"
+  },
+  "prs": [
+    {
+      "number": 2765,
+      "title": "stale board row",
+      "state": "open",
+      "is_draft": false,
+      "head_sha": "54437cdc7591395070c68e4b759aa01b0761d5f0",
+      "base_ref": "main",
+      "linked_issue_refs": [2764],
+      "release_disposition": "release_required",
+      "disposition_reason": "stale fixture intentionally exercises fail-closed reconciliation"
+    }
+  ]
+}

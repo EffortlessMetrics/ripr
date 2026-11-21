@@ -1,0 +1,63 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/rust_dep_edge_cross_crate_ambiguity/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":1,"findings":1,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":1,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:96f1bd34698661fc43564c1c4867b551096bf3a6464b0f17929a5d8333d87fc3","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":1,"finding_count":1},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:crates_b_src_lib.rs:return_value:daf98d2c",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:crates_b_src_lib.rs:return_value:daf98d2c",
+        "family": "return_value",
+        "delta": "value",
+        "file": "fixtures/rust_dep_edge_cross_crate_ambiguity/input/crates/b/src/lib.rs",
+        "line": 4,
+        "expression": "points + SCORE_BONUS"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No reachable tests were found, so infection cannot be established"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches returned value: points + SCORE_BONUS"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No reachable tests were found, so infection cannot be established", "propagation yes: Complete propagation witness reaches returned value: points + SCORE_BONUS", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches returned value: points + SCORE_BONUS (line 4)"],
+      "flow_sinks": [
+        {"kind":"return_value","text":"points + SCORE_BONUS","line":4}
+      ],
+      "evidence": ["Complete propagation witness reaches returned value: points + SCORE_BONUS", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No reachable tests were found, so infection cannot be established", "No static test path found for the changed owner"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

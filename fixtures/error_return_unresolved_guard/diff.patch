@@ -1,0 +1,11 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -13,7 +13,7 @@ pub fn cancelled_error() -> OpError {
+ pub fn run_slow(cancelled: bool) -> Result<&'static str, OpError> {
+     if cancelled {
+-        return Err(cancelled_error());
++        return Err(OpError { code: -32800, message: "operation cancelled".to_string() });
+     }
+     Ok("completed")
+ }

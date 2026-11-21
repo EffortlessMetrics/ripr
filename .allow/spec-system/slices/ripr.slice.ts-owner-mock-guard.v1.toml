@@ -1,0 +1,68 @@
+schema_version = "2.0"
+id = "ripr.slice.ts-owner-mock-guard.v1"
+generation = 1
+
+source_issue = "issue:2269"
+design_reference = "RIPR-SPEC-0108"
+change_class = "behavior_change"
+
+claim_boundary = """
+Fixes the TypeScript owner-module mock over-credit documented as a live
+finding under RIPR-SPEC-0108 (issue #2269): `owner_call_relation` in
+crates/ripr/src/analysis/language/typescript/related_tests.rs now applies
+the same `test_mocks_owner_module` guard to the Function/ArrowFunction
+owner-call paths that the Method/ClassMethod/ModuleFunction relation paths
+already applied, so a test that mocks the changed owner's own module is
+credited no owner-call relation (at most `weakly_exposed` via advisory
+proximity heuristics, with the `mocked_module` static limit and the
+`typescript_mock_only_observer` limitation still disclosed, and
+`repair_packet_ready` still false). Graduates the pinned scenario into the
+evidence-promotion honesty corpus as
+`ts_mocked_owner_module_unrelated_assertion` backed by
+`fixtures/typescript_adversarial_owner_module_mock`. No gate, schema,
+output-shape, or support-tier changes; no existing golden drift.
+"""
+
+non_goals = [
+  "mock-shape resolution or any attempt to model what a mocked module substitutes",
+  "per-language matcher unification across python, typescript, and perl",
+  "support-tier promotion for typescript (stays preview/advisory)",
+  "guarding the dependency-mock arm differently (already pinned by fixtures/typescript_mocked_module_limit)",
+  "changes to the honesty gate code (the existing gate is language-generic)",
+  "amending the RIPR-SPEC-0108 documented-live-finding section (owned by the in-flight #2270 branch that introduced it)",
+]
+
+return_conditions = [
+  "Return to root if any existing golden drifts under the new guard.",
+  "Return to root if the guard flips any finding to repair_packet_ready: true.",
+  "Return to root if the corpus case cannot graduate without weakening an existing charter assertion.",
+]
+
+owned_seams = [
+  "seam:ripr:analysis:language-typescript-related-tests",
+  "seam:ripr:fixtures:typescript-adversarial-owner-module-mock",
+]
+
+shared_seams = [
+  "seam:ripr:fixtures:evidence-promotion-honesty-corpus",
+  "seam:ripr:output:golden-fixture-outputs",
+]
+
+forbidden_seams = [
+  "seam:ripr:xtask:honesty-gate-implementation",
+  "seam:ripr:analysis:language-perl-adapter",
+  "seam:ripr:output:schema-shape",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0108"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

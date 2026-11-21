@@ -1,0 +1,12 @@
+{
+  "schema_version": "0.1",
+  "matches": [],
+  "static_only_findings": [
+    {
+      "static": {
+        "seam_id": "8f7fa8644fd12280"
+      }
+    }
+  ],
+  "ambiguous_file_line_matches": []
+}

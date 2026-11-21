@@ -1,0 +1,17 @@
+schema_version = "1"
+producer = "xtask specs close"
+spec_id = "RIPR-SPEC-0040"
+spec_path = "docs/specs/RIPR-SPEC-0040-static-runtime-confidence-expansion.md"
+content_digest = "sha256:4642f1e629dc05b781c0d0d90435737bfd21deeb80d89e880647f75391f2ffc0"
+status_observed = "proposed"
+observed_at = "2026-08-30"
+reviewed_by = "ZCode agent (session 2026-08-30, verified by landing PR review)"
+disposition = "acceptance_candidate"
+waived_until = "2026-11-30"
+disposition_detail = "Lifecycle note blocks acceptance on the runtime-fixtures-v3 join and confidence matrix described in Required Evidence; the corpus README tabulates all eight cases with evidence class, expected label, claim, and must-not-claim, and calibration_runtime_fixture_v3_matches_checked_reports pins the checked reports; the planned per-class focused tests are a strengthening follow-up, not a missing Required Evidence class."
+reasons_inspected = []
+evidence_refs = []
+limitations = []
+receipt_id = "sha256:0c9dd4b9554fb25195eb81805e43d6370469fe22c8eb9a697659d5ce019adb65"
+claim_boundary = "An asserted, content-bound record that this exact spec content was observed by the named reviewer and reached the labeled advisory maintenance disposition; the PR review that lands the receipt is the verification act."
+non_claims = ["specification correctness or completeness", "normative document status, requirement lifecycle, implementation, evidence, or support state", "acceptance, deprecation, supersession, migration, merge eligibility, or branch protection"]

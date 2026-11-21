@@ -1,0 +1,66 @@
+{
+  "attempt_outcome": "unknown",
+  "classification": {
+    "canonical_gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "gap_id": "gap:python:app/pricing.py:calculate_discount:predicate_boundary:amount>=threshold",
+    "outcome": "unknown",
+    "reason": "movement_without_snapshot_provenance",
+    "state": "uncertain"
+  },
+  "evidence": {
+    "agent_status": "completed",
+    "allowed_files": [
+      "tests/test_pricing.py"
+    ],
+    "edited_files": [
+      "tests/test_pricing.py"
+    ],
+    "edited_forbidden_files": [],
+    "forbidden_files": [
+      "app/pricing.py"
+    ],
+    "receipt": {
+      "movement": "resolved",
+      "path": ".ripr/receipts/python-threshold.json",
+      "present": true,
+      "provenance": {
+        "after_sha256": null,
+        "before_sha256": null,
+        "snapshot_provenance_present": false
+      }
+    },
+    "staleness_status": "not_evaluated",
+    "stop_reason": null,
+    "verify": {
+      "exit_code": 0,
+      "failed": false,
+      "passed": true,
+      "present": true,
+      "status": "passed"
+    }
+  },
+  "inputs": {
+    "result": "inputs/agent-results/movement_without_provenance.json"
+  },
+  "must_not_infer": [
+    "do not trust agent-reported success without verify evidence",
+    "do not treat missing verify output as closed",
+    "do not ignore forbidden production-code edits",
+    "do not run providers, generate tests, run mutation testing, or claim runtime proof from ingest"
+  ],
+  "next_action": {
+    "kind": "uncertain",
+    "summary": "Produce a receipt with before/after artifact sha256 provenance before judging movement."
+  },
+  "report": "swarm-ingest",
+  "safety": {
+    "forbidden_edit_flagged": false,
+    "requires_human_review": true,
+    "trusted_success": false
+  },
+  "schema_version": "0.1",
+  "scope": "agent_result",
+  "source": "external_agent_result",
+  "status": "advisory",
+  "tool": "ripr"
+}

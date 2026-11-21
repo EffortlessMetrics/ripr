@@ -1,0 +1,9 @@
+--- a/routes.py
++++ b/routes.py
+@@ -1,5 +1,5 @@
+ @app.route("/checkout", methods=["POST"])
+ def checkout(order):
+-    return {"total": order.subtotal}
++    return {"total": order.subtotal, "tax": order.subtotal * 0.2}
+
+

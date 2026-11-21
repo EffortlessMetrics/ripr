@@ -1,0 +1,7 @@
+diff --git a/src/users.py b/src/users.py
+index 0000000..1111111 100644
+--- a/src/users.py
++++ b/src/users.py
+@@ -6,2 +6,2 @@ class User:
+ def build_user():
++    return User(active=True)

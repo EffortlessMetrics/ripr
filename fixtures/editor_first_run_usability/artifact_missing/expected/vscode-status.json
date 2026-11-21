@@ -1,0 +1,22 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_first_run_usability/artifact_missing",
+  "status": "artifact_missing",
+  "projection": "fail_closed",
+  "workspace_root": "fixtures/editor_first_run_usability/artifact_missing/workspace",
+  "server": {
+    "state": "available",
+    "path": "ripr",
+    "version": "ripr 0.5.0"
+  },
+  "languages": {
+    "enabled": ["rust"],
+    "available": ["rust"]
+  },
+  "artifacts": {
+    "first_useful_action": "missing",
+    "gap_decision_ledger": "missing",
+    "agent_receipt": "missing"
+  },
+  "next_safe_action": "Run or refresh saved-workspace analysis before expecting diagnostics."
+}

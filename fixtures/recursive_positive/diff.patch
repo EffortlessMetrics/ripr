@@ -1,0 +1,6 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -11,1 +11,1 @@
+-    if final_label == "alpha" {
++    if final_label == "beta" {

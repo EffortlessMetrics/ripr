@@ -1,0 +1,11 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/stale_receipt",
+  "receipt_state": "receipt_stale",
+  "receipt_path": "target/ripr/agent/agent-receipt.json",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "gate_eligibility_claim": false,
+  "merge_readiness_claim": false,
+  "next_safe_action": "Refresh saved-workspace evidence and rerun verify/receipt before trusting movement."
+}

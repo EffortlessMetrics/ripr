@@ -1,0 +1,10 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index 0000000..1111111 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -8,5 +8,5 @@ impl Cache {
+
+ pub fn store_result(cache: &Cache, result: i32) {
+-    cache.insert("old_key", result)
++    cache.insert("result_key", result);
+ }

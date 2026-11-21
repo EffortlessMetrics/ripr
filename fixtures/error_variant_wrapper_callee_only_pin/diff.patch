@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -23,7 +23,7 @@ pub fn try_parse_summary(raw: &str) -> Result<ParseSummary, ParseSummaryError>
+ }
+
+ pub fn parse_summary(raw: &str) -> Result<ParseSummary, Box<dyn Error>> {
+-    try_parse_summary(raw).map_err(|error| error.to_string().into())
++    try_parse_summary(raw).map_err(Into::into)
+ }
+
+ impl std::fmt::Display for ParseSummaryError {

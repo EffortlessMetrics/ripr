@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.command-spec-route-population.v1"
+generation = 1
+
+source_issue = "issue:1755"
+design_reference = "RIPR-SPEC-0135#command-spec"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Populates typed CommandSpec descriptions for the canonical agent verify and
+receipt routes and projects them alongside the legacy command strings in
+first-useful-action, evidence-record, gap-ledger, and agent-packet outputs.
+It does not execute commands, issue receipts, change gate authority, infer
+arbitrary external test commands, or enrich cost classes.
+"""
+
+non_goals = [
+  "command execution",
+  "receipt provenance implementation",
+  "gate authority",
+  "arbitrary test-command parsing",
+  "cost-class enrichment",
+  "legacy string removal",
+]
+
+return_conditions = [
+  "Return to root if typed argv diverges from the canonical legacy route display.",
+  "Return to root if shell redirection is represented as direct argv.",
+  "Return to root if malformed or role-mismatched typed specs can enter LSP projection.",
+]
+
+owned_seams = [
+  "seam:ripr:agent:canonical-command-specs",
+  "seam:ripr:output:command-spec-projection",
+  "seam:ripr:lsp:command-spec-validation",
+]
+
+shared_seams = [
+  "seam:ripr:contract:repair-assurance-v1",
+  "seam:ripr:output:legacy-command-compatibility",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0135#command-spec"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

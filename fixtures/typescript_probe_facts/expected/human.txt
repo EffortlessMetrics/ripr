@@ -1,0 +1,39 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/typescript_probe_facts/input
+
+Summary: 10 probe(s), 0 exposed, 10 weak, 0 unrevealed, 0 no path, 0 unknown
+
+Changed file(s) by language: javascript: 2, rust: 0, typescript: 5.
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 7 changed file(s), 20 changed line(s), 10 candidate line(s), 10 probe(s), 10 finding(s).
+
+Start here:
+  State: preview_limited
+  Safe next action: preview-language evidence is advisory; complete the missing repair-packet fields before acting.
+  File: src/ambiguous.ts:4
+  Language: typescript
+  Language status: preview
+  Static exposure: weakly_exposed (warning, confidence 0.40)
+  Why weakly_exposed: a related test reaches this change but does not observe the exact changed value
+  Changed behavior: const total = applyDiscount(amount, threshold);
+  Missing discriminator: Related test reaches `summarize` with a smoke-only oracle; replace or augment the truthiness check with an exact-value assertion for the changed discriminator before routing a repa…
+  Related test: tests/ambiguous.test.ts:1 summarize smoke
+  Next step: TypeScript preview advisory: add a test that exercises the changed behavior with an exact-value assertion (`toBe` / `toEqual` / `toStrictEqual`); no actionable repair packet is emi…
+  Evidence:
+    - reach yes: 1 related test(s) found for owner `summarize`
+    - infection unknown: TypeScript preview adapter does not yet model infection.
+    - 4 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast probe:src_ambiguous.ts:typescript_preview:ba5968cd
+  ripr context --root fixtures/typescript_probe_facts/input --diff fixtures/typescript_probe_facts/diff.patch --mode fast --at probe:src_ambiguous.ts:typescript_preview:ba5968cd
+
+Hidden:
+  9 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json
+
+
+Note: 7 Typescript(s) analyzed under preview support — preview evidence is advisory and may be incomplete. An empty result here is NOT a clean Rust-grade result.

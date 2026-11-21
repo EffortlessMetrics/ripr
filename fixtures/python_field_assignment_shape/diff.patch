@@ -1,0 +1,10 @@
+diff --git a/src/invoice.py b/src/invoice.py
+index 0000000..1111111 100644
+--- a/src/invoice.py
++++ b/src/invoice.py
+@@ -3,4 +3,4 @@ class Invoice:
+         self.status = "open"
+ 
+     def mark_paid(self):
+-        self.status = "settled"
++        self.status = "paid"

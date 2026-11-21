@@ -1,0 +1,14 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_actionable_gap_queue/stale_actionable_packet",
+  "queue_status": "stale",
+  "projection": "fail_closed",
+  "actionable_gaps": 1,
+  "report_only_gaps": 0,
+  "static_limit_only_gaps": 0,
+  "next_safe_action": "Refresh saved-workspace evidence before copying queue packets.",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "merge_readiness_claim": false
+}

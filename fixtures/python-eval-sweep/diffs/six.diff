@@ -1,0 +1,8 @@
+diff --git a/six.py b/six.py
+--- a/six.py
++++ b/six.py
+@@ -663,3 +663,3 @@ class _MovedItems(_LazyModule):
+     del io
+     _assertCountEqual = "assertCountEqual"
+-    if sys.version_info[1] <= 1:
++    if sys.version_info[1] < 1:

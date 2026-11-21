@@ -1,0 +1,10 @@
+{
+  "fixture": "editor_gap_cockpit/stale_artifact",
+  "actions": [
+    {
+      "title": "Refresh Analysis - Saved Workspace Check",
+      "command": "ripr.refresh",
+      "arguments": []
+    }
+  ]
+}

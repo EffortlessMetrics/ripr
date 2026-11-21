@@ -1,0 +1,8 @@
+diff --git a/src/checkout.py b/src/checkout.py
+index 0000000..1111111 100644
+--- a/src/checkout.py
++++ b/src/checkout.py
+@@ -1,2 +1,2 @@
+ def checkout_payload(order_id):
++    return {"status": "paid", "event": "receipt.sent", "id": order_id}
+

@@ -1,0 +1,126 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "pr_review_front_panel",
+  "status": "advisory",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": null,
+    "first_action": null,
+    "assistant_proof": null,
+    "assistant_health": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+    "ledger": null,
+    "baseline_delta": null,
+    "zero_status": null,
+    "gate_decision": null,
+    "recommendation_calibration": null,
+    "mutation_calibration": null,
+    "coverage_frontier": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json",
+    "receipt": null
+  },
+  "summary": {
+    "status": "advisory",
+    "headline": "Static grip stayed unchanged after the focused attempt.",
+    "top_issue_state": "unchanged_after_attempt",
+    "policy_state": "none",
+    "placement": "changed_line",
+    "movement_state": "unchanged",
+    "coverage_grip_state": "flat_coverage_grip_improved",
+    "blocking_candidates": 0,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "new_policy_eligible": 0,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "warnings": 0
+  },
+  "top_issue": {
+    "source": "assistant_health",
+    "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json",
+    "seam_id": "67fc764ba37d77bd",
+    "canonical_gap_id": null,
+    "path": "src/lib.rs",
+    "line": 2,
+    "classification": "weakly_exposed",
+    "current_evidence_strength": "weakly_exposed",
+    "missing_discriminator": "input that hits the boundary: amount >= discount_threshold",
+    "focused_proof_intent": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.",
+    "related_test": "tests/pricing.rs::below_threshold_has_no_discount",
+    "suggested_test": "Add a focused boundary test that exercises amount >= discount_threshold and assert the exact discounted_total output.",
+    "verify_command": "ripr agent verify --root fixtures/boundary_gap/input --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --json",
+    "static_evidence_boundary": "static advisory evidence only; not runtime proof, coverage adequacy, mutation confirmation, gate approval, or merge approval.",
+    "agent_command": "ripr agent start --root fixtures/boundary_gap/input --seam-id 67fc764ba37d77bd --out target/ripr/workflow",
+    "receipt": {
+      "artifact": "fixtures/boundary_gap/expected/first-useful-action/unchanged-after-attempt/agent-receipt.json",
+      "status": "receipt_found"
+    }
+  },
+  "movement": {
+    "state": "unchanged",
+    "before_class": "weakly_gripped",
+    "after_class": "weakly_gripped",
+    "source_artifact": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.json"
+  },
+  "debt_delta": {
+    "new_policy_eligible": 0,
+    "baseline_still_present": 0,
+    "baseline_resolved": 0,
+    "acknowledged": 0,
+    "waived": 0,
+    "suppressed": 0,
+    "blocking_candidates": 0
+  },
+  "policy": {
+    "mode": null,
+    "decision": "advisory",
+    "authority_artifact": null,
+    "acknowledgement_label": null
+  },
+  "calibration": {
+    "recommendation": "not_available",
+    "mutation": "not_available",
+    "source_artifacts": []
+  },
+  "coverage_grip": {
+    "state": "flat_coverage_grip_improved",
+    "coverage_delta": 0.0,
+    "grip_delta": -3,
+    "source_artifact": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.json"
+  },
+  "artifacts": [
+    {
+      "group": "start_here",
+      "label": "PR review front panel",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/mixed-health/pr-review-front-panel.md",
+      "available": true,
+      "required": true
+    },
+    {
+      "group": "repair",
+      "label": "Assistant loop health",
+      "path": "fixtures/boundary_gap/expected/assistant-loop-health/multi-proof/assistant-loop-health.md",
+      "available": true,
+      "required": false
+    },
+    {
+      "group": "calibration",
+      "label": "Coverage/grip frontier",
+      "path": "fixtures/boundary_gap/expected/pr-review-front-panel/coverage-flat-grip-improved/coverage-grip-frontier.md",
+      "available": true,
+      "required": false
+    }
+  ],
+  "warnings": [],
+  "limits": [
+    "Static RIPR evidence only.",
+    "Does not provide runtime confirmation.",
+    "Does not run mutation testing.",
+    "Does not call providers.",
+    "Does not edit source or generate tests.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate evaluator remains pass/fail authority."
+  ]
+}

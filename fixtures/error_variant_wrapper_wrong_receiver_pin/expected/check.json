@@ -1,0 +1,274 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/error_variant_wrapper_wrong_receiver_pin/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":2,"findings":2,"exposed":0,"weakly_exposed":1,"reachable_unrevealed":1,"no_static_path":0,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:a79e1381914da1cb67ffc1317005066b0b1e5a205d4412b7ef5c6dfc93af984d","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":2,"candidate_line_count":1,"probe_count":2,"finding_count":2},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:0fc3c3da",
+      "classification": "reachable_unrevealed",
+      "severity": "warning",
+      "confidence": 0.79,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:0fc3c3da",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/error_variant_wrapper_wrong_receiver_pin/input/src/lib.rs",
+        "line": 27,
+        "expression": "try_parse_summary(raw).map_err(Into::into)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)"},
+        "observe": {"state":"no","confidence":"medium","summary":"Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion found on related tests"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)", "observation no: Related tests were found, but no assertion appears to observe the changed value, error, field, or effect", "discriminator no: No assertion found on related tests", "local flow reaches call effect: try_parse_summary(raw).map_err(Into::into) (line 27)", "observed enum variant value ParseSummaryError::MalformedSource at line 6", "observed enum variant value ParseSummaryError::MalformedSource at line 6", "observed function argument value raw = \"@bad;\" at line 15", "observed enum variant value ParseSummaryError::MalformedSource at line 16", "observed enum variant value ParseSummaryError::MalformedSource at line 16"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"try_parse_summary(raw).map_err(Into::into)","line":27}
+      ],
+      "evidence": ["Changed behavior appears to influence call effect: try_parse_summary(raw).map_err(Into::into)", "No assertion found on related tests", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant", "Related tests were found, but no assertion appears to observe the changed value, error, field, or effect"],
+      "missing": ["No detected assertion observes the changed value, error, field, or effect", "No relevant oracle was detected", "No strong discriminator was detected"],
+      "assertion_texts": {
+        "6": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}",
+        "15": "let result = parser.parse_summary(\"@bad;\");",
+        "16": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant"
+          },
+          {
+            "line": 6,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant",
+            "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+          },
+          {
+            "line": 15,
+            "value": "raw = \"@bad;\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 16,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant"
+          },
+          {
+            "line": 16,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant",
+            "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant"
+        },
+        {
+          "line": 6,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant",
+          "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+        },
+        {
+          "line": 15,
+          "value": "raw = \"@bad;\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 16,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant"
+        },
+        {
+          "line": 16,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant",
+          "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.",
+      "suggested_next_action": "Add a meaningful assertion that observes the changed value, branch, error, field, event, or side effect.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:error_path:a560dfc2",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.92,
+      "probe": {
+        "id": "probe:src_lib.rs:error_path:a560dfc2",
+        "family": "error_path",
+        "delta": "value",
+        "file": "fixtures/error_variant_wrapper_wrong_receiver_pin/input/src/lib.rs",
+        "line": 27,
+        "expression": "try_parse_summary(raw).map_err(Into::into)"
+       },
+      "ripr": {
+        "reach": {"state":"yes","confidence":"medium","summary":"Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant"},
+        "infect": {"state":"yes","confidence":"medium","summary":"Reachable tests can plausibly activate this changed behavior"},
+        "propagate": {"state":"yes","confidence":"high","summary":"Complete propagation witness reaches error variant: try_parse_summary(raw).map_err(Into::into)"},
+        "observe": {"state":"yes","confidence":"medium","summary":"A related test observes a value or effect near the changed behavior"},
+        "discriminate": {"state":"weak","confidence":"medium","summary":"Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)"}
+       },
+      "evidence_path": ["reach yes: Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant", "infection yes: Reachable tests can plausibly activate this changed behavior", "propagation yes: Complete propagation witness reaches error variant: try_parse_summary(raw).map_err(Into::into)", "observation yes: A related test observes a value or effect near the changed behavior", "discriminator weak: Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "local flow reaches error variant: try_parse_summary(raw).map_err(Into::into) (line 27)", "related test tests/errors.rs:4 parse_summary_callee_witness_pins_variant uses strong exact error variant oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}", "related test tests/errors.rs:4 parse_summary_callee_witness_pins_variant uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))", "related test tests/errors.rs:13 parse_summary_other_receiver_pins_same_variant uses strong exact error variant oracle: if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}", "related test tests/errors.rs:13 parse_summary_other_receiver_pins_same_variant uses strong exact error variant oracle: matches!(result, Err(ParseSummaryError::MalformedSource))", "observed enum variant value ParseSummaryError::MalformedSource at line 6", "observed enum variant value ParseSummaryError::MalformedSource at line 6", "observed function argument value raw = \"@bad;\" at line 15", "observed enum variant value ParseSummaryError::MalformedSource at line 16", "observed enum variant value ParseSummaryError::MalformedSource at line 16"],
+      "flow_sinks": [
+        {"kind":"error_variant","text":"try_parse_summary(raw).map_err(Into::into)","line":27}
+      ],
+      "evidence": ["A related test observes a value or effect near the changed behavior", "Complete propagation witness reaches error variant: try_parse_summary(raw).map_err(Into::into)", "Discriminator unconfirmed: no assertion text references this probe's changed expression (observation_unverified)", "Reachable tests can plausibly activate this changed behavior", "Related tests appear to reach parse_summary: parse_summary_callee_witness_pins_variant, parse_summary_other_receiver_pins_same_variant", "limitation_last_established_edge: changed wrapper conversion maps the converted callee's error into the boxed error channel", "limitation_first_unresolved_edge: whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers", "limitation_analyzer_route: analysis/wrapper-error-binding", "limitation_non_claim: named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"],
+      "missing": ["Typed static limitation (wrapper_error_binding_unresolved): the wrapper error conversion's variant binding is not statically established"],
+      "assertion_texts": {
+        "6": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}",
+        "15": "let result = parser.parse_summary(\"@bad;\");",
+        "16": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}"
+      },
+      "activation": {
+        "observed_values": [
+          {
+            "line": 6,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant"
+          },
+          {
+            "line": 6,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant",
+            "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+          },
+          {
+            "line": 15,
+            "value": "raw = \"@bad;\"",
+            "context": "function_argument"
+          },
+          {
+            "line": 16,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant"
+          },
+          {
+            "line": 16,
+            "value": "ParseSummaryError::MalformedSource",
+            "context": "enum_variant",
+            "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+          }
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+        {
+          "line": 6,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant"
+        },
+        {
+          "line": 6,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant",
+          "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+        },
+        {
+          "line": 15,
+          "value": "raw = \"@bad;\"",
+          "context": "function_argument"
+        },
+        {
+          "line": 16,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant"
+        },
+        {
+          "line": 16,
+          "value": "ParseSummaryError::MalformedSource",
+          "context": "enum_variant",
+          "provenance": "matches!(result, Err(ParseSummaryError::MalformedSource))"
+        }
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 4,
+      "related_tests": [
+        {
+          "name": "parse_summary_callee_witness_pins_variant",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"callee pin should observe ParseSummaryError::MalformedSource\".into());\n}",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "parse_summary_callee_witness_pins_variant",
+          "file": "tests/errors.rs",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "matches!(result, Err(ParseSummaryError::MalformedSource))",
+          "relation_reason": "owner_named_test",
+          "relation_confidence": "medium"
+        },
+        {
+          "name": "parse_summary_other_receiver_pins_same_variant",
+          "file": "tests/errors.rs",
+          "line": 13,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "if !matches!(result, Err(ParseSummaryError::MalformedSource)) {\nreturn Err(\"other receiver pin should observe ParseSummaryError::MalformedSource\".into());\n}",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        },
+        {
+          "name": "parse_summary_other_receiver_pins_same_variant",
+          "file": "tests/errors.rs",
+          "line": 13,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_error_variant",
+          "oracle": "matches!(result, Err(ParseSummaryError::MalformedSource))",
+          "relation_reason": "direct_owner_call",
+          "relation_confidence": "high"
+        }
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "exact_error_variant",
+      "oracle_strength": "strong",
+      "recommended_next_step": "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.",
+      "suggested_next_action": "Typed static limitation (wrapper_error_binding_unresolved): ripr cannot statically establish that this boxed wrapper conversion carries the callee's error variant, so an existing exact downcast witness is not statically creditable. Verify via real mutation testing or deeper conversion modeling.",
+      "language": "rust",
+      "static_limit_kind": "wrapper_error_binding_unresolved",
+      "static_limitation": {
+        "analyzer_route": "analysis/wrapper-error-binding",
+        "first_unresolved_edge": "whether `Into`/`From` through `Box<dyn Error>` carries the callee's error variant to the wrapper's callers",
+        "kind": "wrapper_error_binding_unresolved",
+        "last_established_edge": "changed wrapper conversion maps the converted callee's error into the boxed error channel",
+        "non_claim": "named analyzer limitation only; ripr does not confirm coverage or prescribe a repair test"
+      },
+      "source_currentness": "candidate_current"
+    }
+  ]
+}

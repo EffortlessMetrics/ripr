@@ -1,0 +1,180 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "report_packet_index",
+  "status": "warn",
+  "root": ".",
+  "generated_at": "2026-05-10T12:00:00Z",
+  "inputs": {
+    "reports_dir": "target/ripr/reports",
+    "review_dir": "target/ripr/review",
+    "receipts_dir": "target/ripr/receipts"
+  },
+  "summary": {
+    "entries": 6,
+    "available": 4,
+    "missing_expected": 2,
+    "warnings": 2,
+    "failures": 0,
+    "start_here": "target/ripr/reports/pr-review-front-panel.md",
+    "gate_authority": null,
+    "advisory": true
+  },
+  "groups": [
+    {
+      "group": "start_here",
+      "label": "Start here",
+      "summary": "Reviewer-first PR story.",
+      "entries": [
+        {
+          "id": "pr_review_front_panel",
+          "label": "PR review front panel",
+          "kind": "markdown",
+          "path": "target/ripr/reports/pr-review-front-panel.md",
+          "json_path": "target/ripr/reports/pr-review-front-panel.json",
+          "status": "available",
+          "available": true,
+          "required": true,
+          "authority": false,
+          "description": "First-screen PR review story.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "pr_review_story",
+      "label": "PR review story",
+      "summary": "Guidance and first useful action.",
+      "entries": [
+        {
+          "id": "first_useful_action",
+          "label": "First useful action",
+          "kind": "markdown",
+          "path": "target/ripr/reports/first-useful-action.md",
+          "json_path": "target/ripr/reports/first-useful-action.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "One advisory next action.",
+          "next_command": null
+        },
+        {
+          "id": "review_comments",
+          "label": "Review guidance",
+          "kind": "markdown",
+          "path": "target/ripr/review/comments.md",
+          "json_path": "target/ripr/review/comments.json",
+          "status": "available",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Bounded PR guidance comments.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "repair_agent_handoff",
+      "label": "Repair and agent handoff",
+      "summary": "Assistant loop context.",
+      "entries": [
+        {
+          "id": "assistant_proof",
+          "label": "Assistant proof",
+          "kind": "markdown",
+          "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+          "json_path": "target/ripr/reports/test-oracle-assistant-proof.json",
+          "status": "missing",
+          "available": false,
+          "required": false,
+          "authority": false,
+          "description": "No assistant proof input was present.",
+          "next_command": "ripr assistant-loop proof --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md"
+        }
+      ]
+    },
+    {
+      "group": "calibration",
+      "label": "Calibration",
+      "summary": "Optional calibration context.",
+      "entries": [
+        {
+          "id": "coverage_grip_frontier",
+          "label": "Coverage/grip frontier",
+          "kind": "markdown",
+          "path": "target/ripr/reports/coverage-grip-frontier.md",
+          "json_path": "target/ripr/reports/coverage-grip-frontier.json",
+          "status": "not_applicable",
+          "available": false,
+          "required": false,
+          "authority": false,
+          "description": "Coverage/grip frontier is configured off for this packet.",
+          "next_command": null
+        }
+      ]
+    },
+    {
+      "group": "validation_receipts",
+      "label": "Validation receipts",
+      "summary": "Local readiness reports.",
+      "entries": [
+        {
+          "id": "check_pr",
+          "label": "Check PR",
+          "kind": "markdown",
+          "path": "target/ripr/reports/check-pr.md",
+          "json_path": null,
+          "status": "pass",
+          "available": true,
+          "required": false,
+          "authority": false,
+          "description": "Local review-ready gate receipt.",
+          "next_command": null
+        }
+      ]
+    }
+  ],
+  "missing_expected": [
+    {
+      "id": "assistant_proof",
+      "label": "Assistant proof",
+      "group": "repair_agent_handoff",
+      "path": "target/ripr/reports/test-oracle-assistant-proof.md",
+      "required": false,
+      "reason": "input_not_available",
+      "next_command": "ripr assistant-loop proof --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md"
+    },
+    {
+      "id": "coverage_grip_frontier",
+      "label": "Coverage/grip frontier",
+      "group": "calibration",
+      "path": "target/ripr/reports/coverage-grip-frontier.md",
+      "required": false,
+      "reason": "configured_off",
+      "next_command": null
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "missing_expected",
+      "message": "Assistant proof was not generated because no proof input was present.",
+      "source_artifact": null
+    },
+    {
+      "kind": "missing_expected",
+      "message": "Coverage/grip frontier is configured off.",
+      "source_artifact": null
+    }
+  ],
+  "limits": [
+    "Advisory report-packet index only.",
+    "Does not rerun analysis.",
+    "Does not edit source or generate tests.",
+    "Does not call providers.",
+    "Does not run mutation testing.",
+    "Does not publish inline comments.",
+    "Does not change default CI blocking.",
+    "Gate decision remains pass/fail authority when configured."
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "0.1",
+  "kind": "release_control_snapshot",
+  "captured_at": "2026-07-29T20:30:00Z",
+  "source": {
+    "mode": "captured",
+    "freshness": "current",
+    "main_sha": "d1e43bbff1d7583cf276830f05bfdc445ad43d38",
+    "authority_issue": 2379,
+    "authority_state": "open",
+    "authority_main_sha": "d1e43bbff1d7583cf276830f05bfdc445ad43d38",
+    "portfolio_state": "complete",
+    "open_prs_complete": true,
+    "active_claims_complete": true,
+    "worktree_inventory_complete": true,
+    "worktree_count": 1,
+    "graph_digest": "sha256:release-graph-fixture"
+  },
+  "prs": [
+    {
+      "number": 2771,
+      "title": "fix(cli): install panic hook — panics now produce ripr-style error, exit 2 (#2660)",
+      "state": "open",
+      "is_draft": false,
+      "head_sha": "9762da8ecbabecb1fb585e59963b74f30ada88a3",
+      "base_ref": "main",
+      "linked_issue_refs": [2660],
+      "release_disposition": "hold_post_release",
+      "disposition_reason": "outside the accepted 0.11 release graph; preserve the active PR without merging it into the candidate"
+    },
+    {
+      "number": 2772,
+      "title": "fix(badge): apply path suppressions consistently",
+      "state": "open",
+      "is_draft": false,
+      "head_sha": "80bb56ad28112769d24d7af78c7f360de4d093c5",
+      "base_ref": "main",
+      "linked_issue_refs": [],
+      "release_disposition": "hold_post_release",
+      "disposition_reason": "outside the accepted 0.11 release graph; preserve the active PR without merging it into the candidate"
+    }
+  ]
+}

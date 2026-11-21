@@ -1,0 +1,64 @@
+schema_version = "2.0"
+id = "ripr.slice.ci-lane-precommit-table.v1"
+generation = 1
+
+source_issue = "issue:2258"
+design_reference = "issue:2258#acceptance-criteria"
+change_class = "behavior_change"
+
+claim_boundary = """
+Bounds the routed-rust gate composition after three same-day main breaks from
+gates the lanes never ran (#2234, #2240, #2257): each of the four required
+rust lanes and the docs-gate job in `.github/workflows/routed-rust.yml` now
+invokes the shared `cargo xtask precommit` table once, and only the lane-only
+gates (check-evidence-promotion-honesty, check-dependencies,
+check-process-policy, check-network-policy, goldens check, fixtures) stay
+enumerated after it. The command-catalog CI drift check expands an enforced
+`cargo xtask precommit` invocation into the gates precommit runs so
+ci_enforced truth is preserved, and the precommit catalog entry is marked
+ci_enforced. Required-check composition, branch protection, and analyzer
+semantics are unchanged; no gate was dropped.
+"""
+
+non_goals = [
+  "changes to required-check composition or branch protection",
+  "changes to workflows other than routed-rust.yml",
+  "changes to the precommit gate table itself or any gate's semantics",
+  "changes to ripr analyzer, receipt, or finding semantics",
+  "making any currently required gate advisory",
+]
+
+return_conditions = [
+  "Return to root if a precommit gate turns out to need built workspace artifacts in the docs-gate job.",
+  "Return to root if expanding the drift check would weaken ci_enforced truth for any command.",
+]
+
+owned_seams = [
+  "seam:ci:routed-rust-gate-table",
+  "seam:ripr:xtask:command-catalog-ci-drift",
+]
+
+shared_seams = [
+  "seam:ripr:xtask:precommit",
+  "seam:ci:lane-whitelist-ledger",
+]
+
+forbidden_seams = [
+  "seam:ci:branch-protection",
+  "seam:ci:other-workflows",
+  "seam:ripr:analysis:exposure-classification",
+  "seam:ripr:output:check-json-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "issue:2258#acceptance-criteria"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

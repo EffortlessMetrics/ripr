@@ -1,0 +1,8 @@
+[package]
+name = "guarded_result_match_sibling_variant"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "guarded_result_match_sibling_variant"
+path = "src/lib.rs"

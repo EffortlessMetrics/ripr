@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1",
+  "case": "python_preview_static_limit",
+  "state": "actionable",
+  "language": "python",
+  "language_status": "preview",
+  "diagnostics_projected": 1,
+  "static_limit_kind": "missing_import_graph",
+  "actions_projected": [
+    "copy_repair_packet",
+    "copy_static_limit_note",
+    "refresh"
+  ],
+  "fail_closed": false
+}

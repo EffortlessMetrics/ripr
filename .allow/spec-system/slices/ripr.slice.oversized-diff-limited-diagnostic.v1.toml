@@ -1,0 +1,65 @@
+schema_version = "2.0"
+id = "ripr.slice.oversized-diff-limited-diagnostic.v1"
+generation = 1
+
+source_issue = "issue:2299"
+design_reference = "RIPR-SPEC-0141"
+change_class = "behavior_change"
+
+claim_boundary = """
+Converts the fail-closed diff-scope guard (diff_scope_oversized) on the
+LSP refresh path from a dropped refresh with no snapshot into a committed
+limited snapshot (#2299), mirroring the #2303 git-invocation-timeout
+conversion. The snapshot carries exactly one workspace-scoped Warning
+diagnostic (new governed catalog code ripr-scope-diff-oversized, anchored
+at the workspace root URI) whose message is the guard error's bounded
+first line — kind, actual counts, split guidance — plus one typed failed
+diff component outcome with findings_trustworthy: false, so the shared
+derivation reports run_status: limited with no new run-status string.
+Only the raw, unwrapped guard error converts; repo_scope_oversized,
+wrapped errors, and forged lookalikes keep the no-snapshot path. The CLI
+contract is unchanged: non-zero exit, unchanged error text, zero golden
+drift. Adds the is_diff_scope_oversized predicate (analysis/language/
+rust.rs, completing the DIFF_SCOPE_OVERSIZED_PREFIX authority), the
+conversion in lsp/diagnostics.rs, the catalog entry, two contract tests,
+RIPR-SPEC-0141 and RIPR-SPEC-0127 amendments, and traceability rows.
+"""
+
+non_goals = [
+  "CLI output or exit-code changes (zero golden drift)",
+  "converting repo_scope_oversized or any other analysis error",
+  "a new run-status string",
+  "structured limit payloads (the diagnostic message reuses the guard's bounded first line)",
+]
+
+return_conditions = [
+  "Return to root if any golden drifts or the CLI error text changes.",
+  "Return to root if anchoring the warning at the workspace root URI proves invisible to the pinned harness clients.",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:oversized-diff-limited-conversion",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:component-outcome-degradation-authority",
+  "seam:ripr:lsp:diagnostic-code-catalog",
+]
+
+forbidden_seams = [
+  "seam:ripr:fixtures:goldens",
+  "seam:ripr:cli:check-exit-contract",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0141"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

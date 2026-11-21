@@ -1,0 +1,17 @@
+schema_version = "1"
+producer = "xtask specs close"
+spec_id = "RIPR-SPEC-0018"
+spec_path = "docs/specs/RIPR-SPEC-0018-pr-evidence-ledger.md"
+content_digest = "sha256:61a2b2ea50aca001abd71cb4f1c85c9e3d6fcb5e083c2f10bf4c7097141b33dc"
+status_observed = "proposed"
+observed_at = "2026-08-30"
+reviewed_by = "ZCode agent (session 2026-08-30, verified by landing PR review)"
+disposition = "acceptance_candidate"
+waived_until = "2026-11-30"
+disposition_detail = "Lifecycle note blocks acceptance on the full ledger accounting, waiver, suppression, repair, and frontier contract; traceability pins the pr_evidence_ledger join, repair routing, incomplete, and fixture-contract tests plus the seven coverage_grip_frontier tests, the policy waiver-aging and policy suppression-health commands exist, and docs/PR_EVIDENCE_LEDGER_WORKFLOW.md documents the named workflow surface."
+reasons_inspected = []
+evidence_refs = []
+limitations = []
+receipt_id = "sha256:fa243aa36521a168efcfd92c91012998835ac1653db7f6a5e729686ecfecfb32"
+claim_boundary = "An asserted, content-bound record that this exact spec content was observed by the named reviewer and reached the labeled advisory maintenance disposition; the PR review that lands the receipt is the verification act."
+non_claims = ["specification correctness or completeness", "normative document status, requirement lifecycle, implementation, evidence, or support state", "acceptance, deprecation, supersession, migration, merge eligibility, or branch protection"]

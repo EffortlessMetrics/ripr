@@ -1,0 +1,57 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...95"
+
+  status:
+    informational: true
+    project:
+      default:
+        target: 75%
+        threshold: 1%
+
+      product:
+        target: 94%
+        threshold: 1%
+        paths:
+          - crates/ripr/src/
+
+      automation:
+        target: 59%
+        threshold: 1%
+        paths:
+          - xtask/src/
+
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+
+      product:
+        target: 94%
+        threshold: 3%
+        paths:
+          - crates/ripr/src/
+
+      automation:
+        target: 75%
+        threshold: 10%
+        paths:
+          - xtask/src/
+
+comment:
+  layout: "diff, flags, files"
+  behavior: default
+  require_changes: false
+
+flags:
+  rust:
+    paths:
+      - crates/ripr/src/
+      - xtask/src/
+
+ignore:
+  - "target/**"
+  - "fixtures/**/target/**"
+  - "editors/vscode/**/node_modules/**"
+  - "xtask/src/reports/release.rs"

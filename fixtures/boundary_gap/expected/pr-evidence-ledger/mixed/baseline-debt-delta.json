@@ -1,0 +1,30 @@
+{
+  "schema_version": "0.1",
+  "kind": "baseline_debt_delta",
+  "delta": {
+    "still_present": 2,
+    "resolved": 3,
+    "new_policy_eligible": 1,
+    "acknowledged": 1,
+    "suppressed": 1
+  },
+  "items": [
+    {
+      "bucket": "new_policy_eligible",
+      "identity": {
+        "seam_id": "new",
+        "id": "ripr-gate-new"
+      },
+      "path": "src/new.rs",
+      "line": 4,
+      "missing_discriminator": "new == 4",
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(new(), 4)",
+        "recommended_test": "tests/new.rs::boundary"
+      },
+      "repair": {
+        "verify_command": "ripr agent verify --json"
+      }
+    }
+  ]
+}

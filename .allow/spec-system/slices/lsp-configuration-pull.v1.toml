@@ -1,0 +1,61 @@
+schema_version = "2.0"
+id = "ripr.slice.lsp-configuration-pull.v1"
+generation = 1
+
+source_issue = "issue:2031"
+design_reference = "RIPR-SPEC-0136"
+change_class = "behavior_change"
+
+claim_boundary = """
+Adds a capability-negotiated `workspace/configuration` pull transport for the
+five already governed LSP session keys, with per-key precedence over
+initialization options, an epoch-guarded coalesced re-pull, startup-window
+honesty, and additive status disclosure. Does not claim new governed keys, a
+typed client feature profile (#1987), output schema changes, editor extension
+changes, or dynamic didChangeConfiguration registration.
+"""
+
+non_goals = [
+  "full typed ClientFeatureProfile (issue #1987)",
+  "new governed configuration keys or ripr.toml changes",
+  "dynamic registration for workspace/didChangeConfiguration",
+  "per-resource scopeUri pulls",
+  "editor extension changes",
+]
+
+return_conditions = [
+  "Return to root if tower-lsp-server changes the Client::configuration or ConfigurationItem contract.",
+  "Return to root if a sixth session key must become governed (widens every transport).",
+]
+
+owned_seams = [
+  "seam:ripr:lsp:configuration-pull",
+  "seam:ripr:lsp:session-value-sources",
+  "seam:ripr:docs:lsp-configuration-pull-spec",
+]
+
+shared_seams = [
+  "seam:ripr:lsp:backend-handlers",
+  "seam:ripr:lsp:session-config",
+  "seam:ripr:tests:lsp-stdio-harness",
+  "seam:ripr:docs:configuration",
+]
+
+forbidden_seams = [
+  "seam:ripr:repo:workflows",
+  "seam:ripr:output:check-json-contract",
+  "seam:ripr:editor:vscode-extension",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0136#lsp-configuration-pull"
+requirement_generation = 1
+
+[implementation_claim]
+status = "outstanding"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

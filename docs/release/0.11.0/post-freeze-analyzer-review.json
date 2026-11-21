@@ -1,0 +1,66 @@
+{
+  "schema_version": "1.0",
+  "kind": "ripr_post_freeze_category_review",
+  "category": "analyzer",
+  "status": "accepted",
+  "owner_issue": "EffortlessMetrics/ripr-swarm#2352",
+  "audit_base": "3a80c634f2157dee0e7f74fc72b7975f07699143",
+  "audit_head": "c86807ecdbf359594ef88c0ff38b10b446139dca",
+  "input_fragments": [
+    "post-freeze-analyzer-fragment.json",
+    "post-freeze-analyzer-fragment-2.json",
+    "post-freeze-analyzer-fragment-3.json",
+    "post-freeze-analyzer-fragment-4.json",
+    "post-freeze-analyzer-fragment-5.json",
+    "post-freeze-analyzer-fragment-6.json",
+    "post-freeze-analyzer-fragment-7.json",
+    "post-freeze-analyzer-fragment-8.json"
+  ],
+  "record_count": 31,
+  "accepted_dispositions": {
+    "must_include_0_11": 26,
+    "safe_defer_post_0_11": 3,
+    "release_infrastructure_only": 2
+  },
+  "amendments": [
+    {
+      "group": "check_artifact_reuse",
+      "from": "needs_operator_decision",
+      "to": "must_include_0_11",
+      "commits": [
+        "00fe93a45050780181013321ca3a623788d08f9e",
+        "57a93d691c88238db103b433974fcf54c0dc24e5",
+        "6114b1b8eb9f8525664a218ae59d4408020d0943"
+      ],
+      "related_boundary_fix": "1f2269aef3f154c13702f6e3e4392b7612dda299",
+      "reason": "The accepted design, reusable artifact implementation, worktree identity extension, and architecture correction form one coherent shipped contract. Omitting only part would leave public help/schema or tests describing an unavailable path."
+    },
+    {
+      "commit_sha": "3685f49601325bac9451268aacea6d89de06a66b",
+      "from": "needs_operator_decision",
+      "to": "must_include_0_11",
+      "reason": "Include Rayon parsing with its lockfile/dependency changes because the selected editor and deep-analysis narrative requires the measured cold-path improvement; semantic ordering remains pinned as unchanged."
+    }
+  ],
+  "safe_deferrals": [
+    "docs/config-only non-source diff stderr explanation",
+    "agent validation-order convenience",
+    "task-grouped overview help copy"
+  ],
+  "accepted_claims": [
+    "partial and repository-scope limits remain explicit and policy-ineligible",
+    "diff, owner, route, assertion, cross-language, worktree, and I/O failures fail closed with named evidence",
+    "repair-packet readiness has one producer-owned authority across consumers",
+    "reusable check artifacts bind full input/config/source identity and remain distinct from ordinary check JSON",
+    "public field types required by CheckInput/CheckOutput are nameable from the crate root",
+    "performance work included by this review preserves semantic output and carries its dependencies"
+  ],
+  "nonclaims": [
+    "no universal test adequacy or mutation equivalence",
+    "no language-tier parity or promotion",
+    "no hidden test execution",
+    "no complete evidence outside selected scope",
+    "no automatic production edit"
+  ],
+  "decision": "accept_for_replacement_candidate"
+}

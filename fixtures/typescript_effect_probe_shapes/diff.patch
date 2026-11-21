@@ -1,0 +1,12 @@
+diff --git a/src/profile.ts b/src/profile.ts
+index 0000000..1111111 100644
+--- a/src/profile.ts
++++ b/src/profile.ts
+@@ -3,5 +3,5 @@
+ export function updateProfile(profile: Profile, status: string, audit: { record(value: string): void }): Profile {
+-    profile.status = "pending";
+-    audit.record("pending");
++    profile.status = status;
++    audit.record(status);
+     return profile;
+ }

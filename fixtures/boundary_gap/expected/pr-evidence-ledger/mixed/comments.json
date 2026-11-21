@@ -1,0 +1,24 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "status": "advisory",
+  "comments": [
+    {
+      "id": "ripr-review-new",
+      "seam_id": "new",
+      "missing_discriminator": "new == 4",
+      "placement": {
+        "path": "src/new.rs",
+        "line": 4
+      },
+      "suggested_test": {
+        "assertion_shape": "assert_eq!(new(), 4)",
+        "near_test": "boundary"
+      },
+      "llm_guidance": {
+        "verify_command": "ripr agent verify --json"
+      }
+    }
+  ],
+  "summary_only": []
+}

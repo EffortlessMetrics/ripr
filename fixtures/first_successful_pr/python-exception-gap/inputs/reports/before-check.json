@@ -1,0 +1,90 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-exception-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 0,
+    "weakly_exposed": 1,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:src_validation.py:3:python_preview",
+      "classification": "weakly_exposed",
+      "severity": "warning",
+      "confidence": 0.4,
+      "canonical_gap_id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+      "canonical_gap": {
+        "id": "gap:python:src/validation.py:require_positive:exception_path:error_path:valueerror_positive_required",
+        "language": "python",
+        "file": "src/validation.py",
+        "owner": "require_positive",
+        "behavior_kind": "exception_path",
+        "probe_kind": "error_path",
+        "normalized_discriminator": "valueerror_positive_required"
+      },
+      "probe": {
+        "id": "probe:src_validation.py:3:python_preview",
+        "family": "error_path",
+        "delta": "control",
+        "file": "src/validation.py",
+        "line": 3,
+        "expression": "        raise ValueError(\"positive required\")",
+        "owner": "python:src/validation.py::require_positive"
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "1 related Python test(s) found for owner `require_positive`"
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed Python error path can alter raised exception/control behavior: `raise ValueError(\"positive required\")`"
+        },
+        "propagate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed Python error path propagates through the exception/control boundary."
+        },
+        "observe": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Strongest extracted Python oracle kind: `broad_error` (rank 3)"
+        },
+        "discriminate": {
+          "state": "weak",
+          "confidence": "low",
+          "summary": "Python preview adapter found no strong discriminator; missing proof: `raises ValueError matching \"positive required\"`."
+        }
+      },
+      "missing_discriminators": [
+        {
+          "value": "raises ValueError matching \"positive required\"",
+          "reason": "changed Python exception at line 3 lacks a concrete repair discriminator"
+        }
+      ],
+      "related_tests": [
+        {
+          "name": "test_rejects_zero_value",
+          "file": "tests/test_validation.py",
+          "line": 6,
+          "oracle_strength": "weak",
+          "oracle_kind": "broad_error",
+          "oracle": "pytest.raises(ValueError)"
+        }
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

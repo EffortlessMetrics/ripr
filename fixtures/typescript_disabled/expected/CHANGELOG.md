@@ -1,0 +1,85 @@
+# Golden Output Changes
+
+## Pending
+
+Reason:
+Add TypeScript preview fixture harness coverage for typescript_disabled
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+schema 0.2: dedup assertion text into finding-level assertion_texts map (#1035)
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0082 not-enabled disclosure + enabled/analyzed fields (#1111)
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+#2103: additive changed_files_by_language field and changed_rust_files now Rust-only count
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: publish typed analysis outcome in human and JSON output.
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0147: align fixture outputs with the typed incomplete-outcome and unquoted human outcome contract.
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`
+
+## Pending
+
+Reason:
+RIPR-SPEC-0160: the additive git_candidate_subject identity field (null for ordinary runs) in the check JSON identity block
+
+Command:
+`cargo xtask goldens bless typescript_disabled --reason "..."`
+
+Updated:
+- `expected/check.json`
+- `expected/human.txt`

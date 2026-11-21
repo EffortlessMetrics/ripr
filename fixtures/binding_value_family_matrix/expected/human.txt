@@ -1,0 +1,32 @@
+ripr static RIPR exposure analysis
+mode: fast
+root: fixtures/binding_value_family_matrix/input
+
+Summary: 6 probe(s), 1 exposed, 0 weak, 0 unrevealed, 0 no path, 5 unknown
+
+Analysis outcome: complete_with_findings (analysis complete).
+  Counts: 1 changed file(s), 12 changed line(s), 6 candidate line(s), 6 probe(s), 6 finding(s).
+
+Start here:
+  State: static_limited
+  Safe next action: inspect the named static limitation before treating this as repair-ready.
+  File: fixtures/binding_value_family_matrix/input/src/lib.rs:12
+  Static exposure: propagation_unknown (note, confidence 0.66)
+  Why propagation_unknown: the path from the changed behavior to an observable sink is not statically clear
+  Changed behavior: label.starts_with("pre-")
+  Analyzer limit: No clear propagation path from changed behavior to an observable sink
+  Related test: tests/matrix.rs:14 starts_with_boundary_is_observed
+  Next step: Escalate to real mutation testing or deep static analysis for this probe.
+  Evidence:
+    - reach yes: Related tests appear to reach gate: starts_with_boundary_is_observed
+    - infection yes: Detected related test input at the changed boundary
+    - 7 more evidence line(s) hidden
+
+Next: drill into the top finding:
+  ripr explain --root fixtures/binding_value_family_matrix/input --diff fixtures/binding_value_family_matrix/diff.patch --mode fast probe:src_lib.rs:predicate:a54b7c0f
+  ripr context --root fixtures/binding_value_family_matrix/input --diff fixtures/binding_value_family_matrix/diff.patch --mode fast --at probe:src_lib.rs:predicate:a54b7c0f
+
+Hidden:
+  5 lower-priority finding(s) omitted from default human output.
+  Full evidence: rerun with --format human-full
+  Machine data: rerun with --format json

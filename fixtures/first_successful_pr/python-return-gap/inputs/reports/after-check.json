@@ -1,0 +1,85 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "mode": "draft",
+  "root": "fixtures/first_successful_pr/python-return-gap",
+  "summary": {
+    "changed_rust_files": 1,
+    "probes": 1,
+    "findings": 1,
+    "exposed": 1,
+    "weakly_exposed": 0,
+    "reachable_unrevealed": 0,
+    "no_static_path": 0,
+    "infection_unknown": 0,
+    "propagation_unknown": 0,
+    "static_unknown": 0
+  },
+  "findings": [
+    {
+      "id": "probe:src_priority.py:2:python_preview",
+      "classification": "exposed",
+      "severity": "info",
+      "confidence": 0.78,
+      "canonical_gap_id": "gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100",
+      "canonical_gap": {
+        "id": "gap:python:src/priority.py:is_priority:return_value:return_value:amount>=100",
+        "language": "python",
+        "file": "src/priority.py",
+        "owner": "is_priority",
+        "behavior_kind": "return_value",
+        "probe_kind": "return_value",
+        "normalized_discriminator": "amount>=100"
+      },
+      "probe": {
+        "id": "probe:src_priority.py:2:python_preview",
+        "family": "return_value",
+        "delta": "value",
+        "file": "src/priority.py",
+        "line": 2,
+        "expression": "    return amount >= 100",
+        "owner": "python:src/priority.py::is_priority"
+      },
+      "ripr": {
+        "reach": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "1 related Python test(s) found for owner `is_priority`"
+        },
+        "infect": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed Python return expression can alter the owner return value: `return amount >= 100`"
+        },
+        "propagate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Changed Python return value is already at the owner output boundary."
+        },
+        "observe": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Strongest extracted Python oracle kind: `exact_value` (rank 5)"
+        },
+        "discriminate": {
+          "state": "yes",
+          "confidence": "low",
+          "summary": "Related Python test uses a `exact_value` oracle; static evidence suggests the changed behavior is discriminated."
+        }
+      },
+      "missing_discriminators": [],
+      "related_tests": [
+        {
+          "name": "test_priority_amount",
+          "file": "tests/test_priority.py",
+          "line": 4,
+          "oracle_strength": "strong",
+          "oracle_kind": "exact_value",
+          "oracle": "assert is_priority(100) is True"
+        }
+      ],
+      "language": "python",
+      "language_status": "preview"
+    }
+  ]
+}

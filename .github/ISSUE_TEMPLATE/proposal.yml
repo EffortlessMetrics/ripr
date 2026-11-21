@@ -1,0 +1,73 @@
+name: Source-of-truth proposal
+description: Propose why a new initiative should exist before specs or code.
+title: "proposal: "
+labels: ["source-of-truth", "proposal"]
+body:
+  - type: input
+    id: proposal_id
+    attributes:
+      label: Proposal ID
+      description: Use the next repo proposal ID when known.
+      placeholder: "RIPR-PROP-00NN"
+    validations:
+      required: false
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user, reviewer, maintainer, CI, or agent problem motivates this work?
+    validations:
+      required: true
+  - type: textarea
+    id: users_surfaces
+    attributes:
+      label: Users and surfaces
+      description: Who benefits, and which repo or product surfaces are affected?
+    validations:
+      required: true
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success criteria
+      description: What outcomes would make the proposal worth accepting?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_shape
+    attributes:
+      label: Proposed shape
+      description: What artifacts, specs, ADRs, or plans should follow from this proposal?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What did you consider and reject?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence_plan
+    attributes:
+      label: Evidence plan
+      description: Which proof commands, fixtures, reports, or reviews should validate the later work?
+      value: |
+        - Proof command:
+        - Fixture/report:
+        - Review signal:
+    validations:
+      required: true
+  - type: textarea
+    id: risks_non_goals
+    attributes:
+      label: Risks and non-goals
+      description: What can go wrong, and what must this proposal not absorb?
+    validations:
+      required: true
+  - type: textarea
+    id: exit_criteria
+    attributes:
+      label: Exit criteria
+      description: What exact repo state closes this proposal?
+    validations:
+      required: true

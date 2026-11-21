@@ -1,0 +1,56 @@
+schema_version = "2.0"
+id = "ripr.slice.editor-contract-ratification.v1"
+generation = 1
+
+source_issue = "issue:1622"
+design_reference = "RIPR-SPEC-0129"
+change_class = "spec_or_contract_change"
+
+claim_boundary = """
+Ratifies RIPR-SPEC-0129 from proposed to accepted now that its governed
+surfaces are evidence-backed: the three-layer contract, the negotiated
+riprEditor/riprAgent capability blocks, the exercised-harness support
+matrix, the closed capability-to-test mappings, and the framed
+saved-workspace end-to-end fixture. Acceptance is of the CONTRACT, not of
+support claims: every matrix layer stays preview or reserved, and the
+spec itself names the still-pending items — real install-to-repair proof
+(#1579/#1630), real riprAgent handlers (#1602/#1603), workspace trust
+(#1623), and managed provisioning (#1624). No tier promotion, no
+production code change, no wire-output or golden change; the docs/specs
+README index row flips in the same commit.
+"""
+
+non_goals = [
+  "support-tier promotion (stays preview/reserved)",
+  "closing the pending real-proof children (#1579/#1630/#1602/#1603/#1623/#1624)",
+  "production code changes",
+]
+
+return_conditions = [
+  "Return to root if the end-to-end fixture PR has not merged (this ratification must layer on it).",
+  "Return to root if any gate reads the status flip as a support claim change.",
+]
+
+owned_seams = [
+  "seam:ripr:contract:editor-integration-contract-v1",
+]
+
+shared_seams = []
+
+forbidden_seams = [
+  "seam:ripr:crates:production-code",
+  "seam:ripr:fixtures:goldens",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0129"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

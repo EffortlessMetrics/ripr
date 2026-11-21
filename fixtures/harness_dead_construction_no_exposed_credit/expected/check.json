@@ -1,0 +1,202 @@
+{
+  "schema_version": "0.2",
+  "tool": "ripr",
+  "mode": "fast",
+  "root": "fixtures/harness_dead_construction_no_exposed_credit/input",
+  "base": "origin/main",
+  "summary": {"changed_rust_files":1,"probes":3,"findings":3,"exposed":0,"weakly_exposed":0,"reachable_unrevealed":0,"no_static_path":3,"infection_unknown":0,"propagation_unknown":0,"static_unknown":0,"changed_files_by_language":[{"language":"rust","files":1}]},
+  "analysis_outcome": {
+    "analysis_complete": true,
+    "outcome": {"schema_version":"0.1","kind":"complete_with_findings","identity":{"repository_identity":null,"root_identity":null,"config_identity":null,"base_revision":"origin/main","input_identity":"sha256:f218435ec239a668b0a7812f449ef21c46d6aaf609f1b3f71acc58fb70e60e88","snapshot_identity":null,"git_candidate_subject":null},"counts":{"changed_file_count":1,"changed_line_count":4,"candidate_line_count":2,"probe_count":3,"finding_count":3},"limitations":[],"claim_boundary":"Static analysis outcome only; no correctness, test-adequacy, runtime-execution, or merge-readiness claim."}
+  },
+  "findings": [
+    {
+      "id": "probe:src_lib.rs:call_deletion:289dd551",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:289dd551",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs",
+        "line": 3,
+        "expression": "raw.parse().unwrap_or(1)"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No reachable tests were found, so infection cannot be established"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence call effect: raw.parse().unwrap_or(1)"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No reachable tests were found, so infection cannot be established", "propagation yes: Changed behavior appears to influence call effect: raw.parse().unwrap_or(1)", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches call effect: raw.parse().unwrap_or(1) (line 3)"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"raw.parse().unwrap_or(1)","line":3}
+      ],
+      "evidence": ["Changed behavior appears to influence call effect: raw.parse().unwrap_or(1)", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No reachable tests were found, so infection cannot be established", "No static test path found for the changed owner"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:call_deletion:3cb7de3e",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.48,
+      "probe": {
+        "id": "probe:src_lib.rs:call_deletion:3cb7de3e",
+        "family": "call_deletion",
+        "delta": "effect",
+        "file": "fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs",
+        "line": 8,
+        "expression": "parse_limit(raw) > 1"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No reachable tests were found, so infection cannot be established"},
+        "propagate": {"state":"yes","confidence":"medium","summary":"Changed behavior appears to influence call effect: parse_limit(raw) > 1"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No reachable tests were found, so infection cannot be established", "propagation yes: Changed behavior appears to influence call effect: parse_limit(raw) > 1", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test", "local flow reaches call effect: parse_limit(raw) > 1 (line 8)"],
+      "flow_sinks": [
+        {"kind":"call_effect","text":"parse_limit(raw) > 1","line":8}
+      ],
+      "evidence": ["Changed behavior appears to influence call effect: parse_limit(raw) > 1", "No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No reachable tests were found, so infection cannot be established", "No static test path found for the changed owner"],
+      "missing": ["No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    },
+    {
+      "id": "probe:src_lib.rs:predicate:f16a58e4",
+      "classification": "no_static_path",
+      "severity": "warning",
+      "confidence": 0.35,
+      "probe": {
+        "id": "probe:src_lib.rs:predicate:f16a58e4",
+        "family": "predicate",
+        "delta": "control",
+        "file": "fixtures/harness_dead_construction_no_exposed_credit/input/src/lib.rs",
+        "line": 8,
+        "expression": "parse_limit(raw) > 1"
+       },
+      "ripr": {
+        "reach": {"state":"no","confidence":"medium","summary":"No static test path found for the changed owner"},
+        "infect": {"state":"unknown","confidence":"low","summary":"No tests were found, so activation/infection cannot be estimated"},
+        "propagate": {"state":"unknown","confidence":"low","summary":"Propagation is not statically obvious from syntax-first analysis"},
+        "observe": {"state":"no","confidence":"medium","summary":"No reachable test oracle found"},
+        "discriminate": {"state":"no","confidence":"medium","summary":"No assertion can discriminate the changed behavior without a reachable test"}
+       },
+      "evidence_path": ["reach no: No static test path found for the changed owner", "infection unknown: No tests were found, so activation/infection cannot be estimated", "propagation unknown: Propagation is not statically obvious from syntax-first analysis", "observation no: No reachable test oracle found", "discriminator no: No assertion can discriminate the changed behavior without a reachable test"],
+      "flow_sinks": [
+      ],
+      "evidence": ["No assertion can discriminate the changed behavior without a reachable test", "No reachable test oracle found", "No static test path found for the changed owner", "No tests were found, so activation/infection cannot be estimated", "Propagation is not statically obvious from syntax-first analysis"],
+      "missing": ["No detected boundary input for the changed predicate", "No relevant oracle was detected", "No static test path reaches the changed owner", "No strong discriminator was detected"],
+      "assertion_texts": {
+      },
+      "activation": {
+        "observed_values": [
+        ],
+        "missing_discriminators": [
+        ]
+      },
+      "observed_values": [
+      ],
+      "missing_discriminators": [
+      ],
+      "related_tests_total": 0,
+      "related_tests": [
+      ],
+      "stop_reasons": [],
+      "oracle_kind": "unknown",
+      "oracle_strength": "none",
+      "recommended_next_step": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "suggested_next_action": "ripr found no static test path to this change — this is not a coverage assessment. A test may already exercise it through macros, helper-call chains, or integration tests that ripr's static model does not yet trace. If none does, add a co-located test that reaches and observes the changed behavior so a discriminator exists.",
+      "language": "rust",
+      "source_currentness": "candidate_current"
+    }
+  ]
+,
+  "test_harnesses": [
+    {
+      "registration_id": "mimic-suite",
+      "harness_kind": "custom_harness",
+      "adapter": "libtest_mimic_v1",
+      "marker": "libtest_mimic",
+      "target": "tests/mimic.rs",
+      "provenance": "ripr.toml [analysis.test_harnesses]",
+      "subjects": [
+        {
+          "name": "parses_limit",
+          "file": "tests/mimic.rs",
+          "start_line": 10,
+          "end_line": 12,
+          "selector": "named_unexecuted",
+          "claim": "named_invocation"
+        },
+        {
+          "name": "limit_exceeds",
+          "file": "tests/mimic.rs",
+          "start_line": 13,
+          "end_line": 15,
+          "selector": "named_unexecuted",
+          "claim": "named_invocation"
+        }
+      ],
+      "limitations": [
+        {
+          "code": "registration_unreachable",
+          "file": "tests/mimic.rs",
+          "line": 10,
+          "detail": "trial `parses_limit` is constructed in the registered target, but no call to the registered harness run entry point (`libtest_mimic::run`, or a top-level import of `run` bound from `libtest_mimic`) exists in this target; the construction has no path into a run argument through the supported resolution forms; its executable-test fact does not join the denominator (the syntactic subject claim is retained) (#3636)"
+        },
+        {
+          "code": "registration_unreachable",
+          "file": "tests/mimic.rs",
+          "line": 13,
+          "detail": "trial `limit_exceeds` is constructed in the registered target, but no call to the registered harness run entry point (`libtest_mimic::run`, or a top-level import of `run` bound from `libtest_mimic`) exists in this target; the construction has no path into a run argument through the supported resolution forms; its executable-test fact does not join the denominator (the syntactic subject claim is retained) (#3636)"
+        }
+      ]
+    }
+  ]}

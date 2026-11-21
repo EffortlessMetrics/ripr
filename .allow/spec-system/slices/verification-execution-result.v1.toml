@@ -1,0 +1,60 @@
+schema_version = "2.0"
+id = "ripr.slice.verification-execution-result.v1"
+generation = 1
+
+source_issue = "issue:1979"
+design_reference = "RIPR-SPEC-0135#verification-result"
+change_class = "security_contract_change"
+
+claim_boundary = """
+Adds the producer-bound VerificationExecutionResultV1 domain contract and one
+consumer validator. The validator binds a result to a validated CommandSpec,
+repository root identity, exact before/after HEADs, process disposition, and
+bounded SHA-256 commitments. It does not execute processes, issue receipts,
+change gates, or claim test adequacy or runtime mutation outcomes.
+"""
+
+non_goals = [
+  "command execution",
+  "receipt issuance",
+  "gate authority",
+  "runtime mutation confirmation",
+  "signature or attestation",
+  "support-tier promotion",
+]
+
+return_conditions = [
+  "Return to root if callers can bypass validation and consume a result as current.",
+  "Return to root if a result can bind to a different command spec or repository root.",
+  "Return to root if static movement or runtime mutation claims enter the result type.",
+]
+
+owned_seams = [
+  "seam:ripr:domain:verification-execution-result",
+  "seam:ripr:contract:verification-result-validation",
+]
+
+shared_seams = [
+  "seam:ripr:domain:command-spec",
+  "seam:ripr:contract:repair-assurance-v1",
+  "seam:ripr:agent:artifact-provenance",
+]
+
+forbidden_seams = [
+  "seam:ripr:agent:command-runner",
+  "seam:ripr:agent:receipt-issuer",
+  "seam:ripr:output:gate-authority",
+]
+
+[[requirement_delta]]
+requirement_id = "RIPR-SPEC-0135#verification-result"
+requirement_generation = 1
+
+[implementation_claim]
+status = "implemented"
+
+[evidence]
+state = "outstanding"
+
+[support_claim]
+state = "unchanged"

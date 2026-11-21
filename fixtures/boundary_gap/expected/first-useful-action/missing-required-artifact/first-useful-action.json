@@ -1,0 +1,54 @@
+{
+  "schema_version": "0.1",
+  "tool": "ripr",
+  "kind": "first_useful_action",
+  "status": "missing_required_artifact",
+  "audience": "agent",
+  "action_kind": "generate_missing_artifact",
+  "root": "fixtures/boundary_gap/input",
+  "generated_at": "2026-05-09T12:00:00Z",
+  "inputs": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": null,
+    "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+    "baseline_delta": null,
+    "receipt": null,
+    "gate_decision": null,
+    "coverage_frontier": null,
+    "editor_context": null
+  },
+  "selected": null,
+  "title": "Generate assistant proof before routing",
+  "why": "Required joined proof input is missing.",
+  "why_first": [
+    "Required joined proof input is missing.",
+    "The report must not infer proof state from a raw artifact chain."
+  ],
+  "target": null,
+  "commands": {
+    "context_packet": null,
+    "after_snapshot": null,
+    "verify": null,
+    "receipt": null,
+    "assistant_proof": "ripr assistant-loop proof --pr-guidance target/ripr/review/comments.json --agent-packet target/ripr/workflow/agent-brief.json --before target/ripr/workflow/before.repo-exposure.json --after target/ripr/workflow/after.repo-exposure.json --receipt target/ripr/reports/agent-receipt.json --ledger target/ripr/reports/pr-evidence-ledger.json --out target/ripr/reports/test-oracle-assistant-proof.json --out-md target/ripr/reports/test-oracle-assistant-proof.md"
+  },
+  "evidence": {
+    "pr_guidance": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-guidance.json",
+    "assistant_proof": null,
+    "receipt": null,
+    "ledger": "fixtures/boundary_gap/expected/test-oracle-assistant-loop/canonical/pr-evidence-ledger.json",
+    "static_movement": "unknown"
+  },
+  "fallback": {
+    "kind": "missing_required_artifact",
+    "missing": "target/ripr/reports/test-oracle-assistant-proof.json"
+  },
+  "warnings": [
+    "missing required artifact: target/ripr/reports/test-oracle-assistant-proof.json"
+  ],
+  "limits": [
+    "Static evidence only.",
+    "Does not search hidden state.",
+    "Does not change CI blocking."
+  ]
+}

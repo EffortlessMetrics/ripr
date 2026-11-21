@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "fixture": "editor_adoption_assurance/first_pr_packet_ready",
+  "packet_state": "top_repairable_gap",
+  "packet_path": "target/ripr/first-pr/start-here.json",
+  "markdown_path": "target/ripr/first-pr/start-here.md",
+  "canonical_gap_id": "gap:rust:pricing:discount:threshold-boundary",
+  "repair_route": "AddBoundaryCase",
+  "verify_command": "ripr outcome --before target/ripr/before.json --after target/ripr/after.json",
+  "receipt_command": "ripr agent receipt --root . --verify-json target/ripr/workflow/agent-verify.json --seam-id gap:rust:pricing:discount:threshold-boundary --json",
+  "runtime_adequacy_claim": false,
+  "mutation_proof_claim": false,
+  "policy_gate_claim": false,
+  "pr_ready_claim": false,
+  "next_safe_action": "Copy the repair packet and verify command; emit a receipt after the focused repair."
+}
