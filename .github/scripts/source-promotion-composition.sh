@@ -6,12 +6,14 @@ marker='<!-- source-promotion: true -->'
 control_prefix='<!-- source-promotion-control:'
 # Routing identity is mandatory, even for an ordinary non-promotion PR.
 [[ ${PR_BODY+x} && ${HEAD_REF+x} ]] || fail 'event routing inputs missing'
+[[ -n "$HEAD_REF" && "$HEAD_REF" != -* ]] && git check-ref-format "refs/heads/$HEAD_REF" || fail 'invalid head ref'
 # GitHub web-edited bodies may use CRLF; marker cardinality stays exact.
 PR_BODY=${PR_BODY//$'\r'/}
 if [[ "$HEAD_REF" != promote/0.11.0-* ]] && [[ "$PR_BODY" != *"$marker"* ]] && [[ "$PR_BODY" != *"$control_prefix"* ]]; then
   echo 'Ordinary pull request: no source-promotion composition requested.'
   exit 0
 fi
+command -v python3 >/dev/null 2>&1 || fail 'python3 is required for promotion sidecar validation'
 [[ "$PR_BODY" == *"$marker"* ]] || fail 'promotion marker missing'
 mapfile -t markers < <(printf '%s\n' "$PR_BODY" | grep -E '^<!-- source-promotion-control: [0-9a-f]{40} -->$' || true)
 [[ ${#markers[@]} -eq 1 ]] || fail 'exactly one control marker required'
@@ -30,14 +32,34 @@ for path in "$control_path" "$preflight_path"; do
   entry=$(git ls-tree "$control" -- "$path")
   [[ "$entry" == $'100644 blob '*$'\t'"$path" ]] || fail 'control sidecar is not a regular tracked file'
 done
-inputs=$(git show "$control:$control_path")
+control_file=$(mktemp)
+preflight_file=$(mktemp)
+trap 'rm -f "$control_file" "$preflight_file"' EXIT
+git show "$control:$control_path" > "$control_file"
+reject_duplicate_keys() {
+  python3 -c '
+import json, sys
+def unique(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON key")
+        result[key] = value
+    return result
+try:
+    json.load(sys.stdin, object_pairs_hook=unique)
+except (ValueError, UnicodeError, RecursionError):
+    sys.exit(1)
+' < "$1"
+}
 # jq is stream-oriented: a valid object followed by an incomplete object can
 # otherwise satisfy separate field checks using values from different objects.
-jq -e -s 'length == 1 and (.[0] | type == "object")' <<< "$inputs" >/dev/null || fail 'control must contain exactly one JSON object'
-preflight_file=$(mktemp)
-trap 'rm -f "$preflight_file"' EXIT
+jq -e -s 'length == 1 and (.[0] | type == "object")' "$control_file" >/dev/null || fail 'control must contain exactly one JSON object'
+reject_duplicate_keys "$control_file" || fail 'control must contain exactly one JSON object without duplicate keys'
+inputs=$(cat "$control_file")
 git show "$control:$preflight_path" > "$preflight_file"
 jq -e -s 'length == 1 and (.[0] | type == "object")' "$preflight_file" >/dev/null || fail 'preflight must contain exactly one JSON object'
+reject_duplicate_keys "$preflight_file" || fail 'preflight must contain exactly one JSON object without duplicate keys'
 jq -e --arg p "$preflight_path" --arg base "$BASE_SHA" '.schema == "ripr.source_promotion_ci_inputs.v2" and .preflight == $p and .source_main == $base' <<< "$inputs" >/dev/null || fail 'control identities do not bind event base and merge'
 expected=$(jq -er '.preflight_sha256 | select(type == "string" and test("^[0-9a-f]{64}$"))' <<< "$inputs") || fail 'invalid preflight digest'
 [[ $(sha256sum "$preflight_file" | cut -d ' ' -f 1) == "$expected" ]] || fail 'preflight digest mismatch'

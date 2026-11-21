@@ -34,6 +34,12 @@ qualification and publication histories.
 
 ## Unreleased
 
+- Reject malformed event head refs and duplicate JSON keys in both source-promotion
+  sidecars before binding composition identities. Python 3 is required only for
+  promotion validation; valid ordinary routing remains independent of Python.
+  This hardening does not activate a workflow, establish trusted required-check
+  enforcement, or authorize promotion or release (#1893).
+
 [Full development diff since v0.10.0](https://github.com/EffortlessMetrics/ripr/compare/v0.10.0...main).
 
 ### Compatibility and upgrades
