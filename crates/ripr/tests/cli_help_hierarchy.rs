@@ -71,6 +71,24 @@ fn default_help_keeps_the_task_roles_distinct() -> Result<(), String> {
     Ok(())
 }
 
+/// Installed users run help in their own repository, which does not contain
+/// RIPR's development fixtures. Keep the annotation example on their Git diff.
+#[test]
+fn check_help_annotation_example_uses_the_consumer_worktree() -> Result<(), String> {
+    for args in [["check", "--help"].as_slice(), ["help", "check"].as_slice()] {
+        let stdout = rendered_help(args)?;
+        assert_contains(
+            "check help annotation example",
+            &stdout,
+            "ripr check --base HEAD --worktree --format github",
+        )?;
+        if stdout.contains("crates/ripr/examples/sample/example.diff") {
+            return Err("check help still requires RIPR's development checkout".to_string());
+        }
+    }
+    Ok(())
+}
+
 #[test]
 fn exhaustive_help_keeps_the_same_roles_and_boundaries() -> Result<(), String> {
     let stdout = normalized(&rendered_help(&["help", "--all"])?);
